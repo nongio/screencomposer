@@ -22,7 +22,11 @@ use smithay::{
         },
         PopupManager, Space,
     },
-    input::{keyboard::XkbConfig, pointer::CursorImageStatus, Seat, SeatHandler, SeatState},
+    input::{
+        keyboard::XkbConfig,
+        pointer::{CursorImageStatus, PointerHandle},
+        Seat, SeatHandler, SeatState,
+    },
     output::Output,
     reexports::{
         calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
@@ -35,16 +39,16 @@ use smithay::{
             Display, DisplayHandle, Resource,
         },
     },
-    utils::{Clock, Logical, Monotonic, Point},
+    utils::{Clock, Monotonic},
     wayland::{
-        compositor::{get_parent, with_states, CompositorState},
+        compositor::{get_parent, with_states, CompositorClientState, CompositorState},
         data_device::{
             set_data_device_focus, ClientDndGrabHandler, DataDeviceHandler, DataDeviceState,
             ServerDndGrabHandler,
         },
         dmabuf::DmabufFeedback,
         fractional_scale::{with_fractional_scale, FractionalScaleHandler, FractionalScaleManagerState},
-        input_method::{InputMethodManagerState, InputMethodSeat},
+        input_method::InputMethodManagerState,
         keyboard_shortcuts_inhibit::{
             KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState, KeyboardShortcutsInhibitor,
         },
@@ -77,8 +81,15 @@ use crate::cursor::Cursor;
 use crate::{focus::FocusTarget, shell::WindowElement};
 #[cfg(feature = "xwayland")]
 use smithay::{
-    utils::Size,
-    xwayland::{X11Wm, XWayland, XWaylandEvent},
+    delegate_xwayland_keyboard_grab,
+    reexports::wayland_protocols::wp::primary_selection::zv1::server::zwp_primary_selection_source_v1::ZwpPrimarySelectionSourceV1,
+    utils::{Point, Size},
+    wayland::{
+        data_device::with_source_metadata as with_data_device_source_metadata,
+        primary_selection::with_source_metadata as with_primary_source_metadata,
+        xwayland_keyboard_grab::{XWaylandKeyboardGrabHandler, XWaylandKeyboardGrabState},
+    },
+    xwayland::{xwm::SelectionType, X11Wm, XWayland, XWaylandEvent},
 };
 
 pub struct CalloopData<BackendData: Backend + 'static> {
@@ -87,7 +98,9 @@ pub struct CalloopData<BackendData: Backend + 'static> {
 }
 
 #[derive(Debug, Default)]
-pub struct ClientState;
+pub struct ClientState {
+    pub compositor_state: CompositorClientState,
+}
 impl ClientData for ClientState {
     /// Notification that a client was initialized
     fn initialized(&self, _client_id: ClientId) {}
@@ -127,11 +140,11 @@ pub struct AnvilState<BackendData: Backend + 'static> {
 
     // input-related fields
     pub suppressed_keys: Vec<u32>,
-    pub pointer_location: Point<f64, Logical>,
     pub cursor_status: Arc<Mutex<CursorImageStatus>>,
     pub seat_name: String,
     pub seat: Seat<AnvilState<BackendData>>,
     pub clock: Clock<Monotonic>,
+    pub pointer: PointerHandle<AnvilState<BackendData>>,
 
     #[cfg(feature = "xwayland")]
     pub xwayland: XWayland,
@@ -149,11 +162,35 @@ pub struct AnvilState<BackendData: Backend + 'static> {
 delegate_compositor!(@<BackendData: Backend + 'static> AnvilState<BackendData>);
 
 impl<BackendData: Backend> DataDeviceHandler for AnvilState<BackendData> {
+    type SelectionUserData = ();
+
     fn data_device_state(&self) -> &DataDeviceState {
         &self.data_device_state
     }
-    fn send_selection(&mut self, _mime_type: String, _fd: OwnedFd) {
-        unreachable!("Anvil doesn't do server-side selections");
+
+    #[cfg(feature = "xwayland")]
+    fn new_selection(&mut self, source: Option<WlDataSource>, _seat: Seat<Self>) {
+        if let Some(xwm) = self.xwm.as_mut() {
+            if let Some(source) = source {
+                if let Ok(Err(err)) = with_data_device_source_metadata(&source, |metadata| {
+                    xwm.new_selection(SelectionType::Clipboard, Some(metadata.mime_types.clone()))
+                }) {
+                    warn!(?err, "Failed to set Xwayland clipboard selection");
+                }
+            } else if let Err(err) = xwm.new_selection(SelectionType::Clipboard, None) {
+                warn!(?err, "Failed to clear Xwayland clipboard selection");
+            }
+        }
+    }
+
+    #[cfg(feature = "xwayland")]
+    fn send_selection(&mut self, mime_type: String, fd: OwnedFd, _seat: Seat<Self>, _user_data: &()) {
+        if let Some(xwm) = self.xwm.as_mut() {
+            if let Err(err) = xwm.send_selection(SelectionType::Clipboard, mime_type, fd, self.handle.clone())
+            {
+                warn!(?err, "Failed to send clipboard (X11 -> Wayland)");
+            }
+        }
     }
 }
 impl<BackendData: Backend> ClientDndGrabHandler for AnvilState<BackendData> {
@@ -165,7 +202,7 @@ impl<BackendData: Backend> ClientDndGrabHandler for AnvilState<BackendData> {
     }
 }
 impl<BackendData: Backend> ServerDndGrabHandler for AnvilState<BackendData> {
-    fn send(&mut self, _mime_type: String, _fd: OwnedFd) {
+    fn send(&mut self, _mime_type: String, _fd: OwnedFd, _seat: Seat<Self>) {
         unreachable!("Anvil doesn't do server-side grabs");
     }
 }
@@ -174,8 +211,33 @@ delegate_data_device!(@<BackendData: Backend + 'static> AnvilState<BackendData>)
 delegate_output!(@<BackendData: Backend + 'static> AnvilState<BackendData>);
 
 impl<BackendData: Backend> PrimarySelectionHandler for AnvilState<BackendData> {
+    type SelectionUserData = ();
     fn primary_selection_state(&self) -> &PrimarySelectionState {
         &self.primary_selection_state
+    }
+
+    #[cfg(feature = "xwayland")]
+    fn new_selection(&mut self, source: Option<ZwpPrimarySelectionSourceV1>, _seat: Seat<Self>) {
+        if let Some(xwm) = self.xwm.as_mut() {
+            if let Some(source) = source {
+                if let Ok(Err(err)) = with_primary_source_metadata(&source, |metadata| {
+                    xwm.new_selection(SelectionType::Primary, Some(metadata.mime_types.clone()))
+                }) {
+                    warn!(?err, "Failed to set Xwayland primary selection");
+                }
+            } else if let Err(err) = xwm.new_selection(SelectionType::Primary, None) {
+                warn!(?err, "Failed to clear Xwayland primary selection");
+            }
+        }
+    }
+
+    #[cfg(feature = "xwayland")]
+    fn send_selection(&mut self, mime_type: String, fd: OwnedFd, _seat: Seat<Self>, _user_data: &()) {
+        if let Some(xwm) = self.xwm.as_mut() {
+            if let Err(err) = xwm.send_selection(SelectionType::Primary, mime_type, fd, self.handle.clone()) {
+                warn!(?err, "Failed to send primary (X11 -> Wayland)");
+            }
+        }
     }
 }
 delegate_primary_selection!(@<BackendData: Backend + 'static> AnvilState<BackendData>);
@@ -301,7 +363,7 @@ impl<BackendData: Backend> XdgDecorationHandler for AnvilState<BackendData> {
                 .initial_configure_sent
         });
         if initial_configure_sent {
-            toplevel.send_configure();
+            toplevel.send_pending_configure();
         }
     }
     fn unset_mode(&mut self, toplevel: ToplevelSurface) {
@@ -319,7 +381,7 @@ impl<BackendData: Backend> XdgDecorationHandler for AnvilState<BackendData> {
                 .initial_configure_sent
         });
         if initial_configure_sent {
-            toplevel.send_configure();
+            toplevel.send_pending_configure();
         }
     }
 }
@@ -345,6 +407,7 @@ impl<BackendData: Backend> FractionalScaleHandler for AnvilState<BackendData> {
         // If all the above tests do not lead to a output we just use the first output
         // of the space (which in case of anvil will also be the output a toplevel will
         // initially be placed on)
+        #[allow(clippy::redundant_clone)]
         let mut root = surface.clone();
         while let Some(parent) = get_parent(&root) {
             root = parent;
@@ -377,6 +440,19 @@ impl<BackendData: Backend> FractionalScaleHandler for AnvilState<BackendData> {
 }
 delegate_fractional_scale!(@<BackendData: Backend + 'static> AnvilState<BackendData>);
 
+#[cfg(feature = "xwayland")]
+impl<BackendData: Backend + 'static> XWaylandKeyboardGrabHandler for AnvilState<BackendData> {
+    fn keyboard_focus_for_xsurface(&self, surface: &WlSurface) -> Option<FocusTarget> {
+        let elem = self
+            .space
+            .elements()
+            .find(|elem| elem.wl_surface().as_ref() == Some(surface))?;
+        Some(FocusTarget::Window(elem.clone()))
+    }
+}
+#[cfg(feature = "xwayland")]
+delegate_xwayland_keyboard_grab!(@<BackendData: Backend + 'static> AnvilState<BackendData>);
+
 impl<BackendData: Backend + 'static> AnvilState<BackendData> {
     pub fn init(
         display: &mut Display<AnvilState<BackendData>>,
@@ -395,7 +471,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                     if let Err(err) = data
                         .display
                         .handle()
-                        .insert_client(client_stream, Arc::new(ClientState))
+                        .insert_client(client_stream, Arc::new(ClientState::default()))
                     {
                         warn!("Error adding wayland client: {}", err);
                     };
@@ -414,6 +490,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                     Mode::Level,
                 ),
                 |_, _, data| {
+                    profiling::scope!("dispatch_clients");
                     data.display.dispatch_clients(&mut data.state).unwrap();
                     Ok(PostAction::Continue)
                 },
@@ -448,7 +525,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let mut seat = seat_state.new_wl_seat(&dh, seat_name.clone());
 
         let cursor_status = Arc::new(Mutex::new(CursorImageStatus::Default));
-        seat.add_pointer();
+        let pointer = seat.add_pointer();
         seat.add_keyboard(XkbConfig::default(), 200, 25)
             .expect("Failed to initialize the keyboard");
 
@@ -458,13 +535,13 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             *cursor_status2.lock().unwrap() = new_status;
         });
 
-        seat.add_input_method(XkbConfig::default(), 200, 25);
-
         let dh = display.handle();
         let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
 
         #[cfg(feature = "xwayland")]
         let xwayland = {
+            XWaylandKeyboardGrabState::new::<Self>(&dh);
+
             let (xwayland, channel) = XWayland::new(&dh);
             let ret = handle.insert_source(channel, move |event, _, data| match event {
                 XWaylandEvent::Ready {
@@ -520,10 +597,10 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             fractional_scale_manager_state,
             dnd_icon: None,
             suppressed_keys: Vec::new(),
-            pointer_location: (0.0, 0.0).into(),
             cursor_status,
             seat_name,
             seat,
+            pointer,
             clock,
             #[cfg(feature = "xwayland")]
             xwayland,
@@ -544,6 +621,7 @@ pub struct SurfaceDmabufFeedback<'a> {
     pub scanout_feedback: &'a DmabufFeedback,
 }
 
+#[profiling::function]
 pub fn post_repaint(
     output: &Output,
     render_element_states: &RenderElementStates,
@@ -617,6 +695,7 @@ pub fn post_repaint(
     }
 }
 
+#[profiling::function]
 pub fn take_presentation_feedback(
     output: &Output,
     space: &Space<WindowElement>,

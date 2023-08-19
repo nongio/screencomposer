@@ -1,13 +1,13 @@
 use smithay::{
     backend::renderer::{
-        damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
+        damage::{Error as OutputDamageTrackerError, OutputDamageTracker, RenderOutputResult},
         element::{
             surface::WaylandSurfaceRenderElement,
             utils::{
                 ConstrainAlign, ConstrainScaleBehavior, CropRenderElement, RelocateRenderElement,
                 RescaleRenderElement,
             },
-            AsRenderElements, RenderElement, RenderElementStates, Wrap,
+            AsRenderElements, RenderElement, Wrap,
         },
         ImportAll, ImportMem, Renderer,
     },
@@ -15,7 +15,7 @@ use smithay::{
         constrain_space_element, ConstrainBehavior, ConstrainReference, Space, SpaceRenderElements,
     },
     output::Output,
-    utils::{Physical, Point, Rectangle, Size},
+    utils::{Point, Rectangle, Size},
 };
 
 #[cfg(feature = "debug")]
@@ -38,10 +38,7 @@ smithay::backend::renderer::element::render_elements! {
     Fps=FpsElement<<R as Renderer>::TextureId>,
 }
 
-impl<R: Renderer + std::fmt::Debug> std::fmt::Debug for CustomRenderElements<R>
-where
-    <R as Renderer>::TextureId: std::fmt::Debug,
-{
+impl<R: Renderer> std::fmt::Debug for CustomRenderElements<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Pointer(arg0) => f.debug_tuple("Pointer").field(arg0).finish(),
@@ -61,10 +58,8 @@ smithay::backend::renderer::element::render_elements! {
     Preview=CropRenderElement<RelocateRenderElement<RescaleRenderElement<WindowRenderElement<R>>>>,
 }
 
-impl<R: Renderer + ImportAll + ImportMem + std::fmt::Debug, E: RenderElement<R> + std::fmt::Debug>
-    std::fmt::Debug for OutputRenderElements<R, E>
-where
-    <R as Renderer>::TextureId: std::fmt::Debug,
+impl<R: Renderer + ImportAll + ImportMem, E: RenderElement<R> + std::fmt::Debug> std::fmt::Debug
+    for OutputRenderElements<R, E>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -132,6 +127,7 @@ where
                 renderer,
                 window,
                 preview_location,
+                1.0,
                 output_scale,
                 constrain,
                 constrain_behavior,
@@ -139,9 +135,10 @@ where
         })
 }
 
-pub fn output_elements<'a, R>(
+#[profiling::function]
+pub fn output_elements<R>(
     output: &Output,
-    space: &'a Space<WindowElement>,
+    space: &Space<WindowElement>,
     custom_elements: impl IntoIterator<Item = CustomRenderElements<R>>,
     renderer: &mut R,
     show_window_preview: bool,
@@ -157,7 +154,7 @@ where
     {
         let scale = output.current_scale().fractional_scale().into();
         let window_render_elements: Vec<WindowRenderElement<R>> =
-            AsRenderElements::<R>::render_elements(&window, renderer, (0, 0).into(), scale);
+            AsRenderElements::<R>::render_elements(&window, renderer, (0, 0).into(), scale, 1.0);
 
         let elements = custom_elements
             .into_iter()
@@ -179,9 +176,13 @@ where
             output_render_elements.extend(space_preview_elements(renderer, space, output));
         }
 
-        let space_elements =
-            smithay::desktop::space::space_render_elements::<_, WindowElement, _>(renderer, [space], output)
-                .expect("output without mode?");
+        let space_elements = smithay::desktop::space::space_render_elements::<_, WindowElement, _>(
+            renderer,
+            [space],
+            output,
+            1.0,
+        )
+        .expect("output without mode?");
         output_render_elements.extend(space_elements.into_iter().map(OutputRenderElements::Space));
 
         (output_render_elements, CLEAR_COLOR)
@@ -189,15 +190,15 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn render_output<'a, R>(
+pub fn render_output<R>(
     output: &Output,
-    space: &'a Space<WindowElement>,
+    space: &Space<WindowElement>,
     custom_elements: impl IntoIterator<Item = CustomRenderElements<R>>,
     renderer: &mut R,
     damage_tracker: &mut OutputDamageTracker,
     age: usize,
     show_window_preview: bool,
-) -> Result<(Option<Vec<Rectangle<i32, Physical>>>, RenderElementStates), OutputDamageTrackerError<R>>
+) -> Result<RenderOutputResult, OutputDamageTrackerError<R>>
 where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + 'static,

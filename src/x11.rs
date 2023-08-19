@@ -13,7 +13,8 @@ use crate::{
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;
 #[cfg(feature = "debug")]
-use smithay::backend::renderer::ImportMem;
+use smithay::backend::{allocator::Fourcc, renderer::ImportMem};
+
 use smithay::{
     backend::{
         allocator::{
@@ -23,7 +24,8 @@ use smithay::{
         },
         egl::{EGLContext, EGLDisplay},
         renderer::{
-            damage::OutputDamageTracker, element::AsRenderElements, gles2::Gles2Renderer, Bind, ImportDma,
+            damage::OutputDamageTracker, element::AsRenderElements, gles::GlesRenderer, Bind, ImportDma,
+            ImportMemWl,
         },
         vulkan::{version::Version, Instance, PhysicalDevice},
         x11::{WindowBuilder, X11Backend, X11Event, X11Surface},
@@ -55,9 +57,9 @@ pub const OUTPUT_NAME: &str = "x11";
 pub struct X11Data {
     render: bool,
     mode: Mode,
-    // FIXME: If Gles2Renderer is dropped before X11Surface, then the MakeCurrent call inside Gles2Renderer will
+    // FIXME: If GlesRenderer is dropped before X11Surface, then the MakeCurrent call inside Gles2Renderer will
     // fail because the X11Surface is keeping gbm alive.
-    renderer: Gles2Renderer,
+    renderer: GlesRenderer,
     damage_tracker: OutputDamageTracker,
     surface: X11Surface,
     dmabuf_state: DmabufState,
@@ -171,14 +173,14 @@ pub fn run_x11() {
     };
 
     #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
-    let mut renderer = unsafe { Gles2Renderer::new(context) }.expect("Failed to initialize renderer");
+    let mut renderer = unsafe { GlesRenderer::new(context) }.expect("Failed to initialize renderer");
 
     #[cfg(feature = "egl")]
     if renderer.bind_wl_display(&display.handle()).is_ok() {
         info!("EGL hardware-acceleration enabled");
     }
 
-    let dmabuf_formats = renderer.dmabuf_formats().cloned().collect::<Vec<_>>();
+    let dmabuf_formats = renderer.dmabuf_formats().collect::<Vec<_>>();
     let dmabuf_default_feedback = DmabufFeedbackBuilder::new(node.dev_id(), dmabuf_formats)
         .build()
         .unwrap();
@@ -208,6 +210,7 @@ pub fn run_x11() {
     let fps_texture = renderer
         .import_memory(
             &fps_image.to_rgba8(),
+            Fourcc::Abgr8888,
             (fps_image.width() as i32, fps_image.height() as i32).into(),
             false,
         )
@@ -243,7 +246,9 @@ pub fn run_x11() {
     };
 
     let mut state = AnvilState::init(&mut display, event_loop.handle(), data, true);
-
+    state
+        .shm_state
+        .update_formats(state.backend_data.renderer.shm_formats());
     state.space.map_output(&output, (0, 0));
 
     let output_clone = output.clone();
@@ -264,7 +269,7 @@ pub fn run_x11() {
                 output.delete_mode(output.current_mode().unwrap());
                 output.change_current_state(Some(data.state.backend_data.mode), None, None, None);
                 output.set_preferred(data.state.backend_data.mode);
-                crate::shell::fixup_positions(&mut data.state.space);
+                crate::shell::fixup_positions(&mut data.state.space, data.state.pointer.current_location());
 
                 data.state.backend_data.render = true;
             }
@@ -283,6 +288,7 @@ pub fn run_x11() {
         state.handle.clone(),
         None,
         std::iter::empty::<(OsString, OsString)>(),
+        true,
         |_| {},
     ) {
         error!("Failed to start XWayland: {}", e);
@@ -293,6 +299,8 @@ pub fn run_x11() {
 
     while state.running.load(Ordering::SeqCst) {
         if state.backend_data.render {
+            profiling::scope!("render_frame");
+
             let backend_data = &mut state.backend_data;
             // We need to borrow everything we want to refer to inside the renderer callback otherwise rustc is unhappy.
             let cursor_status = &state.cursor_status;
@@ -304,6 +312,7 @@ pub fn run_x11() {
             let (buffer, age) = backend_data.surface.buffer().expect("gbm device was destroyed");
             if let Err(err) = backend_data.renderer.bind(buffer) {
                 error!("Error while binding buffer: {}", err);
+                profiling::finish_frame!();
                 continue;
             }
 
@@ -316,7 +325,7 @@ pub fn run_x11() {
             }
 
             let mut cursor_guard = cursor_status.lock().unwrap();
-            let mut elements: Vec<CustomRenderElements<Gles2Renderer>> = Vec::new();
+            let mut elements: Vec<CustomRenderElements<GlesRenderer>> = Vec::new();
 
             // draw the cursor as relevant
             // reset the cursor if the surface is no longer alive
@@ -343,7 +352,7 @@ pub fn run_x11() {
             } else {
                 (0, 0).into()
             };
-            let cursor_pos = state.pointer_location - cursor_hotspot.to_f64();
+            let cursor_pos = state.pointer.current_location() - cursor_hotspot.to_f64();
             let cursor_pos_scaled = cursor_pos.to_physical(scale).to_i32_round();
 
             pointer_element.set_status(cursor_guard.clone());
@@ -351,32 +360,35 @@ pub fn run_x11() {
                 &mut backend_data.renderer,
                 cursor_pos_scaled,
                 scale,
+                1.0,
             ));
 
             // draw input method surface if any
-            let input_method = state.seat.input_method().unwrap();
+            let input_method = state.seat.input_method();
             let rectangle = input_method.coordinates();
             let position = Point::from((
                 rectangle.loc.x + rectangle.size.w,
                 rectangle.loc.y + rectangle.size.h,
             ));
             input_method.with_surface(|surface| {
-                elements.extend(AsRenderElements::<Gles2Renderer>::render_elements(
+                elements.extend(AsRenderElements::<GlesRenderer>::render_elements(
                     &smithay::desktop::space::SurfaceTree::from_surface(surface),
                     &mut backend_data.renderer,
                     position.to_physical_precise_round(scale),
                     scale,
+                    1.0,
                 ));
             });
 
             // draw the dnd icon if any
             if let Some(surface) = state.dnd_icon.as_ref() {
                 if surface.alive() {
-                    elements.extend(AsRenderElements::<Gles2Renderer>::render_elements(
+                    elements.extend(AsRenderElements::<GlesRenderer>::render_elements(
                         &smithay::desktop::space::SurfaceTree::from_surface(surface),
                         &mut backend_data.renderer,
                         cursor_pos_scaled,
                         scale,
+                        1.0,
                     ));
                 }
             }
@@ -395,7 +407,7 @@ pub fn run_x11() {
             );
 
             match render_res {
-                Ok((damage, states)) => {
+                Ok(render_output_result) => {
                     trace!("Finished rendering");
                     if let Err(err) = backend_data.surface.submit() {
                         backend_data.surface.reset_buffers();
@@ -405,7 +417,7 @@ pub fn run_x11() {
                     };
 
                     #[cfg(feature = "debug")]
-                    if damage.is_some() {
+                    if render_output_result.damage.is_some() {
                         if let Some(renderdoc) = state.renderdoc.as_mut() {
                             renderdoc.end_frame_capture(
                                 state.backend_data.renderer.egl_context().get_context_handle(),
@@ -421,11 +433,11 @@ pub fn run_x11() {
 
                     // Send frame events so that client start drawing their next frame
                     let time = state.clock.now();
-                    post_repaint(&output, &states, &state.space, None, time);
+                    post_repaint(&output, &render_output_result.states, &state.space, None, time);
 
-                    if damage.is_some() {
+                    if render_output_result.damage.is_some() {
                         let mut output_presentation_feedback =
-                            take_presentation_feedback(&output, &state.space, &states);
+                            take_presentation_feedback(&output, &state.space, &render_output_result.states);
                         output_presentation_feedback.presented(
                             time,
                             output
@@ -455,6 +467,7 @@ pub fn run_x11() {
             #[cfg(feature = "debug")]
             state.backend_data.fps.tick();
             window.set_cursor_visible(cursor_visible);
+            profiling::finish_frame!();
         }
 
         let mut calloop_data = CalloopData { state, display };

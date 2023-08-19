@@ -81,6 +81,7 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for MoveSurfaceG
 }
 
 bitflags::bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct ResizeEdge: u32 {
         const NONE = 0;
         const TOP = 1;
@@ -136,9 +137,10 @@ pub struct ResizeData {
 }
 
 /// State of the resize operation.
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default)]
 pub enum ResizeState {
     /// The surface is not being resized.
+    #[default]
     NotResizing,
     /// The surface is currently being resized.
     Resizing(ResizeData),
@@ -146,12 +148,6 @@ pub enum ResizeState {
     WaitingForFinalAck(ResizeData, Serial),
     /// The resize has finished, and the surface needs to commit its final state.
     WaitingForCommit(ResizeData),
-}
-
-impl Default for ResizeState {
-    fn default() -> Self {
-        ResizeState::NotResizing
-    }
 }
 
 pub struct ResizeSurfaceGrab<B: Backend + 'static> {
@@ -238,7 +234,7 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for ResizeSurfac
                     state.states.set(xdg_toplevel::State::Resizing);
                     state.size = Some(self.last_window_size);
                 });
-                xdg.send_configure();
+                xdg.send_pending_configure();
             }
             #[cfg(feature = "xwayland")]
             WindowElement::X11(x11) => {
@@ -282,7 +278,7 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for ResizeSurfac
                         state.states.unset(xdg_toplevel::State::Resizing);
                         state.size = Some(self.last_window_size);
                     });
-                    xdg.send_configure();
+                    xdg.send_pending_configure();
                     if self.edges.intersects(ResizeEdge::TOP_LEFT) {
                         let geometry = self.window.geometry();
                         let mut location = data.space.element_location(&self.window).unwrap();
@@ -334,7 +330,7 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for ResizeSurfac
 
                     let Some(surface) = self.window.wl_surface() else {
                         // X11 Window got unmapped, abort
-                        return
+                        return;
                     };
                     with_states(&surface, |states| {
                         let mut data = states

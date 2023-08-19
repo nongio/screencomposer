@@ -1,18 +1,28 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, os::unix::io::OwnedFd};
 
 use smithay::{
     desktop::space::SpaceElement,
     input::pointer::Focus,
     utils::{Logical, Rectangle, SERIAL_COUNTER},
-    wayland::compositor::with_states,
+    wayland::{
+        compositor::with_states,
+        data_device::{
+            clear_data_device_selection, current_data_device_selection_userdata,
+            request_data_device_client_selection, set_data_device_selection,
+        },
+        primary_selection::{
+            clear_primary_selection, current_primary_selection_userdata, request_primary_client_selection,
+            set_primary_selection,
+        },
+    },
     xwayland::{
-        xwm::{Reorder, ResizeEdge as X11ResizeEdge, XwmId},
+        xwm::{Reorder, ResizeEdge as X11ResizeEdge, SelectionType, XwmId},
         X11Surface, X11Wm, XwmHandler,
     },
 };
-use tracing::trace;
+use tracing::{error, trace};
 
-use crate::{state::Backend, AnvilState, CalloopData};
+use crate::{focus::FocusTarget, state::Backend, AnvilState, CalloopData};
 
 use super::{
     place_new_window, FullscreenSurface, MoveSurfaceGrab, ResizeData, ResizeState, ResizeSurfaceGrab,
@@ -42,9 +52,16 @@ impl<BackendData: Backend> XwmHandler for CalloopData<BackendData> {
     fn map_window_request(&mut self, _xwm: XwmId, window: X11Surface) {
         window.set_mapped(true).unwrap();
         let window = WindowElement::X11(window);
-        place_new_window(&mut self.state.space, &window, true);
+        place_new_window(
+            &mut self.state.space,
+            self.state.pointer.current_location(),
+            &window,
+            true,
+        );
         let bbox = self.state.space.element_bbox(&window).unwrap();
-        let WindowElement::X11(xsurface) = &window else { unreachable!() };
+        let WindowElement::X11(xsurface) = &window else {
+            unreachable!()
+        };
         xsurface.configure(Some(bbox)).unwrap();
         window.set_ssd(!xsurface.is_decorated());
     }
@@ -106,7 +123,9 @@ impl<BackendData: Backend> XwmHandler for CalloopData<BackendData> {
             .elements()
             .find(|e| matches!(e, WindowElement::X11(w) if w == &window))
             .cloned()
-        else { return };
+        else {
+            return;
+        };
         self.state.space.map_element(elem, geometry.loc, false);
         // TODO: We don't properly handle the order of override-redirect windows here,
         //       they are always mapped top and then never reordered.
@@ -123,7 +142,9 @@ impl<BackendData: Backend> XwmHandler for CalloopData<BackendData> {
             .elements()
             .find(|e| matches!(e, WindowElement::X11(w) if w == &window))
             .cloned()
-        else { return };
+        else {
+            return;
+        };
 
         window.set_maximized(false).unwrap();
         if let Some(old_geo) = window
@@ -190,15 +211,17 @@ impl<BackendData: Backend> XwmHandler for CalloopData<BackendData> {
     }
 
     fn resize_request(&mut self, _xwm: XwmId, window: X11Surface, _button: u32, edges: X11ResizeEdge) {
-        let seat = &self.state.seat; // luckily anvil only supports one seat anyway...
-        let pointer = seat.get_pointer().unwrap();
-        let start_data = pointer.grab_start_data().unwrap();
+        // luckily anvil only supports one seat anyway...
+        let start_data = self.state.pointer.grab_start_data().unwrap();
 
         let Some(element) = self
             .state
             .space
             .elements()
-            .find(|e| matches!(e, WindowElement::X11(w) if w == &window)) else { return };
+            .find(|e| matches!(e, WindowElement::X11(w) if w == &window))
+        else {
+            return;
+        };
 
         let geometry = element.geometry();
         let loc = self.state.space.element_location(element).unwrap();
@@ -226,11 +249,70 @@ impl<BackendData: Backend> XwmHandler for CalloopData<BackendData> {
             last_window_size: initial_window_size,
         };
 
+        let pointer = self.state.pointer.clone();
         pointer.set_grab(&mut self.state, grab, SERIAL_COUNTER.next_serial(), Focus::Clear);
     }
 
     fn move_request(&mut self, _xwm: XwmId, window: X11Surface, _button: u32) {
         self.state.move_request_x11(&window)
+    }
+
+    fn allow_selection_access(&mut self, xwm: XwmId, _selection: SelectionType) -> bool {
+        if let Some(keyboard) = self.state.seat.get_keyboard() {
+            // check that an X11 window is focused
+            if let Some(FocusTarget::Window(WindowElement::X11(surface))) = keyboard.current_focus() {
+                if surface.xwm_id().unwrap() == xwm {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn send_selection(&mut self, _xwm: XwmId, selection: SelectionType, mime_type: String, fd: OwnedFd) {
+        match selection {
+            SelectionType::Clipboard => {
+                if let Err(err) = request_data_device_client_selection(&self.state.seat, mime_type, fd) {
+                    error!(?err, "Failed to request current wayland clipboard for Xwayland",);
+                }
+            }
+            SelectionType::Primary => {
+                if let Err(err) = request_primary_client_selection(&self.state.seat, mime_type, fd) {
+                    error!(
+                        ?err,
+                        "Failed to request current wayland primary selection for Xwayland",
+                    );
+                }
+            }
+        }
+    }
+
+    fn new_selection(&mut self, _xwm: XwmId, selection: SelectionType, mime_types: Vec<String>) {
+        trace!(?selection, ?mime_types, "Got Selection from X11",);
+        // TODO check, that focused windows is X11 window before doing this
+        match selection {
+            SelectionType::Clipboard => {
+                set_data_device_selection(&self.state.display_handle, &self.state.seat, mime_types, ())
+            }
+            SelectionType::Primary => {
+                set_primary_selection(&self.state.display_handle, &self.state.seat, mime_types, ())
+            }
+        }
+    }
+
+    fn cleared_selection(&mut self, _xwm: XwmId, selection: SelectionType) {
+        match selection {
+            SelectionType::Clipboard => {
+                if current_data_device_selection_userdata(&self.state.seat).is_some() {
+                    clear_data_device_selection(&self.state.display_handle, &self.state.seat)
+                }
+            }
+            SelectionType::Primary => {
+                if current_primary_selection_userdata(&self.state.seat).is_some() {
+                    clear_primary_selection(&self.state.display_handle, &self.state.seat)
+                }
+            }
+        }
     }
 }
 
@@ -241,7 +323,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             .elements()
             .find(|e| matches!(e, WindowElement::X11(w) if w == window))
             .cloned()
-        else { return };
+        else {
+            return;
+        };
 
         let old_geo = self.space.element_bbox(&elem).unwrap();
         let outputs_for_window = self.space.outputs_for_element(&elem);
@@ -261,21 +345,25 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     pub fn move_request_x11(&mut self, window: &X11Surface) {
-        let seat = &self.seat; // luckily anvil only supports one seat anyway...
-        let pointer = seat.get_pointer().unwrap();
-        let Some(start_data) = pointer.grab_start_data() else { return };
+        // luckily anvil only supports one seat anyway...
+        let Some(start_data) = self.pointer.grab_start_data() else {
+            return;
+        };
 
         let Some(element) = self
             .space
             .elements()
-            .find(|e| matches!(e, WindowElement::X11(w) if w == window)) else { return };
+            .find(|e| matches!(e, WindowElement::X11(w) if w == window))
+        else {
+            return;
+        };
 
         let mut initial_window_location = self.space.element_location(element).unwrap();
 
         // If surface is maximized then unmaximize it
         if window.is_maximized() {
             window.set_maximized(false).unwrap();
-            let pos = pointer.current_location();
+            let pos = self.pointer.current_location();
             initial_window_location = (pos.x as i32, pos.y as i32).into();
             if let Some(old_geo) = window
                 .user_data()
@@ -297,6 +385,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             initial_window_location,
         };
 
+        let pointer = self.pointer.clone();
         pointer.set_grab(self, grab, SERIAL_COUNTER.next_serial(), Focus::Clear);
     }
 }

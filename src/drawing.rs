@@ -57,10 +57,7 @@ render_elements! {
     Texture=TextureRenderElement<<R as Renderer>::TextureId>,
 }
 
-impl<R: Renderer> std::fmt::Debug for PointerRenderElement<R>
-where
-    <R as Renderer>::TextureId: std::fmt::Debug,
-{
+impl<R: Renderer> std::fmt::Debug for PointerRenderElement<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Surface(arg0) => f.debug_tuple("Surface").field(arg0).finish(),
@@ -80,6 +77,7 @@ where
         renderer: &mut R,
         location: Point<i32, Physical>,
         scale: Scale<f64>,
+        alpha: f32,
     ) -> Vec<E>
     where
         E: From<PointerRenderElement<R>>,
@@ -105,7 +103,7 @@ where
             CursorImageStatus::Surface(surface) => {
                 let elements: Vec<PointerRenderElement<R>> =
                     smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
-                        renderer, surface, location, scale,
+                        renderer, surface, location, scale, alpha,
                     );
                 elements.into_iter().map(E::from).collect()
             }

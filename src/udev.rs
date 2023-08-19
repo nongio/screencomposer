@@ -6,7 +6,7 @@ use std::{
     os::unix::io::FromRawFd,
     path::Path,
     sync::{atomic::Ordering, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use crate::state::SurfaceDmabufFeedback;
@@ -16,6 +16,8 @@ use crate::{
     shell::WindowElement,
     state::{post_repaint, take_presentation_feedback, AnvilState, Backend, CalloopData},
 };
+#[cfg(feature = "renderer_sync")]
+use smithay::backend::drm::compositor::PrimaryPlaneElement;
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;
 #[cfg(feature = "debug")]
@@ -37,9 +39,10 @@ use smithay::{
         renderer::{
             damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
             element::{texture::TextureBuffer, AsRenderElements, RenderElement, RenderElementStates},
-            gles2::{Gles2Renderbuffer, Gles2Renderer},
+            gles::{GlesRenderer, GlesTexture},
             multigpu::{gbm::GbmGlesBackend, GpuManager, MultiRenderer, MultiTexture},
-            Bind, DebugFlags, ExportMem, ImportDma, Offscreen, Renderer,
+            sync::SyncPoint,
+            Bind, DebugFlags, ExportMem, ImportDma, ImportMemWl, Offscreen, Renderer,
         },
         session::{
             libseat::{self, LibSeatSession},
@@ -75,7 +78,7 @@ use smithay::{
         },
         wayland_server::{backend::GlobalId, protocol::wl_surface, Display, DisplayHandle},
     },
-    utils::{Clock, DeviceFd, IsAlive, Logical, Monotonic, Point, Scale, Transform},
+    utils::{Clock, DeviceFd, IsAlive, Logical, Monotonic, Physical, Point, Rectangle, Scale, Transform},
     wayland::{
         compositor,
         dmabuf::{
@@ -91,16 +94,21 @@ use smithay_drm_extras::{
 use tracing::{debug, error, info, trace, warn};
 
 // we cannot simply pick the first supported format of the intersection of *all* formats, because:
-// - we do not want something like Abgr4444, which looses color information, if something better is available.
-// - some formats might perform terribly.
-// - we might need some work-arounds, if one supports modifiers, but the other does not.
-// - we can't handle formats with small alpha channels yet in the renderer like `Abgr2101010`.
+// - we do not want something like Abgr4444, which looses color information, if something better is available
+// - some formats might perform terribly
+// - we might need some work-arounds, if one supports modifiers, but the other does not
 //
-// So lets just pick `ARGB8888`/`ABGR8888` for now, they are widely supported.
-const SUPPORTED_FORMATS: &[Fourcc] = &[Fourcc::Abgr8888, Fourcc::Argb8888];
+// So lets just pick `ARGB2101010` (10-bit) or `ARGB8888` (8-bit) for now, they are widely supported.
+const SUPPORTED_FORMATS: &[Fourcc] = &[
+    Fourcc::Abgr2101010,
+    Fourcc::Argb2101010,
+    Fourcc::Abgr8888,
+    Fourcc::Argb8888,
+];
+const SUPPORTED_FORMATS_8BIT_ONLY: &[Fourcc] = &[Fourcc::Abgr8888, Fourcc::Argb8888];
 
 type UdevRenderer<'a, 'b> =
-    MultiRenderer<'a, 'a, 'b, GbmGlesBackend<Gles2Renderer>, GbmGlesBackend<Gles2Renderer>>;
+    MultiRenderer<'a, 'a, 'b, GbmGlesBackend<GlesRenderer>, GbmGlesBackend<GlesRenderer>>;
 
 #[derive(Debug, PartialEq)]
 struct UdevOutputId {
@@ -114,7 +122,7 @@ pub struct UdevData {
     dmabuf_state: Option<(DmabufState, DmabufGlobal)>,
     primary_gpu: DrmNode,
     allocator: Option<Box<dyn Allocator<Buffer = Dmabuf, Error = AnyError>>>,
-    gpus: GpuManager<GbmGlesBackend<Gles2Renderer>>,
+    gpus: GpuManager<GbmGlesBackend<GlesRenderer>>,
     backends: HashMap<DrmNode, BackendData>,
     pointer_images: Vec<(xcursor::parser::Image, TextureBuffer<MultiTexture>)>,
     pointer_element: PointerElement<MultiTexture>,
@@ -210,7 +218,7 @@ pub fn run_udev() {
             .unwrap()
             .and_then(|x| DrmNode::from_path(x).ok()?.node_with_type(NodeType::Render)?.ok())
             .unwrap_or_else(|| {
-                all_gpus(&session.seat())
+                all_gpus(session.seat())
                     .unwrap()
                     .into_iter()
                     .find_map(|x| DrmNode::from_path(x).ok())
@@ -319,6 +327,14 @@ pub fn run_udev() {
             error!("Skipping device {device_id}: {err}");
         }
     }
+    state.shm_state.update_formats(
+        state
+            .backend_data
+            .gpus
+            .single_renderer(&primary_gpu)
+            .unwrap()
+            .shm_formats(),
+    );
 
     let skip_vulkan = std::env::var("ANVIL_NO_VULKAN")
         .map(|x| {
@@ -379,6 +395,7 @@ pub fn run_udev() {
         let fps_texture = renderer
             .import_memory(
                 &fps_image.to_rgba8(),
+                Fourcc::Abgr8888,
                 (fps_image.width() as i32, fps_image.height() as i32).into(),
                 false,
             )
@@ -402,7 +419,7 @@ pub fn run_udev() {
     }
 
     // init dmabuf support with format list from our primary gpu
-    let dmabuf_formats = renderer.dmabuf_formats().cloned().collect::<Vec<_>>();
+    let dmabuf_formats = renderer.dmabuf_formats().collect::<Vec<_>>();
     let default_feedback = DmabufFeedbackBuilder::new(primary_gpu.dev_id(), dmabuf_formats)
         .build()
         .unwrap();
@@ -458,6 +475,7 @@ pub fn run_udev() {
         state.handle.clone(),
         None,
         std::iter::empty::<(OsString, OsString)>(),
+        true,
         |_| {},
     ) {
         error!("Failed to start XWayland: {}", e);
@@ -500,6 +518,13 @@ enum SurfaceComposition {
     Compositor(GbmDrmCompositor),
 }
 
+struct SurfaceCompositorRenderResult {
+    rendered: bool,
+    states: RenderElementStates,
+    sync: Option<SyncPoint>,
+    damage: Option<Vec<Rectangle<i32, Physical>>>,
+}
+
 impl SurfaceComposition {
     fn frame_submitted(&mut self) -> Result<Option<Option<OutputPresentationFeedback>>, SwapBuffersError> {
         match self {
@@ -531,10 +556,16 @@ impl SurfaceComposition {
         }
     }
 
-    fn queue_frame(&mut self, user_data: Option<OutputPresentationFeedback>) -> Result<(), SwapBuffersError> {
+    #[profiling::function]
+    fn queue_frame(
+        &mut self,
+        sync: Option<SyncPoint>,
+        damage: Option<Vec<Rectangle<i32, Physical>>>,
+        user_data: Option<OutputPresentationFeedback>,
+    ) -> Result<(), SwapBuffersError> {
         match self {
             SurfaceComposition::Surface { surface, .. } => surface
-                .queue_buffer(None, user_data)
+                .queue_buffer(sync, damage, user_data)
                 .map_err(Into::<SwapBuffersError>::into),
             SurfaceComposition::Compositor(c) => {
                 c.queue_frame(user_data).map_err(Into::<SwapBuffersError>::into)
@@ -542,12 +573,13 @@ impl SurfaceComposition {
         }
     }
 
-    fn render_frame<'a, R, E, Target>(
+    #[profiling::function]
+    fn render_frame<R, E, Target>(
         &mut self,
         renderer: &mut R,
-        elements: &'a [E],
+        elements: &[E],
         clear_color: [f32; 4],
-    ) -> Result<(bool, RenderElementStates), SwapBuffersError>
+    ) -> Result<SurfaceCompositorRenderResult, SwapBuffersError>
     where
         R: Renderer + Bind<Dmabuf> + Bind<Target> + Offscreen<Target> + ExportMem,
         <R as Renderer>::TextureId: 'static,
@@ -566,7 +598,17 @@ impl SurfaceComposition {
                 renderer.set_debug_flags(*debug_flags);
                 let res = damage_tracker
                     .render_output(renderer, age.into(), elements, clear_color)
-                    .map(|(damage, states)| (damage.is_some(), states))
+                    .map(|res| {
+                        #[cfg(feature = "renderer_sync")]
+                        res.sync.wait();
+                        let rendered = res.damage.is_some();
+                        SurfaceCompositorRenderResult {
+                            rendered,
+                            damage: res.damage,
+                            states: res.states,
+                            sync: rendered.then_some(res.sync),
+                        }
+                    })
                     .map_err(|err| match err {
                         OutputDamageTrackerError::Rendering(err) => err.into(),
                         _ => unreachable!(),
@@ -576,7 +618,18 @@ impl SurfaceComposition {
             }
             SurfaceComposition::Compositor(compositor) => compositor
                 .render_frame(renderer, elements, clear_color)
-                .map(|render_frame_result| (render_frame_result.damage.is_some(), render_frame_result.states))
+                .map(|render_frame_result| {
+                    #[cfg(feature = "renderer_sync")]
+                    if let PrimaryPlaneElement::Swapchain(element) = render_frame_result.primary_element {
+                        element.sync.wait();
+                    }
+                    SurfaceCompositorRenderResult {
+                        rendered: render_frame_result.damage.is_some(),
+                        damage: None,
+                        states: render_frame_result.states,
+                        sync: None,
+                    }
+                })
                 .map_err(|err| match err {
                     smithay::backend::drm::compositor::RenderFrameError::PrepareFrame(err) => err.into(),
                     smithay::backend::drm::compositor::RenderFrameError::RenderFrame(
@@ -652,27 +705,25 @@ enum DeviceAddError {
 fn get_surface_dmabuf_feedback(
     primary_gpu: DrmNode,
     render_node: DrmNode,
-    gpus: &mut GpuManager<GbmGlesBackend<Gles2Renderer>>,
+    gpus: &mut GpuManager<GbmGlesBackend<GlesRenderer>>,
     composition: &SurfaceComposition,
 ) -> Option<DrmSurfaceDmabufFeedback> {
     let primary_formats = gpus
         .single_renderer(&primary_gpu)
         .ok()?
         .dmabuf_formats()
-        .copied()
         .collect::<HashSet<_>>();
 
     let render_formats = gpus
         .single_renderer(&render_node)
         .ok()?
         .dmabuf_formats()
-        .copied()
         .collect::<HashSet<_>>();
 
     let all_render_formats = primary_formats
         .iter()
+        .chain(render_formats.iter())
         .copied()
-        .chain(render_formats.iter().copied())
         .collect::<HashSet<_>>();
 
     let surface = composition.surface();
@@ -857,15 +908,21 @@ impl AnvilState<UdevData> {
             GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT,
         );
 
+        let color_formats = if std::env::var("ANVIL_DISABLE_10BIT").is_ok() {
+            SUPPORTED_FORMATS_8BIT_ONLY
+        } else {
+            SUPPORTED_FORMATS
+        };
+
         let compositor = if std::env::var("ANVIL_DISABLE_DRM_COMPOSITOR").is_ok() {
-            let gbm_surface =
-                match GbmBufferedSurface::new(surface, allocator, SUPPORTED_FORMATS, render_formats) {
-                    Ok(renderer) => renderer,
-                    Err(err) => {
-                        warn!("Failed to create rendering surface: {}", err);
-                        return;
-                    }
-                };
+            let gbm_surface = match GbmBufferedSurface::new(surface, allocator, color_formats, render_formats)
+            {
+                Ok(renderer) => renderer,
+                Err(err) => {
+                    warn!("Failed to create rendering surface: {}", err);
+                    return;
+                }
+            };
             SurfaceComposition::Surface {
                 surface: gbm_surface,
                 damage_tracker: OutputDamageTracker::from_output(&output),
@@ -905,7 +962,7 @@ impl AnvilState<UdevData> {
                 Some(planes),
                 allocator,
                 device.gbm.clone(),
-                SUPPORTED_FORMATS,
+                color_formats,
                 render_formats,
                 device.drm.cursor_size(),
                 Some(device.gbm.clone()),
@@ -996,7 +1053,7 @@ impl AnvilState<UdevData> {
         }
 
         // fixup window coordinates
-        crate::shell::fixup_positions(&mut self.space);
+        crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
     }
 
     fn device_removed(&mut self, node: DrmNode) {
@@ -1030,7 +1087,7 @@ impl AnvilState<UdevData> {
             debug!("Dropping device");
         }
 
-        crate::shell::fixup_positions(&mut self.space);
+        crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
     }
 
     fn frame_finish(&mut self, dev_id: DrmNode, crtc: crtc::Handle, metadata: &mut Option<DrmEventMetadata>) {
@@ -1204,6 +1261,10 @@ impl AnvilState<UdevData> {
     }
 
     fn render_surface(&mut self, node: DrmNode, crtc: crtc::Handle) {
+        profiling::scope!(
+            "render_surface",
+            &format!("{:?}:{crtc:?}", node.dev_path().unwrap())
+        );
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
             device
         } else {
@@ -1215,6 +1276,8 @@ impl AnvilState<UdevData> {
         } else {
             return;
         };
+
+        let start = Instant::now();
 
         // TODO get scale from the rendersurface when supporting HiDPI
         let frame = self
@@ -1257,6 +1320,7 @@ impl AnvilState<UdevData> {
                 let texture = TextureBuffer::from_memory(
                     &mut renderer,
                     &frame.pixels_rgba,
+                    Fourcc::Abgr8888,
                     (frame.width as i32, frame.height as i32),
                     false,
                     1,
@@ -1286,8 +1350,8 @@ impl AnvilState<UdevData> {
             &mut renderer,
             &self.space,
             &output,
-            self.seat.input_method().unwrap(),
-            self.pointer_location,
+            self.seat.input_method(),
+            self.pointer.current_location(),
             &pointer_image,
             &mut self.backend_data.pointer_element,
             &self.dnd_icon,
@@ -1335,7 +1399,12 @@ impl AnvilState<UdevData> {
                     TimeoutAction::Drop
                 })
                 .expect("failed to schedule frame timer");
+        } else {
+            let elapsed = start.elapsed();
+            tracing::trace!(?elapsed, "rendered surface");
         }
+
+        profiling::finish_frame!();
     }
 
     fn schedule_initial_render(
@@ -1379,6 +1448,7 @@ impl AnvilState<UdevData> {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[profiling::function]
 fn render_surface<'a, 'b>(
     surface: &'a mut SurfaceData,
     renderer: &mut UdevRenderer<'a, 'b>,
@@ -1409,6 +1479,7 @@ fn render_surface<'a, 'b>(
             renderer,
             position.to_physical_precise_round(scale),
             scale,
+            1.0,
         ));
     });
 
@@ -1446,7 +1517,7 @@ fn render_surface<'a, 'b>(
             pointer_element.set_status(cursor_status.clone());
         }
 
-        custom_elements.extend(pointer_element.render_elements(renderer, cursor_pos_scaled, scale));
+        custom_elements.extend(pointer_element.render_elements(renderer, cursor_pos_scaled, scale, 1.0));
 
         // draw the dnd icon if applicable
         {
@@ -1457,6 +1528,7 @@ fn render_surface<'a, 'b>(
                         renderer,
                         cursor_pos_scaled,
                         scale,
+                        1.0,
                     ));
                 }
             }
@@ -1472,14 +1544,13 @@ fn render_surface<'a, 'b>(
 
     let (elements, clear_color) =
         output_elements(output, space, custom_elements, renderer, show_window_preview);
-    let (rendered, states) =
-        surface
-            .compositor
-            .render_frame::<_, _, Gles2Renderbuffer>(renderer, &elements, clear_color)?;
+    let res = surface
+        .compositor
+        .render_frame::<_, _, GlesTexture>(renderer, &elements, clear_color)?;
 
     post_repaint(
         output,
-        &states,
+        &res.states,
         space,
         surface
             .dmabuf_feedback
@@ -1491,15 +1562,15 @@ fn render_surface<'a, 'b>(
         clock.now(),
     );
 
-    if rendered {
-        let output_presentation_feedback = take_presentation_feedback(output, space, &states);
+    if res.rendered {
+        let output_presentation_feedback = take_presentation_feedback(output, space, &res.states);
         surface
             .compositor
-            .queue_frame(Some(output_presentation_feedback))
+            .queue_frame(res.sync, res.damage, Some(output_presentation_feedback))
             .map_err(Into::<SwapBuffersError>::into)?;
     }
 
-    Ok(rendered)
+    Ok(res.rendered)
 }
 
 fn initial_render(
@@ -1508,8 +1579,8 @@ fn initial_render(
 ) -> Result<(), SwapBuffersError> {
     surface
         .compositor
-        .render_frame::<_, CustomRenderElements<_>, Gles2Renderbuffer>(renderer, &[], CLEAR_COLOR)?;
-    surface.compositor.queue_frame(None)?;
+        .render_frame::<_, CustomRenderElements<_>, GlesTexture>(renderer, &[], CLEAR_COLOR)?;
+    surface.compositor.queue_frame(None, None, None)?;
     surface.compositor.reset_buffers();
 
     Ok(())
