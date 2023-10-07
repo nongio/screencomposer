@@ -1,25 +1,31 @@
-use crate::Smallvil;
+use crate::{
+    state::{Backend, SurfaceLayer},
+    ScreenComposer,
+};
+use layers::prelude::Point as LayersPoint;
 use smithay::{
     desktop::Window,
     input::pointer::{
         AxisFrame, ButtonEvent, GrabStartData as PointerGrabStartData, MotionEvent, PointerGrab,
         PointerInnerHandle, RelativeMotionEvent,
     },
-    reexports::wayland_server::protocol::wl_surface::WlSurface,
+    reexports::wayland_server::{protocol::wl_surface::WlSurface, Resource},
     utils::{Logical, Point},
 };
 
-pub struct MoveSurfaceGrab {
-    pub start_data: PointerGrabStartData<Smallvil>,
+pub struct MoveSurfaceGrab<BackendData: Backend + 'static> {
+    pub start_data: PointerGrabStartData<ScreenComposer<BackendData>>,
     pub window: Window,
     pub initial_window_location: Point<i32, Logical>,
 }
 
-impl PointerGrab<Smallvil> for MoveSurfaceGrab {
+impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
+    for MoveSurfaceGrab<BackendData>
+{
     fn motion(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut ScreenComposer<BackendData>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
         _focus: Option<(WlSurface, Point<i32, Logical>)>,
         event: &MotionEvent,
     ) {
@@ -28,14 +34,23 @@ impl PointerGrab<Smallvil> for MoveSurfaceGrab {
 
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
+        let sid = self.window.toplevel().wl_surface().id();
+        if let Some(SurfaceLayer { layer, .. }) = data.layer_for(&sid) {
+            let position = LayersPoint {
+                x: (new_location.x as f32),
+                y: (new_location.y as f32),
+            };
+
+            layer.set_position(position, None);
+        }
         data.space
             .map_element(self.window.clone(), new_location.to_i32_round(), true);
     }
 
     fn relative_motion(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut ScreenComposer<BackendData>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
         focus: Option<(WlSurface, Point<i32, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
@@ -44,8 +59,8 @@ impl PointerGrab<Smallvil> for MoveSurfaceGrab {
 
     fn button(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut ScreenComposer<BackendData>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
         event: &ButtonEvent,
     ) {
         handle.button(data, event);
@@ -62,14 +77,14 @@ impl PointerGrab<Smallvil> for MoveSurfaceGrab {
 
     fn axis(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut ScreenComposer<BackendData>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
         details: AxisFrame,
     ) {
         handle.axis(data, details)
     }
 
-    fn start_data(&self) -> &PointerGrabStartData<Smallvil> {
+    fn start_data(&self) -> &PointerGrabStartData<ScreenComposer<BackendData>> {
         &self.start_data
     }
 }

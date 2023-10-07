@@ -1,7 +1,8 @@
 mod compositor;
+mod decoration;
 mod xdg_shell;
-
-use crate::Smallvil;
+use crate::state::Backend;
+use crate::ScreenComposer;
 
 //
 // Wl Seat
@@ -15,15 +16,20 @@ use smithay::wayland::data_device::{
 };
 use smithay::{delegate_data_device, delegate_output, delegate_seat};
 
-impl SeatHandler for Smallvil {
+impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
     type KeyboardFocus = WlSurface;
     type PointerFocus = WlSurface;
 
-    fn seat_state(&mut self) -> &mut SeatState<Smallvil> {
+    fn seat_state(&mut self) -> &mut SeatState<ScreenComposer<BackendData>> {
         &mut self.seat_state
     }
 
-    fn cursor_image(&mut self, _seat: &Seat<Self>, _image: smithay::input::pointer::CursorImageStatus) {}
+    fn cursor_image(
+        &mut self,
+        _seat: &Seat<Self>,
+        _image: smithay::input::pointer::CursorImageStatus,
+    ) {
+    }
 
     fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {
         let dh = &self.display_handle;
@@ -32,26 +38,26 @@ impl SeatHandler for Smallvil {
     }
 }
 
-delegate_seat!(Smallvil);
+delegate_seat!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
 //
 // Wl Data Device
 //
 
-impl DataDeviceHandler for Smallvil {
+impl<BackendData: Backend> DataDeviceHandler for ScreenComposer<BackendData> {
     type SelectionUserData = ();
     fn data_device_state(&self) -> &smithay::wayland::data_device::DataDeviceState {
         &self.data_device_state
     }
 }
 
-impl ClientDndGrabHandler for Smallvil {}
-impl ServerDndGrabHandler for Smallvil {}
+impl<BackendData: Backend> ClientDndGrabHandler for ScreenComposer<BackendData> {}
+impl<BackendData: Backend> ServerDndGrabHandler for ScreenComposer<BackendData> {}
 
-delegate_data_device!(Smallvil);
+delegate_data_device!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
 //
 // Wl Output & Xdg Output
 //
 
-delegate_output!(Smallvil);
+delegate_output!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);

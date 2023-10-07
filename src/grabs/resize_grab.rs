@@ -1,4 +1,4 @@
-use crate::Smallvil;
+use crate::{state::Backend, ScreenComposer};
 use smithay::{
     desktop::{Space, Window},
     input::pointer::{
@@ -6,7 +6,8 @@ use smithay::{
         PointerInnerHandle, RelativeMotionEvent,
     },
     reexports::{
-        wayland_protocols::xdg::shell::server::xdg_toplevel, wayland_server::protocol::wl_surface::WlSurface,
+        wayland_protocols::xdg::shell::server::xdg_toplevel,
+        wayland_server::protocol::wl_surface::WlSurface,
     },
     utils::{Logical, Point, Rectangle, Size},
     wayland::{compositor, shell::xdg::SurfaceCachedState},
@@ -36,8 +37,8 @@ impl From<xdg_toplevel::ResizeEdge> for ResizeEdge {
     }
 }
 
-pub struct ResizeSurfaceGrab {
-    start_data: PointerGrabStartData<Smallvil>,
+pub struct ResizeSurfaceGrab<BackendData: Backend + 'static> {
+    start_data: PointerGrabStartData<ScreenComposer<BackendData>>,
     window: Window,
 
     edges: ResizeEdge,
@@ -46,9 +47,9 @@ pub struct ResizeSurfaceGrab {
     last_window_size: Size<i32, Logical>,
 }
 
-impl ResizeSurfaceGrab {
+impl<BackendData: Backend> ResizeSurfaceGrab<BackendData> {
     pub fn start(
-        start_data: PointerGrabStartData<Smallvil>,
+        start_data: PointerGrabStartData<ScreenComposer<BackendData>>,
         window: Window,
         edges: ResizeEdge,
         initial_window_rect: Rectangle<i32, Logical>,
@@ -56,7 +57,10 @@ impl ResizeSurfaceGrab {
         let initial_rect = initial_window_rect;
 
         ResizeSurfaceState::with(window.toplevel().wl_surface(), |state| {
-            *state = ResizeSurfaceState::Resizing { edges, initial_rect };
+            *state = ResizeSurfaceState::Resizing {
+                edges,
+                initial_rect,
+            };
         });
 
         Self {
@@ -69,11 +73,13 @@ impl ResizeSurfaceGrab {
     }
 }
 
-impl PointerGrab<Smallvil> for ResizeSurfaceGrab {
+impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
+    for ResizeSurfaceGrab<BackendData>
+{
     fn motion(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut ScreenComposer<BackendData>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
         _focus: Option<(WlSurface, Point<i32, Logical>)>,
         event: &MotionEvent,
     ) {
@@ -101,10 +107,11 @@ impl PointerGrab<Smallvil> for ResizeSurfaceGrab {
             new_window_height = (self.initial_rect.size.h as f64 + delta.y) as i32;
         }
 
-        let (min_size, max_size) = compositor::with_states(self.window.toplevel().wl_surface(), |states| {
-            let data = states.cached_state.current::<SurfaceCachedState>();
-            (data.min_size, data.max_size)
-        });
+        let (min_size, max_size) =
+            compositor::with_states(self.window.toplevel().wl_surface(), |states| {
+                let data = states.cached_state.current::<SurfaceCachedState>();
+                (data.min_size, data.max_size)
+            });
 
         let min_width = min_size.w.max(1);
         let min_height = min_size.h.max(1);
@@ -128,8 +135,8 @@ impl PointerGrab<Smallvil> for ResizeSurfaceGrab {
 
     fn relative_motion(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut ScreenComposer<BackendData>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
         focus: Option<(WlSurface, Point<i32, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
@@ -138,8 +145,8 @@ impl PointerGrab<Smallvil> for ResizeSurfaceGrab {
 
     fn button(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut ScreenComposer<BackendData>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
         event: &ButtonEvent,
     ) {
         handle.button(data, event);
@@ -171,14 +178,14 @@ impl PointerGrab<Smallvil> for ResizeSurfaceGrab {
 
     fn axis(
         &mut self,
-        data: &mut Smallvil,
-        handle: &mut PointerInnerHandle<'_, Smallvil>,
+        data: &mut ScreenComposer<BackendData>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
         details: AxisFrame,
     ) {
         handle.axis(data, details)
     }
 
-    fn start_data(&self) -> &PointerGrabStartData<Smallvil> {
+    fn start_data(&self) -> &PointerGrabStartData<ScreenComposer<BackendData>> {
         &self.start_data
     }
 }
@@ -219,8 +226,14 @@ impl ResizeSurfaceState {
 
     fn commit(&mut self) -> Option<(ResizeEdge, Rectangle<i32, Logical>)> {
         match *self {
-            Self::Resizing { edges, initial_rect } => Some((edges, initial_rect)),
-            Self::WaitingForLastCommit { edges, initial_rect } => {
+            Self::Resizing {
+                edges,
+                initial_rect,
+            } => Some((edges, initial_rect)),
+            Self::WaitingForLastCommit {
+                edges,
+                initial_rect,
+            } => {
                 // The resize is done, let's go back to idle
                 *self = Self::Idle;
 

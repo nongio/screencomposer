@@ -1,13 +1,31 @@
 [package]
-name = "smallvil"
+name = "screen-composer"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 bitflags = "2.2.1"
+layers = { path = "../layers", features = ["export-taffy"] }
+gl-rs = { package = "gl", version = "0.14.0" }
+wayland-server = "0.30.0"
+wayland-scanner = "0.30.0"
+wayland-backend = "0.1.0"
+image = "0.24.5"
+tracing = { version = "0.1.37", features = [
+    "max_level_trace",
+    "release_max_level_debug",
+] }
+profiling = { version = "1.0" }
 
 [dependencies.smithay]
 path = "../smithay"
 default-features = false
 features = ["backend_winit", "wayland_frontend", "desktop"]
+
+[dependencies.skia-safe]
+version = "0.62"
+
+[workspace]
+members = ["wlcs_screencomposer"]

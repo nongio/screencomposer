@@ -11,9 +11,9 @@ use smithay::{
     utils::SERIAL_COUNTER,
 };
 
-use crate::state::Smallvil;
+use crate::state::{Backend, ScreenComposer};
 
-impl Smallvil {
+impl<BackendData: Backend> ScreenComposer<BackendData> {
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
         match event {
             InputEvent::Keyboard { event, .. } => {
@@ -70,7 +70,11 @@ impl Smallvil {
                         .map(|(w, l)| (w.clone(), l))
                     {
                         self.space.raise_element(&window, true);
-                        keyboard.set_focus(self, Some(window.toplevel().wl_surface().clone()), serial);
+                        keyboard.set_focus(
+                            self,
+                            Some(window.toplevel().wl_surface().clone()),
+                            serial,
+                        );
                         self.space.elements().for_each(|window| {
                             window.toplevel().send_pending_configure();
                         });
@@ -96,9 +100,9 @@ impl Smallvil {
             InputEvent::PointerAxis { event, .. } => {
                 let source = event.source();
 
-                let horizontal_amount = event
-                    .amount(Axis::Horizontal)
-                    .unwrap_or_else(|| event.amount_discrete(Axis::Horizontal).unwrap_or(0.0) * 3.0);
+                let horizontal_amount = event.amount(Axis::Horizontal).unwrap_or_else(|| {
+                    event.amount_discrete(Axis::Horizontal).unwrap_or(0.0) * 3.0
+                });
                 let vertical_amount = event
                     .amount(Axis::Vertical)
                     .unwrap_or_else(|| event.amount_discrete(Axis::Vertical).unwrap_or(0.0) * 3.0);
