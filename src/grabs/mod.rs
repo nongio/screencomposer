@@ -1,7 +1,9 @@
 use std::cell::RefCell;
 
+#[cfg(feature = "xwayland")]
+use smithay::xwayland::xwm::ResizeEdge as X11ResizeEdge;
 use smithay::{
-    desktop::{space::SpaceElement, Window},
+    desktop::Window,
     input::pointer::{
         AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent,
         GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent,
@@ -12,12 +14,10 @@ use smithay::{
     utils::{IsAlive, Logical, Point, Serial, Size},
     wayland::{compositor::with_states, seat::WaylandFocus, shell::xdg::SurfaceCachedState},
 };
-#[cfg(feature = "xwayland")]
-use smithay::{utils::Rectangle, xwayland::xwm::ResizeEdge as X11ResizeEdge};
 
 use crate::{
     focus::FocusTarget,
-    handlers::{element::WindowElement, xdg_shell::SurfaceData},
+    handlers::xdg_shell::SurfaceData,
     state::{Backend, ScreenComposer},
 };
 

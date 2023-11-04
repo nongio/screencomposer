@@ -1,37 +1,18 @@
-use std::cell::{RefCell, RefMut};
-
 use smithay::{
     backend::renderer::{
         element::{
-            solid::{SolidColorBuffer, SolidColorRenderElement},
-            surface::WaylandSurfaceRenderElement,
-            texture::TextureRenderElement,
-            AsRenderElements, RenderElement, Wrap,
+            solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement,
+            texture::TextureRenderElement, RenderElement, Wrap,
         },
-        ImportAll, ImportMem, Renderer, Texture,
+        ImportAll, ImportMem, Renderer,
     },
-    desktop::{
-        space::{SpaceElement, SpaceRenderElements},
-        LayerSurface, PopupKind, Space, Window, WindowSurfaceType,
-    },
-    input::{
-        pointer::{
-            AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent,
-            GesturePinchBeginEvent, GesturePinchEndEvent, GesturePinchUpdateEvent,
-            GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent, MotionEvent,
-            PointerTarget, RelativeMotionEvent,
-        },
-        Seat,
-    },
+    desktop::{space::SpaceRenderElements, Space, Window},
     output::Output,
-    reexports::wayland_server::{backend::ObjectId, protocol::wl_surface::WlSurface, Resource},
-    utils::{user_data::UserDataMap, Logical, Physical, Point, Scale},
-    wayland::seat::WaylandFocus,
 };
 
 pub mod layers_renderer;
 
-use crate::{debug::fps::FpsElement, handlers::element::WindowElement, state::ScreenComposer};
+use crate::debug::fps::FpsElement;
 
 pub static CLEAR_COLOR: [f32; 4] = [0.8, 0.8, 0.9, 1.0];
 pub static CLEAR_COLOR_FULLSCREEN: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
@@ -95,7 +76,7 @@ impl<R: Renderer + ImportAll + ImportMem, E: RenderElement<R> + std::fmt::Debug>
         match self {
             Self::Space(arg0) => f.debug_tuple("Space").field(arg0).finish(),
             Self::Window(arg0) => f.debug_tuple("Window").field(arg0).finish(),
-            Self::Custom(arg0) => f.debug_tuple("Custom").finish(),
+            Self::Custom(_) => f.debug_tuple("Custom").finish(),
             // Self::Preview(arg0) => f.debug_tuple("Preview").field(arg0).finish(),
             Self::_GenericCatcher(arg0) => f.debug_tuple("_GenericCatcher").field(arg0).finish(),
         }

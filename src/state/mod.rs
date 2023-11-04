@@ -28,7 +28,7 @@ use smithay::{
     },
     output::Output,
     reexports::{
-        calloop::{generic::Generic, EventLoop, Interest, LoopHandle, Mode},
+        calloop::{EventLoop, LoopHandle},
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason, ObjectId},
             protocol::wl_surface::WlSurface,
@@ -218,7 +218,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             dnd_icon: None,
         }
     }
-
+    #[allow(dead_code)]
     fn init_wayland_listener(
         // _display: &mut Display<ScreenComposer<BackendData>>,
         event_loop: &mut EventLoop<CalloopData<BackendData>>,
