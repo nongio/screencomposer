@@ -1,5 +1,5 @@
 use crate::{
-    grabs::resize_grab,
+    grabs,
     state::{Backend, ClientState, SurfaceLayer},
     ScreenComposer,
 };
@@ -13,13 +13,13 @@ use smithay::{
     wayland::{
         buffer::BufferHandler,
         compositor::{
-            self, get_parent, is_sync_subsurface, with_states, CompositorClientState,
-            CompositorHandler, CompositorState, TraversalAction,
+            get_parent, is_sync_subsurface, with_states, CompositorClientState, CompositorHandler,
+            CompositorState,
         },
         shm::{ShmHandler, ShmState},
     },
 };
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, trace};
 
 use super::xdg_shell;
 
@@ -37,7 +37,7 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
     }
 
     fn commit(&mut self, surface: &WlSurface) {
-        trace!("Commit on {:?}", surface.id());
+        debug!("Commit on {:?}", surface.id());
         on_commit_buffer_handler::<Self>(surface);
 
         if !is_sync_subsurface(surface) {
@@ -68,7 +68,7 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
                     if let Some(SurfaceLayer {
                         layer: layer_parent,
                         ..
-                    }) = surface_parent.clone().map(|p| self.layer_for(&p)).flatten()
+                    }) = surface_parent.clone().and_then(|p| self.layer_for(&p))
                     {
                         self.engine
                             .scene_add_layer_to(layer.clone(), layer_parent.id());
@@ -96,7 +96,7 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
             &mut self.layers_map,
             &self.engine,
         );
-        resize_grab::handle_commit(&mut self.space, surface);
+        // grabs::handle_commit(&mut self.space, surface);
     }
     fn new_surface(&mut self, surface: &WlSurface) {
         // add_pre_commit_hook::<Self, _>(surface, move |state, _dh, surface| {
@@ -124,7 +124,7 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
         //     }
         // });
         let layer = self.layer_for(&surface.id());
-        if let Some(SurfaceLayer { layer, .. }) = layer {
+        if let Some(SurfaceLayer { layer: _, .. }) = layer {
             // NOOP
         } else {
             let layer = self.engine.new_layer();

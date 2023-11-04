@@ -30,6 +30,7 @@ use smithay::{
 
 use screen_composer::{
     state::{Backend, ClientState, ScreenComposer},
+    winit::WinitData,
     CalloopData,
 };
 
@@ -51,160 +52,171 @@ impl Backend for TestState {
 }
 
 pub fn run(channel: Channel<WlcsEvent>) {
-    let mut event_loop =
-        EventLoop::<CalloopData<TestState>>::try_new().expect("Failed to init the event loop.");
+    // let mut display = Display::new().expect("Failed to init display");
+    // let mut event_loop =
+    // EventLoop::<CalloopData<WinitData>>::try_new().expect("Failed to init the event loop.");
+    // let (winit_data) =
+    // screen_composer::winit::init_winit(event_loop.handle(), &mut display).unwrap();
+    // let state = ScreenComposer::new(event_loop.handle(), &mut display, &winit_data, true);
 
-    let mut display = Display::new().expect("Failed to init display");
-    let dh = display.handle();
+    // let mut data = CalloopData { state, display };
 
-    let test_state = TestState {
-        clients: HashMap::new(),
-    };
+    // event_loop.run(None, &mut data, move |_| {
+    //     // Smallvil is running
+    // });
+    // let mut event_loop =
+    //     EventLoop::<CalloopData<TestState>>::try_new().expect("Failed to init the event loop.");
 
-    let mut state = screen_composer::state::ScreenComposer::new(
-        event_loop.handle(),
-        &mut display,
-        &test_state,
-        false,
-    );
+    // let mut display = Display::new().expect("Failed to init display");
+    // let dh = display.handle();
+    // let test_state = TestState {
+    //     clients: HashMap::new(),
+    // };
 
-    event_loop
-        .handle()
-        .insert_source(channel, move |event, &mut (), data| match event {
-            ChannelEvent::Msg(evt) => handle_event(evt, &mut data.state, &mut data.display),
-            ChannelEvent::Closed => {
-                handle_event(WlcsEvent::Exit, &mut data.state, &mut data.display)
-            }
-        })
-        .unwrap();
+    // let mut state = screen_composer::state::ScreenComposer::new(
+    //     event_loop.handle(),
+    //     &mut display,
+    //     &test_state,
+    //     false,
+    // );
 
-    let mut renderer = crate::renderer::DummyRenderer::new();
+    // event_loop
+    //     .handle()
+    //     .insert_source(channel, move |event, &mut (), data| match event {
+    //         ChannelEvent::Msg(evt) => handle_event(evt, &mut data.state, &mut data.display),
+    //         ChannelEvent::Closed => {
+    //             handle_event(WlcsEvent::Exit, &mut data.state, &mut data.display)
+    //         }
+    //     })
+    //     .unwrap();
 
-    let mode = Mode {
-        size: (800, 600).into(),
-        refresh: 60_000,
-    };
+    // let mut renderer = crate::renderer::DummyRenderer::new();
 
-    let output = Output::new(
-        OUTPUT_NAME.to_string(),
-        PhysicalProperties {
-            size: (0, 0).into(),
-            subpixel: Subpixel::Unknown,
-            make: "Smithay".into(),
-            model: "WLCS".into(),
-        },
-    );
-    let _global = output.create_global::<ScreenComposer<TestState>>(&dh);
-    output.change_current_state(Some(mode), None, None, Some((0, 0).into()));
-    output.set_preferred(mode);
-    state.space.map_output(&output, (0, 0));
+    // let mode = Mode {
+    //     size: (800, 600).into(),
+    //     refresh: 60_000,
+    // };
 
-    let mut damage_tracker = OutputDamageTracker::from_output(&output);
-    // let mut pointer_element = PointerElement::default();
+    // let output = Output::new(
+    //     OUTPUT_NAME.to_string(),
+    //     PhysicalProperties {
+    //         size: (0, 0).into(),
+    //         subpixel: Subpixel::Unknown,
+    //         make: "Smithay".into(),
+    //         model: "WLCS".into(),
+    //     },
+    // );
+    // let _global = output.create_global::<ScreenComposer<TestState>>(&dh);
+    // output.change_current_state(Some(mode), None, None, Some((0, 0).into()));
+    // output.set_preferred(mode);
+    // state.space.map_output(&output, (0, 0));
 
-    while state.running.load(Ordering::SeqCst) {
-        // pretend to draw something
-        {
-            let scale = Scale::from(output.current_scale().fractional_scale());
-            let mut cursor_guard = state.cursor_status.lock().unwrap();
-            let mut elements: Vec<RenderElementStates> = Vec::new();
+    // let mut damage_tracker = OutputDamageTracker::from_output(&output);
+    // // let mut pointer_element = PointerElement::default();
 
-            // draw input method square if any
-            let input_method = state.seat.input_method();
-            let rectangle = input_method.coordinates();
-            // let position = Point::from((
-            //     rectangle.loc.x + rectangle.size.w,
-            //     rectangle.loc.y + rectangle.size.h,
-            // ));
-            // input_method.with_surface(|surface| {
-            //     elements.extend(AsRenderElements::<DummyRenderer>::render_elements(
-            //         &smithay::desktop::space::SurfaceTree::from_surface(surface),
-            //         &mut renderer,
-            //         position.to_physical_precise_round(scale),
-            //         scale,
-            //         1.0,
-            //     ));
-            // });
+    // while state.running.load(Ordering::SeqCst) {
+    //     // pretend to draw something
+    //     {
+    //         let scale = Scale::from(output.current_scale().fractional_scale());
+    //         let mut cursor_guard = state.cursor_status.lock().unwrap();
+    //         let mut elements: Vec<RenderElementStates> = Vec::new();
 
-            // draw the cursor as relevant
-            // reset the cursor if the surface is no longer alive
-            let mut reset = false;
-            if let CursorImageStatus::Surface(ref surface) = *cursor_guard {
-                reset = !surface.alive();
-            }
-            if reset {
-                *cursor_guard = CursorImageStatus::Default;
-            }
+    //         // draw input method square if any
+    //         let input_method = state.seat.input_method();
+    //         let rectangle = input_method.coordinates();
+    //         // let position = Point::from((
+    //         //     rectangle.loc.x + rectangle.size.w,
+    //         //     rectangle.loc.y + rectangle.size.h,
+    //         // ));
+    //         // input_method.with_surface(|surface| {
+    //         //     elements.extend(AsRenderElements::<DummyRenderer>::render_elements(
+    //         //         &smithay::desktop::space::SurfaceTree::from_surface(surface),
+    //         //         &mut renderer,
+    //         //         position.to_physical_precise_round(scale),
+    //         //         scale,
+    //         //         1.0,
+    //         //     ));
+    //         // });
 
-            let cursor_hotspot = if let CursorImageStatus::Surface(ref surface) = *cursor_guard {
-                compositor::with_states(surface, |states| {
-                    states
-                        .data_map
-                        .get::<Mutex<CursorImageAttributes>>()
-                        .unwrap()
-                        .lock()
-                        .unwrap()
-                        .hotspot
-                })
-            } else {
-                (0, 0).into()
-            };
-            let cursor_pos = state.pointer.current_location() - cursor_hotspot.to_f64();
-            // let cursor_pos_scaled = cursor_pos.to_physical(scale).to_i32_round();
+    //         // draw the cursor as relevant
+    //         // reset the cursor if the surface is no longer alive
+    //         let mut reset = false;
+    //         if let CursorImageStatus::Surface(ref surface) = *cursor_guard {
+    //             reset = !surface.alive();
+    //         }
+    //         if reset {
+    //             *cursor_guard = CursorImageStatus::Default;
+    //         }
 
-            // pointer_element.set_status(cursor_guard.clone());
-            // elements.extend(pointer_element.render_elements(
-            //     &mut renderer,
-            //     cursor_pos_scaled,
-            //     scale,
-            //     1.0,
-            // ));
+    //         let cursor_hotspot = if let CursorImageStatus::Surface(ref surface) = *cursor_guard {
+    //             compositor::with_states(surface, |states| {
+    //                 states
+    //                     .data_map
+    //                     .get::<Mutex<CursorImageAttributes>>()
+    //                     .unwrap()
+    //                     .lock()
+    //                     .unwrap()
+    //                     .hotspot
+    //             })
+    //         } else {
+    //             (0, 0).into()
+    //         };
+    //         let cursor_pos = state.pointer.current_location() - cursor_hotspot.to_f64();
+    //         // let cursor_pos_scaled = cursor_pos.to_physical(scale).to_i32_round();
 
-            // draw the dnd icon if any
-            // if let Some(surface) = state.dnd_icon.as_ref() {
-            //     if surface.alive() {
-            //         elements.extend(AsRenderElements::<DummyRenderer>::render_elements(
-            //             &smithay::desktop::space::SurfaceTree::from_surface(surface),
-            //             &mut renderer,
-            //             cursor_pos_scaled,
-            //             scale,
-            //             1.0,
-            //         ));
-            //     }
-            // }
+    //         // pointer_element.set_status(cursor_guard.clone());
+    //         // elements.extend(pointer_element.render_elements(
+    //         //     &mut renderer,
+    //         //     cursor_pos_scaled,
+    //         //     scale,
+    //         //     1.0,
+    //         // ));
 
-            // to be implemented by sc
-            // let _ = render_output(
-            //     &output,
-            //     &mut state.space,
-            //     1.0,
-            //     elements,
-            //     &mut renderer,
-            //     &mut damage_tracker,
-            //     0,
-            //     false,
-            // );
-        }
+    //         // draw the dnd icon if any
+    //         // if let Some(surface) = state.dnd_icon.as_ref() {
+    //         //     if surface.alive() {
+    //         //         elements.extend(AsRenderElements::<DummyRenderer>::render_elements(
+    //         //             &smithay::desktop::space::SurfaceTree::from_surface(surface),
+    //         //             &mut renderer,
+    //         //             cursor_pos_scaled,
+    //         //             scale,
+    //         //             1.0,
+    //         //         ));
+    //         //     }
+    //         // }
 
-        // Send frame events so that client start drawing their next frame
-        state.space.elements().for_each(|window| {
-            window.send_frame(&output, state.clock.now(), Some(Duration::ZERO), |_, _| {
-                Some(output.clone())
-            })
-        });
+    //         // to be implemented by sc
+    //         // let _ = render_output(
+    //         //     &output,
+    //         //     &mut state.space,
+    //         //     1.0,
+    //         //     elements,
+    //         //     &mut renderer,
+    //         //     &mut damage_tracker,
+    //         //     0,
+    //         //     false,
+    //         // );
+    //     }
 
-        let mut calloop_data = CalloopData { state, display };
-        let result = event_loop.dispatch(Some(Duration::from_millis(16)), &mut calloop_data);
-        CalloopData { state, display } = calloop_data;
+    //     // Send frame events so that client start drawing their next frame
+    //     state.space.elements().for_each(|window| {
+    //         window.send_frame(&output, state.clock.now(), Some(Duration::ZERO), |_, _| {
+    //             Some(output.clone())
+    //         })
+    //     });
 
-        if result.is_err() {
-            state.running.store(false, Ordering::SeqCst);
-        } else {
-            state.space.refresh();
-            state.popups.cleanup();
-            display.flush_clients().unwrap();
-        }
-    }
+    //     let mut calloop_data = CalloopData { state, display };
+    //     let result = event_loop.dispatch(Some(Duration::from_millis(16)), &mut calloop_data);
+    //     CalloopData { state, display } = calloop_data;
+
+    //     if result.is_err() {
+    //         state.running.store(false, Ordering::SeqCst);
+    //     } else {
+    //         state.space.refresh();
+    //         state.popups.cleanup();
+    //         display.flush_clients().unwrap();
+    //     }
+    // }
 }
 
 fn handle_event(

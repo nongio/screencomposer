@@ -1,17 +1,16 @@
 use layers::types::{Color, PaintColor};
-use smithay::backend::winit::WindowSize;
-use tracing::{debug, error, info, trace, warn};
+use tracing::trace;
 
 use super::Backend;
 
 impl<BackendData: Backend> super::ScreenComposer<BackendData> {
-    pub fn init_scene(&self, size: WindowSize) {
+    pub fn init_scene(&self, width: i32, height: i32) {
         let root_layer = self.engine.new_layer();
-        let size = size.physical_size;
+
         root_layer.set_size(
             layers::types::Size {
-                x: size.to_point().x as f32 * 1.5,
-                y: size.to_point().y as f32 * 1.5,
+                x: width as f32,
+                y: height as f32,
             },
             None,
         );

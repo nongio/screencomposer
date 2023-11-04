@@ -9,12 +9,13 @@ use layers::{
 };
 use smithay::{
     backend::renderer::utils::CommitCounter,
+    reexports::wayland_server::DisplayHandle,
     utils::{Logical, Serial, Size},
     wayland::compositor::{self, Cacheable},
 };
 use wayland_backend::server::{ClientId, GlobalId, ObjectId};
 use wayland_server::{
-    protocol::wl_surface, Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
+    protocol::wl_surface, Client, DataInit, Dispatch, GlobalDispatch, New, Resource,
 };
 
 use crate::{
@@ -23,11 +24,13 @@ use crate::{
     ScreenComposer,
 };
 
-use self::protocol::{sc_animation_v1::ScAnimationV1, sc_layer_surface_v1, sc_shell_unstable_v1};
+use self::protocol::gen::{
+    sc_animation_v1::ScAnimationV1, sc_layer_surface_v1, sc_shell_unstable_v1,
+};
 
-type ZscLayerShellV1 = protocol::sc_shell_unstable_v1::ScShellUnstableV1;
-type ZscLayerShellSurfaceV1 = protocol::sc_layer_surface_v1::ScLayerSurfaceV1;
-type ZscLayerShellAnimationV1 = protocol::sc_animation_v1::ScAnimationV1;
+type ZscLayerShellV1 = protocol::gen::sc_shell_unstable_v1::ScShellUnstableV1;
+type ZscLayerShellSurfaceV1 = protocol::gen::sc_layer_surface_v1::ScLayerSurfaceV1;
+type ZscLayerShellAnimationV1 = protocol::gen::sc_animation_v1::ScAnimationV1;
 /// A handle to a layer surface
 #[derive(Clone)]
 pub struct LayerSurface {
@@ -472,14 +475,19 @@ impl<BackendData: Backend> Dispatch<ZscLayerShellAnimationV1, ScAnimationUserDat
         data_init: &mut DataInit<'_, Self>,
     ) {
         match request {
-            protocol::sc_animation_v1::Request::SetDuration { duration } => {
+            protocol::gen::sc_animation_v1::Request::SetDuration { duration } => {
                 println!("set duration {:?}", duration);
             }
-            protocol::sc_animation_v1::Request::Start { delay } => {}
-            protocol::sc_animation_v1::Request::SetBezierTimingFunction { c1x, c1y, c2x, c2y } => {
+            protocol::gen::sc_animation_v1::Request::Start { delay } => {}
+            protocol::gen::sc_animation_v1::Request::SetBezierTimingFunction {
+                c1x,
+                c1y,
+                c2x,
+                c2y,
+            } => {
                 println!("set easing {:?}", (c1x, c1y, c2x, c2y));
             }
-            protocol::sc_animation_v1::Request::SetSpringTimingFunction { .. } => {
+            protocol::gen::sc_animation_v1::Request::SetSpringTimingFunction { .. } => {
                 // println!("set progress {:?}", progress);
             }
             // protocol::sc_animation_v1::Request::Stop {  } => {

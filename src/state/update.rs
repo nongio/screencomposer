@@ -4,21 +4,20 @@ use layers::prelude::{self, DrawScene};
 
 use smithay::{
     backend::{
-        self,
         egl::EGLSurface,
         renderer::{
-            element::surface::WaylandSurfaceRenderElement, gles::GlesRenderer,
+            element::surface::WaylandSurfaceRenderElement, element::Kind, gles::GlesRenderer,
             utils::RendererSurfaceStateUserData, Renderer,
         },
         winit::WinitGraphicsBackend,
     },
     desktop::PopupManager,
     output::Output,
+    reexports::wayland_server::{protocol::wl_surface::WlSurface, Display, Resource},
     utils::Rectangle,
     wayland::compositor::{self, TraversalAction},
 };
-use tracing::{debug, error, info, trace, warn};
-use wayland_server::{protocol::wl_surface::WlSurface, Display, Resource};
+use tracing::error;
 
 use super::{Backend, ScreenComposer, SurfaceLayer};
 
@@ -94,6 +93,7 @@ impl<BackendData: Backend> super::ScreenComposer<BackendData> {
                     states,
                     (0.0, 0.0).into(),
                     1.0,
+                    Kind::default(),
                 );
 
                 let surface_id = surface.id();
@@ -152,8 +152,7 @@ impl<BackendData: Backend> super::ScreenComposer<BackendData> {
     /// update the engine and draw the scene
     pub fn update(
         &mut self,
-        backend_data: BackendData,
-        display: &mut Display<ScreenComposer<BackendData>>,
+        // display: &mut Display<ScreenComposer<BackendData>>,
         output: &Output,
         // backend: &mut WinitGraphicsBackend<GlesRenderer>,
     ) {
@@ -165,12 +164,6 @@ impl<BackendData: Backend> super::ScreenComposer<BackendData> {
         // let egl_surface = backend.egl_surface();
         // let renderer: &mut GlesRenderer = backend.renderer();
 
-        // let space = self.space;
-        // let layers_map = self.layers_map;
-        // let skia_renderer = self.skia_renderer;
-        // let engine = self.engine;
-        // let popups = self.popups;
-
         let mut i = 0;
         // let mut elements = Vec::new();
 
@@ -181,8 +174,8 @@ impl<BackendData: Backend> super::ScreenComposer<BackendData> {
 
         let damage = Rectangle::from_loc_and_size((0, 0), size);
 
-        // self.egl_make_current()
-        // self.draw_scene();
+        // self.egl_make_current();
+        self.draw_scene();
 
         // backend.submit(Some(&[damage]))?;
 
@@ -197,7 +190,7 @@ impl<BackendData: Backend> super::ScreenComposer<BackendData> {
 
         self.space.refresh();
         self.popups.cleanup();
-        display.flush_clients().unwrap();
+        self.display_handle.flush_clients().unwrap();
     }
 
     /// draw the scene using a scene_renderer

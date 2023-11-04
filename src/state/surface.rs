@@ -1,15 +1,18 @@
 use layers::prelude::Layer;
 use smithay::{
     backend::renderer::utils::CommitCounter,
-    desktop::{Window, WindowSurfaceType},
+    desktop::{layer_map_for_output, Window, WindowSurfaceType},
+    reexports::wayland_server::{backend::ObjectId, protocol::wl_surface::WlSurface},
     utils::{Logical, Point},
+    wayland::shell::{
+        wlr_layer::{KeyboardInteractivity, Layer as WlrLayer, LayerSurfaceCachedState},
+        xdg::XdgToplevelSurfaceData,
+    },
 };
-use wayland_backend::server::ObjectId;
-use wayland_server::protocol::wl_surface::WlSurface;
 
 use tracing::{debug, error, info, trace, warn};
 
-use crate::state::SurfaceLayer;
+use crate::{focus::FocusTarget, handlers::xdg_shell::FullscreenSurface, state::SurfaceLayer};
 
 use super::Backend;
 
@@ -17,14 +20,37 @@ impl<BackendData: Backend> super::ScreenComposer<BackendData> {
     pub fn surface_under(
         &self,
         pos: Point<f64, Logical>,
-    ) -> Option<(WlSurface, Point<i32, Logical>)> {
-        self.space
-            .element_under(pos)
-            .and_then(|(window, location)| {
-                window
-                    .surface_under(pos - location.to_f64(), WindowSurfaceType::ALL)
-                    .map(|(s, p)| (s, p + location))
-            })
+    ) -> Option<(FocusTarget, Point<i32, Logical>)> {
+        let output = self.space.outputs().find(|o| {
+            let geometry = self.space.output_geometry(o).unwrap();
+            geometry.contains(pos.to_i32_round())
+        })?;
+        let output_geo = self.space.output_geometry(output).unwrap();
+        let layers = layer_map_for_output(output);
+
+        let mut under = None;
+        if let Some(window) = output
+            .user_data()
+            .get::<FullscreenSurface>()
+            .and_then(|f| f.get())
+        {
+            under = Some((window.into(), output_geo.loc));
+        } else if let Some(layer) = layers
+            .layer_under(WlrLayer::Overlay, pos)
+            .or_else(|| layers.layer_under(WlrLayer::Top, pos))
+        {
+            let layer_loc = layers.layer_geometry(layer).unwrap().loc;
+            under = Some((layer.clone().into(), output_geo.loc + layer_loc))
+        } else if let Some((window, location)) = self.space.element_under(pos) {
+            under = Some((window.clone().into(), location));
+        } else if let Some(layer) = layers
+            .layer_under(WlrLayer::Bottom, pos)
+            .or_else(|| layers.layer_under(WlrLayer::Background, pos))
+        {
+            let layer_loc = layers.layer_geometry(layer).unwrap().loc;
+            under = Some((layer.clone().into(), output_geo.loc + layer_loc));
+        };
+        under
     }
     pub fn window_for_surface(&self, surface: &WlSurface) -> Option<Window> {
         self.space

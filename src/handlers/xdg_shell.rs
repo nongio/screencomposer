@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap};
 
 use layers::{
     prelude::{LayersEngine, TimingFunction, Transition},
@@ -20,9 +20,10 @@ use smithay::{
             Resource,
         },
     },
-    utils::{Rectangle, Serial},
+    utils::{Logical, Rectangle, Serial},
     wayland::{
         compositor::{self, with_states, SubsurfaceCachedState, TraversalAction},
+        seat::WaylandFocus,
         shell::xdg::{
             PopupSurface, PositionerState, ToplevelSurface, XdgPopupSurfaceData, XdgShellHandler,
             XdgShellState, XdgToplevelSurfaceData,
@@ -31,11 +32,36 @@ use smithay::{
 };
 
 use crate::{
-    grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
+    grabs::{MoveSurfaceGrab, ResizeData, ResizeState, ResizeSurfaceGrab},
     state::{Backend, SurfaceLayer},
     ScreenComposer,
 };
-use tracing::{debug, error, info, trace, warn};
+use tracing::trace;
+
+use super::element::WindowElement;
+
+#[derive(Default)]
+pub struct SurfaceData {
+    pub geometry: Option<Rectangle<i32, Logical>>,
+    pub resize_state: ResizeState,
+}
+
+#[derive(Default)]
+pub struct FullscreenSurface(RefCell<Option<WindowElement>>);
+
+impl FullscreenSurface {
+    pub fn set(&self, window: WindowElement) {
+        *self.0.borrow_mut() = Some(window);
+    }
+
+    pub fn get(&self) -> Option<WindowElement> {
+        self.0.borrow().clone()
+    }
+
+    pub fn clear(&self) -> Option<WindowElement> {
+        self.0.borrow_mut().take()
+    }
+}
 
 impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
@@ -101,7 +127,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         if let Some(SurfaceLayer {
             layer: popup_layer,
             commit_counter: cc,
-            parent,
+            parent: _,
         }) = layer_map
         {
             trace!("{:?} the popup is already mapped, adding to scene", sid);
@@ -151,29 +177,8 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
     }
 
     fn move_request(&mut self, surface: ToplevelSurface, seat: wl_seat::WlSeat, serial: Serial) {
-        let seat = Seat::from_resource(&seat).unwrap();
-
-        let wl_surface = surface.wl_surface();
-
-        if let Some(start_data) = check_grab(&seat, wl_surface, serial) {
-            let pointer = seat.get_pointer().unwrap();
-
-            let window = self
-                .space
-                .elements()
-                .find(|w| w.toplevel().wl_surface() == wl_surface)
-                .unwrap()
-                .clone();
-            let initial_window_location = self.space.element_location(&window).unwrap();
-
-            let grab = MoveSurfaceGrab {
-                start_data,
-                window,
-                initial_window_location,
-            };
-
-            pointer.set_grab(self, grab, serial, Focus::Clear);
-        }
+        let seat: Seat<ScreenComposer<BackendData>> = Seat::from_resource(&seat).unwrap();
+        self.move_request_xdg(&surface, &seat, serial)
     }
 
     fn resize_request(
@@ -183,37 +188,58 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         serial: Serial,
         edges: xdg_toplevel::ResizeEdge,
     ) {
-        let seat = Seat::from_resource(&seat).unwrap();
+        let seat: Seat<ScreenComposer<BackendData>> = Seat::from_resource(&seat).unwrap();
+        // TODO: touch resize.
+        let pointer = seat.get_pointer().unwrap();
 
-        let wl_surface = surface.wl_surface();
-
-        if let Some(start_data) = check_grab(&seat, wl_surface, serial) {
-            let pointer = seat.get_pointer().unwrap();
-
-            let window = self
-                .space
-                .elements()
-                .find(|w| w.toplevel().wl_surface() == wl_surface)
-                .unwrap()
-                .clone();
-            let initial_window_location = self.space.element_location(&window).unwrap();
-            let initial_window_size = window.geometry().size;
-
-            surface.with_pending_state(|state| {
-                state.states.set(xdg_toplevel::State::Resizing);
-            });
-
-            surface.send_pending_configure();
-
-            let grab = ResizeSurfaceGrab::start(
-                start_data,
-                window,
-                edges.into(),
-                Rectangle::from_loc_and_size(initial_window_location, initial_window_size),
-            );
-
-            pointer.set_grab(self, grab, serial, Focus::Clear);
+        // Check that this surface has a click grab.
+        if !pointer.has_grab(serial) {
+            return;
         }
+
+        let start_data = pointer.grab_start_data().unwrap();
+
+        let window = self.window_for_surface(surface.wl_surface()).unwrap();
+
+        // If the focus was for a different surface, ignore the request.
+        if start_data.focus.is_none()
+            || !start_data
+                .focus
+                .as_ref()
+                .unwrap()
+                .0
+                .same_client_as(&surface.wl_surface().id())
+        {
+            return;
+        }
+
+        let geometry = window.geometry();
+        let loc = self.space.element_location(&window).unwrap();
+        let (initial_window_location, initial_window_size) = (loc, geometry.size);
+
+        with_states(surface.wl_surface(), move |states| {
+            states
+                .data_map
+                .get::<RefCell<SurfaceData>>()
+                .unwrap()
+                .borrow_mut()
+                .resize_state = ResizeState::Resizing(ResizeData {
+                edges: edges.into(),
+                initial_window_location,
+                initial_window_size,
+            });
+        });
+
+        let grab = ResizeSurfaceGrab {
+            start_data,
+            window,
+            edges: edges.into(),
+            initial_window_location,
+            initial_window_size,
+            last_window_size: initial_window_size,
+        };
+
+        pointer.set_grab(self, grab, serial, Focus::Clear);
     }
 
     fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
@@ -344,28 +370,28 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 // Xdg Shell
 delegate_xdg_shell!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
-fn check_grab<BackendData: Backend>(
-    seat: &Seat<ScreenComposer<BackendData>>,
-    surface: &WlSurface,
-    serial: Serial,
-) -> Option<PointerGrabStartData<ScreenComposer<BackendData>>> {
-    let pointer = seat.get_pointer()?;
+// fn check_grab<BackendData: Backend>(
+//     seat: &Seat<ScreenComposer<BackendData>>,
+//     surface: &WlSurface,
+//     serial: Serial,
+// ) -> Option<PointerGrabStartData<ScreenComposer<BackendData>>> {
+//     let pointer = seat.get_pointer()?;
 
-    // Check that this surface has a click grab.
-    if !pointer.has_grab(serial) {
-        return None;
-    }
+//     // Check that this surface has a click grab.
+//     if !pointer.has_grab(serial) {
+//         return None;
+//     }
 
-    let start_data = pointer.grab_start_data()?;
+//     let start_data = pointer.grab_start_data()?;
 
-    let (focus, _) = start_data.focus.as_ref()?;
-    // If the focus was for a different surface, ignore the request.
-    if !focus.id().same_client_as(&surface.id()) {
-        return None;
-    }
+//     let (focus, _) = start_data.focus.as_ref()?;
+//     // If the focus was for a different surface, ignore the request.
+//     if !focus.id().same_client_as(&surface.id()) {
+//         return None;
+//     }
 
-    Some(start_data)
-}
+//     Some(start_data)
+// }
 
 /// Should be called on `WlSurface::commit`
 pub fn handle_commit(
@@ -373,7 +399,7 @@ pub fn handle_commit(
     space: &Space<Window>,
     surface: &WlSurface,
     layers_map: &mut HashMap<ObjectId, SurfaceLayer>,
-    engine: &LayersEngine,
+    _engine: &LayersEngine,
 ) {
     // Handle toplevel commits.
     if let Some(window) = space
@@ -443,7 +469,6 @@ pub fn handle_commit(
     if let Some(popupkind) = popups.find_popup(surface) {
         trace!("handle_commit popup {:?}", surface.id());
 
-        let PopupKind::Xdg(ref popup) = popupkind;
         let (initial_configure_sent, loc) = with_states(surface, |states| {
             let states = states
                 .data_map
@@ -492,7 +517,9 @@ pub fn handle_commit(
         if !initial_configure_sent {
             // NOTE: This should never fail as the initial configure is always
             // allowed.
-            popup.send_configure().expect("initial configure failed");
+            if let PopupKind::Xdg(ref popup) = popupkind {
+                popup.send_configure().expect("initial configure failed");
+            }
         }
     }
     compositor::with_surface_tree_upward(
@@ -526,4 +553,79 @@ pub fn handle_commit(
         },
         |_, _, _| true,
     );
+}
+
+impl<BackendData: Backend> ScreenComposer<BackendData> {
+    pub fn move_request_xdg(
+        &mut self,
+        surface: &ToplevelSurface,
+        seat: &Seat<Self>,
+        serial: Serial,
+    ) {
+        // TODO: touch move.
+        let pointer = seat.get_pointer().unwrap();
+
+        // Check that this surface has a click grab.
+        if !pointer.has_grab(serial) {
+            return;
+        }
+
+        let start_data = pointer.grab_start_data().unwrap();
+
+        // If the client disconnects after requesting a move
+        // we can just ignore the request
+        let Some(window) = self.window_for_surface(surface.wl_surface()) else {
+            return;
+        };
+
+        // If the focus was for a different surface, ignore the request.
+        if start_data.focus.is_none()
+            || !start_data
+                .focus
+                .as_ref()
+                .unwrap()
+                .0
+                .same_client_as(&surface.wl_surface().id())
+        {
+            return;
+        }
+
+        let mut initial_window_location = self.space.element_location(&window).unwrap();
+
+        // If surface is maximized then unmaximize it
+        let current_state = surface.current_state();
+        if current_state
+            .states
+            .contains(xdg_toplevel::State::Maximized)
+        {
+            surface.with_pending_state(|state| {
+                state.states.unset(xdg_toplevel::State::Maximized);
+                state.size = None;
+            });
+
+            surface.send_configure();
+
+            // NOTE: In real compositor mouse location should be mapped to a new window size
+            // For example, you could:
+            // 1) transform mouse pointer position from compositor space to window space (location relative)
+            // 2) divide the x coordinate by width of the window to get the percentage
+            //   - 0.0 would be on the far left of the window
+            //   - 0.5 would be in middle of the window
+            //   - 1.0 would be on the far right of the window
+            // 3) multiply the percentage by new window width
+            // 4) by doing that, drag will look a lot more natural
+            //
+            // but for anvil needs setting location to pointer location is fine
+            let pos = pointer.current_location();
+            initial_window_location = (pos.x as i32, pos.y as i32).into();
+        }
+
+        let grab = MoveSurfaceGrab {
+            start_data,
+            window,
+            initial_window_location,
+        };
+
+        pointer.set_grab(self, grab, serial, Focus::Clear);
+    }
 }

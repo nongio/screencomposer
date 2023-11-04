@@ -1,17 +1,22 @@
 use smithay::reexports::wayland_server;
 use wayland_server::protocol::wl_output::WlOutput;
 
-pub mod __interfaces {
-    pub use smithay::reexports::wayland_server::protocol::__interfaces::*;
-    wayland_scanner::generate_interfaces!("./protocols/sc-layer-unstable-v1.xml");
-}
+pub mod __interfaces {}
 use crate::{state::Backend, ScreenComposer};
 
 use self::__interfaces::*;
 use smithay::reexports::wayland_server::protocol::*;
 
 use super::{LayerSurface, ScLayerShellState};
-wayland_scanner::generate_server_code!("./protocols/sc-layer-unstable-v1.xml");
+
+pub mod gen {
+
+    pub use smithay::reexports::wayland_server::protocol::__interfaces::*;
+    wayland_scanner::generate_interfaces!("./protocols/sc-layer-unstable-v1.xml");
+    pub use wayland_server;
+    use wayland_server::protocol::*;
+    wayland_scanner::generate_server_code!("./protocols/sc-layer-unstable-v1.xml");
+}
 
 /// The role of a wlr_layer_shell_surface
 pub const SCLAYER_SURFACE_ROLE: &str = "zsc_layer_surface_v1";
