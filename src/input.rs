@@ -1,20 +1,193 @@
+use std::{process::Command, sync::atomic::Ordering};
+
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent,
-        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+        KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
     },
     input::{
-        keyboard::FilterResult,
+        keyboard::{keysyms as xkb, FilterResult, KeyboardTarget, Keysym, ModifiersState},
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::SERIAL_COUNTER,
+    wayland::{keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitorSeat, seat::WaylandFocus},
+};
+use tracing::{debug, error, info};
+
+use crate::{
+    focus::FocusTarget,
+    state::{Backend, ScreenComposer},
 };
 
-use crate::state::{Backend, ScreenComposer};
+/// Possible results of a keyboard action
+#[derive(Debug)]
+pub enum KeyAction {
+    /// Quit the compositor
+    Quit,
+    /// Trigger a vt-switch
+    VtSwitch(i32),
+    /// run a command
+    Run(String),
+    /// Switch the current screen
+    Screen(usize),
+    ScaleUp,
+    ScaleDown,
+    TogglePreview,
+    RotateOutput,
+    ToggleTint,
+    ToggleDecorations,
+    /// Do nothing more
+    None,
+}
 
 impl<BackendData: Backend> ScreenComposer<BackendData> {
-    pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
+    pub fn process_common_key_action(&mut self, action: KeyAction) {
+        match action {
+            KeyAction::None => (),
+
+            KeyAction::Quit => {
+                info!("Quitting.");
+                self.running.store(false, Ordering::SeqCst);
+            }
+
+            KeyAction::Run(cmd) => {
+                info!(cmd, "Starting program");
+
+                if let Err(e) = Command::new(&cmd)
+                    .envs(
+                        self.socket_name
+                            .clone()
+                            .map(|v| ("WAYLAND_DISPLAY", v))
+                            .into_iter()
+                            .chain(
+                                // #[cfg(feature = "xwayland")]
+                                // self.xdisplay.map(|v| ("DISPLAY", format!(":{}", v))),
+                                // #[cfg(not(feature = "xwayland"))]
+                                None,
+                            ),
+                    )
+                    .spawn()
+                {
+                    error!(cmd, err = %e, "Failed to start program");
+                }
+            }
+
+            KeyAction::TogglePreview => {
+                // self.show_window_preview = !self.show_window_preview;
+            }
+
+            KeyAction::ToggleDecorations => {}
+
+            _ => unreachable!(
+                "Common key action handler encountered backend specific action {:?}",
+                action
+            ),
+        }
+    }
+
+    pub fn keyboard_key_to_action<B: InputBackend>(
+        &mut self,
+        evt: B::KeyboardKeyEvent,
+    ) -> KeyAction {
+        let keycode = evt.key_code();
+        let state = evt.state();
+        debug!(keycode, ?state, "key");
+        let serial = SERIAL_COUNTER.next_serial();
+        let time = Event::time_msec(&evt);
+        let mut suppressed_keys = self.suppressed_keys.clone();
+        let keyboard = self.seat.get_keyboard().unwrap();
+
+        // for layer in self.layer_shell_state.layer_surfaces().rev() {
+        //     let data = with_states(layer.wl_surface(), |states| {
+        //         *states.cached_state.current::<LayerSurfaceCachedState>()
+        //     });
+        //     if data.keyboard_interactivity == KeyboardInteractivity::Exclusive
+        //         && (data.layer == WlrLayer::Top || data.layer == WlrLayer::Overlay)
+        //     {
+        //         let surface = self.space.outputs().find_map(|o| {
+        //             let map = layer_map_for_output(o);
+        //             let cloned = map.layers().find(|l| l.layer_surface() == &layer).cloned();
+        //             cloned
+        //         });
+        //         if let Some(surface) = surface {
+        //             keyboard.set_focus(self, Some(surface.into()), serial);
+        //             keyboard.input::<(), _>(self, keycode, state, serial, time, |_, _, _| {
+        //                 FilterResult::Forward
+        //             });
+        //             return KeyAction::None;
+        //         };
+        //     }
+        // }
+
+        let inhibited = self
+            .space
+            .element_under(self.pointer.current_location())
+            .and_then(|(window, _)| {
+                let surface = window.wl_surface()?;
+                self.seat.keyboard_shortcuts_inhibitor_for_surface(&surface)
+            })
+            .map(|inhibitor| inhibitor.is_active())
+            .unwrap_or(false);
+
+        let action = keyboard
+            .input(
+                self,
+                keycode,
+                state,
+                serial,
+                time,
+                |_, modifiers, handle| {
+                    let keysym = handle.modified_sym();
+
+                    debug!(
+                        ?state,
+                        mods = ?modifiers,
+                        keysym = ::xkbcommon::xkb::keysym_get_name(keysym),
+                        "keysym"
+                    );
+
+                    // If the key is pressed and triggered a action
+                    // we will not forward the key to the client.
+                    // Additionally add the key to the suppressed keys
+                    // so that we can decide on a release if the key
+                    // should be forwarded to the client or not.
+                    if let KeyState::Pressed = state {
+                        if !inhibited {
+                            let action = process_keyboard_shortcut(*modifiers, keysym);
+
+                            if action.is_some() {
+                                suppressed_keys.push(keysym);
+                            }
+
+                            action
+                                .map(FilterResult::Intercept)
+                                .unwrap_or(FilterResult::Forward)
+                        } else {
+                            FilterResult::Forward
+                        }
+                    } else {
+                        let suppressed = suppressed_keys.contains(&keysym);
+                        if suppressed {
+                            suppressed_keys.retain(|k| *k != keysym);
+                            FilterResult::Intercept(KeyAction::None)
+                        } else {
+                            FilterResult::Forward
+                        }
+                    }
+                },
+            )
+            .unwrap_or(KeyAction::None);
+
+        self.suppressed_keys = suppressed_keys;
+        action
+    }
+
+    pub fn process_input_event_winit<I: InputBackend>(
+        &mut self,
+        // dh: &DisplayHandle,
+        event: InputEvent<I>,
+    ) {
         match event {
             InputEvent::Keyboard { event, .. } => {
                 let serial = SERIAL_COUNTER.next_serial();
@@ -70,11 +243,10 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                         .map(|(w, l)| (w.clone(), l))
                     {
                         self.space.raise_element(&window, true);
-                        keyboard.set_focus(
-                            self,
-                            Some(window.toplevel().wl_surface().clone()),
-                            serial,
+                        let focustarget = FocusTarget::Window(
+                            crate::handlers::element::WindowElement::Wayland(window),
                         );
+                        keyboard.set_focus(self, Some(focustarget), serial);
                         self.space.elements().for_each(|window| {
                             window.toplevel().send_pending_configure();
                         });
@@ -83,7 +255,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                             window.set_activated(false);
                             window.toplevel().send_pending_configure();
                         });
-                        keyboard.set_focus(self, Option::<WlSurface>::None, serial);
+                        keyboard.set_focus(self, None, serial);
                     }
                 };
 
@@ -131,5 +303,39 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             }
             _ => {}
         }
+    }
+}
+
+fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Option<KeyAction> {
+    if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace
+        || modifiers.logo && keysym == Keysym::q
+    {
+        // ctrl+alt+backspace = quit
+        // logo + q = quit
+        Some(KeyAction::Quit)
+    } else if (xkb::KEY_XF86Switch_VT_1..=xkb::KEY_XF86Switch_VT_12).contains(&keysym.raw()) {
+        // VTSwitch
+        Some(KeyAction::VtSwitch(
+            (keysym.raw() - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
+        ))
+    } else if modifiers.logo && keysym == Keysym::Return {
+        // run terminal
+        Some(KeyAction::Run("weston-terminal".into()))
+    } else if modifiers.logo && (xkb::KEY_1..=xkb::KEY_9).contains(&keysym.raw()) {
+        Some(KeyAction::Screen((keysym.raw() - xkb::KEY_1) as usize))
+    } else if modifiers.logo && modifiers.shift && keysym == Keysym::M {
+        Some(KeyAction::ScaleDown)
+    } else if modifiers.logo && modifiers.shift && keysym == Keysym::P {
+        Some(KeyAction::ScaleUp)
+    } else if modifiers.logo && modifiers.shift && keysym == Keysym::W {
+        Some(KeyAction::TogglePreview)
+    } else if modifiers.logo && modifiers.shift && keysym == Keysym::R {
+        Some(KeyAction::RotateOutput)
+    } else if modifiers.logo && modifiers.shift && keysym == Keysym::T {
+        Some(KeyAction::ToggleTint)
+    } else if modifiers.logo && modifiers.shift && keysym == Keysym::D {
+        Some(KeyAction::ToggleDecorations)
+    } else {
+        None
     }
 }
