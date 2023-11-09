@@ -3,6 +3,10 @@ name = "screen-composer"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+rust-version = "1.65.0"
+
+# [build]
+# rustc-wrapper = "/home/riccardo/.cargo/bin/sccache"
 
 [dependencies]
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
@@ -12,20 +16,79 @@ gl-rs = { package = "gl", version = "0.14.0" }
 wayland-server = "0.30.0"
 wayland-scanner = "0.30.0"
 wayland-backend = "0.1.0"
-image = "0.24.5"
+image = { version = "0.24.5", optional = true }
+xcursor = { version = "0.3.3", optional = true }
+xkbcommon = "0.6.0"
+
 tracing = { version = "0.1.37", features = [
     "max_level_trace",
     "release_max_level_debug",
 ] }
+fps_ticker = { version = "1.0.0", optional = true }
+renderdoc = { version = "0.11.0", optional = true }
+smithay-drm-extras = { path = "../smithay/smithay-drm-extras", optional = true }
+puffin_http = { version = "0.13", optional = true }
 profiling = { version = "1.0" }
+thiserror = "1"
 
 [dependencies.smithay]
 path = "../smithay"
 default-features = false
-features = ["backend_winit", "wayland_frontend", "desktop"]
+features = [
+    "backend_winit",
+    "wayland_frontend",
+    "desktop",
+    "backend_gbm",
+    "backend_drm",
+]
 
 [dependencies.skia-safe]
 version = "0.62"
 
+[dependencies.x11rb]
+default-features = false
+features = ["composite"]
+optional = true
+version = "0.12.0"
+
+
 [workspace]
 members = ["wlcs_screencomposer"]
+
+
+[features]
+default = ["egl", "winit", "x11", "udev", "xwayland", "debug"]
+debug = ["fps_ticker", "image/png", "renderdoc"]
+egl = ["smithay/use_system_lib", "smithay/backend_egl"]
+test_all_features = ["default", "debug"]
+udev = [
+    "smithay-drm-extras",
+    "smithay/backend_libinput",
+    "smithay/backend_udev",
+    "smithay/backend_drm",
+    "smithay/backend_gbm",
+    "smithay/backend_vulkan",
+    "smithay/backend_egl",
+    "smithay/backend_session_libseat",
+    "image",
+    "smithay/renderer_gl",
+    "smithay/renderer_multi",
+    "xcursor",
+]
+winit = ["smithay/backend_winit", "smithay/backend_drm"]
+x11 = [
+    "smithay/backend_x11",
+    "x11rb",
+    "smithay/renderer_gl",
+    "smithay/backend_vulkan",
+]
+xwayland = [
+    "smithay/xwayland",
+    "x11rb",
+    "smithay/x11rb_event_source",
+    "xcursor",
+]
+profile-with-puffin = ["profiling/profile-with-puffin", "puffin_http"]
+profile-with-tracy = ["profiling/profile-with-tracy"]
+profile-with-tracy-mem = ["profile-with-tracy"]
+renderer_sync = []

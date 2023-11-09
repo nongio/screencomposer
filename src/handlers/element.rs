@@ -43,7 +43,7 @@ use smithay::{
     xwayland::X11Surface,
 };
 
-use crate::state::ScreenComposer;
+use crate::{renderer::WindowRenderElement, state::ScreenComposer};
 
 use super::ssd::HEADER_BAR_HEIGHT;
 
@@ -647,22 +647,6 @@ impl SpaceElement for WindowElement {
             WindowElement::Wayland(w) => SpaceElement::refresh(w),
             #[cfg(feature = "xwayland")]
             WindowElement::X11(w) => SpaceElement::refresh(w),
-        }
-    }
-}
-
-render_elements!(
-    pub WindowRenderElement<R> where R: ImportAll + ImportMem;
-    Window=WaylandSurfaceRenderElement<R>,
-    Decoration=SolidColorRenderElement,
-);
-
-impl<R: Renderer> std::fmt::Debug for WindowRenderElement<R> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Window(arg0) => f.debug_tuple("Window").field(arg0).finish(),
-            Self::Decoration(arg0) => f.debug_tuple("Decoration").field(arg0).finish(),
-            Self::_GenericCatcher(arg0) => f.debug_tuple("_GenericCatcher").field(arg0).finish(),
         }
     }
 }

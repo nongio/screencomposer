@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // };
 
     let mut event_loop: EventLoop<'static, _> = EventLoop::try_new().unwrap();
-    let mut state: ScreenComposer<UdevData>;
+    let mut state;
 
     let mut args = std::env::args().skip(1);
     let flag = args.next();
@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     "--tty-udev : Run screen-composer as a tty udev client (requires root if without logind).",
     // ];
 
-    // state = init_winit(event_loop.handle())?;
+    // state = init_winit(event_loop.handle()).unwrap();
     state = init_udev(event_loop.handle()).unwrap();
     // match arg.as_ref().map(|s| &s[..]) {
     //     Some("--winit") => {

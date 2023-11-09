@@ -1,190 +1,466 @@
-use std::time::Duration;
+#[cfg(feature = "xwayland")]
+use std::ffi::OsString;
+use std::{
+    sync::{atomic::Ordering, Mutex},
+    time::Duration,
+};
 
-use crate::{
-    state::{Backend, ScreenComposer},
-    CalloopData,
+#[cfg(feature = "egl")]
+use smithay::backend::renderer::ImportEgl;
+#[cfg(feature = "debug")]
+use smithay::{
+    backend::{allocator::Fourcc, renderer::ImportMem},
+    reexports::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle},
 };
 
 use smithay::{
     backend::{
-        renderer::{damage::OutputDamageTracker, gles::GlesRenderer},
-        winit::{self, WinitEvent, WinitEventLoop, WinitGraphicsBackend},
-    },
-    output::{Mode, Output, PhysicalProperties, Scale, Subpixel},
-    reexports::{
-        calloop::{
-            timer::{TimeoutAction, Timer},
-            LoopHandle,
+        allocator::dmabuf::Dmabuf,
+        egl::EGLDevice,
+        renderer::{
+            damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
+            element::AsRenderElements,
+            gles::{GlesRenderer, GlesTexture},
+            ImportDma, ImportMemWl,
         },
-        wayland_server::{protocol::wl_surface::WlSurface, Display},
-        winit::{dpi::LogicalSize, window::WindowBuilder},
+        winit::{self, WinitEvent, WinitGraphicsBackend},
+        SwapBuffersError,
     },
-    utils::Transform,
+    delegate_dmabuf,
+    input::pointer::{CursorImageAttributes, CursorImageStatus},
+    output::{Mode, Output, PhysicalProperties, Subpixel},
+    reexports::{
+        calloop::{EventLoop, LoopHandle},
+        wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
+        wayland_server::{protocol::wl_surface, Display},
+        winit::platform::pump_events::PumpStatus,
+    },
+    utils::{IsAlive, Scale, Transform},
+    wayland::{
+        compositor,
+        dmabuf::{
+            DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState,
+            ImportError,
+        },
+    },
 };
-use tracing::{error, trace};
+use tracing::{error, info, warn};
+
+use crate::{
+    cursor::PointerElement,
+    renderer::{render_output, CustomRenderElements},
+    state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
+    CalloopData,
+};
+
+pub const OUTPUT_NAME: &str = "winit";
 
 pub struct WinitData {
     backend: WinitGraphicsBackend<GlesRenderer>,
-    pub output: Output,
     damage_tracker: OutputDamageTracker,
-    // dmabuf_state: (DmabufState, DmabufGlobal, Option<DmabufFeedback>),
+    dmabuf_state: (DmabufState, DmabufGlobal, Option<DmabufFeedback>),
     full_redraw: u8,
     #[cfg(feature = "debug")]
     pub fps: fps_ticker::Fps,
 }
 
+impl DmabufHandler for ScreenComposer<WinitData> {
+    fn dmabuf_state(&mut self) -> &mut DmabufState {
+        &mut self.backend_data.dmabuf_state.0
+    }
+
+    fn dmabuf_imported(
+        &mut self,
+        _global: &DmabufGlobal,
+        dmabuf: Dmabuf,
+    ) -> Result<(), ImportError> {
+        self.backend_data
+            .backend
+            .renderer()
+            .import_dmabuf(&dmabuf, None)
+            .map(|_| ())
+            .map_err(|_| ImportError::Failed)
+    }
+}
+delegate_dmabuf!(ScreenComposer<WinitData>);
+
 impl Backend for WinitData {
     fn seat_name(&self) -> String {
         String::from("winit")
     }
-    fn reset_buffers(&mut self, _: &Output) {
+    fn reset_buffers(&mut self, _output: &Output) {
         self.full_redraw = 4;
     }
-    fn early_import(&mut self, _surface: &WlSurface) {}
+    fn early_import(&mut self, _surface: &wl_surface::WlSurface) {}
 }
-
-// struct LayerCommitTexture {
-//     pub texture: u32,
-//     pub commit_counter: CommitCounter,
-// }
 
 pub fn init_winit(
     event_loop_handle: LoopHandle<'static, CalloopData<WinitData>>,
 ) -> Result<ScreenComposer<WinitData>, &'static str> {
-    let display: Display<ScreenComposer<WinitData>> = Display::new().unwrap();
-    let display_handle = display.handle();
+    // let mut event_loop = EventLoop::try_new().unwrap();
+    let display = Display::<ScreenComposer<WinitData>>::new().unwrap();
+    let mut display_handle = display.handle();
 
-    let (mut backend, mut winit_event_loop) = winit::init_from_builder(
-        WindowBuilder::new()
-            .with_inner_size(LogicalSize::new(2256.0 / 1.5, 1504.0 / 1.5))
-            .with_title("ScreenComposer")
-            .with_visible(true),
-    )
-    .unwrap();
+    #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
+    let (mut backend, mut winit) = match winit::init::<GlesRenderer>() {
+        Ok(ret) => ret,
+        Err(err) => {
+            error!("Failed to initialize Winit backend: {}", err);
+            return Err("Failed to initialize Winit backend");
+        }
+    };
     let size = backend.window_size();
-    // let scale = backend.window().scale_factor();
 
     let mode = Mode {
         size,
         refresh: 60_000,
     };
-
     let output = Output::new(
-        "winit".to_string(),
+        OUTPUT_NAME.to_string(),
         PhysicalProperties {
             size: (0, 0).into(),
             subpixel: Subpixel::Unknown,
-            make: "ScreenComposer".into(),
+            make: "Smithay".into(),
             model: "Winit".into(),
         },
     );
-
-    // let sample_count: usize = 0;
-    // let stencil_bits: usize = 8;
-
-    let egl_surface = backend.egl_surface();
-    let renderer: &mut GlesRenderer = backend.renderer();
-    let egl_context = renderer.egl_context();
-    unsafe {
-        let res = egl_context.make_current_with_surface(&egl_surface);
-        res.unwrap_or_else(|err| {
-            error!("Error making context current: {:?}", err);
-        })
-    }
-    backend.submit(None).unwrap();
-
     let _global = output.create_global::<ScreenComposer<WinitData>>(&display.handle());
     output.change_current_state(
         Some(mode),
         Some(Transform::Flipped180),
-        Some(Scale::Fractional(1.5)),
+        None,
         Some((0, 0).into()),
     );
     output.set_preferred(mode);
 
-    let damage_tracker: OutputDamageTracker = OutputDamageTracker::from_output(&output);
+    // #[cfg(feature = "debug")]
+    // let fps_image = image::io::Reader::with_format(
+    //     std::io::Cursor::new(FPS_NUMBERS_PNG),
+    //     image::ImageFormat::Png,
+    // )
+    // .decode()
+    // .unwrap();
+    // #[cfg(feature = "debug")]
+    // let fps_texture = backend
+    //     .renderer()
+    //     .import_memory(
+    //         &fps_image.to_rgba8(),
+    //         Fourcc::Abgr8888,
+    //         (fps_image.width() as i32, fps_image.height() as i32).into(),
+    //         false,
+    //     )
+    //     .expect("Unable to upload FPS texture");
+    // #[cfg(feature = "debug")]
+    // let mut fps_element = FpsElement::new(fps_texture);
 
-    let winit_data = WinitData {
-        backend,
-        output: output.clone(),
-        damage_tracker,
-        fps: fps_ticker::Fps::default(),
-        // dmabuf_state,
-        full_redraw: 0,
+    let render_node = EGLDevice::device_for_display(backend.renderer().egl_context().display())
+        .and_then(|device| device.try_get_render_node());
+
+    let dmabuf_default_feedback = match render_node {
+        Ok(Some(node)) => {
+            let dmabuf_formats = backend.renderer().dmabuf_formats().collect::<Vec<_>>();
+            let dmabuf_default_feedback = DmabufFeedbackBuilder::new(node.dev_id(), dmabuf_formats)
+                .build()
+                .unwrap();
+            Some(dmabuf_default_feedback)
+        }
+        Ok(None) => {
+            warn!("failed to query render node, dmabuf will use v3");
+            None
+        }
+        Err(err) => {
+            warn!(?err, "failed to egl device for display, dmabuf will use v3");
+            None
+        }
     };
 
-    let timer = Timer::immediate();
-    let mut state =
-        ScreenComposer::new(event_loop_handle.clone(), display_handle, winit_data, true);
+    // if we failed to build dmabuf feedback we fall back to dmabuf v3
+    // Note: egl on Mesa requires either v4 or wl_drm (initialized with bind_wl_display)
+    let dmabuf_state = if let Some(default_feedback) = dmabuf_default_feedback {
+        let mut dmabuf_state = DmabufState::new();
+        let dmabuf_global = dmabuf_state
+            .create_global_with_default_feedback::<ScreenComposer<WinitData>>(
+                &display.handle(),
+                &default_feedback,
+            );
+        (dmabuf_state, dmabuf_global, Some(default_feedback))
+    } else {
+        let dmabuf_formats = backend.renderer().dmabuf_formats().collect::<Vec<_>>();
+        let mut dmabuf_state = DmabufState::new();
+        let dmabuf_global = dmabuf_state
+            .create_global::<ScreenComposer<WinitData>>(&display.handle(), dmabuf_formats);
+        (dmabuf_state, dmabuf_global, None)
+    };
 
+    #[cfg(feature = "egl")]
+    if backend
+        .renderer()
+        .bind_wl_display(&display.handle())
+        .is_ok()
+    {
+        info!("EGL hardware-acceleration enabled");
+    };
+
+    let data = {
+        let damage_tracker = OutputDamageTracker::from_output(&output);
+
+        WinitData {
+            backend,
+            damage_tracker,
+            dmabuf_state,
+            full_redraw: 0,
+            #[cfg(feature = "debug")]
+            fps: fps_ticker::Fps::default(),
+        }
+    };
+    let mut state = ScreenComposer::new(event_loop_handle.clone(), display.handle(), data, true);
+    state
+        .shm_state
+        .update_formats(state.backend_data.backend.renderer().shm_formats());
     state.space.map_output(&output, (0, 0));
 
-    event_loop_handle
-        .insert_source(timer, move |_, _data, calloop_data| {
-            winit_dispatch(
-                // &mut backend,
-                &mut winit_event_loop,
-                calloop_data,
-                // &mut damage_tracker,
-            )
-            .unwrap();
-            TimeoutAction::ToDuration(Duration::from_millis(16))
-        })
-        .unwrap();
+    info!("Initialization completed, starting the main loop.");
 
-    Ok(state)
-}
+    let mut pointer_element = PointerElement::<GlesTexture>::default();
 
-pub fn winit_dispatch(
-    // backend: &mut WinitGraphicsBackend<GlesRenderer>,
-    winit: &mut WinitEventLoop,
-    data: &mut CalloopData<WinitData>,
-    // output: &Output,
-    // _damage_tracker: &mut OutputDamageTracker,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let res = winit.dispatch_new_events(|event| match event {
-        WinitEvent::Resized { size, .. } => {
-            data.state.backend_data.output.change_current_state(
-                Some(Mode {
+    while state.running.load(Ordering::SeqCst) {
+        let status = winit.dispatch_new_events(|event| match event {
+            WinitEvent::Resized { size, .. } => {
+                // We only have one output
+                let output = state.space.outputs().next().unwrap().clone();
+                state.space.map_output(&output, (0, 0));
+                let mode = Mode {
                     size,
                     refresh: 60_000,
-                }),
-                None,
-                None,
-                None,
-            );
-        }
-        WinitEvent::Input(event) => {
-            if let smithay::backend::input::InputEvent::Keyboard { event, .. } = event {
-                trace!("winit event input: {:?}", event);
+                };
+                output.change_current_state(Some(mode), None, None, None);
+                output.set_preferred(mode);
+                // TODO
+                // crate::shell::fixup_positions(&mut state.space, state.pointer.current_location());
             }
-            data.state.process_input_event_winit(event)
+            WinitEvent::Input(event) => {
+                // state.process_input_event_windowed(&display_handle, event, OUTPUT_NAME)
+            }
+            _ => (),
+        });
+
+        if let PumpStatus::Exit(_) = status {
+            state.running.store(false, Ordering::SeqCst);
+            break;
         }
-        WinitEvent::Redraw => {
-            // let now = instant.elapsed().as_secs_f64();
-            // let frame_number = (now / 0.016).floor() as i32;
-            // if update_frame != frame_number {
-            // update_frame = frame_number;
-            let dt = 0.016;
-            // state.needs_redraw =
-            data.state.engine.update(dt);
-            // if needs_redraw {
-            // env.windowed_context.window().request_redraw();
-            // draw_frame = -1;
-            // }
-            // }
+
+        // drawing logic
+        {
+            let backend = &mut state.backend_data.backend;
+
+            let mut cursor_guard = state.cursor_status.lock().unwrap();
+
+            // draw the cursor as relevant
+            // reset the cursor if the surface is no longer alive
+            let mut reset = false;
+            if let CursorImageStatus::Surface(ref surface) = *cursor_guard {
+                reset = !surface.alive();
+            }
+            if reset {
+                *cursor_guard = CursorImageStatus::default_named();
+            }
+            let cursor_visible = !matches!(*cursor_guard, CursorImageStatus::Surface(_));
+
+            pointer_element.set_status(cursor_guard.clone());
+
+            // #[cfg(feature = "debug")]
+            // let fps = state.backend_data.fps.avg().round() as u32;
+            // #[cfg(feature = "debug")]
+            // fps_element.update_fps(fps);
+
+            let full_redraw = &mut state.backend_data.full_redraw;
+            *full_redraw = full_redraw.saturating_sub(1);
+            let space = &mut state.space;
+            let damage_tracker = &mut state.backend_data.damage_tracker;
+
+            let dnd_icon = state.dnd_icon.as_ref();
+
+            let scale = Scale::from(output.current_scale().fractional_scale());
+            let cursor_hotspot = if let CursorImageStatus::Surface(ref surface) = *cursor_guard {
+                compositor::with_states(surface, |states| {
+                    states
+                        .data_map
+                        .get::<Mutex<CursorImageAttributes>>()
+                        .unwrap()
+                        .lock()
+                        .unwrap()
+                        .hotspot
+                })
+            } else {
+                (0, 0).into()
+            };
+            let cursor_pos = state.pointer.current_location() - cursor_hotspot.to_f64();
+            let cursor_pos_scaled = cursor_pos.to_physical(scale).to_i32_round();
+
+            // #[cfg(feature = "debug")]
+            // let mut renderdoc = state.renderdoc.as_mut();
+            let render_res = backend.bind().and_then(|_| {
+                // #[cfg(feature = "debug")]
+                // if let Some(renderdoc) = renderdoc.as_mut() {
+                //     renderdoc.start_frame_capture(
+                //         backend.renderer().egl_context().get_context_handle(),
+                //         backend
+                //             .window()
+                //             .window_handle()
+                //             .map(|handle| {
+                //                 if let RawWindowHandle::Wayland(handle) = handle.as_raw() {
+                //                     handle.surface.as_ptr()
+                //                 } else {
+                //                     std::ptr::null_mut()
+                //                 }
+                //             })
+                //             .unwrap_or_else(|_| std::ptr::null_mut()),
+                //     );
+                // }
+                let age = if *full_redraw > 0 {
+                    0
+                } else {
+                    backend.buffer_age().unwrap_or(0)
+                };
+
+                let renderer = backend.renderer();
+
+                let mut elements = Vec::<CustomRenderElements<GlesRenderer>>::new();
+
+                elements.extend(pointer_element.render_elements(
+                    renderer,
+                    cursor_pos_scaled,
+                    scale,
+                    1.0,
+                ));
+
+                // draw the dnd icon if any
+                if let Some(surface) = dnd_icon {
+                    if surface.alive() {
+                        elements.extend(AsRenderElements::<GlesRenderer>::render_elements(
+                            &smithay::desktop::space::SurfaceTree::from_surface(surface),
+                            renderer,
+                            cursor_pos_scaled,
+                            scale,
+                            1.0,
+                        ));
+                    }
+                }
+
+                // #[cfg(feature = "debug")]
+                // elements.push(CustomRenderElements::Fps(fps_element.clone()));
+
+                render_output(&output, space, elements, renderer, damage_tracker, age).map_err(
+                    |err| match err {
+                        OutputDamageTrackerError::Rendering(err) => err.into(),
+                        _ => unreachable!(),
+                    },
+                )
+            });
+
+            match render_res {
+                Ok(render_output_result) => {
+                    let has_rendered = render_output_result.damage.is_some();
+                    if let Some(damage) = render_output_result.damage {
+                        if let Err(err) = backend.submit(Some(&*damage)) {
+                            warn!("Failed to submit buffer: {}", err);
+                        }
+                    }
+
+                    // #[cfg(feature = "debug")]
+                    // if let Some(renderdoc) = renderdoc.as_mut() {
+                    //     renderdoc.end_frame_capture(
+                    //         backend.renderer().egl_context().get_context_handle(),
+                    //         backend
+                    //             .window()
+                    //             .window_handle()
+                    //             .map(|handle| {
+                    //                 if let RawWindowHandle::Wayland(handle) = handle.as_raw() {
+                    //                     handle.surface.as_ptr()
+                    //                 } else {
+                    //                     std::ptr::null_mut()
+                    //                 }
+                    //             })
+                    //             .unwrap_or_else(|_| std::ptr::null_mut()),
+                    //     );
+                    // }
+
+                    backend.window().set_cursor_visible(cursor_visible);
+
+                    // Send frame events so that client start drawing their next frame
+                    let time = state.clock.now();
+                    post_repaint(
+                        &output,
+                        &render_output_result.states,
+                        &state.space,
+                        None,
+                        time,
+                    );
+
+                    if has_rendered {
+                        let mut output_presentation_feedback = take_presentation_feedback(
+                            &output,
+                            &state.space,
+                            &render_output_result.states,
+                        );
+                        output_presentation_feedback.presented(
+                            time,
+                            output
+                                .current_mode()
+                                .map(|mode| Duration::from_secs_f64(1_000f64 / mode.refresh as f64))
+                                .unwrap_or_default(),
+                            0,
+                            wp_presentation_feedback::Kind::Vsync,
+                        )
+                    }
+                }
+                Err(SwapBuffersError::ContextLost(err)) => {
+                    // #[cfg(feature = "debug")]
+                    // if let Some(renderdoc) = renderdoc.as_mut() {
+                    //     renderdoc.discard_frame_capture(
+                    //         backend.renderer().egl_context().get_context_handle(),
+                    //         backend
+                    //             .window()
+                    //             .window_handle()
+                    //             .map(|handle| {
+                    //                 if let RawWindowHandle::Wayland(handle) = handle.as_raw() {
+                    //                     handle.surface.as_ptr()
+                    //                 } else {
+                    //                     std::ptr::null_mut()
+                    //                 }
+                    //             })
+                    //             .unwrap_or_else(|_| std::ptr::null_mut()),
+                    //     );
+                    // }
+
+                    error!("Critical Rendering Error: {}", err);
+                    state.running.store(false, Ordering::SeqCst);
+                }
+                Err(err) => warn!("Rendering error: {}", err),
+            }
         }
-        _ => (),
-    });
 
-    // if let Err(x) = res {
-    //     // Stop the loop
-    //     // state.event_loop_handle.
+        // let mut calloop_data = CalloopData {
+        //     state,
+        //     // display_handle,
+        // };
+        // let result = event_loop_handle.dispatch(Some(Duration::from_millis(1)), &mut calloop_data);
+        // CalloopData {
+        //     state,
+        //     // display_handle,
+        // } = calloop_data;
 
-    //     return Ok(());
-    // } else {
-    //     res?;
-    // }
+        // if result.is_err() {
+        //     state.running.store(false, Ordering::SeqCst);
+        // } else {
+        //     state.space.refresh();
+        //     state.popups.cleanup();
+        //     display_handle.flush_clients().unwrap();
+        // }
 
-    Ok(())
+        // #[cfg(feature = "debug")]
+        // state.backend_data.fps.tick();
+    }
+
+    Ok(state)
 }

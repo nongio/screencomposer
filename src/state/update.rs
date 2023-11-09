@@ -1,6 +1,6 @@
 use std::{borrow::BorrowMut, time::Duration};
 
-use layers::prelude::{self, DrawScene};
+use layers::prelude::{self, DrawScene, Layer};
 
 use smithay::{
     backend::{
@@ -19,14 +19,16 @@ use smithay::{
 };
 use tracing::error;
 
+use crate::renderer::layers_renderer::LayersRenderer;
+
 use super::{Backend, ScreenComposer, SurfaceLayer};
 
-impl<BackendData: Backend> super::ScreenComposer<BackendData> {
+impl<BackendData: Backend> ScreenComposer<BackendData> {
     /// map surfaces buffer content to engine Images
     /// it requires a backend renderer to import the surfaces in GLes
-    pub fn map_surface_textures(&mut self, backend: &mut WinitGraphicsBackend<GlesRenderer>) {
+    pub fn map_surface_textures(&mut self, backend: &mut WinitGraphicsBackend<LayersRenderer>) {
         // let egl_surface = backend.egl_surface();
-        let renderer: &mut GlesRenderer = backend.renderer();
+        let renderer: &mut LayersRenderer = backend.renderer();
 
         // let space = self.space;
         // let layers_map = self.layers_map;
@@ -87,7 +89,7 @@ impl<BackendData: Backend> super::ScreenComposer<BackendData> {
         let elements: Vec<WlSurface> = elements.collect();
         elements.iter().for_each(|surface| {
             compositor::with_states(&surface, |states| {
-                WaylandSurfaceRenderElement::<GlesRenderer>::from_surface(
+                WaylandSurfaceRenderElement::<LayersRenderer>::from_surface(
                     renderer,
                     &surface,
                     states,
@@ -107,7 +109,7 @@ impl<BackendData: Backend> super::ScreenComposer<BackendData> {
 
                     let commit = data.current_commit();
 
-                    if let Some(texture) = data.texture::<GlesRenderer>(renderer.id()) {
+                    if let Some(texture) = data.texture::<LayersRenderer>(renderer.id()) {
                         let gl_target = gl_rs::TEXTURE_2D;
 
                         if let Some(SurfaceLayer {
@@ -119,15 +121,15 @@ impl<BackendData: Backend> super::ScreenComposer<BackendData> {
                             let size = data.buffer_size().unwrap();
 
                             if commit != commit_counter {
-                                layer.set_content_from_texture(
-                                    context,
-                                    texture.tex_id(),
-                                    gl_target,
-                                    prelude::Point {
-                                        x: size.w as f32,
-                                        y: size.h as f32,
-                                    },
-                                );
+                                // layer.set_content_from_texture(
+                                //     context,
+                                //     texture.tex_id(),
+                                //     gl_target,
+                                //     prelude::Point {
+                                //         x: size.w as f32,
+                                //         y: size.h as f32,
+                                //     },
+                                // );
                                 // println!("set_content {:?} commit {:?}", surface_id, commit);
                                 self.map_layer(surface_id, layer, commit, parent);
                             }
@@ -138,7 +140,7 @@ impl<BackendData: Backend> super::ScreenComposer<BackendData> {
         });
     }
 
-    pub fn egl_make_current(&self, egl_surface: &mut EGLSurface, renderer: &mut GlesRenderer) {
+    pub fn egl_make_current(&self, egl_surface: &mut EGLSurface, renderer: &mut LayersRenderer) {
         // let egl_surface = backend.egl_surface();
         // let renderer: &mut GlesRenderer = backend.renderer();
         let egl_context = renderer.egl_context();

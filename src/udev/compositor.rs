@@ -281,21 +281,21 @@ pub fn render_surface<'a, 'b>(
         ));
 
         // draw the dnd icon if applicable
-        {
-            if let Some(wl_surface) = dnd_icon.as_ref() {
-                if wl_surface.alive() {
-                    custom_elements.extend(
-                        AsRenderElements::<UdevRenderer<'a, 'b>>::render_elements(
-                            &SurfaceTree::from_surface(wl_surface),
-                            renderer,
-                            cursor_pos_scaled,
-                            scale,
-                            1.0,
-                        ),
-                    );
-                }
-            }
-        }
+        // {
+        //     if let Some(wl_surface) = dnd_icon.as_ref() {
+        //         if wl_surface.alive() {
+        //             custom_elements.extend(
+        //                 AsRenderElements::<UdevRenderer<'a, 'b>>::render_elements(
+        //                     &SurfaceTree::from_surface(wl_surface),
+        //                     renderer,
+        //                     cursor_pos_scaled,
+        //                     scale,
+        //                     1.0,
+        //                 ),
+        //             );
+        //         }
+        //     }
+        // }
     }
 
     #[cfg(feature = "debug")]

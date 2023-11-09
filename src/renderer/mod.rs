@@ -1,5 +1,6 @@
 use smithay::{
     backend::renderer::{
+        damage::{Error as OutputDamageTrackerError, OutputDamageTracker, RenderOutputResult},
         element::{
             solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement,
             texture::TextureRenderElement, RenderElement, Wrap,
@@ -12,7 +13,7 @@ use smithay::{
 
 pub mod layers_renderer;
 
-use crate::debug::fps::FpsElement;
+use crate::{debug::fps::FpsElement, handlers::element::WindowElement};
 
 pub static CLEAR_COLOR: [f32; 4] = [0.8, 0.8, 0.9, 1.0];
 pub static CLEAR_COLOR_FULLSCREEN: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
@@ -32,22 +33,15 @@ impl<R: Renderer> std::fmt::Debug for LayersRenderElements<R> {
         }
     }
 }
+
 smithay::backend::renderer::element::render_elements! {
-    pub PointerRenderElement<R> where
-        R: ImportAll;
-    Surface=WaylandSurfaceRenderElement<R>,
-    Texture=TextureRenderElement<<R as Renderer>::TextureId>,
+pub OutputRenderElements<R, E> where R: ImportAll + ImportMem;
+Space=SpaceRenderElements<R, E>,
+Window=Wrap<E>,
+Custom=CustomRenderElements<R>,
+// Preview=CropRenderElement<RelocateRenderElement<RescaleRenderElement<WindowRenderElement<R>>>>,
 }
 
-impl<R: Renderer> std::fmt::Debug for PointerRenderElement<R> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Surface(arg0) => f.debug_tuple("Surface").field(arg0).finish(),
-            Self::Texture(arg0) => f.debug_tuple("Texture").field(arg0).finish(),
-            Self::_GenericCatcher(arg0) => f.debug_tuple("_GenericCatcher").field(arg0).finish(),
-        }
-    }
-}
 smithay::backend::renderer::element::render_elements! {
     pub CustomRenderElements<R> where
         R: ImportAll + ImportMem;
@@ -62,11 +56,26 @@ smithay::backend::renderer::element::render_elements! {
 }
 
 smithay::backend::renderer::element::render_elements! {
-pub OutputRenderElements<R, E> where R: ImportAll + ImportMem;
-Space=SpaceRenderElements<R, E>,
-Window=Wrap<E>,
-Custom=CustomRenderElements<R>,
-// Preview=CropRenderElement<RelocateRenderElement<RescaleRenderElement<WindowRenderElement<R>>>>,
+    pub PointerRenderElement<R> where
+        R: ImportAll;
+    Surface=WaylandSurfaceRenderElement<R>,
+    Texture=TextureRenderElement<<R as Renderer>::TextureId>,
+}
+
+smithay::backend::renderer::element::render_elements!(
+    pub WindowRenderElement<R> where R: ImportAll + ImportMem;
+    Window=WaylandSurfaceRenderElement<R>,
+    Decoration=SolidColorRenderElement,
+);
+
+impl<R: Renderer> std::fmt::Debug for PointerRenderElement<R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Surface(arg0) => f.debug_tuple("Surface").field(arg0).finish(),
+            Self::Texture(arg0) => f.debug_tuple("Texture").field(arg0).finish(),
+            Self::_GenericCatcher(arg0) => f.debug_tuple("_GenericCatcher").field(arg0).finish(),
+        }
+    }
 }
 
 impl<R: Renderer + ImportAll + ImportMem, E: RenderElement<R> + std::fmt::Debug> std::fmt::Debug
@@ -82,12 +91,6 @@ impl<R: Renderer + ImportAll + ImportMem, E: RenderElement<R> + std::fmt::Debug>
         }
     }
 }
-
-smithay::backend::renderer::element::render_elements!(
-    pub WindowRenderElement<R> where R: ImportAll + ImportMem;
-    Window=WaylandSurfaceRenderElement<R>,
-    Decoration=SolidColorRenderElement,
-);
 
 impl<R: Renderer> std::fmt::Debug for WindowRenderElement<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -154,4 +157,28 @@ where
 
     (output_render_elements, CLEAR_COLOR)
     // }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn render_output<R>(
+    output: &Output,
+    space: &Space<Window>,
+    custom_elements: impl IntoIterator<Item = CustomRenderElements<R>>,
+    renderer: &mut R,
+    damage_tracker: &mut OutputDamageTracker,
+    age: usize,
+    // show_window_preview: bool,
+) -> Result<RenderOutputResult, OutputDamageTrackerError<R>>
+where
+    R: Renderer + ImportAll + ImportMem,
+    R::TextureId: Clone + 'static,
+{
+    let (elements, clear_color) = output_elements(
+        output,
+        space,
+        custom_elements,
+        renderer,
+        // show_window_preview,
+    );
+    damage_tracker.render_output(renderer, age, &elements, clear_color)
 }
