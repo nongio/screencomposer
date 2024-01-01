@@ -145,8 +145,6 @@ fn draw(
                 canvas.restore_to_count(sc);
             }
         }
-
-        surface.flush_and_submit();
         
         Ok(())
     }

@@ -2,7 +2,7 @@ use smithay::{backend::renderer::{ImportAll, ImportMem, element::{Wrap, utils::{
 
 use crate::{shell::WindowRenderElement, skia_renderer::SkiaFrame};
 
-use super::{custom_render_elements::CustomRenderElements, skia_element::SkiaElement, layers_element::SceneElement};
+use super::{custom_render_elements::CustomRenderElements, skia_element::SkiaElement, scene_element::SceneElement};
 
 
 smithay::backend::renderer::element::render_elements! {

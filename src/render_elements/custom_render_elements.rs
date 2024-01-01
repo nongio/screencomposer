@@ -4,7 +4,7 @@ use smithay::backend::renderer::{ImportAll, ImportMem, element::{surface::Waylan
 
 use crate::{drawing::{PointerRenderElement, FpsElement}, skia_renderer::SkiaFrame};
 
-use super::{skia_element::SkiaElement, layers_element::SceneElement};
+use super::{skia_element::SkiaElement, scene_element::SceneElement};
 
 smithay::backend::renderer::element::render_elements! {
     pub CustomRenderElements<'a, R> where
