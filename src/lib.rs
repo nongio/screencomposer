@@ -1,17 +1,28 @@
-use state::{Backend, ScreenComposer};
+#![warn(rust_2018_idioms)]
+// If no backend is enabled, a large portion of the codebase is unused.
+// So silence this useless warning for the CI.
+#![cfg_attr(
+    not(any(feature = "winit", feature = "x11", feature = "udev")),
+    allow(dead_code, unused_imports)
+)]
 
-pub mod grabs;
-pub mod handlers;
-pub mod input;
-pub mod renderer;
-// pub mod sc_layer_shell;
+#![feature(core_panic)]
+
+#[cfg(any(feature = "udev", feature = "xwayland"))]
 pub mod cursor;
-pub mod debug;
+pub mod drawing;
 pub mod focus;
+pub mod input_handler;
+pub mod render;
+pub mod shell;
+pub mod render_elements;
+pub mod skia_renderer;
 pub mod state;
+#[cfg(feature = "udev")]
 pub mod udev;
+#[cfg(feature = "winit")]
 pub mod winit;
+#[cfg(feature = "x11")]
+pub mod x11;
 
-pub struct CalloopData<BackendData: Backend + 'static> {
-    pub state: ScreenComposer<BackendData>,
-}
+pub use state::{ScreenComposer, CalloopData, ClientState};

@@ -1,35 +1,33 @@
 use std::cell::RefCell;
 
-#[cfg(feature = "xwayland")]
-use smithay::xwayland::xwm::ResizeEdge as X11ResizeEdge;
 use smithay::{
-    desktop::Window,
+    desktop::space::SpaceElement,
     input::pointer::{
         AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent,
-        GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent,
-        GestureSwipeEndEvent, GestureSwipeUpdateEvent, GrabStartData as PointerGrabStartData,
-        MotionEvent, PointerGrab, PointerInnerHandle, RelativeMotionEvent,
+        GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent,
+        GestureSwipeUpdateEvent, GrabStartData as PointerGrabStartData, MotionEvent, PointerGrab,
+        PointerInnerHandle, RelativeMotionEvent,
     },
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
     utils::{IsAlive, Logical, Point, Serial, Size},
-    wayland::{compositor::with_states, seat::WaylandFocus, shell::xdg::SurfaceCachedState},
+    wayland::{compositor::with_states, shell::xdg::SurfaceCachedState},
 };
+#[cfg(feature = "xwayland")]
+use smithay::{utils::Rectangle, xwayland::xwm::ResizeEdge as X11ResizeEdge};
 
+use super::{SurfaceData, WindowElement};
 use crate::{
     focus::FocusTarget,
-    handlers::xdg_shell::SurfaceData,
-    state::{Backend, ScreenComposer},
+    state::{ScreenComposer, Backend},
 };
 
 pub struct MoveSurfaceGrab<B: Backend + 'static> {
     pub start_data: PointerGrabStartData<ScreenComposer<B>>,
-    pub window: Window,
+    pub window: WindowElement,
     pub initial_window_location: Point<i32, Logical>,
 }
 
-impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
-    for MoveSurfaceGrab<BackendData>
-{
+impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>> for MoveSurfaceGrab<BackendData> {
     fn motion(
         &mut self,
         data: &mut ScreenComposer<BackendData>,
@@ -236,16 +234,14 @@ pub enum ResizeState {
 
 pub struct ResizeSurfaceGrab<B: Backend + 'static> {
     pub start_data: PointerGrabStartData<ScreenComposer<B>>,
-    pub window: Window,
+    pub window: WindowElement,
     pub edges: ResizeEdge,
     pub initial_window_location: Point<i32, Logical>,
     pub initial_window_size: Size<i32, Logical>,
     pub last_window_size: Size<i32, Logical>,
 }
 
-impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
-    for ResizeSurfaceGrab<BackendData>
-{
+impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>> for ResizeSurfaceGrab<BackendData> {
     fn motion(
         &mut self,
         data: &mut ScreenComposer<BackendData>,
@@ -313,25 +309,22 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
         self.last_window_size = (new_window_width, new_window_height).into();
 
-        // match &self.window {
-        //     WindowElement::Wayland(w) => {
-        let xdg = self.window.toplevel();
-        xdg.with_pending_state(|state| {
-            state.states.set(xdg_toplevel::State::Resizing);
-            state.size = Some(self.last_window_size);
-        });
-        xdg.send_pending_configure();
-        // }
-        // #[cfg(feature = "xwayland")]
-        // WindowElement::X11(x11) => {
-        //     let location = data.space.element_location(&self.window).unwrap();
-        //     x11.configure(Rectangle::from_loc_and_size(
-        //         location,
-        //         self.last_window_size,
-        //     ))
-        //     .unwrap();
-        // }
-        // }
+        match &self.window {
+            WindowElement::Wayland(w) => {
+                let xdg = w.toplevel();
+                xdg.with_pending_state(|state| {
+                    state.states.set(xdg_toplevel::State::Resizing);
+                    state.size = Some(self.last_window_size);
+                });
+                xdg.send_pending_configure();
+            }
+            #[cfg(feature = "xwayland")]
+            WindowElement::X11(x11) => {
+                let location = data.space.element_location(&self.window).unwrap();
+                x11.configure(Rectangle::from_loc_and_size(location, self.last_window_size))
+                    .unwrap();
+            }
+        }
     }
 
     fn relative_motion(
@@ -360,44 +353,81 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
                 return;
             }
 
-            // match &self.window {
-            //     WindowElement::Wayland(w) => {
-            let xdg = self.window.toplevel();
-            xdg.with_pending_state(|state| {
-                state.states.unset(xdg_toplevel::State::Resizing);
-                state.size = Some(self.last_window_size);
-            });
-            xdg.send_pending_configure();
-            if self.edges.intersects(ResizeEdge::TOP_LEFT) {
-                let geometry = self.window.geometry();
-                let mut location = data.space.element_location(&self.window).unwrap();
+            match &self.window {
+                WindowElement::Wayland(w) => {
+                    let xdg = w.toplevel();
+                    xdg.with_pending_state(|state| {
+                        state.states.unset(xdg_toplevel::State::Resizing);
+                        state.size = Some(self.last_window_size);
+                    });
+                    xdg.send_pending_configure();
+                    if self.edges.intersects(ResizeEdge::TOP_LEFT) {
+                        let geometry = self.window.geometry();
+                        let mut location = data.space.element_location(&self.window).unwrap();
 
-                if self.edges.intersects(ResizeEdge::LEFT) {
-                    location.x = self.initial_window_location.x
-                        + (self.initial_window_size.w - geometry.size.w);
-                }
-                if self.edges.intersects(ResizeEdge::TOP) {
-                    location.y = self.initial_window_location.y
-                        + (self.initial_window_size.h - geometry.size.h);
-                }
+                        if self.edges.intersects(ResizeEdge::LEFT) {
+                            location.x = self.initial_window_location.x
+                                + (self.initial_window_size.w - geometry.size.w);
+                        }
+                        if self.edges.intersects(ResizeEdge::TOP) {
+                            location.y = self.initial_window_location.y
+                                + (self.initial_window_size.h - geometry.size.h);
+                        }
 
-                data.space.map_element(self.window.clone(), location, true);
+                        data.space.map_element(self.window.clone(), location, true);
+                    }
+
+                    with_states(&self.window.wl_surface().unwrap(), |states| {
+                        let mut data = states
+                            .data_map
+                            .get::<RefCell<SurfaceData>>()
+                            .unwrap()
+                            .borrow_mut();
+                        if let ResizeState::Resizing(resize_data) = data.resize_state {
+                            data.resize_state = ResizeState::WaitingForFinalAck(resize_data, event.serial);
+                        } else {
+                            panic!("invalid resize state: {:?}", data.resize_state);
+                        }
+                    });
+                }
+                #[cfg(feature = "xwayland")]
+                WindowElement::X11(x11) => {
+                    let mut location = data.space.element_location(&self.window).unwrap();
+                    if self.edges.intersects(ResizeEdge::TOP_LEFT) {
+                        let geometry = self.window.geometry();
+
+                        if self.edges.intersects(ResizeEdge::LEFT) {
+                            location.x = self.initial_window_location.x
+                                + (self.initial_window_size.w - geometry.size.w);
+                        }
+                        if self.edges.intersects(ResizeEdge::TOP) {
+                            location.y = self.initial_window_location.y
+                                + (self.initial_window_size.h - geometry.size.h);
+                        }
+
+                        data.space.map_element(self.window.clone(), location, true);
+                    }
+                    x11.configure(Rectangle::from_loc_and_size(location, self.last_window_size))
+                        .unwrap();
+
+                    let Some(surface) = self.window.wl_surface() else {
+                        // X11 Window got unmapped, abort
+                        return;
+                    };
+                    with_states(&surface, |states| {
+                        let mut data = states
+                            .data_map
+                            .get::<RefCell<SurfaceData>>()
+                            .unwrap()
+                            .borrow_mut();
+                        if let ResizeState::Resizing(resize_data) = data.resize_state {
+                            data.resize_state = ResizeState::WaitingForCommit(resize_data);
+                        } else {
+                            panic!("invalid resize state: {:?}", data.resize_state);
+                        }
+                    });
+                }
             }
-
-            with_states(&self.window.wl_surface().unwrap(), |states| {
-                let mut data = states
-                    .data_map
-                    .get::<RefCell<SurfaceData>>()
-                    .unwrap()
-                    .borrow_mut();
-                if let ResizeState::Resizing(resize_data) = data.resize_state {
-                    data.resize_state = ResizeState::WaitingForFinalAck(resize_data, event.serial);
-                } else {
-                    panic!("invalid resize state: {:?}", data.resize_state);
-                }
-            });
-            // }
-            // }
         }
     }
 

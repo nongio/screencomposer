@@ -4,7 +4,7 @@ use smithay::input::pointer::{
 };
 pub use smithay::{
     backend::input::KeyState,
-    desktop::{LayerSurface, PopupKind, Window},
+    desktop::{LayerSurface, PopupKind},
     input::{
         keyboard::{KeyboardTarget, KeysymHandle, ModifiersState},
         pointer::{AxisFrame, ButtonEvent, MotionEvent, PointerTarget, RelativeMotionEvent},
@@ -16,8 +16,8 @@ pub use smithay::{
 };
 
 use crate::{
-    handlers::element::WindowElement,
-    state::{Backend, ScreenComposer},
+    shell::WindowElement,
+    state::{ScreenComposer, Backend},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -76,12 +76,8 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for FocusT
     ) {
         match self {
             FocusTarget::Window(w) => PointerTarget::relative_motion(w, seat, data, event),
-            FocusTarget::LayerSurface(l) => {
-                PointerTarget::relative_motion(l.wl_surface(), seat, data, event)
-            }
-            FocusTarget::Popup(p) => {
-                PointerTarget::relative_motion(p.wl_surface(), seat, data, event)
-            }
+            FocusTarget::LayerSurface(l) => PointerTarget::relative_motion(l.wl_surface(), seat, data, event),
+            FocusTarget::Popup(p) => PointerTarget::relative_motion(p.wl_surface(), seat, data, event),
         }
     }
     fn button(
@@ -108,11 +104,7 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for FocusT
             FocusTarget::Popup(p) => PointerTarget::axis(p.wl_surface(), seat, data, frame),
         }
     }
-    fn frame(
-        &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
-    ) {
+    fn frame(&self, seat: &Seat<ScreenComposer<BackendData>>, data: &mut ScreenComposer<BackendData>) {
         match self {
             FocusTarget::Window(w) => PointerTarget::frame(w, seat, data),
             FocusTarget::LayerSurface(l) => PointerTarget::frame(l, seat, data),
@@ -140,12 +132,8 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for FocusT
     ) {
         match self {
             FocusTarget::Window(w) => PointerTarget::gesture_swipe_begin(w, seat, data, event),
-            FocusTarget::LayerSurface(l) => {
-                PointerTarget::gesture_swipe_begin(l, seat, data, event)
-            }
-            FocusTarget::Popup(p) => {
-                PointerTarget::gesture_swipe_begin(p.wl_surface(), seat, data, event)
-            }
+            FocusTarget::LayerSurface(l) => PointerTarget::gesture_swipe_begin(l, seat, data, event),
+            FocusTarget::Popup(p) => PointerTarget::gesture_swipe_begin(p.wl_surface(), seat, data, event),
         }
     }
     fn gesture_swipe_update(
@@ -156,12 +144,8 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for FocusT
     ) {
         match self {
             FocusTarget::Window(w) => PointerTarget::gesture_swipe_update(w, seat, data, event),
-            FocusTarget::LayerSurface(l) => {
-                PointerTarget::gesture_swipe_update(l, seat, data, event)
-            }
-            FocusTarget::Popup(p) => {
-                PointerTarget::gesture_swipe_update(p.wl_surface(), seat, data, event)
-            }
+            FocusTarget::LayerSurface(l) => PointerTarget::gesture_swipe_update(l, seat, data, event),
+            FocusTarget::Popup(p) => PointerTarget::gesture_swipe_update(p.wl_surface(), seat, data, event),
         }
     }
     fn gesture_swipe_end(
@@ -173,9 +157,7 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for FocusT
         match self {
             FocusTarget::Window(w) => PointerTarget::gesture_swipe_end(w, seat, data, event),
             FocusTarget::LayerSurface(l) => PointerTarget::gesture_swipe_end(l, seat, data, event),
-            FocusTarget::Popup(p) => {
-                PointerTarget::gesture_swipe_end(p.wl_surface(), seat, data, event)
-            }
+            FocusTarget::Popup(p) => PointerTarget::gesture_swipe_end(p.wl_surface(), seat, data, event),
         }
     }
     fn gesture_pinch_begin(
@@ -186,12 +168,8 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for FocusT
     ) {
         match self {
             FocusTarget::Window(w) => PointerTarget::gesture_pinch_begin(w, seat, data, event),
-            FocusTarget::LayerSurface(l) => {
-                PointerTarget::gesture_pinch_begin(l, seat, data, event)
-            }
-            FocusTarget::Popup(p) => {
-                PointerTarget::gesture_pinch_begin(p.wl_surface(), seat, data, event)
-            }
+            FocusTarget::LayerSurface(l) => PointerTarget::gesture_pinch_begin(l, seat, data, event),
+            FocusTarget::Popup(p) => PointerTarget::gesture_pinch_begin(p.wl_surface(), seat, data, event),
         }
     }
     fn gesture_pinch_update(
@@ -202,12 +180,8 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for FocusT
     ) {
         match self {
             FocusTarget::Window(w) => PointerTarget::gesture_pinch_update(w, seat, data, event),
-            FocusTarget::LayerSurface(l) => {
-                PointerTarget::gesture_pinch_update(l, seat, data, event)
-            }
-            FocusTarget::Popup(p) => {
-                PointerTarget::gesture_pinch_update(p.wl_surface(), seat, data, event)
-            }
+            FocusTarget::LayerSurface(l) => PointerTarget::gesture_pinch_update(l, seat, data, event),
+            FocusTarget::Popup(p) => PointerTarget::gesture_pinch_update(p.wl_surface(), seat, data, event),
         }
     }
     fn gesture_pinch_end(
@@ -219,9 +193,7 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for FocusT
         match self {
             FocusTarget::Window(w) => PointerTarget::gesture_pinch_end(w, seat, data, event),
             FocusTarget::LayerSurface(l) => PointerTarget::gesture_pinch_end(l, seat, data, event),
-            FocusTarget::Popup(p) => {
-                PointerTarget::gesture_pinch_end(p.wl_surface(), seat, data, event)
-            }
+            FocusTarget::Popup(p) => PointerTarget::gesture_pinch_end(p.wl_surface(), seat, data, event),
         }
     }
     fn gesture_hold_begin(
@@ -233,9 +205,7 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for FocusT
         match self {
             FocusTarget::Window(w) => PointerTarget::gesture_hold_begin(w, seat, data, event),
             FocusTarget::LayerSurface(l) => PointerTarget::gesture_hold_begin(l, seat, data, event),
-            FocusTarget::Popup(p) => {
-                PointerTarget::gesture_hold_begin(p.wl_surface(), seat, data, event)
-            }
+            FocusTarget::Popup(p) => PointerTarget::gesture_hold_begin(p.wl_surface(), seat, data, event),
         }
     }
     fn gesture_hold_end(
@@ -247,9 +217,7 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for FocusT
         match self {
             FocusTarget::Window(w) => PointerTarget::gesture_hold_end(w, seat, data, event),
             FocusTarget::LayerSurface(l) => PointerTarget::gesture_hold_end(l, seat, data, event),
-            FocusTarget::Popup(p) => {
-                PointerTarget::gesture_hold_end(p.wl_surface(), seat, data, event)
-            }
+            FocusTarget::Popup(p) => PointerTarget::gesture_hold_end(p.wl_surface(), seat, data, event),
         }
     }
 }
@@ -265,9 +233,7 @@ impl<BackendData: Backend> KeyboardTarget<ScreenComposer<BackendData>> for Focus
         match self {
             FocusTarget::Window(w) => KeyboardTarget::enter(w, seat, data, keys, serial),
             FocusTarget::LayerSurface(l) => KeyboardTarget::enter(l, seat, data, keys, serial),
-            FocusTarget::Popup(p) => {
-                KeyboardTarget::enter(p.wl_surface(), seat, data, keys, serial)
-            }
+            FocusTarget::Popup(p) => KeyboardTarget::enter(p.wl_surface(), seat, data, keys, serial),
         }
     }
     fn leave(
@@ -293,9 +259,7 @@ impl<BackendData: Backend> KeyboardTarget<ScreenComposer<BackendData>> for Focus
     ) {
         match self {
             FocusTarget::Window(w) => KeyboardTarget::key(w, seat, data, key, state, serial, time),
-            FocusTarget::LayerSurface(l) => {
-                KeyboardTarget::key(l, seat, data, key, state, serial, time)
-            }
+            FocusTarget::LayerSurface(l) => KeyboardTarget::key(l, seat, data, key, state, serial, time),
             FocusTarget::Popup(p) => {
                 KeyboardTarget::key(p.wl_surface(), seat, data, key, state, serial, time)
             }
@@ -310,12 +274,8 @@ impl<BackendData: Backend> KeyboardTarget<ScreenComposer<BackendData>> for Focus
     ) {
         match self {
             FocusTarget::Window(w) => KeyboardTarget::modifiers(w, seat, data, modifiers, serial),
-            FocusTarget::LayerSurface(l) => {
-                KeyboardTarget::modifiers(l, seat, data, modifiers, serial)
-            }
-            FocusTarget::Popup(p) => {
-                KeyboardTarget::modifiers(p.wl_surface(), seat, data, modifiers, serial)
-            }
+            FocusTarget::LayerSurface(l) => KeyboardTarget::modifiers(l, seat, data, modifiers, serial),
+            FocusTarget::Popup(p) => KeyboardTarget::modifiers(p.wl_surface(), seat, data, modifiers, serial),
         }
     }
 }
@@ -342,12 +302,6 @@ impl WaylandFocus for FocusTarget {
 impl From<WindowElement> for FocusTarget {
     fn from(w: WindowElement) -> Self {
         FocusTarget::Window(w)
-    }
-}
-
-impl From<Window> for FocusTarget {
-    fn from(w: Window) -> Self {
-        FocusTarget::Window(WindowElement::Wayland(w))
     }
 }
 

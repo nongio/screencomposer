@@ -6,20 +6,6 @@ use xcursor::{
     CursorTheme,
 };
 
-use smithay::{
-    backend::renderer::{
-        element::{
-            texture::{TextureBuffer, TextureRenderElement},
-            AsRenderElements,
-        },
-        ImportAll, Renderer, Texture,
-    },
-    input::pointer::CursorImageStatus,
-    utils::{Physical, Point, Scale},
-};
-
-use crate::renderer::PointerRenderElement;
-
 static FALLBACK_CURSOR_DATA: &[u8] = include_bytes!("../resources/cursor.rgba");
 
 pub struct Cursor {
@@ -69,9 +55,9 @@ fn nearest_images(size: u32, images: &[Image]) -> impl Iterator<Item = &Image> {
         .min_by_key(|image| (size as i32 - image.size as i32).abs())
         .unwrap();
 
-    images.iter().filter(move |image| {
-        image.width == nearest_image.width && image.height == nearest_image.height
-    })
+    images
+        .iter()
+        .filter(move |image| image.width == nearest_image.width && image.height == nearest_image.height)
 }
 
 fn frame(mut millis: u32, size: u32, images: &[Image]) -> Image {
@@ -104,79 +90,4 @@ fn load_icon(theme: &CursorTheme) -> Result<Vec<Image>, Error> {
     let mut cursor_data = Vec::new();
     cursor_file.read_to_end(&mut cursor_data)?;
     parse_xcursor(&cursor_data).ok_or(Error::Parse)
-}
-
-pub struct PointerElement<T: Texture> {
-    texture: Option<TextureBuffer<T>>,
-    status: CursorImageStatus,
-}
-
-impl<T: Texture> Default for PointerElement<T> {
-    fn default() -> Self {
-        Self {
-            texture: Default::default(),
-            status: CursorImageStatus::default_named(),
-        }
-    }
-}
-
-impl<T: Texture> PointerElement<T> {
-    pub fn set_status(&mut self, status: CursorImageStatus) {
-        self.status = status;
-    }
-
-    pub fn set_texture(&mut self, texture: TextureBuffer<T>) {
-        self.texture = Some(texture);
-    }
-}
-
-impl<T: Texture + Clone + 'static, R> AsRenderElements<R> for PointerElement<T>
-where
-    R: Renderer<TextureId = T> + ImportAll,
-{
-    type RenderElement = PointerRenderElement<R>;
-    fn render_elements<E>(
-        &self,
-        renderer: &mut R,
-        location: Point<i32, Physical>,
-        scale: Scale<f64>,
-        alpha: f32,
-    ) -> Vec<E>
-    where
-        E: From<PointerRenderElement<R>>,
-    {
-        match &self.status {
-            CursorImageStatus::Hidden => vec![],
-            // Always render `Default` for a named shape.
-            CursorImageStatus::Named(_) => {
-                if let Some(texture) = self.texture.as_ref() {
-                    vec![PointerRenderElement::<R>::from(
-                        TextureRenderElement::from_texture_buffer(
-                            location.to_f64(),
-                            texture,
-                            None,
-                            None,
-                            None,
-                            smithay::backend::renderer::element::Kind::Cursor,
-                        ),
-                    )
-                    .into()]
-                } else {
-                    vec![]
-                }
-            }
-            CursorImageStatus::Surface(surface) => {
-                let elements: Vec<PointerRenderElement<R>> =
-                    smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
-                        renderer,
-                        surface,
-                        location,
-                        scale,
-                        alpha,
-                        smithay::backend::renderer::element::Kind::Cursor,
-                    );
-                elements.into_iter().map(E::from).collect()
-            }
-        }
-    }
 }

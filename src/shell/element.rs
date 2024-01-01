@@ -5,8 +5,7 @@ use smithay::{
         input::KeyState,
         renderer::{
             element::{
-                solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement,
-                AsRenderElements,
+                solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement, AsRenderElements,
             },
             ImportAll, ImportMem, Renderer, Texture,
         },
@@ -15,10 +14,9 @@ use smithay::{
     input::{
         keyboard::{KeyboardTarget, KeysymHandle, ModifiersState},
         pointer::{
-            AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent,
-            GesturePinchBeginEvent, GesturePinchEndEvent, GesturePinchUpdateEvent,
-            GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent, MotionEvent,
-            PointerTarget, RelativeMotionEvent,
+            AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent,
+            GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent,
+            GestureSwipeUpdateEvent, MotionEvent, PointerTarget, RelativeMotionEvent,
         },
         Seat,
     },
@@ -29,23 +27,19 @@ use smithay::{
     },
     render_elements,
     utils::{user_data::UserDataMap, IsAlive, Logical, Physical, Point, Rectangle, Scale, Serial},
-    wayland::{
-        compositor::SurfaceData as WlSurfaceData, dmabuf::DmabufFeedback, seat::WaylandFocus,
-    },
+    wayland::{compositor::SurfaceData as WlSurfaceData, dmabuf::DmabufFeedback, seat::WaylandFocus},
 };
 #[cfg(feature = "xwayland")]
 use smithay::{
     desktop::utils::{
-        send_dmabuf_feedback_surface_tree, send_frames_surface_tree,
-        take_presentation_feedback_surface_tree, under_from_surface_tree,
-        with_surfaces_surface_tree,
+        send_dmabuf_feedback_surface_tree, send_frames_surface_tree, take_presentation_feedback_surface_tree,
+        under_from_surface_tree, with_surfaces_surface_tree,
     },
     xwayland::X11Surface,
 };
 
-use crate::{renderer::WindowRenderElement, state::ScreenComposer};
-
 use super::ssd::HEADER_BAR_HEIGHT;
+use crate::ScreenComposer;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum WindowElement {
@@ -71,7 +65,7 @@ impl WindowElement {
 
     pub fn with_surfaces<F>(&self, processor: F)
     where
-        F: FnMut(&WlSurface, &WlSurfaceData) + Copy,
+        F: FnMut(&WlSurface, &WlSurfaceData),
     {
         match self {
             WindowElement::Wayland(w) => w.with_surfaces(processor),
@@ -95,19 +89,11 @@ impl WindowElement {
         F: FnMut(&WlSurface, &WlSurfaceData) -> Option<Output> + Copy,
     {
         match self {
-            WindowElement::Wayland(w) => {
-                w.send_frame(output, time, throttle, primary_scan_out_output)
-            }
+            WindowElement::Wayland(w) => w.send_frame(output, time, throttle, primary_scan_out_output),
             #[cfg(feature = "xwayland")]
             WindowElement::X11(w) => {
                 if let Some(surface) = w.wl_surface() {
-                    send_frames_surface_tree(
-                        &surface,
-                        output,
-                        time,
-                        throttle,
-                        primary_scan_out_output,
-                    );
+                    send_frames_surface_tree(&surface, output, time, throttle, primary_scan_out_output);
                 }
             }
         }
@@ -206,12 +192,7 @@ impl IsAlive for WindowElement {
 }
 
 impl<Backend: crate::state::Backend> PointerTarget<ScreenComposer<Backend>> for WindowElement {
-    fn enter(
-        &self,
-        seat: &Seat<ScreenComposer<Backend>>,
-        data: &mut ScreenComposer<Backend>,
-        event: &MotionEvent,
-    ) {
+    fn enter(&self, seat: &Seat<ScreenComposer<Backend>>, data: &mut ScreenComposer<Backend>, event: &MotionEvent) {
         let mut state = self.decoration_state();
         if state.is_ssd {
             if event.location.y < HEADER_BAR_HEIGHT as f64 {
@@ -236,12 +217,7 @@ impl<Backend: crate::state::Backend> PointerTarget<ScreenComposer<Backend>> for 
             };
         }
     }
-    fn motion(
-        &self,
-        seat: &Seat<ScreenComposer<Backend>>,
-        data: &mut ScreenComposer<Backend>,
-        event: &MotionEvent,
-    ) {
+    fn motion(&self, seat: &Seat<ScreenComposer<Backend>>, data: &mut ScreenComposer<Backend>, event: &MotionEvent) {
         let mut state = self.decoration_state();
         if state.is_ssd {
             if event.location.y < HEADER_BAR_HEIGHT as f64 {
@@ -250,9 +226,7 @@ impl<Backend: crate::state::Backend> PointerTarget<ScreenComposer<Backend>> for 
                         PointerTarget::leave(w, seat, data, event.serial, event.time)
                     }
                     #[cfg(feature = "xwayland")]
-                    WindowElement::X11(w) => {
-                        PointerTarget::leave(w, seat, data, event.serial, event.time)
-                    }
+                    WindowElement::X11(w) => PointerTarget::leave(w, seat, data, event.serial, event.time),
                 };
                 state.ptr_entered_window = false;
                 state.header_bar.pointer_enter(event.location);
@@ -298,12 +272,7 @@ impl<Backend: crate::state::Backend> PointerTarget<ScreenComposer<Backend>> for 
             }
         }
     }
-    fn button(
-        &self,
-        seat: &Seat<ScreenComposer<Backend>>,
-        data: &mut ScreenComposer<Backend>,
-        event: &ButtonEvent,
-    ) {
+    fn button(&self, seat: &Seat<ScreenComposer<Backend>>, data: &mut ScreenComposer<Backend>, event: &ButtonEvent) {
         let mut state = self.decoration_state();
         if state.is_ssd {
             if state.ptr_entered_window {
@@ -323,12 +292,7 @@ impl<Backend: crate::state::Backend> PointerTarget<ScreenComposer<Backend>> for 
             };
         }
     }
-    fn axis(
-        &self,
-        seat: &Seat<ScreenComposer<Backend>>,
-        data: &mut ScreenComposer<Backend>,
-        frame: AxisFrame,
-    ) {
+    fn axis(&self, seat: &Seat<ScreenComposer<Backend>>, data: &mut ScreenComposer<Backend>, frame: AxisFrame) {
         let state = self.decoration_state();
         if !state.is_ssd || state.ptr_entered_window {
             match self {
@@ -384,9 +348,7 @@ impl<Backend: crate::state::Backend> PointerTarget<ScreenComposer<Backend>> for 
         let state = self.decoration_state();
         if !state.is_ssd || state.ptr_entered_window {
             match self {
-                WindowElement::Wayland(w) => {
-                    PointerTarget::gesture_swipe_begin(w, seat, data, event)
-                }
+                WindowElement::Wayland(w) => PointerTarget::gesture_swipe_begin(w, seat, data, event),
                 #[cfg(feature = "xwayland")]
                 WindowElement::X11(w) => PointerTarget::gesture_swipe_begin(w, seat, data, event),
             }
@@ -401,9 +363,7 @@ impl<Backend: crate::state::Backend> PointerTarget<ScreenComposer<Backend>> for 
         let state = self.decoration_state();
         if !state.is_ssd || state.ptr_entered_window {
             match self {
-                WindowElement::Wayland(w) => {
-                    PointerTarget::gesture_swipe_update(w, seat, data, event)
-                }
+                WindowElement::Wayland(w) => PointerTarget::gesture_swipe_update(w, seat, data, event),
                 #[cfg(feature = "xwayland")]
                 WindowElement::X11(w) => PointerTarget::gesture_swipe_update(w, seat, data, event),
             }
@@ -433,9 +393,7 @@ impl<Backend: crate::state::Backend> PointerTarget<ScreenComposer<Backend>> for 
         let state = self.decoration_state();
         if !state.is_ssd || state.ptr_entered_window {
             match self {
-                WindowElement::Wayland(w) => {
-                    PointerTarget::gesture_pinch_begin(w, seat, data, event)
-                }
+                WindowElement::Wayland(w) => PointerTarget::gesture_pinch_begin(w, seat, data, event),
                 #[cfg(feature = "xwayland")]
                 WindowElement::X11(w) => PointerTarget::gesture_pinch_begin(w, seat, data, event),
             }
@@ -450,9 +408,7 @@ impl<Backend: crate::state::Backend> PointerTarget<ScreenComposer<Backend>> for 
         let state = self.decoration_state();
         if !state.is_ssd || state.ptr_entered_window {
             match self {
-                WindowElement::Wayland(w) => {
-                    PointerTarget::gesture_pinch_update(w, seat, data, event)
-                }
+                WindowElement::Wayland(w) => PointerTarget::gesture_pinch_update(w, seat, data, event),
                 #[cfg(feature = "xwayland")]
                 WindowElement::X11(w) => PointerTarget::gesture_pinch_update(w, seat, data, event),
             }
@@ -482,9 +438,7 @@ impl<Backend: crate::state::Backend> PointerTarget<ScreenComposer<Backend>> for 
         let state = self.decoration_state();
         if !state.is_ssd || state.ptr_entered_window {
             match self {
-                WindowElement::Wayland(w) => {
-                    PointerTarget::gesture_hold_begin(w, seat, data, event)
-                }
+                WindowElement::Wayland(w) => PointerTarget::gesture_hold_begin(w, seat, data, event),
                 #[cfg(feature = "xwayland")]
                 WindowElement::X11(w) => PointerTarget::gesture_hold_begin(w, seat, data, event),
             }
@@ -521,12 +475,7 @@ impl<Backend: crate::state::Backend> KeyboardTarget<ScreenComposer<Backend>> for
             WindowElement::X11(w) => KeyboardTarget::enter(w, seat, data, keys, serial),
         }
     }
-    fn leave(
-        &self,
-        seat: &Seat<ScreenComposer<Backend>>,
-        data: &mut ScreenComposer<Backend>,
-        serial: Serial,
-    ) {
+    fn leave(&self, seat: &Seat<ScreenComposer<Backend>>, data: &mut ScreenComposer<Backend>, serial: Serial) {
         match self {
             WindowElement::Wayland(w) => KeyboardTarget::leave(w, seat, data, serial),
             #[cfg(feature = "xwayland")]
@@ -543,9 +492,7 @@ impl<Backend: crate::state::Backend> KeyboardTarget<ScreenComposer<Backend>> for
         time: u32,
     ) {
         match self {
-            WindowElement::Wayland(w) => {
-                KeyboardTarget::key(w, seat, data, key, state, serial, time)
-            }
+            WindowElement::Wayland(w) => KeyboardTarget::key(w, seat, data, key, state, serial, time),
             #[cfg(feature = "xwayland")]
             WindowElement::X11(w) => KeyboardTarget::key(w, seat, data, key, state, serial, time),
         }
@@ -558,9 +505,7 @@ impl<Backend: crate::state::Backend> KeyboardTarget<ScreenComposer<Backend>> for
         serial: Serial,
     ) {
         match self {
-            WindowElement::Wayland(w) => {
-                KeyboardTarget::modifiers(w, seat, data, modifiers, serial)
-            }
+            WindowElement::Wayland(w) => KeyboardTarget::modifiers(w, seat, data, modifiers, serial),
             #[cfg(feature = "xwayland")]
             WindowElement::X11(w) => KeyboardTarget::modifiers(w, seat, data, modifiers, serial),
         }
@@ -651,6 +596,22 @@ impl SpaceElement for WindowElement {
     }
 }
 
+render_elements!(
+    pub WindowRenderElement<R> where R: ImportAll + ImportMem;
+    Window=WaylandSurfaceRenderElement<R>,
+    Decoration=SolidColorRenderElement,
+);
+
+impl<R: Renderer> std::fmt::Debug for WindowRenderElement<R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Window(arg0) => f.debug_tuple("Window").field(arg0).finish(),
+            Self::Decoration(arg0) => f.debug_tuple("Decoration").field(arg0).finish(),
+            Self::_GenericCatcher(arg0) => f.debug_tuple("_GenericCatcher").field(arg0).finish(),
+        }
+    }
+}
+
 impl<R> AsRenderElements<R> for WindowElement
 where
     R: Renderer + ImportAll + ImportMem,
@@ -698,9 +659,9 @@ where
                     )
                 }
                 #[cfg(feature = "xwayland")]
-                WindowElement::X11(x11) => AsRenderElements::<R>::render_elements::<
-                    WindowRenderElement<R>,
-                >(x11, renderer, location, scale, alpha),
+                WindowElement::X11(x11) => AsRenderElements::<R>::render_elements::<WindowRenderElement<R>>(
+                    x11, renderer, location, scale, alpha,
+                ),
             };
             vec.extend(window_elements);
             vec.into_iter().map(C::from).collect()
@@ -712,9 +673,9 @@ where
                     )
                 }
                 #[cfg(feature = "xwayland")]
-                WindowElement::X11(x11) => AsRenderElements::<R>::render_elements::<
-                    WindowRenderElement<R>,
-                >(x11, renderer, location, scale, alpha),
+                WindowElement::X11(x11) => AsRenderElements::<R>::render_elements::<WindowRenderElement<R>>(
+                    x11, renderer, location, scale, alpha,
+                ),
             }
             .into_iter()
             .map(C::from)

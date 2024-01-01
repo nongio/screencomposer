@@ -1,5 +1,18 @@
 #![allow(clippy::too_many_arguments)]
 
+use smithay::{
+    backend::renderer::{
+        element::{
+            surface::WaylandSurfaceRenderElement,
+            texture::{TextureBuffer, TextureRenderElement},
+            AsRenderElements, Kind,
+        },
+        ImportAll, Renderer, Texture,
+    },
+    input::pointer::CursorImageStatus,
+    render_elements,
+    utils::{Physical, Point, Scale},
+};
 #[cfg(feature = "debug")]
 use smithay::{
     backend::renderer::{
@@ -9,16 +22,104 @@ use smithay::{
     },
     utils::{Buffer, Logical, Rectangle, Size, Transform},
 };
-use smithay::{
-    backend::renderer::{ImportAll, Renderer, Texture},
-    utils::{Physical, Point, Scale},
-};
 
 pub static CLEAR_COLOR: [f32; 4] = [0.8, 0.8, 0.9, 1.0];
 pub static CLEAR_COLOR_FULLSCREEN: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
 
+pub struct PointerElement<T: Texture> {
+    texture: Option<TextureBuffer<T>>,
+    status: CursorImageStatus,
+}
+
+impl<T: Texture> Default for PointerElement<T> {
+    fn default() -> Self {
+        Self {
+            texture: Default::default(),
+            status: CursorImageStatus::default_named(),
+        }
+    }
+}
+
+impl<T: Texture> PointerElement<T> {
+    pub fn set_status(&mut self, status: CursorImageStatus) {
+        self.status = status;
+    }
+
+    pub fn set_texture(&mut self, texture: TextureBuffer<T>) {
+        self.texture = Some(texture);
+    }
+}
+
+render_elements! {
+    pub PointerRenderElement<R> where
+        R: ImportAll;
+    Surface=WaylandSurfaceRenderElement<R>,
+    Texture=TextureRenderElement<<R as Renderer>::TextureId>,
+}
+
+impl<R: Renderer> std::fmt::Debug for PointerRenderElement<R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Surface(arg0) => f.debug_tuple("Surface").field(arg0).finish(),
+            Self::Texture(arg0) => f.debug_tuple("Texture").field(arg0).finish(),
+            Self::_GenericCatcher(arg0) => f.debug_tuple("_GenericCatcher").field(arg0).finish(),
+        }
+    }
+}
+
+impl<T: Texture + Clone + 'static, R> AsRenderElements<R> for PointerElement<T>
+where
+    R: Renderer<TextureId = T> + ImportAll,
+{
+    type RenderElement = PointerRenderElement<R>;
+    fn render_elements<E>(
+        &self,
+        renderer: &mut R,
+        location: Point<i32, Physical>,
+        scale: Scale<f64>,
+        alpha: f32,
+    ) -> Vec<E>
+    where
+        E: From<PointerRenderElement<R>>,
+    {
+        match &self.status {
+            CursorImageStatus::Hidden => vec![],
+            // Always render `Default` for a named shape.
+            CursorImageStatus::Named(_) => {
+                if let Some(texture) = self.texture.as_ref() {
+                    vec![
+                        PointerRenderElement::<R>::from(TextureRenderElement::from_texture_buffer(
+                            location.to_f64(),
+                            texture,
+                            None,
+                            None,
+                            None,
+                            Kind::Cursor,
+                        ))
+                        .into(),
+                    ]
+                } else {
+                    vec![]
+                }
+            }
+            CursorImageStatus::Surface(surface) => {
+                let elements: Vec<PointerRenderElement<R>> =
+                    smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
+                        renderer,
+                        surface,
+                        location,
+                        scale,
+                        alpha,
+                        Kind::Cursor,
+                    );
+                elements.into_iter().map(E::from).collect()
+            }
+        }
+    }
+}
+
 #[cfg(feature = "debug")]
-pub static FPS_NUMBERS_PNG: &[u8] = include_bytes!("../../resources/numbers.png");
+pub static FPS_NUMBERS_PNG: &[u8] = include_bytes!("../resources/numbers.png");
 
 #[cfg(feature = "debug")]
 #[derive(Debug, Clone)]
@@ -107,14 +208,11 @@ where
         let mut offset: Point<f64, Physical> = Point::from((0.0, 0.0));
         for digit in value_str.chars().map(|d| d.to_digit(10).unwrap()) {
             let digit_location = dst.loc.to_f64() + offset;
-            let digit_size = Size::<i32, Logical>::from((22, 35))
-                .to_f64()
-                .to_physical(scale);
+            let digit_size = Size::<i32, Logical>::from((22, 35)).to_f64().to_physical(scale);
             let dst = Rectangle::from_loc_and_size(
                 digit_location.to_i32_round(),
-                ((digit_size.to_point() + digit_location).to_i32_round()
-                    - digit_location.to_i32_round())
-                .to_size(),
+                ((digit_size.to_point() + digit_location).to_i32_round() - digit_location.to_i32_round())
+                    .to_size(),
             );
             let damage = damage
                 .iter()
@@ -139,14 +237,14 @@ where
                 _ => unreachable!(),
             };
 
-            // frame.render_texture_from_to(
-            //     &self.texture,
-            //     texture_src.to_f64(),
-            //     dst,
-            //     &damage,
-            //     Transform::Normal,
-            //     1.0,
-            // )?;
+            frame.render_texture_from_to(
+                &self.texture,
+                texture_src.to_f64(),
+                dst,
+                &damage,
+                Transform::Normal,
+                1.0,
+            )?;
             offset += Point::from((24.0, 0.0)).to_physical(scale);
         }
 
