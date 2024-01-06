@@ -8,6 +8,7 @@ use crate::{
 
 #[cfg(feature = "udev")]
 use crate::udev::UdevData;
+use layers::engine::animation::Transition;
 #[cfg(feature = "udev")]
 use smithay::backend::renderer::DebugFlags;
 
@@ -229,6 +230,13 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             })
             .unwrap_or(KeyAction::None);
 
+        if KeyState::Released == state  && keycode == 56 {
+            self.app_switcher.hide();
+            if let Some(we) = self.app_switcher.app_switcher.current_window_element() {
+                self.space.raise_element(we, true);
+            }
+        }
+         
         self.suppressed_keys = suppressed_keys;
         action
     }
@@ -484,7 +492,12 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
                     self.backend_data.reset_buffers(&output);
                 }
-
+                KeyAction::ApplicationSwitchNext => {
+                    self.app_switcher.next();
+                }
+                KeyAction::ApplicationSwitchPrev => {
+                    self.app_switcher.previous();
+                }
                 action => match action {
                     KeyAction::None
                     | KeyAction::Quit
@@ -682,6 +695,12 @@ impl ScreenComposer<UdevData> {
                     let mut debug_flags = self.backend_data.debug_flags();
                     debug_flags.toggle(DebugFlags::TINT);
                     self.backend_data.set_debug_flags(debug_flags);
+                }
+                KeyAction::ApplicationSwitchNext => {
+                    self.app_switcher.next();
+                }
+                KeyAction::ApplicationSwitchPrev => {
+                    self.app_switcher.previous();
                 }
 
                 action => match action {
@@ -1173,6 +1192,8 @@ enum KeyAction {
     RotateOutput,
     ToggleTint,
     ToggleDecorations,
+    ApplicationSwitchNext,
+    ApplicationSwitchPrev,
     /// Do nothing more
     None,
 }
@@ -1205,6 +1226,10 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::ToggleTint)
     } else if modifiers.logo && modifiers.shift && keysym == Keysym::D {
         Some(KeyAction::ToggleDecorations)
+    } else if modifiers.alt && keysym == Keysym::Tab {
+        Some(KeyAction::ApplicationSwitchNext)
+    }  else if modifiers.alt && modifiers.shift && keysym == Keysym::Tab {
+        Some(KeyAction::ApplicationSwitchPrev)
     } else {
         None
     }

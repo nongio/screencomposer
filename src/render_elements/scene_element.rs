@@ -1,8 +1,8 @@
 
 use std::sync::Arc;
 
-use layers::{engine::{rendering::{render_node, Drawable}, NodeRef, node::SceneNode}, taffy::node::Node};
-use layers::prelude::draw_node_children;
+use layers::engine::{ NodeRef, node::SceneNode};
+use layers::prelude::{draw_node_children, render_node};
 use smithay::{
     backend::renderer::{
         element::{Element, Id, RenderElement},
@@ -23,9 +23,6 @@ pub struct SceneElement {
 }
 
 impl SceneElement {
-    pub fn new() -> Self {
-        Self::default()
-    }
     pub fn with_scene(scene: Arc<layers::engine::scene::Scene>, root_id: Option<NodeRef>) -> Self {
         Self {
             id: Id::new(),
@@ -44,18 +41,6 @@ impl SceneElement {
     }
 }
 
-impl Default for SceneElement {
-    fn default() -> Self {
-
-        Self {
-            id: Id::new(),
-            commit_counter: CommitCounter::default(),
-            scene: Arc::new(layers::engine::scene::Scene::new()),
-            root_id: None,
-        }
-    }
-}
-
 impl Element for SceneElement {
     fn id(&self) -> &Id {
         &self.id
@@ -63,7 +48,7 @@ impl Element for SceneElement {
 
     fn location(&self, _scale: Scale<f64>) -> Point<i32, Physical> {
         if let Some(root) = self.root_layer() {
-            let bounds = root.model.bounds();
+            let bounds = root.bounds();
             (bounds.x as i32, bounds.y as i32).into()
         } else {
             (0, 0).into()
@@ -76,7 +61,7 @@ impl Element for SceneElement {
 
     fn geometry(&self, scale: Scale<f64>) -> Rectangle<i32, Physical> {
         if let Some(root) = self.root_layer() {
-            let bounds = root.model.bounds();
+            let bounds = root.bounds();
             Rectangle::from_loc_and_size(self.location(scale), (bounds.width as i32, bounds.height as i32))
         } else {
             Rectangle::from_loc_and_size(self.location(scale), (0, 0))
@@ -134,14 +119,14 @@ fn draw(
         let arena = scene.nodes.data();
         let arena = &*arena.read().unwrap();
         if let Some(root_id) = self.root_id {
-            if let Some(root) = scene.get_node(root_id) {
+            if let Some(_root) = scene.get_node(root_id) {
                 let root = arena.get(root_id.into()).unwrap().get();
                 render_node(root, canvas);
-                let matrix = root.transformation.read().unwrap();
+                let matrix = root.transform();
                 let sc = canvas.save();
                 canvas.concat(&matrix);
     
-                draw_node_children(root_id, arena, canvas);
+                draw_node_children(root_id, arena, canvas, 1.0);
                 canvas.restore_to_count(sc);
             }
         }

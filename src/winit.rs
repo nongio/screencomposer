@@ -5,6 +5,7 @@ use std::{
     time::Duration,
 };
 
+use layers::{prelude::BuildLayerTree, types::Size};
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;
 #[cfg(feature = "debug")]
@@ -47,7 +48,7 @@ use tracing::{error, info, warn};
 use crate::{
     drawing::*, render::*,
     skia_renderer::{SkiaRenderer, SkiaTexture},
-    state::{post_repaint, take_presentation_feedback, ScreenComposer, Backend, CalloopData}, render_elements::{custom_render_elements::CustomRenderElements, skia_element::SkiaElement},
+    state::{post_repaint, take_presentation_feedback, ScreenComposer, Backend, CalloopData}, render_elements::{custom_render_elements::CustomRenderElements, skia_element::SkiaElement, scene_element::SceneElement}, app_switcher::{self, view::view_app_switcher},
 };
 
 pub const OUTPUT_NAME: &str = "winit";
@@ -143,6 +144,8 @@ pub fn run_winit() {
     #[cfg(feature = "debug")]
     let mut fps_element = FpsElement::new(fps_texture);
 
+    
+
     let render_node = EGLDevice::device_for_display(backend.renderer().egl_context().display())
         .and_then(|device| device.try_get_render_node());
 
@@ -187,7 +190,6 @@ pub fn run_winit() {
     };
 
     let skia_element = SkiaElement::new();
-
     let data = {
         let damage_tracker = OutputDamageTracker::from_output(&output);
 
@@ -202,6 +204,12 @@ pub fn run_winit() {
         }
     };
     let mut state = ScreenComposer::init(display, event_loop.handle(), data, true);
+
+    let root = state.scene_element.root_layer().unwrap();
+    let scene_size = size;
+    state.layers_engine.set_scene_size(scene_size.w as f32, scene_size.h as f32);
+    root.layer.set_size(Size::points(scene_size.w as f32, scene_size.h as f32), None);
+
     state
         .shm_state
         .update_formats(state.backend_data.backend.renderer().shm_formats());
@@ -344,8 +352,9 @@ pub fn run_winit() {
                 #[cfg(feature = "debug")]
                 elements.push(CustomRenderElements::Fps(fps_element.clone()));
 
-                let skia_element = state.backend_data.skia_element.clone();
-                elements.push(CustomRenderElements::Skia(skia_element));
+                let scene_element = state.scene_element.clone();
+                elements.push(CustomRenderElements::Scene(scene_element));
+                
 
                 render_output(
                     &output,
@@ -455,5 +464,10 @@ pub fn run_winit() {
 
         #[cfg(feature = "debug")]
         state.backend_data.fps.tick();
+
+        
+        
+
+        state.layers_engine.update(0.016666667);
     }
 }

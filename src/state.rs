@@ -4,6 +4,7 @@ use std::{
     time::Duration,
 };
 
+use layers::{engine::{Engine, LayersEngine}, prelude::{Layer, BuildLayerTree, taffy}, types::Color};
 use tracing::{info, warn};
 
 use smithay::{
@@ -89,7 +90,7 @@ use smithay::{
 
 #[cfg(feature = "xwayland")]
 use crate::cursor::Cursor;
-use crate::{focus::FocusTarget, shell::WindowElement};
+use crate::{focus::FocusTarget, shell::WindowElement, render_elements::{scene_element::SceneElement, app_switcher::AppSwitcherElement}, app_switcher::view::view_app_switcher};
 #[cfg(feature = "xwayland")]
 use smithay::{
     delegate_xwayland_keyboard_grab,
@@ -116,7 +117,6 @@ impl ClientData for ClientState {
     fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
 }
 
-#[derive(Debug)]
 pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub backend_data: BackendData,
     pub socket_name: Option<String>,
@@ -166,6 +166,11 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub renderdoc: Option<renderdoc::RenderDoc<renderdoc::V141>>,
 
     pub show_window_preview: bool,
+
+    pub layers_engine: LayersEngine,
+    pub scene_element: SceneElement,
+    pub layer: Layer,
+    pub app_switcher: AppSwitcherElement,
 }
 
 delegate_compositor!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
@@ -633,6 +638,28 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             }
             xwayland
         };
+        let layers_engine = LayersEngine::new(500.0, 500.0);
+        let root_layer = layers_engine.new_layer();
+        root_layer.set_layout_style(taffy::Style {
+            position: taffy::Position::Absolute,
+            size: taffy::Size {
+                width: taffy::Dimension::Percent(1.0),
+                height: taffy::Dimension::Percent(1.0),
+            },
+            display: taffy::Display::Flex,
+            justify_content: Some(taffy::JustifyContent::Center),
+            align_items: Some(taffy::AlignItems::Center),
+            ..Default::default()
+        });
+        // layers_engine.scene_set_root(root_layer.clone());
+        layers_engine.scene_add_layer(root_layer.clone());
+        let layer = layers_engine.new_layer();
+        layers_engine.scene_add_layer(layer.clone());
+
+
+
+        let scene_element = SceneElement::with_scene(layers_engine.scene().clone(), layers_engine.scene_root());
+        let mut app_switcher = AppSwitcherElement::new_with_layer(layer.clone());
 
         ScreenComposer {
             backend_data,
@@ -673,7 +700,21 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             #[cfg(feature = "debug")]
             renderdoc: renderdoc::RenderDoc::new().ok(),
             show_window_preview: false,
+            layers_engine,
+            scene_element,
+            layer,
+            app_switcher,
         }
+    }
+
+    pub fn update_appswitcher(&mut self) {
+        let windows = self.xdg_shell_state.toplevel_surfaces().iter()
+            .map(|tl| {
+                self.space.elements().find(|window| window.wl_surface().as_ref() == Some(&tl.wl_surface())).unwrap().to_owned()
+            }).collect::<Vec<_>>();
+        self.app_switcher.update_with_window_elements(windows.as_slice());
+        // let layer_tree = view_app_switcher(self.app_switcher.app_switcher.clone());
+        // self.layer.build_layer_tree(&layer_tree);
     }
 }
 

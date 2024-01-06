@@ -30,6 +30,11 @@ smithay-drm-extras = { path = "../smithay/smithay-drm-extras", optional = true }
 puffin_http = { version = "0.13", optional = true }
 profiling = { version = "1.0" }
 thiserror = "1"
+rand = "0.8"
+freedesktop-icons = "0.2.4"
+xdgkit = "3.2.5"
+freedesktop-desktop-entry = "0.5.0"
+usvg = "0.37.0"
 
 [dependencies.smithay]
 path = "../smithay"
@@ -57,7 +62,7 @@ members = ["wlcs_screencomposer"]
 
 
 [features]
-default = ["egl", "winit", "x11", "udev", "xwayland", "debug"]
+default = ["egl", "winit", "x11", "udev", "debug"]
 debug = ["fps_ticker", "image/png", "renderdoc"]
 egl = ["smithay/use_system_lib", "smithay/backend_egl"]
 test_all_features = ["default", "debug"]

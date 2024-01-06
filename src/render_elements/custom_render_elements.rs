@@ -4,13 +4,14 @@ use smithay::backend::renderer::{ImportAll, ImportMem, element::{surface::Waylan
 
 use crate::{drawing::{PointerRenderElement, FpsElement}, skia_renderer::SkiaFrame};
 
-use super::{skia_element::SkiaElement, scene_element::SceneElement};
+use super::{skia_element::SkiaElement, scene_element::SceneElement, app_switcher::AppSwitcherElement};
 
 smithay::backend::renderer::element::render_elements! {
     pub CustomRenderElements<'a, R> where
         R: ImportAll + ImportMem + 'a,
         SkiaElement: (RenderElement<R>),
         SceneElement: (RenderElement<R>),
+        AppSwitcherElement: (RenderElement<R>),
         <R as smithay::backend::renderer::Renderer>::Frame<'a>: (AsMut<SkiaFrame>),
         <R as smithay::backend::renderer::Renderer>::Error: (From<smithay::backend::renderer::gles::GlesError>);
     Pointer=PointerRenderElement<R>,
@@ -18,6 +19,7 @@ smithay::backend::renderer::element::render_elements! {
     Fps=FpsElement<<R as smithay::backend::renderer::Renderer>::TextureId>,
     Skia=SkiaElement,
     Scene=SceneElement,
+    AppSwitcher=AppSwitcherElement,
     // this is needed to make the macro work with a lifetime specifier in the where clauses
     PhantomElement=PhantomElement<'a>,
 }

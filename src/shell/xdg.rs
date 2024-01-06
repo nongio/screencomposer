@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 
+use layers::prelude::BuildLayerTree;
 use smithay::{
     desktop::{
         find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output, space::SpaceElement,
@@ -48,6 +49,10 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         // the surface is not already configured
         let window = WindowElement::Wayland(Window::new(surface));
         place_new_window(&mut self.space, self.pointer.current_location(), &window, true);
+    }
+    
+    fn toplevel_destroyed(&mut self, _surface: ToplevelSurface) {
+        self.update_appswitcher();
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
@@ -200,6 +205,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     .unwrap_or(false);
                 window.set_ssd(is_ssd);
             }
+            self.update_appswitcher();
         }
     }
 

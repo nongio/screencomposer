@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{state::SurfaceDmabufFeedback, render_elements::skia_element::SkiaElement};
+use crate::{state::SurfaceDmabufFeedback, render_elements::{skia_element::SkiaElement, scene_element::SceneElement}};
 use crate::{
     drawing::*,
     render::*,
@@ -1468,7 +1468,7 @@ impl ScreenComposer<UdevData> {
             // somehow we got called with an invalid output
             return;
         };
-    
+        self.layers_engine.update(0.016666667);
         let result = render_surface(
             surface,
             &mut renderer,
@@ -1482,6 +1482,7 @@ impl ScreenComposer<UdevData> {
             &self.clock,
             self.show_window_preview,
             self.backend_data.skia_element.clone(),
+            self.scene_element.clone(),
         );
         let reschedule = match &result {
             Ok(has_rendered) => !has_rendered,
@@ -1585,6 +1586,7 @@ fn render_surface<'a, 'b>(
     clock: &Clock<Monotonic>,
     show_window_preview: bool,
     skia_element: SkiaElement,
+    scene_element: SceneElement,
 ) -> Result<bool, SwapBuffersError> {
     let output_geometry = space.output_geometry(output).unwrap();
     let scale = Scale::from(output.current_scale().fractional_scale());
@@ -1643,6 +1645,9 @@ fn render_surface<'a, 'b>(
         }
 
         custom_elements.push(CustomRenderElements::Skia(skia_element));
+
+        custom_elements.push(CustomRenderElements::Scene(scene_element));
+
     }
 
     #[cfg(feature = "debug")]
@@ -1651,7 +1656,7 @@ fn render_surface<'a, 'b>(
         surface.fps.tick();
         custom_elements.push(CustomRenderElements::Fps(element.clone()));
     }
-
+    
     let (elements, clear_color) =
         output_elements(output, space, custom_elements, renderer, show_window_preview);
     let res = surface

@@ -2,7 +2,7 @@ use smithay::{backend::renderer::{ImportAll, ImportMem, element::{Wrap, utils::{
 
 use crate::{shell::WindowRenderElement, skia_renderer::SkiaFrame};
 
-use super::{custom_render_elements::CustomRenderElements, skia_element::SkiaElement, scene_element::SceneElement};
+use super::{custom_render_elements::CustomRenderElements, skia_element::SkiaElement, scene_element::SceneElement, app_switcher::AppSwitcherElement};
 
 
 smithay::backend::renderer::element::render_elements! {
@@ -10,6 +10,7 @@ smithay::backend::renderer::element::render_elements! {
     R: ImportAll + ImportMem + 'frame,
     SkiaElement: (RenderElement<R>),
     SceneElement: (RenderElement<R>),
+    AppSwitcherElement: (RenderElement<R>),
     <R as smithay::backend::renderer::Renderer>::Frame<'frame>: (AsMut<SkiaFrame>),
     <R as smithay::backend::renderer::Renderer>::Error: (From<smithay::backend::renderer::gles::GlesError>);
     Space=SpaceRenderElements<R, E>,

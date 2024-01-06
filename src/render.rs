@@ -19,7 +19,7 @@ use smithay::{
 
 use crate::{
     drawing::{CLEAR_COLOR, CLEAR_COLOR_FULLSCREEN},
-    shell::{FullscreenSurface, WindowElement, WindowRenderElement}, render_elements::{custom_render_elements::CustomRenderElements, output_render_elements::OutputRenderElements, skia_element::SkiaElement}, skia_renderer::SkiaFrame,
+    shell::{FullscreenSurface, WindowElement, WindowRenderElement}, render_elements::{custom_render_elements::CustomRenderElements, output_render_elements::OutputRenderElements, skia_element::SkiaElement, scene_element::SceneElement, app_switcher::AppSwitcherElement}, skia_renderer::SkiaFrame,
 };
 
 pub fn space_preview_elements<'a, R, C>(
@@ -153,6 +153,9 @@ where
     R: Renderer + ImportAll + ImportMem + 'frame,
     R::TextureId: Clone + 'static,
     SkiaElement: smithay::backend::renderer::element::RenderElement<R>,
+    SceneElement: smithay::backend::renderer::element::RenderElement<R>,
+    AppSwitcherElement: (smithay::backend::renderer::element::RenderElement<R>),
+
     <R as smithay::backend::renderer::Renderer>::Frame<'frame>: Clone,
     <R as smithay::backend::renderer::Renderer>::Frame<'frame>: (AsMut<SkiaFrame>),
     <R as smithay::backend::renderer::Renderer>::Error: (From<smithay::backend::renderer::gles::GlesError>),

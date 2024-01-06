@@ -80,7 +80,7 @@ impl SkiaSurface {
             None,
             Some(&skia::SurfaceProps::new(
                 Default::default(),
-                skia::PixelGeometry::Unknown, // for font rendering optimisations
+                skia::PixelGeometry::BGRH, // for font rendering optimisations
             )),
         )
         .unwrap();
@@ -219,10 +219,6 @@ fn save_image(image: &skia::Image, name: &str) {
     let mut file = File::create(filename).unwrap();
     file.write_all(bytes).unwrap();
 }
-
-pub trait VectorRenderer {}
-impl VectorRenderer for SkiaRenderer {}
-
 
 impl SkiaRenderer {
     /// # Safety

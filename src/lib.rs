@@ -26,3 +26,4 @@ pub mod winit;
 pub mod x11;
 
 pub use state::{ScreenComposer, CalloopData, ClientState};
+pub mod app_switcher;
