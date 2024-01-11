@@ -1,8 +1,8 @@
 
 use std::sync::Arc;
 
-use layers::engine::{ NodeRef, node::SceneNode};
-use layers::prelude::{draw_node_children, render_node};
+use layers::{engine::{ NodeRef, node::SceneNode}, drawing::scene::render_node_tree};
+
 use smithay::{
     backend::renderer::{
         element::{Element, Id, RenderElement},
@@ -119,16 +119,7 @@ fn draw(
         let arena = scene.nodes.data();
         let arena = &*arena.read().unwrap();
         if let Some(root_id) = self.root_id {
-            if let Some(_root) = scene.get_node(root_id) {
-                let root = arena.get(root_id.into()).unwrap().get();
-                render_node(root, canvas);
-                let matrix = root.transform();
-                let sc = canvas.save();
-                canvas.concat(&matrix);
-    
-                draw_node_children(root_id, arena, canvas, 1.0);
-                canvas.restore_to_count(sc);
-            }
+            render_node_tree(root_id, arena, canvas, 1.0);
         }
         
         Ok(())
