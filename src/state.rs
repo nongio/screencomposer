@@ -642,25 +642,17 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         let root_layer = layers_engine.new_layer();
         root_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
-            size: taffy::Size {
-                width: taffy::Dimension::Percent(1.0),
-                height: taffy::Dimension::Percent(1.0),
-            },
             display: taffy::Display::Flex,
             justify_content: Some(taffy::JustifyContent::Center),
             align_items: Some(taffy::AlignItems::Center),
             ..Default::default()
         });
-        // layers_engine.scene_set_root(root_layer.clone());
+
         layers_engine.scene_add_layer(root_layer.clone());
-        let layer = layers_engine.new_layer();
-        layers_engine.scene_add_layer(layer.clone());
-
-
 
         let scene_element = SceneElement::with_scene(layers_engine.scene().clone(), layers_engine.scene_root());
-        let mut app_switcher = AppSwitcherElement::new_with_layer(layer.clone());
-
+        let app_switcher = AppSwitcherElement::new(layers_engine.clone());
+        let layer = app_switcher.layer.clone();
         ScreenComposer {
             backend_data,
             display_handle: dh,

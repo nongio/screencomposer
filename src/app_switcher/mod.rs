@@ -19,6 +19,7 @@ pub struct AppSwitcher {
     pub apps: Vec<(App, WindowElement)>,
     pub current_app: usize,
     preview_images: HashMap<std::string::String, skia_safe::Image>,
+    pub width: i32,
 }
 
 use std::hash::{Hash, Hasher};
@@ -88,6 +89,7 @@ impl AppSwitcher {
                 self.apps.push((App::new(app_id), ts.clone()));
             }
         }
+        self.current_app = self.current_app.min(self.apps.len() - 1);
         self.update_icons();
     }
     pub fn update_icons(&mut self) {
