@@ -89,7 +89,11 @@ impl AppSwitcher {
                 self.apps.push((App::new(app_id), ts.clone()));
             }
         }
-        self.current_app = self.current_app.min(self.apps.len() - 1);
+        if self.apps.is_empty() {
+            self.current_app = 0;
+        } else {
+            self.current_app = self.current_app.min(self.apps.len() - 1);
+        }
         self.update_icons();
     }
     pub fn update_icons(&mut self) {

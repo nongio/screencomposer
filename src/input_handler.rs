@@ -234,6 +234,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             self.app_switcher.hide();
             if let Some(we) = self.app_switcher.app_switcher.current_window_element() {
                 self.space.raise_element(we, true);
+                keyboard.set_focus(self, Some(we.clone().into()), serial);
             }
         }
          
@@ -498,6 +499,9 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                 KeyAction::ApplicationSwitchPrev => {
                     self.app_switcher.previous();
                 }
+                KeyAction::ApplicationSwitchQuit => {
+                    self.app_switcher.quit_current_app();
+                }
                 action => match action {
                     KeyAction::None
                     | KeyAction::Quit
@@ -702,7 +706,9 @@ impl ScreenComposer<UdevData> {
                 KeyAction::ApplicationSwitchPrev => {
                     self.app_switcher.previous();
                 }
-
+                KeyAction::ApplicationSwitchQuit => {
+                    self.app_switcher.quit_current_app();
+                }
                 action => match action {
                     KeyAction::None
                     | KeyAction::Quit
@@ -1194,6 +1200,7 @@ enum KeyAction {
     ToggleDecorations,
     ApplicationSwitchNext,
     ApplicationSwitchPrev,
+    ApplicationSwitchQuit,
     /// Do nothing more
     None,
 }
@@ -1230,6 +1237,8 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::ApplicationSwitchNext)
     }  else if modifiers.alt && modifiers.shift && keysym == Keysym::Tab {
         Some(KeyAction::ApplicationSwitchPrev)
+    }  else if modifiers.alt && keysym == Keysym::w {
+        Some(KeyAction::ApplicationSwitchQuit)
     } else {
         None
     }

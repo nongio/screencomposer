@@ -34,6 +34,7 @@ pub struct AppSwitcherElement {
     icons: HashMap<std::string::String, skia_safe::Image>,
     pub layer: layers::prelude::Layer,
     pub view: layers::prelude::View<AppSwitcher>,
+    active: bool,
 }
 pub fn image_from_svg(icon_data: &[u8]) -> skia_safe::Image {
     let options = usvg::Options::default();
@@ -89,6 +90,7 @@ impl AppSwitcherElement {
             icons: HashMap::new(),
             layer: wrap.clone(),
             view,
+            active: false,
         }
     }
 
@@ -169,7 +171,7 @@ impl AppSwitcherElement {
         }
 
         self.update();
-
+        self.active = true;
         self.layer.set_opacity(
             1.0,
             Some(Transition {
@@ -184,7 +186,7 @@ impl AppSwitcherElement {
             (self.app_switcher.current_app + 1) % self.app_switcher.apps.len();
 
         self.update();
-
+        self.active = true;
         self.layer.set_opacity(
             1.0,
             Some(Transition {
@@ -194,7 +196,8 @@ impl AppSwitcherElement {
             }),
         );
     }
-    pub fn hide(&self) {
+    pub fn hide(&mut self) {
+        self.active = false;
         self.layer.set_opacity(
             0.0,
             Some(Transition {
@@ -203,6 +206,21 @@ impl AppSwitcherElement {
                 timing: TimingFunction::default(),
             }),
         );
+    }
+
+    pub fn quit_current_app(&mut self) {
+        if self.active {
+            let we = self.app_switcher.current_window_element();
+            if let Some(we) = we {
+                match we {
+                    WindowElement::Wayland(w) => w.toplevel().send_close(),
+                    #[cfg(feature = "xwayland")]
+                    WindowElement::X11(w) => {
+                        let _ = w.close();
+                    }
+                };
+            }
+        }
     }
 }
 
