@@ -1,10 +1,10 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, default};
 
 use freedesktop_desktop_entry::{default_paths, PathSource, Iter, DesktopEntry};
 use smithay::{desktop, wayland::shell::xdg::ToplevelSurface, backend::x11::Window};
 use xdgkit::desktop_entry;
 
-use crate::{render_elements::app_switcher::{image_from_svg, image_from_icon_path}, shell::WindowElement};
+use crate::{shell::WindowElement, utils::image_from_path};
 
 pub mod view;
 
@@ -37,7 +37,8 @@ impl App {
         let mut desktop_entry: Option<DesktopEntry<'_>> = None;
         let bytes;
         let path;
-        let path_result= Iter::new(default_paths()).find(|path| {
+        let default_paths = default_paths();
+        let path_result= Iter::new(default_paths).find(|path| {
             path.to_string_lossy().contains(name)
         });
 
@@ -105,7 +106,7 @@ impl AppSwitcher {
                 continue;
             }
             let icon_path = icon.as_ref().unwrap();
-            let image = image_from_icon_path(icon_path);
+            let image = image_from_path(icon_path);
             self.preview_images.insert(name.clone(), image);
         }
     }

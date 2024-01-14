@@ -343,6 +343,7 @@ impl SkiaRenderer {
         let renderer = self.target_renderer.get(&current_target);
         renderer
     }
+    #[profiling::function]
     fn create_texture_and_framebuffer(
         &self,
         width: i32,
@@ -498,6 +499,7 @@ impl<'a> Frame for SkiaFrame {
 
         Ok(())
     }
+    #[profiling::function]
     fn render_texture_from_to(
         &mut self,
         texture: &Self::TextureId,
@@ -597,6 +599,7 @@ impl<'a> Frame for SkiaFrame {
         // self.frame.transformation()
         Transform::Normal
     }
+    #[profiling::function]
     fn finish(self) -> Result<SyncPoint, Self::Error> {
         let mut surface = self.skia_surface;
         surface.flush_submit_and_sync_cpu();
@@ -625,7 +628,7 @@ impl Renderer for SkiaRenderer {
     fn debug_flags(&self) -> DebugFlags {
         self.gl_renderer.debug_flags()
     }
-
+    #[profiling::function]
     fn render(
         &mut self,
         output_size: Size<i32, Physical>,
@@ -683,41 +686,11 @@ impl Renderer for SkiaRenderer {
     }
 }
 
-pub fn import_into_skia_image(
-    texture: &GlesTexture,
-    context: &mut skia::gpu::DirectContext,
-) -> Option<skia::Image> {
-    let target = ffi::TEXTURE_2D;
-
-    let size = skia::Point {
-        x: texture.width() as f32,
-        y: texture.height() as f32,
-    };
-    unsafe {
-        let texture_info = skia::gpu::gl::TextureInfo {
-            target,
-            id: texture.tex_id(),
-            format: skia::gpu::gl::Format::RGBA8.into(),
-        };
-
-        let texture = skia::gpu::BackendTexture::new_gl(
-            (size.x as i32, size.y as i32),
-            skia::gpu::MipMapped::No,
-            texture_info,
-        );
-
-        skia::Image::from_texture(
-            context,
-            &texture,
-            skia::gpu::SurfaceOrigin::TopLeft,
-            skia::ColorType::RGBA8888,
-            skia::AlphaType::Premul,
-            None,
-        )
-    }
-}
 impl SkiaRenderer {
+    #[profiling::function]
     fn import_skia_image_from_texture(&mut self, texture: &GlesTexture) -> Option<skia::Image> {
+        #[cfg(feature = "profile-with-puffin")]
+        profiling::scope!("import_skia_image_from_texture");
         let context = self.context.as_mut().unwrap();
 
         let target = ffi::TEXTURE_2D;
@@ -776,6 +749,7 @@ impl SkiaRenderer {
     }
 }
 impl ImportMemWl for SkiaRenderer {
+    #[profiling::function]
     fn import_shm_buffer(
         &mut self,
         buffer: &WlBuffer,
@@ -845,7 +819,7 @@ impl ImportEgl for SkiaRenderer {
     fn egl_reader(&self) -> Option<&EGLBufferReader> {
         self.gl_renderer.egl_reader()
     }
-
+    #[profiling::function]
     fn import_egl_buffer(
         &mut self,
         buffer: &WlBuffer,
@@ -881,6 +855,7 @@ impl ImportEgl for SkiaRenderer {
 }
 
 impl ImportDma for SkiaRenderer {
+    #[profiling::function]
     fn import_dmabuf(
         &mut self,
         dmabuf: &Dmabuf,
@@ -905,6 +880,7 @@ impl ImportDma for SkiaRenderer {
 impl ImportDmaWl for SkiaRenderer {}
 
 impl ImportMem for SkiaRenderer {
+    #[profiling::function]
     fn import_memory(
         &mut self,
         data: &[u8],
@@ -964,7 +940,7 @@ impl BorrowMut<GlesRenderer> for SkiaRenderer {
 
 impl TextureMapping for SkiaTextureMapping {
     fn flipped(&self) -> bool {
-        false
+        self.flipped
     }
     fn format(&self) -> Fourcc {
         self.fourcc_format

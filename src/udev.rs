@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{state::SurfaceDmabufFeedback, render_elements::{skia_element::SkiaElement, scene_element::SceneElement}};
+use crate::{state::SurfaceDmabufFeedback, render_elements::{skia_element::SkiaElement, scene_element::SceneElement, output_render_elements::OutputRenderElements}, shell::WindowRenderElement};
 use crate::{
     drawing::*,
     render::*,
@@ -198,6 +198,17 @@ impl Backend for UdevData {
         {
             warn!("Early buffer import failed: {}", err);
         }
+    }
+
+    fn image_for_surface(&self, surface: &smithay::backend::renderer::utils::RendererSurfaceState) -> Option<skia_safe::Image> {
+        let tex =  surface.texture::<UdevRenderer>(99);
+        if let Some(multitexture) = tex {
+            let texture = multitexture.get::<GbmGlesBackend<SkiaRenderer>>(&self.primary_gpu);
+            if let Some(texture) = texture {
+                return Some(texture.image.clone());
+            }
+        }
+        None
     }
 }
 
@@ -978,8 +989,8 @@ impl ScreenComposer<UdevData> {
                 .unwrap_or(0);
 
             let drm_mode = connector.modes()[mode_id];
-            let wl_mode = WlMode::from(drm_mode);
-
+            let mut wl_mode = WlMode::from(drm_mode);
+            wl_mode.refresh = 60 * 1000;
             let surface = match device.drm.create_surface(crtc, drm_mode, &[connector.handle()]) {
                 Ok(surface) => surface,
                 Err(err) => {
@@ -998,6 +1009,15 @@ impl ScreenComposer<UdevData> {
                     model,
                 },
             );
+
+            let root = self.scene_element.root_layer().unwrap();
+            let w = wl_mode.size.w as f32;
+            let h = wl_mode.size.h as f32;
+            let scene_size = layers::types::Size::points(w, h);
+            root.layer.set_size(scene_size, None);
+            // println!("scene size: {:?}", scene_size);
+            self.layers_engine.set_scene_size(w, h);
+
             let global = output.create_global::<ScreenComposer<UdevData>>(&self.display_handle);
 
             let x = self
@@ -1387,8 +1407,9 @@ impl ScreenComposer<UdevData> {
         };
     }
 
-    fn render_surface(&mut self, node: DrmNode, crtc: crtc::Handle) {
+    fn render_surface<'a, 'b>(&mut self, node: DrmNode, crtc: crtc::Handle) {
         profiling::scope!("render_surface", &format!("{crtc:?}"));
+
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
             device
         } else {
@@ -1469,6 +1490,7 @@ impl ScreenComposer<UdevData> {
             return;
         };
         self.layers_engine.update(0.016666667);
+
         let result = render_surface(
             surface,
             &mut renderer,
@@ -1480,10 +1502,11 @@ impl ScreenComposer<UdevData> {
             &self.dnd_icon,
             &mut self.cursor_status.lock().unwrap(),
             &self.clock,
-            self.show_window_preview,
-            self.backend_data.skia_element.clone(),
             self.scene_element.clone(),
         );
+        {
+            self.update_windows();
+        }
         let reschedule = match &result {
             Ok(has_rendered) => !has_rendered,
             Err(err) => {
@@ -1584,8 +1607,6 @@ fn render_surface<'a, 'b>(
     dnd_icon: &Option<wl_surface::WlSurface>,
     cursor_status: &mut CursorImageStatus,
     clock: &Clock<Monotonic>,
-    show_window_preview: bool,
-    skia_element: SkiaElement,
     scene_element: SceneElement,
 ) -> Result<bool, SwapBuffersError> {
     let output_geometry = space.output_geometry(output).unwrap();
@@ -1643,22 +1664,24 @@ fn render_surface<'a, 'b>(
                 }
             }
         }
-
-        custom_elements.push(CustomRenderElements::Skia(skia_element));
-
-        custom_elements.push(CustomRenderElements::Scene(scene_element));
-
     }
-
+    
+    
     #[cfg(feature = "debug")]
     if let Some(element) = surface.fps_element.as_mut() {
         element.update_fps(surface.fps.avg().round() as u32);
         surface.fps.tick();
         custom_elements.push(CustomRenderElements::Fps(element.clone()));
     }
-    
+    custom_elements.push(CustomRenderElements::Scene(scene_element));
     let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, show_window_preview);
+        output_elements(output, space, Vec::new(), renderer, false);
+
+    let clear_color: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+    let elements: Vec<OutputRenderElements<'a, _, WindowRenderElement<_>>> = custom_elements
+        .into_iter()
+        .map(OutputRenderElements::from).collect::<Vec<_>>();
+
     let res = surface
         .compositor
             .render_frame::<_, _, SkiaGLesFbo>(renderer, &elements, clear_color)?;

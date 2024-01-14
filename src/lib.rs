@@ -27,3 +27,7 @@ pub mod x11;
 
 pub use state::{ScreenComposer, CalloopData, ClientState};
 pub mod app_switcher;
+pub mod window_view;
+pub mod workspace_view;
+
+pub mod utils;

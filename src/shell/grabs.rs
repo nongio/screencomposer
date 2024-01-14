@@ -8,7 +8,7 @@ use smithay::{
         GestureSwipeUpdateEvent, GrabStartData as PointerGrabStartData, MotionEvent, PointerGrab,
         PointerInnerHandle, RelativeMotionEvent,
     },
-    reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
+    reexports::{wayland_protocols::xdg::shell::server::xdg_toplevel, wayland_server::Resource},
     utils::{IsAlive, Logical, Point, Serial, Size},
     wayland::{compositor::with_states, shell::xdg::SurfaceCachedState},
 };
@@ -43,6 +43,15 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>> for MoveSurf
 
         data.space
             .map_element(self.window.clone(), new_location.to_i32_round(), true);
+
+        if let Some(id) = self.window.wl_surface().map(|s| s.id()) {
+            if let Some(view) = data.window_views.get(&id) {
+                view.layer.set_position(layers::types::Point {
+                    x: new_location.x as f32,
+                    y: new_location.y as f32,
+                }, None);
+            }
+        }
     }
 
     fn relative_motion(

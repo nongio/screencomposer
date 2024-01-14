@@ -1,16 +1,16 @@
 use std::{
     os::unix::io::OwnedFd,
     sync::{atomic::AtomicBool, Arc, Mutex},
-    time::Duration,
+    time::Duration, borrow::Borrow, collections::HashMap,
 };
 
-use layers::{engine::{Engine, LayersEngine}, prelude::{Layer, BuildLayerTree, taffy}, types::Color};
+use layers::{engine::{Engine, LayersEngine, animation::Transition}, prelude::{Layer, BuildLayerTree, taffy}, types::{Color, BorderRadius}};
 use tracing::{info, warn};
 
 use smithay::{
-    backend::renderer::element::{
-        default_primary_scanout_output_compare, utils::select_dmabuf_feedback, RenderElementStates,
-    },
+    backend::renderer::{element::{
+        default_primary_scanout_output_compare, utils::select_dmabuf_feedback, RenderElementStates, Id,
+    }, utils::{RendererSurfaceStateUserData, RendererSurfaceState}, Renderer},
     delegate_compositor, delegate_data_control, delegate_data_device, delegate_fractional_scale,
     delegate_input_method_manager, delegate_keyboard_shortcuts_inhibit, delegate_layer_shell,
     delegate_output, delegate_pointer_constraints, delegate_pointer_gestures, delegate_presentation,
@@ -34,17 +34,18 @@ use smithay::{
     reexports::{
         calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
         wayland_protocols::xdg::decoration::{
-            self as xdg_decoration, zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
+            self as xdg_decoration, 
+            zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
         },
         wayland_server::{
-            backend::{ClientData, ClientId, DisconnectReason},
+            backend::{ClientData, ClientId, DisconnectReason, ObjectId},
             protocol::{wl_data_source::WlDataSource, wl_surface::WlSurface},
             Display, DisplayHandle, Resource,
         },
     },
     utils::{Clock, Monotonic, Rectangle},
     wayland::{
-        compositor::{get_parent, with_states, CompositorClientState, CompositorState},
+        compositor::{get_parent, with_states, CompositorClientState, CompositorState, SurfaceAttributes},
         dmabuf::DmabufFeedback,
         fractional_scale::{with_fractional_scale, FractionalScaleHandler, FractionalScaleManagerState},
         input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface},
@@ -73,7 +74,7 @@ use smithay::{
             wlr_layer::WlrLayerShellState,
             xdg::{
                 decoration::{XdgDecorationHandler, XdgDecorationState},
-                ToplevelSurface, XdgShellState, XdgToplevelSurfaceData,
+                ToplevelSurface, XdgShellState, XdgToplevelSurfaceData, SurfaceCachedState, XdgPopupSurfaceRoleAttributes,
             },
         },
         shm::{ShmHandler, ShmState},
@@ -90,7 +91,7 @@ use smithay::{
 
 #[cfg(feature = "xwayland")]
 use crate::cursor::Cursor;
-use crate::{focus::FocusTarget, shell::WindowElement, render_elements::{scene_element::SceneElement, app_switcher::AppSwitcherElement}, app_switcher::view::view_app_switcher};
+use crate::{focus::FocusTarget, shell::WindowElement, render_elements::{scene_element::SceneElement, app_switcher::AppSwitcherElement}, window_view::{WindowView, view::WindowViewSurface}, workspace_view::BackgroundView, utils::image_from_path};
 #[cfg(feature = "xwayland")]
 use smithay::{
     delegate_xwayland_keyboard_grab,
@@ -169,8 +170,14 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
 
     pub layers_engine: LayersEngine,
     pub scene_element: SceneElement,
-    pub layer: Layer,
     pub app_switcher: AppSwitcherElement,
+    pub window_views: HashMap<ObjectId, WindowView>,
+    pub show_all: bool,
+    pub show_desktop: bool,
+    pub workspace_layer: Layer,
+    pub windows_layer: Layer,
+    pub overlay_layer: Layer,
+    pub background_view: BackgroundView,
 }
 
 delegate_compositor!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
@@ -642,17 +649,49 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         let root_layer = layers_engine.new_layer();
         root_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
-            display: taffy::Display::Flex,
-            justify_content: Some(taffy::JustifyContent::Center),
-            align_items: Some(taffy::AlignItems::Center),
             ..Default::default()
         });
+        let workspace_layer = layers_engine.new_layer();
+        workspace_layer.set_layout_style(taffy::Style {
+            position: taffy::Position::Absolute,
+            ..Default::default()
+        });
+        workspace_layer.set_size(layers::types::Size::percent(1.0, 1.0), None);
 
+        let background_layer = layers_engine.new_layer();
+        background_layer.set_layout_style(taffy::Style {
+            position: taffy::Position::Absolute,
+            ..Default::default()
+        });
+        background_layer.set_size(layers::types::Size::percent(1.0, 1.0), None);
+        background_layer.set_background_color(Color::new_rgba(1.0, 0.0, 0.0, 1.0), None);
+        background_layer.set_border_corner_radius(BorderRadius::new_single(20.0), None);
+        background_layer.set_opacity(0.0, None);
+        let windows_layer = layers_engine.new_layer();
+        windows_layer.set_layout_style(taffy::Style {
+            position: taffy::Position::Absolute,
+            ..Default::default()
+        });
+        let overlay_layer = layers_engine.new_layer();
+        overlay_layer.set_layout_style(taffy::Style {
+            position: taffy::Position::Absolute,
+            ..Default::default()
+        });
         layers_engine.scene_add_layer(root_layer.clone());
+        let workspace_id = layers_engine.scene_add_layer(workspace_layer.clone());
+
+        layers_engine.scene_add_layer_to(background_layer.clone(), Some(workspace_id));
+        layers_engine.scene_add_layer_to(windows_layer.clone(), Some(workspace_id));
+
+        layers_engine.scene_add_layer(overlay_layer.clone());
 
         let scene_element = SceneElement::with_scene(layers_engine.scene().clone(), layers_engine.scene_root());
         let app_switcher = AppSwitcherElement::new(layers_engine.clone());
-        let layer = app_switcher.layer.clone();
+        let mut background_view = BackgroundView::new(layers_engine.clone(), background_layer.clone());
+        let background_image = image_from_path("./resources/background.jpg");
+        background_view.state.image = Some(background_image);
+        background_view.render();
+
         ScreenComposer {
             backend_data,
             display_handle: dh,
@@ -691,11 +730,19 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             xdisplay: None,
             #[cfg(feature = "debug")]
             renderdoc: renderdoc::RenderDoc::new().ok(),
+
+            // WIP workspace
             show_window_preview: false,
             layers_engine,
             scene_element,
-            layer,
             app_switcher,
+            window_views: HashMap::new(),
+            show_all: false,
+            show_desktop: false,
+            windows_layer,
+            overlay_layer,
+            workspace_layer,
+            background_view,
         }
     }
 
@@ -705,8 +752,166 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 self.space.elements().find(|window| window.wl_surface().as_ref() == Some(&tl.wl_surface())).unwrap().to_owned()
             }).collect::<Vec<_>>();
         self.app_switcher.update_with_window_elements(windows.as_slice());
-        // let layer_tree = view_app_switcher(self.app_switcher.app_switcher.clone());
-        // self.layer.build_layer_tree(&layer_tree);
+    }
+    pub fn update_windows(&mut self) {
+        let windows = self.space.elements();//ScreenComposer::<WinitData>::update_windows(&output, space, renderer); 
+        
+
+        for window in windows {
+            let id = window.wl_surface().unwrap().id();
+            let location = self.space.element_location(window).unwrap_or((0,0).into()).to_physical(1_i32);
+            let window_geometry = window.geometry();
+            let mut title = "".to_string();
+            
+            smithay::wayland::compositor::with_states(
+                window.wl_surface().as_ref().unwrap(),
+                |states| {
+                    let attributes = states
+                        .data_map
+                        .get::<XdgToplevelSurfaceData>()
+                        .unwrap()
+                        .lock()
+                        .unwrap();
+
+                    title = attributes.title.as_ref().cloned().unwrap_or_default();
+                });
+
+            let mut render_elements = Vec::new();
+            window.with_surfaces(|_surface, states| {
+                let geometry = states.cached_state.current::<SurfaceCachedState>().geometry.unwrap_or_default();
+                let surface_attributes = states.cached_state.current::<SurfaceAttributes>();
+                let popup = states.data_map.get::<Mutex<XdgPopupSurfaceRoleAttributes>>();
+                let mut x = 0.0;
+                let mut y = 0.0;
+                if let Some(popup) = popup {
+                    let popup = popup.lock().unwrap();
+                    x = popup.current.geometry.loc.x as f32;
+                    y = popup.current.geometry.loc.y as f32;
+                }
+
+                if let Some(render_surface) = states.data_map.get::<RendererSurfaceStateUserData>() {
+                    let render_surface = render_surface.borrow();
+
+                    let image = self.backend_data.image_for_surface(&render_surface);
+                    if image.is_none() {
+                        println!("image is none");
+                    }
+                    let wvs = WindowViewSurface {
+                        id: id.clone(),
+                        offset_x: geometry.loc.x as f32,
+                        offset_y: geometry.loc.y as f32,
+                        x,
+                        y,
+                        w: geometry.size.w as f32,
+                        h: geometry.size.h as f32,
+                        image,
+                        commit: render_surface.current_commit(),
+                        transform: surface_attributes.buffer_transform.into(),
+                    };
+                    render_elements.push(wvs);
+                }
+            });
+            
+            if let Some(view) = self.window_views.get_mut(&id) {
+                view.state.window_element = Some(window.clone());
+                view.state.x = location.x as f32;
+                view.state.y = location.y as f32;
+                view.state.w = window_geometry.size.w as f32;
+                view.state.h = window_geometry.size.h as f32;
+                view.state.render_elements = render_elements;
+                view.state.title = title;
+                view.render();
+            }
+        }
+    }
+    pub fn expose_show_desktop(&mut self) {
+        let toplevels = self.xdg_shell_state.toplevel_surfaces().iter();
+        self.show_desktop = !self.show_desktop;
+       for toplevel in toplevels {
+            let window = self.space.elements().find(|window| window.wl_surface().as_ref() == Some(toplevel.wl_surface())).unwrap().to_owned();
+            let element_geometry = self.space.element_geometry(&window);
+            let window_geometry = window.geometry();
+            let id = toplevel.wl_surface().id();
+            if let Some(window_layer_id) = self.windows_layer.id() {
+                let view = self.window_views.entry(id).or_insert_with(|| WindowView::new(self.layers_engine.clone(), window_layer_id));
+                with_states(toplevel.wl_surface(), |states| {
+                    let r = states.data_map.get::<RendererSurfaceStateUserData>()
+                    .unwrap().borrow();
+                    if self.show_desktop {
+                        view.layer.set_position(layers::types::Point {
+                            x: -(view.state.w as f32),
+                            y: -(view.state.h as f32),
+                        }, Some(Transition {
+                            duration: 0.5,
+                            ..Default::default()
+                        }));
+                    } else {
+                        view.layer.set_position(layers::types::Point {
+                            x: (view.state.x as f32),
+                            y: (view.state.y as f32),
+                        }, Some(Transition {
+                            duration: 0.5,
+                            ..Default::default()
+                        }));
+                    }
+                });
+            }
+            
+        }
+    }
+    pub fn expose_show_all(&mut self) {
+        let toplevels = self.xdg_shell_state.toplevel_surfaces().iter().enumerate();
+        self.show_all = !self.show_all;
+        let mut x = 0.0;
+       for (index, toplevel) in toplevels {
+            let window = self.space.elements().find(|window| window.wl_surface().as_ref() == Some(toplevel.wl_surface())).unwrap().to_owned();
+            let element_geometry = self.space.element_geometry(&window);
+            let window_geometry = window.geometry();
+            let id = toplevel.wl_surface().id();
+            if let Some(view) = self.window_views.get(&id) {
+                with_states(toplevel.wl_surface(), |states| {
+                    let r = states.data_map.get::<RendererSurfaceStateUserData>()
+                    .unwrap().borrow();
+    
+                    if self.show_all {
+                        view.layer.set_position(layers::types::Point {
+                            x,
+                            y: 0.0,
+                        }, Some(Transition {
+                            duration: 0.5,
+                            ..Default::default()
+                        }));
+                        x +=( view.state.w as f32) * 0.3;
+                    } else {
+                        view.layer.set_position(layers::types::Point {
+                            x: (view.state.x as f32),
+                            y: (view.state.y as f32),
+                        }, Some(Transition {
+                            duration: 0.5,
+                            ..Default::default()
+                        }));
+                    }
+                });
+            }
+            
+        }
+        if self.show_all {
+            self.workspace_layer.set_scale(layers::types::Point {
+                x: 0.9,
+                y: 0.9,
+            }, Some(Transition {
+                duration: 0.5,
+                ..Default::default()
+            }));
+        } else {
+            self.workspace_layer.set_scale(layers::types::Point {
+                x: 1.0,
+                y: 1.0,
+            }, Some(Transition {
+                duration: 0.5,
+                ..Default::default()
+            }));
+        }
     }
 }
 
@@ -743,20 +948,25 @@ pub fn post_repaint(
                 });
             }
         });
-
-        if space.outputs_for_element(window).contains(output) {
-            window.send_frame(output, time, throttle, surface_primary_scanout_output);
-            if let Some(dmabuf_feedback) = dmabuf_feedback {
-                window.send_dmabuf_feedback(output, surface_primary_scanout_output, |surface, _| {
-                    select_dmabuf_feedback(
-                        surface,
-                        render_element_states,
-                        dmabuf_feedback.render_feedback,
-                        dmabuf_feedback.scanout_feedback,
-                    )
-                });
-            }
-        }
+        window.send_frame(
+            output,
+            time,
+            Some(Duration::ZERO),
+            |_, _| Some(output.clone()),
+        )
+        // if space.outputs_for_element(window).contains(output) {
+        //     window.send_frame(output, time, throttle, surface_primary_scanout_output);
+        //     if let Some(dmabuf_feedback) = dmabuf_feedback {
+        //         window.send_dmabuf_feedback(output, surface_primary_scanout_output, |surface, _| {
+        //             select_dmabuf_feedback(
+        //                 surface,
+        //                 render_element_states,
+        //                 dmabuf_feedback.render_feedback,
+        //                 dmabuf_feedback.scanout_feedback,
+        //             )
+        //         });
+        //     }
+        // }
     });
     let map = smithay::desktop::layer_map_for_output(output);
     for layer_surface in map.layers() {
@@ -825,4 +1035,5 @@ pub trait Backend {
     fn seat_name(&self) -> String;
     fn reset_buffers(&mut self, output: &Output);
     fn early_import(&mut self, surface: &WlSurface);
+    fn image_for_surface(&self, surface: &RendererSurfaceState) -> Option<skia_safe::Image>;
 }

@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use layers::prelude::BuildLayerTree;
+use layers::{engine::animation::Transition};
 use smithay::{
     desktop::{
         find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output, space::SpaceElement,
@@ -30,7 +30,7 @@ use tracing::{trace, warn};
 
 use crate::{
     focus::FocusTarget,
-    state::{ScreenComposer, Backend},
+    state::{ScreenComposer, Backend}, window_view::WindowView,
 };
 
 use super::{
@@ -47,11 +47,34 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         // Do not send a configure here, the initial configure
         // of a xdg_surface has to be sent during the commit if
         // the surface is not already configured
+        let id = surface.wl_surface().id();
         let window = WindowElement::Wayland(Window::new(surface));
-        place_new_window(&mut self.space, self.pointer.current_location(), &window, true);
+        let (x,y) = place_new_window(&mut self.space, self.pointer.current_location(), &window, true);
+
+        if let Some(window_layer_id) = self.windows_layer.id() {
+            let view = self.window_views.entry(id.clone()).or_insert_with(|| WindowView::new(self.layers_engine.clone(), window_layer_id));
+            view.layer.set_position(layers::types::Point {
+                    x: x as f32,
+                    y: y as f32,
+                }, None);
+        }
+
+        self.update_appswitcher();
+
     }
     
-    fn toplevel_destroyed(&mut self, _surface: ToplevelSurface) {
+    fn toplevel_destroyed(&mut self, toplevel: ToplevelSurface) {
+        self.update_appswitcher();
+        let id = toplevel.wl_surface().id();
+        if let Some(view) = self.window_views.get(&id) {
+            let animation = view.layer.set_opacity(0.0, Some(Transition::default()));
+            let id = view.layer.id().unwrap();
+            let scene_layer = self.layers_engine.scene_get_node(id).unwrap();
+            let scene_layer = scene_layer.get().clone();
+            view.layer.on_finish(animation, move |_,| {
+                scene_layer.delete();
+            });
+        }
         self.update_appswitcher();
     }
 
@@ -205,7 +228,6 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     .unwrap_or(false);
                 window.set_ssd(is_ssd);
             }
-            self.update_appswitcher();
         }
     }
 

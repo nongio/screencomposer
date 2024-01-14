@@ -8,7 +8,6 @@ use crate::{
 
 #[cfg(feature = "udev")]
 use crate::udev::UdevData;
-use layers::engine::animation::Transition;
 #[cfg(feature = "udev")]
 use smithay::backend::renderer::DebugFlags;
 
@@ -25,7 +24,7 @@ use smithay::{
     output::Scale,
     reexports::{
         wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1,
-        wayland_server::{protocol::wl_pointer, DisplayHandle},
+        wayland_server::{protocol::wl_pointer, DisplayHandle, Resource},
     },
     utils::{Logical, Point, Serial, Transform, SERIAL_COUNTER as SCOUNTER},
     wayland::{
@@ -233,8 +232,12 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         if KeyState::Released == state  && keycode == 56 {
             self.app_switcher.hide();
             if let Some(we) = self.app_switcher.app_switcher.current_window_element() {
+                let id = we.wl_surface().unwrap().id();
                 self.space.raise_element(we, true);
                 keyboard.set_focus(self, Some(we.clone().into()), serial);
+                if let Some(view) = self.window_views.get_mut(&id) {
+                    view.raise();
+                }
             }
         }
          
@@ -327,6 +330,10 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                 .map(|(w, p)| (w.clone(), p))
             {
                 self.space.raise_element(&window, true);
+                let id = window.wl_surface().unwrap().id();
+                if let Some(view) = self.window_views.get_mut(&id) {
+                    view.raise();
+                }
                 keyboard.set_focus(self, Some(window.clone().into()), serial);
                 #[cfg(feature = "xwayland")]
                 if let WindowElement::X11(surf) = &window {
@@ -501,6 +508,12 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                 }
                 KeyAction::ApplicationSwitchQuit => {
                     self.app_switcher.quit_current_app();
+                }
+                KeyAction::ExposeShowDesktop => {
+                    self.expose_show_desktop();
+                }
+                KeyAction::ExposeShowAll => {
+                    self.expose_show_all();
                 }
                 action => match action {
                     KeyAction::None
@@ -708,6 +721,12 @@ impl ScreenComposer<UdevData> {
                 }
                 KeyAction::ApplicationSwitchQuit => {
                     self.app_switcher.quit_current_app();
+                }
+                KeyAction::ExposeShowDesktop => {
+                    self.expose_show_desktop();
+                }
+                KeyAction::ExposeShowAll => {
+                    self.expose_show_all();
                 }
                 action => match action {
                     KeyAction::None
@@ -1053,6 +1072,7 @@ impl ScreenComposer<UdevData> {
     fn on_gesture_swipe_begin<B: InputBackend>(&mut self, evt: B::GestureSwipeBeginEvent) {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
+        self.expose_show_desktop();
         pointer.gesture_swipe_begin(
             self,
             &GestureSwipeBeginEvent {
@@ -1201,6 +1221,8 @@ enum KeyAction {
     ApplicationSwitchNext,
     ApplicationSwitchPrev,
     ApplicationSwitchQuit,
+    ExposeShowDesktop,
+    ExposeShowAll,
     /// Do nothing more
     None,
 }
@@ -1239,6 +1261,10 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::ApplicationSwitchPrev)
     }  else if modifiers.alt && keysym == Keysym::w {
         Some(KeyAction::ApplicationSwitchQuit)
+    }  else if modifiers.alt && keysym == Keysym::d {
+        Some(KeyAction::ExposeShowDesktop)
+    }  else if modifiers.alt && keysym == Keysym::f {
+        Some(KeyAction::ExposeShowAll)
     } else {
         None
     }

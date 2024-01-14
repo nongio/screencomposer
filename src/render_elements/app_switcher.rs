@@ -24,7 +24,7 @@ use crate::{
     app_switcher::{view::view_app_switcher, App, AppSwitcher},
     shell::WindowElement,
     skia_renderer::SkiaRenderer,
-    udev::UdevRenderer,
+    udev::UdevRenderer, utils::image_from_svg,
 };
 
 pub struct AppSwitcherElement {
@@ -36,35 +36,7 @@ pub struct AppSwitcherElement {
     pub view: layers::prelude::View<AppSwitcher>,
     active: bool,
 }
-pub fn image_from_svg(icon_data: &[u8]) -> skia_safe::Image {
-    let options = usvg::Options::default();
-    let mut rtree = usvg::Tree::from_data(icon_data, &options).unwrap();
-    rtree.size = usvg::Size::from_wh(512.0, 512.0).unwrap();
-    let xml_options = usvg::XmlOptions::default();
-    let xml = usvg::TreeWriting::to_string(&rtree, &xml_options);
 
-    let svg = skia_safe::svg::Dom::from_bytes(xml.as_bytes()).unwrap();
-
-    let mut surface = skia_safe::surface::Surface::new_raster_n32_premul((512, 512)).unwrap();
-    let canvas = surface.canvas();
-    svg.render(canvas);
-    surface.image_snapshot()
-}
-pub fn image_from_icon_path(icon_path: &str) -> skia_safe::Image {
-    let icon_data = std::fs::read(icon_path).unwrap();
-
-    let image = if std::path::Path::new(icon_path)
-        .extension()
-        .and_then(std::ffi::OsStr::to_str)
-        == Some("svg")
-    {
-        image_from_svg(&icon_data)
-    } else {
-        skia_safe::Image::from_encoded(skia_safe::Data::new_copy(icon_data.as_slice())).unwrap()
-    };
-
-    image
-}
 impl AppSwitcherElement {
     pub fn new(layers_engine: LayersEngine) -> Self {
         let wrap = layers_engine.new_layer();

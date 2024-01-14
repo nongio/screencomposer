@@ -91,6 +91,9 @@ impl Backend for X11Data {
         self.surface.reset_buffers();
     }
     fn early_import(&mut self, _surface: &wl_surface::WlSurface) {}
+    fn image_for_surface(&self, surface: &smithay::backend::renderer::utils::RendererSurfaceState) -> Option<skia_safe::Image> {
+        None
+    }
 }
 
 pub fn run_x11() {

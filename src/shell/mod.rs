@@ -325,7 +325,7 @@ fn place_new_window(
     pointer_location: Point<f64, Logical>,
     window: &WindowElement,
     activate: bool,
-) {
+) -> (i32, i32) {
     // place the window at a random location on same output as pointer
     // or if there is not output in a [0;800]x[0;800] square
     use rand::distributions::{Distribution, Uniform};
@@ -361,6 +361,8 @@ fn place_new_window(
     let y = y_range.sample(&mut rng);
 
     space.map_element(window.clone(), (x, y), activate);
+
+    (x, y)
 }
 
 pub fn fixup_positions(space: &mut Space<WindowElement>, pointer_location: Point<f64, Logical>) {

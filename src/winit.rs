@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use layers::{prelude::BuildLayerTree, types::Size};
+use layers::types::Size;
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;
 #[cfg(feature = "debug")]
@@ -20,8 +20,8 @@ use smithay::{
         egl::EGLDevice,
         renderer::{
             damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
-            element::AsRenderElements,
-            ImportDma, ImportMemWl,
+            element::{AsRenderElements},
+            ImportDma, ImportMemWl, utils::{import_surface, RendererSurfaceStateUserData, RendererSurfaceState},
         },
         winit::{self, WinitEvent, WinitGraphicsBackend},
         SwapBuffersError,
@@ -32,12 +32,12 @@ use smithay::{
     reexports::{
         calloop::EventLoop,
         wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
-        wayland_server::{protocol::wl_surface, Display},
+        wayland_server::{protocol::wl_surface, Display, Resource},
         winit::platform::pump_events::PumpStatus,
     },
     utils::{IsAlive, Scale, Transform},
     wayland::{
-        compositor,
+        compositor::{self, with_states},
         dmabuf::{
             DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier,
         },
@@ -48,7 +48,7 @@ use tracing::{error, info, warn};
 use crate::{
     drawing::*, render::*,
     skia_renderer::{SkiaRenderer, SkiaTexture},
-    state::{post_repaint, take_presentation_feedback, ScreenComposer, Backend, CalloopData}, render_elements::{custom_render_elements::CustomRenderElements, skia_element::SkiaElement, scene_element::SceneElement}, app_switcher::{self, view::view_app_switcher},
+    state::{post_repaint, take_presentation_feedback, ScreenComposer, Backend, CalloopData}, render_elements::{custom_render_elements::CustomRenderElements, skia_element::SkiaElement},
 };
 
 pub const OUTPUT_NAME: &str = "winit";
@@ -91,7 +91,14 @@ impl Backend for WinitData {
     fn reset_buffers(&mut self, _output: &Output) {
         self.full_redraw = 4;
     }
-    fn early_import(&mut self, _surface: &wl_surface::WlSurface) {}
+    fn early_import(&mut self, surface: &wl_surface::WlSurface) {
+        with_states(surface, |states| {
+           let _ = import_surface(self.backend.renderer(), states);
+        });
+    }
+    fn image_for_surface(&self, render_surface: &RendererSurfaceState) -> Option<skia_safe::Image> {
+        render_surface.texture::<SkiaRenderer>(99).map(|texture| texture.image.clone())
+    }
 }
 
 pub fn run_winit() {
@@ -231,6 +238,8 @@ pub fn run_winit() {
     let mut pointer_element = PointerElement::<SkiaTexture>::default();
 
     while state.running.load(Ordering::SeqCst) {
+        profiling::puffin::GlobalProfiler::lock().new_frame();
+
         let status = winit.dispatch_new_events(|event| match event {
             WinitEvent::Resized { size, .. } => {
                 // We only have one output
@@ -257,6 +266,8 @@ pub fn run_winit() {
 
         // drawing logic
         {
+            #[cfg(feature = "profile-with-puffin")]
+            profiling::puffin::profile_scope!("drawing logic");
             let backend = &mut state.backend_data.backend;
 
             let mut cursor_guard = state.cursor_status.lock().unwrap();
@@ -467,7 +478,7 @@ pub fn run_winit() {
 
         
         
-
+        state.update_windows();
         state.layers_engine.update(0.016666667);
     }
 }
