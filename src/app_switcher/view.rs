@@ -239,7 +239,7 @@ pub fn view_app_switcher(state: &AppSwitcher) -> ViewLayer {
                             icon_size,
                         )
                     })
-                    .collect(),
+                    .collect::<Vec<ViewLayer>>(),
             )
             .build()
             .unwrap()])
