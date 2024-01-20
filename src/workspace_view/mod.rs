@@ -48,6 +48,7 @@ impl BackgroundView {
         let mut view = layers::prelude::View::new(layer, Box::new(view_background));
         let state = BackgroundViewState {
             image: None,
+            debug_string: "Screen composer 0.1".to_string(),
         };
         view.render(&state);
         Self {
@@ -57,6 +58,10 @@ impl BackgroundView {
         }
     }
     pub fn render(&mut self) {
+        self.view.render(&self.state);
+    }
+    pub fn set_debug_text(&mut self, text: String) {
+        self.state.debug_string = text;
         self.view.render(&self.state);
     }
 }

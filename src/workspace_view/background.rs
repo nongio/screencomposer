@@ -33,16 +33,20 @@ thread_local! {
 
 pub struct BackgroundViewState {
     pub image: Option<skia_safe::Image>,
+    pub debug_string: String,
 }
 impl Hash for BackgroundViewState {
     fn hash<H: Hasher>(&self, state: &mut H) {
         if let Some(image) = self.image.as_ref() {
             image.unique_id().hash(state);
         }
+        self.debug_string.hash(state);
     }
 }
 pub fn view_background(state: &BackgroundViewState) -> ViewLayer {
     let image = state.image.clone();
+    let debug_string = state.debug_string.clone();
+    
     let draw_container = move |canvas: &mut skia_safe::Canvas, w, h| {
         let color = skia_safe::Color4f::new(1.0, 1.0, 0.0, 1.0);
         let mut paint = skia_safe::Paint::new(color, None);
@@ -60,6 +64,12 @@ pub fn view_background(state: &BackgroundViewState) -> ViewLayer {
             ));
         }
         canvas.draw_rrect(rrect, &paint);
+        let color = skia_safe::Color4f::new(0.0, 0.0, 0.0, 1.0);
+        let paint = skia_safe::Paint::new(color, None);
+        let mut font = skia_safe::Font::default();
+        let font_size = 26.0;
+        font.set_size(font_size);
+        canvas.draw_str(&debug_string, (80.0, 30.0), &font, &paint);
     };
 
     ViewLayerBuilder::default()
