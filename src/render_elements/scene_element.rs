@@ -1,7 +1,7 @@
 
 use std::sync::Arc;
 
-use layers::{engine::{ NodeRef, node::SceneNode}, drawing::scene::render_node_tree};
+use layers::{engine::{ NodeRef, node::SceneNode, LayersEngine}, drawing::scene::render_node_tree};
 
 use smithay::{
     backend::renderer::{
@@ -18,26 +18,34 @@ use crate::{skia_renderer::SkiaRenderer, udev::UdevRenderer};
 pub struct SceneElement {
     id: Id,
     commit_counter: CommitCounter,
-    scene: Arc<layers::engine::scene::Scene>,
-    root_id: Option<layers::prelude::NodeRef>,
+    engine:LayersEngine,
+    last_update: std::time::Instant,
+    pub size: (f32, f32),
 }
 
 impl SceneElement {
-    pub fn with_scene(scene: Arc<layers::engine::scene::Scene>, root_id: Option<NodeRef>) -> Self {
+    pub fn with_engine(engine: LayersEngine) -> Self {
         Self {
             id: Id::new(),
             commit_counter: CommitCounter::default(),
-            scene,
-            root_id,
+            engine,
+            last_update: std::time::Instant::now(),
+            size: (0.0, 0.0),
         }
     }
     pub fn update(&mut self) {
-        self.commit_counter.increment();
+        let dt = self.last_update.elapsed().as_secs_f32();
+        self.last_update = std::time::Instant::now();
+        if self.engine.update(dt) {
+            self.commit_counter.increment();
+        }
     }
     pub fn root_layer(&self) -> Option<SceneNode> {
-        let root_id = self.root_id?;
-        let node = self.scene.get_node(root_id)?;
-        Some(node.get().clone())
+        self.engine.root_layer()
+    }
+    pub fn set_size(&mut self, width: f32, height: f32) {
+        self.engine.set_scene_size(width, height);       
+        self.size = (width, height);
     }
 }
 
@@ -78,10 +86,12 @@ impl Element for SceneElement {
         scale: Scale<f64>,
         _commit: Option<CommitCounter>,
     ) -> Vec<Rectangle<i32, Physical>> {
-            vec![Rectangle::from_loc_and_size((0, 0), self.geometry(scale).size)]
+        let scene_damage = self.engine.damage();
+        let safe = 50;
+            vec![Rectangle::from_loc_and_size((scene_damage.x as i32 - safe, scene_damage.y as i32 -safe), (scene_damage.width as i32 + safe, scene_damage.height as i32 + safe))]
     }
     fn alpha(&self) -> f32 {
-        0.5
+        1.0
     }
 
 }
@@ -112,16 +122,35 @@ fn draw(
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
     ) -> Result<(), <SkiaRenderer as Renderer>::Error> {
-        
+        #[cfg(feature = "profile-with-puffin")]
+        profiling::puffin::profile_scope!("render_scene");
         let mut surface = frame.skia_surface.clone();
         let canvas = surface.canvas();
-        let scene = &self.scene;
+        let scene = self.engine.scene();
+        let root_id = self.engine.scene_root();
         let arena = scene.nodes.data();
         let arena = &*arena.read().unwrap();
-        if let Some(root_id) = self.root_id {
+        // let scene_damage = self.engine.damage();
+        // let damage_rect = skia_safe::Rect::from_xywh(scene_damage.x, scene_damage.y, scene_damage.width, scene_damage.height);
+        let mut damage_rect = skia_safe::Rect::default();
+        damage.iter().for_each(|d| {
+            damage_rect.join(skia_safe::Rect::from_xywh(d.loc.x as f32, d.loc.y as f32, d.size.w as f32, d.size.h as f32));
+        });
+
+        // println!("damage {:?}", damage_rect.width());
+        if let Some(root_id) = root_id {
+            let save_point= canvas.save();
+            canvas.clip_rect(damage_rect, None, None);
             render_node_tree(root_id, arena, canvas, 1.0);
+            canvas.restore_to_count(save_point);
         }
-        
+        frame.skia_surface.surface.flush();
+        // let mut paint = skia_safe::Paint::new(skia_safe::Color4f::new(1.0, 0.0, 0.0, 1.0), None);
+        // paint.set_stroke(true);
+        // paint.set_stroke_width(1.0);
+        // canvas.draw_rect(damage_rect, &paint);
+
+        self.engine.clear_damage();
         Ok(())
     }
 }

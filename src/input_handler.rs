@@ -510,10 +510,20 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     self.app_switcher.quit_current_app();
                 }
                 KeyAction::ExposeShowDesktop => {
-                    self.expose_show_desktop();
+                    self.show_desktop = !self.show_desktop;
+                    if self.show_desktop {
+                        self.expose_show_desktop(layers::types::Point {x:0.0, y: 0.0});
+                    } else {
+                        self.expose_show_desktop(layers::types::Point {x:1.0, y: 1.0});
+                    }
                 }
                 KeyAction::ExposeShowAll => {
-                    self.expose_show_all();
+                    self.show_all = !self.show_all;
+                    if self.show_all {
+                        self.expose_show_all(1.0);
+                    } else {
+                        self.expose_show_all(0.0);
+                    }
                 }
                 action => match action {
                     KeyAction::None
@@ -723,10 +733,20 @@ impl ScreenComposer<UdevData> {
                     self.app_switcher.quit_current_app();
                 }
                 KeyAction::ExposeShowDesktop => {
-                    self.expose_show_desktop();
+                    self.show_desktop = !self.show_desktop;
+                    if self.show_desktop {
+                        self.expose_show_desktop(layers::types::Point {x:0.0, y: 0.0});
+                    } else {
+                        self.expose_show_desktop(layers::types::Point {x:1.0, y: 1.0});
+                    }
                 }
                 KeyAction::ExposeShowAll => {
-                    self.expose_show_all();
+                    self.show_all = !self.show_all;
+                    if self.show_all {
+                        self.expose_show_all(1.0);
+                    } else {
+                        self.expose_show_all(0.0);
+                    }
                 }
                 action => match action {
                     KeyAction::None
@@ -1072,7 +1092,12 @@ impl ScreenComposer<UdevData> {
     fn on_gesture_swipe_begin<B: InputBackend>(&mut self, evt: B::GestureSwipeBeginEvent) {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
-        self.expose_show_desktop();
+        // tracing::error!("on_gesture_swipe_begin: {:?}", self.swipe_gesture);
+        if evt.fingers() == 3 && !self.is_pinching {
+            self.is_swiping = true;
+        }
+        // self.background_view.set_debug_text(format!("on_gesture_swipe_begin: {:?}", self.swipe_gesture));
+        
         pointer.gesture_swipe_begin(
             self,
             &GestureSwipeBeginEvent {
@@ -1085,6 +1110,17 @@ impl ScreenComposer<UdevData> {
 
     fn on_gesture_swipe_update<B: InputBackend>(&mut self, evt: B::GestureSwipeUpdateEvent) {
         let pointer = self.pointer.clone();
+        let multiplier = 800.0;
+        let delta = evt.delta_y() as f32 / multiplier;
+        self.swipe_gesture = layers::types::Point {
+            x: (self.swipe_gesture.x - delta),
+            y: (self.swipe_gesture.y - delta),
+        };
+        // self.background_view.set_debug_text(format!("swipe_update ({}): {:?} ", self.show_all, self.swipe_gesture));
+        
+        if self.is_swiping {
+            self.expose_show_all(self.swipe_gesture.x);
+        }
         pointer.gesture_swipe_update(
             self,
             &GestureSwipeUpdateEvent {
@@ -1097,6 +1133,37 @@ impl ScreenComposer<UdevData> {
     fn on_gesture_swipe_end<B: InputBackend>(&mut self, evt: B::GestureSwipeEndEvent) {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
+        
+
+        // tracing::error!("on_gesture_swipe_end: {:?}", self.swipe_gesture);
+        // self.background_view.set_debug_text(format!("on_gesture_swipe_end: {:?}", self.swipe_gesture));
+
+        if self.is_swiping {
+            if self.show_all {
+                if self.swipe_gesture.x < 0.9 {
+                    self.show_all = false;
+                    self.expose_show_all(0.0);
+                    self.swipe_gesture = (0.0, 0.0).into();
+                    self.is_swiping = false;
+                } else {
+                    self.show_all = true;
+                    self.expose_show_all(1.0);
+                    self.swipe_gesture = (1.0, 1.0).into();
+                }
+            } else { 
+                if self.swipe_gesture.x > 0.1 {
+                    self.expose_show_all(1.0);
+                    self.show_all = true;
+
+                    self.swipe_gesture = (1.0, 1.0).into();
+                } else {
+                    self.expose_show_all(0.0);
+                    self.show_all = false;
+                    self.swipe_gesture = (0.0, 0.0).into();
+                    self.is_swiping = false;
+                }
+            }
+        }
         pointer.gesture_swipe_end(
             self,
             &GestureSwipeEndEvent {
@@ -1110,6 +1177,12 @@ impl ScreenComposer<UdevData> {
     fn on_gesture_pinch_begin<B: InputBackend>(&mut self, evt: B::GesturePinchBeginEvent) {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
+
+        if evt.fingers() == 4 && !self.is_swiping {
+            self.is_pinching = true;
+        }
+        // self.background_view.set_debug_text(format!("on_gesture_pinch_begin: {:?}", evt.fingers()));
+
         pointer.gesture_pinch_begin(
             self,
             &GesturePinchBeginEvent {
@@ -1122,6 +1195,20 @@ impl ScreenComposer<UdevData> {
 
     fn on_gesture_pinch_update<B: InputBackend>(&mut self, evt: B::GesturePinchUpdateEvent) {
         let pointer = self.pointer.clone();
+        let multiplier = 1.1;
+        let mut delta = evt.scale()as f32 * multiplier;
+        if !self.show_desktop {
+            delta = delta - 1.0;
+        }
+
+        self.pinch_gesture = layers::types::Point {
+            x: delta,//(self.pinch_gesture.x - delta),
+            y: delta,//(self.pinch_gesture.y - delta),
+        };
+        if self.is_pinching {    
+            // self.background_view.set_debug_text(format!("on_gesture_pinch_update: {:?}", delta));
+            self.expose_show_desktop(self.pinch_gesture);
+        }
         pointer.gesture_pinch_update(
             self,
             &GesturePinchUpdateEvent {
@@ -1136,6 +1223,35 @@ impl ScreenComposer<UdevData> {
     fn on_gesture_pinch_end<B: InputBackend>(&mut self, evt: B::GesturePinchEndEvent) {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
+        
+        // self.background_view.set_debug_text(format!("on_gesture_pinch_end"));
+        if self.is_pinching {
+            if self.show_desktop {
+                if self.pinch_gesture.x < 0.9 {
+                    self.show_desktop = false;
+                    self.pinch_gesture = (0.0, 0.0).into();
+                    self.expose_show_desktop(self.pinch_gesture);
+                    self.is_pinching = false;
+
+                } else {
+                    self.show_desktop = true;
+                    self.pinch_gesture = (1.0, 1.0).into();
+                    self.expose_show_desktop(self.pinch_gesture);
+                }
+            } else { 
+                if self.pinch_gesture.x > 0.1 {
+                    self.show_desktop = true;
+                    self.pinch_gesture = (1.0, 1.0).into();
+                    self.expose_show_desktop(self.pinch_gesture);
+                } else {
+                    self.show_desktop = false;
+                    self.pinch_gesture = (0.0, 0.0).into();
+                    self.expose_show_desktop(self.pinch_gesture);
+                    self.is_pinching = false;
+
+                }
+            }
+        }
         pointer.gesture_pinch_end(
             self,
             &GesturePinchEndEvent {

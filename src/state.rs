@@ -4,12 +4,12 @@ use std::{
     time::Duration, borrow::Borrow, collections::HashMap,
 };
 
-use layers::{engine::{Engine, LayersEngine, animation::Transition}, prelude::{Layer, BuildLayerTree, taffy}, types::{Color, BorderRadius}};
+use layers::{engine::{Engine, LayersEngine, animation::{Transition, timing::{Easing, TimingFunction}}}, prelude::{Layer, BuildLayerTree, taffy, Interpolate}, types::{Color, BorderRadius}};
 use tracing::{info, warn};
 
 use smithay::{
     backend::renderer::{element::{
-        default_primary_scanout_output_compare, utils::select_dmabuf_feedback, RenderElementStates, Id,
+        default_primary_scanout_output_compare, utils::select_dmabuf_feedback, RenderElementStates, Id, AsRenderElements,
     }, utils::{RendererSurfaceStateUserData, RendererSurfaceState}, Renderer},
     delegate_compositor, delegate_data_control, delegate_data_device, delegate_fractional_scale,
     delegate_input_method_manager, delegate_keyboard_shortcuts_inhibit, delegate_layer_shell,
@@ -45,7 +45,7 @@ use smithay::{
     },
     utils::{Clock, Monotonic, Rectangle},
     wayland::{
-        compositor::{get_parent, with_states, CompositorClientState, CompositorState, SurfaceAttributes},
+        compositor::{get_parent, with_states, CompositorClientState, CompositorState, SurfaceAttributes, SubsurfaceCachedState, SubsurfaceUserData},
         dmabuf::DmabufFeedback,
         fractional_scale::{with_fractional_scale, FractionalScaleHandler, FractionalScaleManagerState},
         input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface},
@@ -178,6 +178,11 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub windows_layer: Layer,
     pub overlay_layer: Layer,
     pub background_view: BackgroundView,
+    //
+    pub is_swiping: bool,
+    pub is_pinching: bool,
+    pub swipe_gesture: layers::types::Point,
+    pub pinch_gesture: layers::types::Point,
 }
 
 delegate_compositor!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
@@ -685,7 +690,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
 
         layers_engine.scene_add_layer(overlay_layer.clone());
 
-        let scene_element = SceneElement::with_scene(layers_engine.scene().clone(), layers_engine.scene_root());
+        let scene_element = SceneElement::with_engine(layers_engine.clone());
         let app_switcher = AppSwitcherElement::new(layers_engine.clone());
         let mut background_view = BackgroundView::new(layers_engine.clone(), background_layer.clone());
         let background_image = image_from_path("./resources/background.jpg");
@@ -743,6 +748,10 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             overlay_layer,
             workspace_layer,
             background_view,
+            swipe_gesture: (0.0, 0.0).into(),
+            pinch_gesture: (0.0, 0.0).into(),
+            is_swiping: false,
+            is_pinching: false,
         }
     }
 
@@ -758,9 +767,11 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         
 
         for window in windows {
+
             let id = window.wl_surface().unwrap().id();
             let location = self.space.element_location(window).unwrap_or((0,0).into()).to_physical(1_i32);
             let window_geometry = window.geometry();
+
             let mut title = "".to_string();
             
             smithay::wayland::compositor::with_states(
@@ -779,8 +790,14 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             let mut render_elements = Vec::new();
             window.with_surfaces(|_surface, states| {
                 let geometry = states.cached_state.current::<SurfaceCachedState>().geometry.unwrap_or_default();
+                let render_surface = states.data_map.get::<RendererSurfaceStateUserData>();
+                
+                let subsurface_cache = states.cached_state.current::<SubsurfaceCachedState>();
+                // let subsurface_cache = states.cached_state.current::<SubsurfaceState>();
                 let surface_attributes = states.cached_state.current::<SurfaceAttributes>();
                 let popup = states.data_map.get::<Mutex<XdgPopupSurfaceRoleAttributes>>();
+                let subsurface = states.data_map.get::<SubsurfaceUserData>();
+
                 let mut x = 0.0;
                 let mut y = 0.0;
                 if let Some(popup) = popup {
@@ -791,19 +808,27 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
 
                 if let Some(render_surface) = states.data_map.get::<RendererSurfaceStateUserData>() {
                     let render_surface = render_surface.borrow();
-
-                    let image = self.backend_data.image_for_surface(&render_surface);
-                    if image.is_none() {
-                        println!("image is none");
+                    let view = render_surface.view();
+                    let mut width = 0.0;
+                    let mut height = 0.0;
+                    let mut offset_x = 0.0;
+                    let mut offset_y = 0.0;
+                    if let Some(view) = view {
+                        // println!("view {:?}", view);
+                        width = view.dst.w as f32;
+                        height = view.dst.h as f32;
+                        offset_x = view.offset.x as f32;
+                        offset_y = view.offset.y as f32;
                     }
+                    let image = self.backend_data.image_for_surface(&render_surface);
                     let wvs = WindowViewSurface {
                         id: id.clone(),
-                        offset_x: geometry.loc.x as f32,
-                        offset_y: geometry.loc.y as f32,
+                        offset_x: offset_x,//geometry.loc.x as f32,
+                        offset_y: offset_y,//geometry.loc.y as f32,
                         x,
                         y,
-                        w: geometry.size.w as f32,
-                        h: geometry.size.h as f32,
+                        w: width, //geometry.size.w as f32,
+                        h: height, //geometry.size.h as f32,
                         image,
                         commit: render_surface.current_commit(),
                         transform: surface_attributes.buffer_transform.into(),
@@ -824,33 +849,39 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             }
         }
     }
-    pub fn expose_show_desktop(&mut self) {
+    pub fn expose_show_desktop(&mut self, delta: layers::types::Point) {
         let toplevels = self.xdg_shell_state.toplevel_surfaces().iter();
-        self.show_desktop = !self.show_desktop;
-       for toplevel in toplevels {
-            let window = self.space.elements().find(|window| window.wl_surface().as_ref() == Some(toplevel.wl_surface())).unwrap().to_owned();
-            let element_geometry = self.space.element_geometry(&window);
-            let window_geometry = window.geometry();
+
+        for toplevel in toplevels {
+            // let window = self.space.elements().find(|window| window.wl_surface().as_ref() == Some(toplevel.wl_surface())).unwrap().to_owned();
+            // let element_geometry = self.space.element_geometry(&window);
+            // let window_geometry = window.geometry();
             let id = toplevel.wl_surface().id();
             if let Some(window_layer_id) = self.windows_layer.id() {
                 let view = self.window_views.entry(id).or_insert_with(|| WindowView::new(self.layers_engine.clone(), window_layer_id));
                 with_states(toplevel.wl_surface(), |states| {
                     let r = states.data_map.get::<RendererSurfaceStateUserData>()
                     .unwrap().borrow();
-                    if self.show_desktop {
+
+                    let delta = delta.x.clamp(0.0, 1.0);
+
+                    let to_x = -view.state.w;
+                    let x= view.state.x.interpolate(&to_x, delta);
+                    let to_y = -view.state.h;
+                    let y= view.state.y.interpolate(&to_y, delta);
+                    
+                    if delta != 0.0 && delta != 1.0 {
                         view.layer.set_position(layers::types::Point {
-                            x: -(view.state.w as f32),
-                            y: -(view.state.h as f32),
-                        }, Some(Transition {
-                            duration: 0.5,
-                            ..Default::default()
-                        }));
+                            x,
+                            y,
+                        }, None);
                     } else {
                         view.layer.set_position(layers::types::Point {
-                            x: (view.state.x as f32),
-                            y: (view.state.y as f32),
+                            x,
+                            y,
                         }, Some(Transition {
                             duration: 0.5,
+                            timing: TimingFunction::Easing(Easing::ease_in()),
                             ..Default::default()
                         }));
                     }
@@ -859,58 +890,70 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             
         }
     }
-    pub fn expose_show_all(&mut self) {
+
+    pub fn expose_show_all(&mut self, delta: f32) {
         let toplevels = self.xdg_shell_state.toplevel_surfaces().iter().enumerate();
-        self.show_all = !self.show_all;
-        let mut x = 0.0;
-       for (index, toplevel) in toplevels {
-            let window = self.space.elements().find(|window| window.wl_surface().as_ref() == Some(toplevel.wl_surface())).unwrap().to_owned();
-            let element_geometry = self.space.element_geometry(&window);
-            let window_geometry = window.geometry();
+        let padding_top = 200.0;
+        let screen_size_w = self.scene_element.size.0;
+        let screen_size_h = self.scene_element.size.1 - padding_top;
+
+        let cell_width = screen_size_w / 3.0;
+        let cell_height = screen_size_h / 3.0;
+        let mut delta = delta.max(0.0);
+        delta = delta.powf(0.7);
+
+        for (index, toplevel) in toplevels {
+            let cell_x = (index % 3) as f32 * cell_width;
+            let cell_y = padding_top + (index / 3) as f32 * cell_height;
+            let cell_center = layers::types::Point {
+                x: cell_x + cell_width / 2.0,
+                y: cell_y + cell_height / 2.0,
+            };
+
+            // let window = self.space.elements().find(|window| window.wl_surface().as_ref() == Some(toplevel.wl_surface())).unwrap().to_owned();
+            // let element_geometry = self.space.element_geometry(&window);
+            // let window_geometry = window.geometry();
+            
             let id = toplevel.wl_surface().id();
             if let Some(view) = self.window_views.get(&id) {
                 with_states(toplevel.wl_surface(), |states| {
-                    let r = states.data_map.get::<RendererSurfaceStateUserData>()
-                    .unwrap().borrow();
-    
-                    if self.show_all {
+
+                    let scale = 1.0.interpolate(&0.8, delta);
+                    let to_x = cell_center.x - view.state.w / 2.0 * scale;
+                    let to_y = cell_center.y - view.state.h / 2.0 * scale;
+                    let delta = delta.clamp(0.0, 1.0);
+                    let x= view.state.x.interpolate(&to_x, delta);
+                    let y= view.state.y.interpolate(&to_y, delta);
+
+                    if delta != 0.0 && delta != 1.0 {
                         view.layer.set_position(layers::types::Point {
                             x,
-                            y: 0.0,
-                        }, Some(Transition {
-                            duration: 0.5,
-                            ..Default::default()
-                        }));
-                        x +=( view.state.w as f32) * 0.3;
+                            y,
+                        }, None);
+                        view.layer.set_scale(layers::types::Point {
+                            x: scale,
+                            y: scale,
+                        }, None);
                     } else {
                         view.layer.set_position(layers::types::Point {
-                            x: (view.state.x as f32),
-                            y: (view.state.y as f32),
+                            x,
+                            y,
                         }, Some(Transition {
                             duration: 0.5,
+                            timing: TimingFunction::Easing(Easing::ease_in()),
+                            ..Default::default()
+                        }));
+                        view.layer.set_scale(layers::types::Point {
+                            x: scale,
+                            y: scale,
+                        }, Some(Transition {
+                            duration: 0.5,
+                            timing: TimingFunction::Easing(Easing::ease_in()),
                             ..Default::default()
                         }));
                     }
                 });
             }
-            
-        }
-        if self.show_all {
-            self.workspace_layer.set_scale(layers::types::Point {
-                x: 0.9,
-                y: 0.9,
-            }, Some(Transition {
-                duration: 0.5,
-                ..Default::default()
-            }));
-        } else {
-            self.workspace_layer.set_scale(layers::types::Point {
-                x: 1.0,
-                y: 1.0,
-            }, Some(Transition {
-                duration: 0.5,
-                ..Default::default()
-            }));
         }
     }
 }
