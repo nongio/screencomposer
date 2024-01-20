@@ -144,7 +144,6 @@ fn draw(
             render_node_tree(root_id, arena, canvas, 1.0);
             canvas.restore_to_count(save_point);
         }
-        frame.skia_surface.surface.flush();
         // let mut paint = skia_safe::Paint::new(skia_safe::Color4f::new(1.0, 0.0, 0.0, 1.0), None);
         // paint.set_stroke(true);
         // paint.set_stroke_width(1.0);

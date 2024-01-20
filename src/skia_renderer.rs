@@ -3,7 +3,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     ffi::{c_char, CStr},
-    rc::Rc,
+    rc::Rc, time::{Instant, Duration},
 };
 
 use skia_safe as skia;
@@ -22,7 +22,7 @@ use smithay::{
                 format::{fourcc_to_gl_formats, gl_internal_format_to_fourcc},
                 Capability, GlesError, GlesRenderbuffer, GlesRenderer, GlesTexture,
             },
-            sync::SyncPoint,
+            sync::{SyncPoint, Fence},
             Bind, DebugFlags, ExportMem, Frame, ImportDma, ImportDmaWl, ImportEgl, ImportMem,
             ImportMemWl, Offscreen, Renderer, Texture, TextureFilter, TextureMapping, Unbind,
         },
@@ -40,7 +40,11 @@ pub struct SkiaSurface {
     pub gr_context: skia::gpu::DirectContext,
     pub surface: skia::Surface,
 }
-
+impl SkiaSurface {
+    pub fn canvas(&mut self) -> &mut skia::Canvas {
+        self.surface.canvas()
+    }
+}
 impl SkiaSurface {
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_fbo(
@@ -156,7 +160,7 @@ pub struct SkiaTexture {
 #[derive(Clone)]
 pub struct SkiaFrame {
     size: Size<i32, Physical>,
-    pub skia_surface: skia::Surface,
+    pub skia_surface: SkiaSurface,
     id: usize,
 }
 
@@ -454,7 +458,6 @@ impl<'a> Frame for SkiaFrame {
             damage,
             color,
         )?;
-        self.skia_surface.flush_submit_and_sync_cpu();
         Ok(())
     }
     fn draw_solid(
@@ -602,12 +605,89 @@ impl<'a> Frame for SkiaFrame {
     #[profiling::function]
     fn finish(self) -> Result<SyncPoint, Self::Error> {
         let mut surface = self.skia_surface;
-        surface.flush_submit_and_sync_cpu();
+   
+        let info = FlushInfo2 {
+            num_semaphores: 0,
+            signal_semaphores: std::ptr::null_mut(),
+            finished_proc: Some(finished_proc),
+            finished_context: std::ptr::null_mut(),
+            submitted_proc: None,
+            submitted_context: std::ptr::null_mut(),
+        };
 
-        Ok(SyncPoint::signaled())
+        // Transmute flushinfo2 into flushinfo
+        let info = unsafe {
+            let native = &*(&info as *const FlushInfo2 as *const sb::GrFlushInfo);
+            &*(native as *const sb::GrFlushInfo as *const skia_safe::gpu::FlushInfo)
+        };
+                
+        FINISHED_PROC_STATE.store(false, Ordering::SeqCst);
+
+        let semaphores = surface.gr_context.flush(info);
+        let syncpoint = if semaphores == skia::gpu::SemaphoresSubmitted::Yes {
+            profiling::scope!("FINISHED_PROC_STATE");
+            let skia_sync = SkiaSync {};
+            SyncPoint::from(skia_sync)
+        } else {
+            SyncPoint::signaled()
+        };
+        {
+            profiling::scope!("context_submit");
+            surface.gr_context.submit(false);
+        }
+        Ok(syncpoint)
     }
 }
 
+
+// this is a "hack" to expose finished_proc and submitted_proc
+// until a PR is made to skia-bindings
+use skia_bindings as sb;
+
+#[repr(C)]
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct FlushInfo2 {
+    num_semaphores: usize,
+    signal_semaphores: *mut sb::GrBackendSemaphore,
+    pub finished_proc: sb::GrGpuFinishedProc,
+    finished_context: sb::GrGpuFinishedContext,
+    pub submitted_proc: sb::GrGpuSubmittedProc,
+    submitted_context: sb::GrGpuSubmittedContext,
+}
+
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static FINISHED_PROC_STATE: AtomicBool = AtomicBool::new(false);
+
+unsafe extern "C" fn finished_proc(_: *mut ::core::ffi::c_void) {
+    FINISHED_PROC_STATE.store(true, Ordering::SeqCst);
+}
+
+#[derive(Debug, Clone)]
+struct SkiaSync {}
+
+impl Fence for SkiaSync {
+    fn export(&self) -> Option<std::os::unix::prelude::OwnedFd> {
+        None
+    }
+    fn is_exportable(&self) -> bool {
+        false
+    }
+    fn is_signaled(&self) -> bool {
+        FINISHED_PROC_STATE.load(Ordering::SeqCst)
+    }
+    fn wait(&self) {
+        let start = Instant::now();
+
+        while !self.is_signaled() {
+            if start.elapsed() >= Duration::from_millis(8) {
+                break;
+            }
+        }
+        // while !self.is_signaled() {}
+    }
+}
 impl Renderer for SkiaRenderer {
     type Error = GlesError;
     type TextureId = SkiaTexture;
@@ -679,7 +759,7 @@ impl Renderer for SkiaRenderer {
         let surface = self.target_renderer.get_mut(&self.current_target.as_ref().unwrap()).unwrap();
 
         Ok(SkiaFrame {
-            skia_surface: surface.surface(),
+            skia_surface: surface.clone(),
             size: output_size,
             id,
         })
@@ -972,7 +1052,7 @@ impl ExportMem for SkiaRenderer {
         let renderer = self.current_skia_renderer().unwrap();
 
         let mut surface = renderer.surface();
-        surface.flush_submit_and_sync_cpu();
+        surface.flush_and_submit();
         let image = surface
             .image_snapshot_with_bounds(skia::IRect::from_xywh(
                 region.loc.x,

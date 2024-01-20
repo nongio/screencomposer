@@ -35,6 +35,7 @@ freedesktop-icons = "0.2.4"
 xdgkit = "3.2.5"
 freedesktop-desktop-entry = "0.5.0"
 usvg = "0.37.0"
+skia-bindings = {version = "0.62", default-features = true }
 
 [dependencies.smithay]
 path = "../smithay"
