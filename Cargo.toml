@@ -1,12 +1,10 @@
 [package]
 name = "screen-composer"
-version = "0.1.0"
+authors = ["Riccardo Canalicchio <riccardo.canalicchio@gmail.com>"]
+version = "0.1.6"
 edition = "2021"
 license = "MIT"
 rust-version = "1.65.0"
-
-# [build]
-# rustc-wrapper = "/home/riccardo/.cargo/bin/sccache"
 
 [dependencies]
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
