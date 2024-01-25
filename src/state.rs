@@ -1,7 +1,7 @@
 use std::{
     os::unix::io::OwnedFd,
     sync::{atomic::AtomicBool, Arc, Mutex},
-    time::Duration, borrow::Borrow, collections::HashMap,
+    time::Duration, borrow::Borrow, collections::{HashMap, VecDeque},
 };
 
 use layers::{engine::{Engine, LayersEngine, animation::{Transition, timing::{Easing, TimingFunction}}}, prelude::{Layer, BuildLayerTree, taffy, Interpolate}, types::{Color, BorderRadius}};
@@ -9,7 +9,7 @@ use tracing::{info, warn};
 
 use smithay::{
     backend::renderer::{element::{
-        default_primary_scanout_output_compare, utils::select_dmabuf_feedback, RenderElementStates, Id, AsRenderElements,
+        default_primary_scanout_output_compare, utils::select_dmabuf_feedback, RenderElementStates, Id, AsRenderElements, RenderElement,
     }, utils::{RendererSurfaceStateUserData, RendererSurfaceState}, Renderer},
     delegate_compositor, delegate_data_control, delegate_data_device, delegate_fractional_scale,
     delegate_input_method_manager, delegate_keyboard_shortcuts_inhibit, delegate_layer_shell,
@@ -20,8 +20,7 @@ use smithay::{
     desktop::{
         space::SpaceElement,
         utils::{
-            surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
-            update_surface_primary_scanout_output, OutputPresentationFeedback,
+            surface_presentation_feedback_flags_from_states, surface_primary_scanout_output, update_surface_primary_scanout_output, with_surfaces_surface_tree, OutputPresentationFeedback
         },
         PopupKind, PopupManager, Space,
     },
@@ -45,7 +44,7 @@ use smithay::{
     },
     utils::{Clock, Monotonic, Rectangle},
     wayland::{
-        compositor::{get_parent, with_states, CompositorClientState, CompositorState, SurfaceAttributes, SubsurfaceCachedState, SubsurfaceUserData},
+        compositor::{get_parent, with_states, with_surface_tree_downward, with_surface_tree_upward, CompositorClientState, CompositorState, SubsurfaceCachedState, SubsurfaceUserData, SurfaceAttributes, SurfaceData, TraversalAction},
         dmabuf::DmabufFeedback,
         fractional_scale::{with_fractional_scale, FractionalScaleHandler, FractionalScaleManagerState},
         input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface},
@@ -91,7 +90,7 @@ use smithay::{
 
 #[cfg(feature = "xwayland")]
 use crate::cursor::Cursor;
-use crate::{focus::FocusTarget, shell::WindowElement, render_elements::{scene_element::SceneElement, app_switcher::AppSwitcherElement}, window_view::{WindowView, view::WindowViewSurface}, workspace_view::BackgroundView, utils::image_from_path};
+use crate::{focus::FocusTarget, render, render_elements::{scene_element::SceneElement, app_switcher::AppSwitcherElement}, shell::WindowElement, utils::image_from_path, window_view::{WindowView, view::WindowViewSurface}, workspace_view::BackgroundView};
 #[cfg(feature = "xwayland")]
 use smithay::{
     delegate_xwayland_keyboard_grab,
@@ -762,15 +761,42 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             }).collect::<Vec<_>>();
         self.app_switcher.update_with_window_elements(windows.as_slice());
     }
+
+    fn window_view_for_surface(&self, surface: &WlSurface, states: &SurfaceData, location: &smithay::utils::Point<f64, smithay::utils::Physical>, scale: f64) -> Option<WindowViewSurface> {
+        let id = surface.id();
+        let cached_state = states.cached_state.current::<SurfaceCachedState>();
+        let surface_geometry = cached_state.geometry.unwrap_or_default().to_f64().to_physical(scale);
+        let surface_attributes = states.cached_state.current::<SurfaceAttributes>();
+        if let Some(render_surface) = states.data_map.get::<RendererSurfaceStateUserData>() {
+            let render_surface = render_surface.borrow();
+            if let Some(view) = render_surface.view() {
+                let image = self.backend_data.image_for_surface(&render_surface);
+                let wvs = WindowViewSurface {
+                    id: id.clone(),
+                    offset_x: view.offset.x as f32 * scale as f32,//geometry.loc.x as f32,
+                    offset_y: view.offset.y as f32 * scale as f32,//geometry.loc.y as f32,
+                    x: location.x as f32 - surface_geometry.loc.x as f32,
+                    y: location.y as f32 - surface_geometry.loc.y as f32,
+                    w: view.dst.w as f32 * scale as f32,//surface_geometry.size.w as f32,
+                    h: view.dst.h as f32 * scale as f32,//surface_geometry.size.h as f32,
+                    image,
+                    commit: render_surface.current_commit(),
+                    transform: surface_attributes.buffer_transform.into(),
+                };
+                return Some(wvs);
+            }
+        };
+        None
+    }
     pub fn update_windows(&mut self) {
-        let windows = self.space.elements();//ScreenComposer::<WinitData>::update_windows(&output, space, renderer); 
-        
-
+        let windows = self.space.elements();
         for window in windows {
-
-            let id = window.wl_surface().unwrap().id();
-            let location = self.space.element_location(window).unwrap_or((0,0).into()).to_physical(1_i32);
-            let window_geometry = window.geometry();
+            let output = self.space.outputs_for_element(window);
+            let scale_factor = output.first().map(|output| output.current_scale()).unwrap_or(smithay::output::Scale::Fractional(1.0)).fractional_scale();
+            let window_surface = window.wl_surface().unwrap();
+            let id = window_surface.id();
+            let location = self.space.element_location(window).unwrap_or((0,0).into()).to_f64().to_physical(scale_factor);
+            let window_geometry = self.space.element_geometry(window).unwrap_or_default().to_f64().to_physical(scale_factor);
 
             let mut title = "".to_string();
             
@@ -787,55 +813,54 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                     title = attributes.title.as_ref().cloned().unwrap_or_default();
                 });
 
-            let mut render_elements = Vec::new();
-            window.with_surfaces(|_surface, states| {
-                let geometry = states.cached_state.current::<SurfaceCachedState>().geometry.unwrap_or_default();
-                let render_surface = states.data_map.get::<RendererSurfaceStateUserData>();
-                
-                let subsurface_cache = states.cached_state.current::<SubsurfaceCachedState>();
-                // let subsurface_cache = states.cached_state.current::<SubsurfaceState>();
-                let surface_attributes = states.cached_state.current::<SurfaceAttributes>();
-                let popup = states.data_map.get::<Mutex<XdgPopupSurfaceRoleAttributes>>();
-                let subsurface = states.data_map.get::<SubsurfaceUserData>();
-
-                let mut x = 0.0;
-                let mut y = 0.0;
-                if let Some(popup) = popup {
-                    let popup = popup.lock().unwrap();
-                    x = popup.current.geometry.loc.x as f32;
-                    y = popup.current.geometry.loc.y as f32;
-                }
-
-                if let Some(render_surface) = states.data_map.get::<RendererSurfaceStateUserData>() {
-                    let render_surface = render_surface.borrow();
-                    let view = render_surface.view();
-                    let mut width = 0.0;
-                    let mut height = 0.0;
-                    let mut offset_x = 0.0;
-                    let mut offset_y = 0.0;
-                    if let Some(view) = view {
-                        // println!("view {:?}", view);
-                        width = view.dst.w as f32;
-                        height = view.dst.h as f32;
-                        offset_x = view.offset.x as f32;
-                        offset_y = view.offset.y as f32;
+            let mut render_elements = VecDeque::new();
+            PopupManager::popups_for_surface(&window_surface).for_each(|(popup, popup_offset)| {
+                let offset: smithay::utils::Point<f64, smithay::utils::Physical> = (popup_offset - popup.geometry().loc)
+                    .to_physical_precise_round(scale_factor);
+                let popup_surface = popup.wl_surface();
+                with_surfaces_surface_tree(
+                    popup_surface,
+                    |surface, states| {
+                        if let Some(window_view) = self.window_view_for_surface(surface, states, &offset, scale_factor) {
+                            render_elements.push_front(window_view);
+                        }
                     }
-                    let image = self.backend_data.image_for_surface(&render_surface);
-                    let wvs = WindowViewSurface {
-                        id: id.clone(),
-                        offset_x: offset_x,//geometry.loc.x as f32,
-                        offset_y: offset_y,//geometry.loc.y as f32,
-                        x,
-                        y,
-                        w: width, //geometry.size.w as f32,
-                        h: height, //geometry.size.h as f32,
-                        image,
-                        commit: render_surface.current_commit(),
-                        transform: surface_attributes.buffer_transform.into(),
-                    };
-                    render_elements.push(wvs);
-                }
+                );
             });
+            let initial_location:smithay::utils::Point<f64, smithay::utils::Physical> = (0.0, 0.0).into();
+
+            smithay::wayland::compositor::with_surface_tree_downward(
+                &window_surface,
+                initial_location,
+                |_, states, location| {
+                    let mut location = *location;
+                    let data = states.data_map.get::<RendererSurfaceStateUserData>();
+                    let cached_state = states.cached_state.current::<SurfaceCachedState>();
+                    let surface_geometry = cached_state.geometry.unwrap_or_default();
+            
+                    if let Some(data) = data {
+                        let data = &*data.borrow();
+        
+                        if let Some(view) = data.view() {
+                            location += view.offset.to_f64().to_physical(scale_factor);
+                            location -= surface_geometry.loc.to_f64().to_physical(scale_factor);
+                            TraversalAction::DoChildren(location)
+                        } else {
+                            TraversalAction::SkipChildren
+                        }
+                    } else {
+                        TraversalAction::SkipChildren
+                    }
+                },
+                |surface, states, location| {
+                    if let Some(window_view) = self.window_view_for_surface(surface, states, location, scale_factor) {
+                        render_elements.push_front(window_view);
+                    }
+                },
+            |_, _, _| {
+                true
+            }, );
+
             
             if let Some(view) = self.window_views.get_mut(&id) {
                 view.state.window_element = Some(window.clone());
@@ -843,7 +868,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 view.state.y = location.y as f32;
                 view.state.w = window_geometry.size.w as f32;
                 view.state.h = window_geometry.size.h as f32;
-                view.state.render_elements = render_elements;
+                view.state.render_elements = render_elements.into();
                 view.state.title = title;
                 view.render();
             }
