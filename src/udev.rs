@@ -1015,9 +1015,9 @@ impl ScreenComposer<UdevData> {
             let h = wl_mode.size.h as f32;
             let scene_size = layers::types::Size::points(w, h);
             root.layer.set_size(scene_size, None);
-            // println!("scene size: {:?}", scene_size);
+            self.scene_element.set_size(w, h);
             self.layers_engine.set_scene_size(w, h);
-
+            self.background_view.set_debug_text(format!("scene_size {:?}", wl_mode));
             let global = output.create_global::<ScreenComposer<UdevData>>(&self.display_handle);
 
             let x = self
@@ -1025,9 +1025,8 @@ impl ScreenComposer<UdevData> {
                 .outputs()
                 .fold(0, |acc, o| acc + self.space.output_geometry(o).unwrap().size.w);
             let position = (x, 0).into();
-
             output.set_preferred(wl_mode);
-            output.change_current_state(Some(wl_mode), None, None, Some(position));
+            output.change_current_state(Some(wl_mode), None, Some(smithay::output::Scale::Fractional(1.5)), Some(position));
             self.space.map_output(&output, position);
 
             output.user_data().insert_if_missing(|| UdevOutputId {
@@ -1489,7 +1488,7 @@ impl ScreenComposer<UdevData> {
             // somehow we got called with an invalid output
             return;
         };
-        self.layers_engine.update(0.016666667);
+        self.scene_element.update();
 
         let result = render_surface(
             surface,
@@ -1674,13 +1673,13 @@ fn render_surface<'a, 'b>(
         custom_elements.push(CustomRenderElements::Fps(element.clone()));
     }
     custom_elements.push(CustomRenderElements::Scene(scene_element));
-    let (elements, clear_color) =
-        output_elements(output, space, Vec::new(), renderer, false);
 
-    let clear_color: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+
     let elements: Vec<OutputRenderElements<'a, _, WindowRenderElement<_>>> = custom_elements
         .into_iter()
         .map(OutputRenderElements::from).collect::<Vec<_>>();
+    let (elements, clear_color) =
+        output_elements(output, space, elements, renderer);
 
     let res = surface
         .compositor

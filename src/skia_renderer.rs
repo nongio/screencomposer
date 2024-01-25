@@ -550,20 +550,19 @@ impl<'a> Frame for SkiaFrame {
         let canvas = surface.canvas();
         let scale_x = dst.size.w as f32 / src.size.w as f32;
         let scale_y = dst.size.h as f32 / src.size.h as f32;
-
         match transform {
             Transform::Normal => {
                 matrix.pre_scale((scale_x, scale_y), None);
                 matrix.pre_translate((
-                    (dst.loc.x as f32 - src.loc.x as f32) / scale_x,
-                    (dst.loc.y as f32 - src.loc.y as f32) / scale_y,
+                     dst.loc.x as f32 / scale_x - (src.loc.x as f32),
+                     dst.loc.y as f32 / scale_y - (src.loc.y as f32),
                 ));
             }
             Transform::Flipped180 => {
                 matrix.pre_scale((scale_x, -scale_y), None);
                 matrix.pre_translate((
-                    (dst.loc.x as f32 - src.loc.x as f32) / scale_x,
-                    (-dst.loc.y as f32 + src.loc.y as f32) / scale_y,
+                    dst.loc.x as f32 / scale_x - src.loc.x as f32,
+                    -dst.loc.y as f32 / scale_y + src.loc.y as f32,
                 ));
             }
             Transform::Flipped90 => {

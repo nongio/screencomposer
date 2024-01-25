@@ -49,13 +49,17 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         // the surface is not already configured
         let id = surface.wl_surface().id();
         let window = WindowElement::Wayland(Window::new(surface));
-        let (x,y) = place_new_window(&mut self.space, self.pointer.current_location(), &window, true);
-
+        place_new_window(&mut self.space, self.pointer.current_location(), &window, true);
+        self.space.refresh();
+        let scale = self.space.outputs_for_element(&window).first().unwrap().current_scale().fractional_scale();
+        let location = self.space.element_location(&window).unwrap_or_default().to_f64().to_physical(scale);
+        let keyboard = self.seat.get_keyboard().unwrap();
+        keyboard.set_focus(self, Some(window.into()), Serial::from(0));
         if let Some(window_layer_id) = self.windows_layer.id() {
             let view = self.window_views.entry(id.clone()).or_insert_with(|| WindowView::new(self.layers_engine.clone(), window_layer_id));
             view.layer.set_position(layers::types::Point {
-                    x: x as f32,
-                    y: y as f32,
+                    x: location.x as f32,
+                    y: location.y as f32,
                 }, None);
         }
 
@@ -67,13 +71,13 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         self.update_appswitcher();
         let id = toplevel.wl_surface().id();
         if let Some(view) = self.window_views.get(&id) {
-            let animation = view.layer.set_opacity(0.0, Some(Transition::default()));
+            // let animation = view.layer.set_opacity(0.0, Some(Transition::default()));
             let id = view.layer.id().unwrap();
             let scene_layer = self.layers_engine.scene_get_node(id).unwrap();
             let scene_layer = scene_layer.get().clone();
-            view.layer.on_finish(animation, move |_,| {
-                scene_layer.delete();
-            });
+            scene_layer.delete();
+            // view.layer.on_finish(animation, move |_,| {
+            // });
         }
         self.update_appswitcher();
     }
@@ -327,7 +331,18 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 state.states.set(xdg_toplevel::State::Maximized);
                 state.size = Some(geometry.size);
             });
+            let location = geometry.loc.to_f64().to_physical(output.current_scale().fractional_scale());
             self.space.map_element(window, geometry.loc, true);
+
+            let id = surface.wl_surface().id();
+            if let Some(window_layer_id) = self.windows_layer.id() {
+                
+                let view = self.window_views.entry(id.clone()).or_insert_with(|| WindowView::new(self.layers_engine.clone(), window_layer_id));
+                view.layer.set_position(layers::types::Point {
+                        x: location.x as f32,
+                        y: location.y as f32,
+                    }, None);
+            }
         }
 
         // The protocol demands us to always reply with a configure,
@@ -348,6 +363,21 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             state.states.unset(xdg_toplevel::State::Maximized);
             state.size = None;
         });
+
+        let id = surface.wl_surface().id();
+        let window = self.window_for_surface(surface.wl_surface()).unwrap();
+
+        if let Some(window_layer_id) = self.windows_layer.id() {
+            let scale = self.space.outputs_for_element(&window).first().unwrap().current_scale().fractional_scale();
+
+            let location = self.space.element_location(&window).unwrap_or_default().to_f64().to_physical(scale);
+            let view = self.window_views.entry(id.clone()).or_insert_with(|| WindowView::new(self.layers_engine.clone(), window_layer_id));
+            view.layer.set_position(layers::types::Point {
+                    x: location.x as f32,
+                    y: location.y as f32,
+                }, None);
+        }
+
         surface.send_pending_configure();
     }
 

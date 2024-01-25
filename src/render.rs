@@ -89,9 +89,8 @@ where
 pub fn output_elements<'frame, R>(
     output: &Output,
     space: &Space<WindowElement>,
-    custom_elements: impl IntoIterator<Item = CustomRenderElements<'frame, R>>,
+    custom_elements: impl IntoIterator<Item = impl Into<OutputRenderElements<'frame, R, WindowRenderElement<R>>>>,
     renderer: &mut R,
-    show_window_preview: bool,
 ) -> (Vec<OutputRenderElements<'frame, R, WindowRenderElement<R>>>, [f32; 4])
 where
     R: Renderer + ImportAll + ImportMem,
@@ -108,7 +107,7 @@ where
 
         let elements = custom_elements
             .into_iter()
-            .map(OutputRenderElements::from)
+            .map(|e| e.into())
             .chain(
                 window_render_elements
                     .into_iter()
@@ -117,14 +116,11 @@ where
             .collect::<Vec<_>>();
         (elements, CLEAR_COLOR_FULLSCREEN)
     } else {
-        let mut output_render_elements = custom_elements
+        let output_render_elements = custom_elements
             .into_iter()
-            .map(OutputRenderElements::from)
+            .map(|e| e.into())
             .collect::<Vec<_>>();
 
-        if show_window_preview && space.elements_for_output(output).count() > 0 {
-            output_render_elements.extend(space_preview_elements(renderer, space, output));
-        }
 
         let space_elements = smithay::desktop::space::space_render_elements::<_, WindowElement, _>(
             renderer,
@@ -132,8 +128,9 @@ where
             output,
             1.0,
         )
-        .expect("output without mode?");
-        output_render_elements.extend(space_elements.into_iter().map(OutputRenderElements::Space));
+        .expect("Failed to render space elements");
+
+        // output_render_elements.extend(space_elements.into_iter().map(OutputRenderElements::Space));
 
         (output_render_elements, CLEAR_COLOR)
     }
@@ -143,11 +140,10 @@ where
 pub fn render_output<'frame, R>(
     output: &Output,
     space: &Space<WindowElement>,
-    custom_elements: impl IntoIterator<Item = CustomRenderElements<'frame, R>>,
+    custom_elements: impl IntoIterator<Item = impl Into<OutputRenderElements<'frame, R, WindowRenderElement<R>>>>,
     renderer: &mut R,
     damage_tracker: &mut OutputDamageTracker,
     age: usize,
-    show_window_preview: bool,
 ) -> Result<RenderOutputResult, OutputDamageTrackerError<R>>
 where
     R: Renderer + ImportAll + ImportMem + 'frame,
@@ -161,6 +157,12 @@ where
     <R as smithay::backend::renderer::Renderer>::Error: (From<smithay::backend::renderer::gles::GlesError>),
 {
     let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, show_window_preview);
+        output_elements(output, space, custom_elements, renderer);
+    
+    // let clear_color: [f32; 4] = [0.8, 0.8, 0.9, 1.0];
+    // let elements: Vec<OutputRenderElements<'frame, R, WindowRenderElement<R>>> = custom_elements
+    // .into_iter()
+    // .map(|el| el.into()).collect::<Vec<_>>();    
+
     damage_tracker.render_output(renderer, age, &elements, clear_color)
 }

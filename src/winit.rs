@@ -130,7 +130,7 @@ pub fn run_winit() {
         },
     );
     let _global = output.create_global::<ScreenComposer<WinitData>>(&display.handle());
-    output.change_current_state(Some(mode), Some(Transform::Flipped180), None, Some((0, 0).into()));
+    output.change_current_state(Some(mode), Some(Transform::Flipped180), Some(smithay::output::Scale::Fractional(1.5)), Some((0, 0).into()));
     output.set_preferred(mode);
 
     #[cfg(feature = "debug")]
@@ -238,6 +238,7 @@ pub fn run_winit() {
     let mut pointer_element = PointerElement::<SkiaTexture>::default();
 
     while state.running.load(Ordering::SeqCst) {
+        #[cfg(feature = "profile-with-puffin")]
         profiling::puffin::GlobalProfiler::lock().new_frame();
 
         let status = winit.dispatch_new_events(|event| match event {
@@ -252,6 +253,9 @@ pub fn run_winit() {
                 output.change_current_state(Some(mode), None, None, None);
                 output.set_preferred(mode);
                 crate::shell::fixup_positions(&mut state.space, state.pointer.current_location());
+                state.scene_element.set_size(size.w as f32, size.h as f32);
+                root.layer.set_size(Size::points(size.w as f32, size.h as f32), None);
+            
             }
             WinitEvent::Input(event) => {
                 state.process_input_event_windowed(&display_handle, event, OUTPUT_NAME)
@@ -365,8 +369,10 @@ pub fn run_winit() {
 
                 let scene_element = state.scene_element.clone();
                 elements.push(CustomRenderElements::Scene(scene_element));
-                
 
+                #[cfg(feature = "profile-with-puffin")]
+                profiling::puffin::profile_scope!("render_output");
+                
                 render_output(
                     &output,
                     space,
@@ -374,7 +380,6 @@ pub fn run_winit() {
                     renderer,
                     damage_tracker,
                     age,
-                    show_window_preview,
                 )
                 .map_err(|err| match err {
                     OutputDamageTrackerError::Rendering(err) => err.into(),
@@ -476,9 +481,15 @@ pub fn run_winit() {
         #[cfg(feature = "debug")]
         state.backend_data.fps.tick();
 
-        
-        
-        state.update_windows();
-        state.layers_engine.update(0.016666667);
+        {
+            #[cfg(feature = "profile-with-puffin")]
+            profiling::puffin::profile_scope!("update_windows");
+            state.update_windows();
+        }
+        {
+            #[cfg(feature = "profile-with-puffin")]
+            profiling::puffin::profile_scope!("engine_update");
+            state.scene_element.update();
+        }
     }
 }

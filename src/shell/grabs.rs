@@ -38,6 +38,7 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>> for MoveSurf
         // While the grab is active, no client has pointer focus
         handle.motion(data, None, event);
 
+        let scale  = data.space.outputs_for_element(&self.window).first().unwrap().current_scale().fractional_scale();
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
 
@@ -46,9 +47,10 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>> for MoveSurf
 
         if let Some(id) = self.window.wl_surface().map(|s| s.id()) {
             if let Some(view) = data.window_views.get(&id) {
+                let location = new_location.to_physical(scale);
                 view.layer.set_position(layers::types::Point {
-                    x: new_location.x as f32,
-                    y: new_location.y as f32,
+                    x: location.x as f32,
+                    y: location.y as f32,
                 }, None);
             }
         }

@@ -389,7 +389,6 @@ pub fn run_x11() {
                 &mut backend_data.renderer,
                 &mut backend_data.damage_tracker,
                 age.into(),
-                state.show_window_preview,
             );
 
             match render_res {
