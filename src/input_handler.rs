@@ -231,9 +231,9 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
         if KeyState::Released == state  && keycode == 56 {
             self.app_switcher.hide();
-            if let Some(we) = self.app_switcher.app_switcher.current_window_element() {
+           for we in self.app_switcher.app_switcher.current_window_elements() {
                 let id = we.wl_surface().unwrap().id();
-                self.space.raise_element(we, true);
+                self.space.raise_element(&we, true);
                 keyboard.set_focus(self, Some(we.clone().into()), serial);
                 if let Some(view) = self.window_views.get_mut(&id) {
                     view.raise();
@@ -509,6 +509,18 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                 KeyAction::ApplicationSwitchQuit => {
                     self.app_switcher.quit_current_app();
                 }
+                KeyAction::ApplicationSwitchNextWindow => {
+                    self.app_switcher.next_window();
+                    for we in self.app_switcher.app_switcher.current_window_elements() {
+                        let id = we.wl_surface().unwrap().id();
+                        self.space.raise_element(&we, true);
+                        // keyboard.set_focus(self, Some(we.clone().into()), serial);
+                        if let Some(view) = self.window_views.get_mut(&id) {
+                            view.raise();
+                        }
+                    }
+                    
+                }
                 KeyAction::ExposeShowDesktop => {
                     self.show_desktop = !self.show_desktop;
                     if self.show_desktop {
@@ -728,6 +740,9 @@ impl ScreenComposer<UdevData> {
                 }
                 KeyAction::ApplicationSwitchPrev => {
                     self.app_switcher.previous();
+                }
+                KeyAction::ApplicationSwitchNextWindow => {
+                    self.app_switcher.next_window();
                 }
                 KeyAction::ApplicationSwitchQuit => {
                     self.app_switcher.quit_current_app();
@@ -1337,6 +1352,7 @@ enum KeyAction {
     ApplicationSwitchNext,
     ApplicationSwitchPrev,
     ApplicationSwitchQuit,
+    ApplicationSwitchNextWindow,
     ExposeShowDesktop,
     ExposeShowAll,
     /// Do nothing more
@@ -1375,6 +1391,8 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::ApplicationSwitchNext)
     }  else if modifiers.alt && modifiers.shift && keysym == Keysym::Tab {
         Some(KeyAction::ApplicationSwitchPrev)
+    }  else if modifiers.alt && keysym == Keysym::r {
+        Some(KeyAction::ApplicationSwitchNextWindow)
     }  else if modifiers.alt && keysym == Keysym::w {
         Some(KeyAction::ApplicationSwitchQuit)
     }  else if modifiers.alt && keysym == Keysym::d {

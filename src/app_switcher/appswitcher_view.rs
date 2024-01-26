@@ -2,8 +2,11 @@ use std::cell::RefCell;
 
 use layers::{prelude::*, types::Size};
 
-use super::AppSwitcher;
+use crate::app_switcher::app_icon_view::render_app_view;
 
+use super::AppSwitcherState;
+
+#[allow(dead_code)]
 struct FontCache {
     font_collection: skia_safe::textlayout::FontCollection,
     font_mgr: skia_safe::FontMgr,
@@ -22,80 +25,9 @@ thread_local! {
         FontCache { font_collection, font_mgr, type_face_font_provider: RefCell::new(type_face_font_provider) }
     };
 }
-pub struct AppIconState {
-    pub name: String,
-    pub index: usize,
-    pub icon: Option<skia_safe::Image>,
-}
 
-pub fn view_app_icon(state: AppIconState, icon_width: f32) -> ViewLayer {
-    const PADDING: f32 = 20.0;
 
-    let draw_picture = move |canvas: &mut skia_safe::Canvas, w: f32, h| {
-        if let Some(image) = &state.icon {
-            let mut paint =
-                skia_safe::Paint::new(skia_safe::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
-            paint.set_anti_alias(true);
-            paint.set_style(skia_safe::paint::Style::Fill);
-
-            // draw image with shadow
-            let shadow_offset = skia_safe::Vector::new(10.0, 10.0);
-            let shadow_color = skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.5);
-            let shadow_blur_radius = 5.0;
-
-            let mut shadow_paint = skia_safe::Paint::new(shadow_color, None);
-            // shadow_paint.set_mask_filter(skia_safe::MaskFilter::blur(skia_safe::BlurStyle::Normal, shadow_blur_radius, None));
-            // let rect = skia_safe::Rect::from_xywh( shadow_offset.x,  shadow_offset.y, ICON_SIZE, ICON_SIZE);
-            let shadow_offset = skia_safe::Vector::new(5.0, 5.0);
-            let shadow_color = skia_safe::Color::from_argb(128, 0, 0, 0); // semi-transparent black
-            let shadow_blur_radius = 5.0;
-
-            let shadow_filter = skia_safe::image_filters::drop_shadow_only(
-                (shadow_offset.x, shadow_offset.y),
-                (shadow_blur_radius, shadow_blur_radius),
-                shadow_color,
-                None,
-                skia_safe::image_filters::CropRect::default(),
-            );
-            shadow_paint.set_image_filter(shadow_filter);
-            let icon_size = (w - PADDING * 2.0).max(0.0);
-            canvas.draw_image_rect(
-                image,
-                None,
-                skia_safe::Rect::from_xywh(PADDING, PADDING, icon_size, icon_size),
-                &shadow_paint,
-            );
-            let resampler = skia_safe::CubicResampler::catmull_rom();
-            canvas.draw_image_rect_with_sampling_options(
-                image,
-                None,
-                skia_safe::Rect::from_xywh(PADDING, PADDING, icon_size, icon_size),
-                skia_safe::SamplingOptions::from(resampler),
-                &paint,
-            );
-        }
-    };
-    ViewLayerBuilder::default()
-        .id(format!("item_{}", state.name))
-        .size((
-            Size {
-                width: taffy::Dimension::Points(icon_width + PADDING * 2.0),
-                height: taffy::Dimension::Points(icon_width + PADDING * 2.0),
-            },
-            None,
-        ))
-        .background_color((
-            PaintColor::Solid {
-                color: Color::new_rgba(1.0, 0.0, 0.0, 0.0),
-            },
-            None,
-        ))
-        .border_corner_radius((BorderRadius::new_single(20.0), None))
-        .content(Some(draw_picture))
-        .build()
-        .unwrap()
-}
-pub fn view_app_switcher(state: &AppSwitcher) -> ViewLayer {
+pub fn render_appswitcher_view(state: &AppSwitcherState) -> ViewLayer {
     const COMPONENT_PADDING_H: f32 = 30.0;
     const COMPONENT_PADDING_V: f32 = 50.0;
     const ICON_PADDING: f32 = 25.0;
@@ -104,20 +36,21 @@ pub fn view_app_switcher(state: &AppSwitcher) -> ViewLayer {
     const FONT_SIZE: f32 = 24.0;
 
     let available_width = state.width as f32;
-    let apps_len = state.apps.len() as f32;
+    let apps_len = state.apps().len() as f32;
     let total_gaps = (apps_len - 1.0) * GAP; // gaps between items
 
     let total_padding = 2.0 * COMPONENT_PADDING_H + apps_len * ICON_PADDING * 2.0; // padding on both sides
     let available_icon_size =
-        (available_width - total_padding - total_gaps) / state.apps.len() as f32;
+        (available_width - total_padding - total_gaps) / state.apps().len() as f32;
     let icon_size = ICON_SIZE.min(available_icon_size);
     let component_width = apps_len * icon_size + total_gaps + total_padding;
     let component_height = icon_size + ICON_PADDING * 2.0 + COMPONENT_PADDING_V * 2.0;
     let background_color = Color::new_rgba(1.0, 1.0, 1.0, 0.4);
     let current_app = state.current_app as f32;
     let mut app_name = "".to_string();
-    if !state.apps.is_empty() && state.current_app < state.apps.len() {
-        app_name = state.apps[state.current_app].0.name.clone();
+    let apps = state.apps();
+    if !apps.is_empty() && state.current_app < apps.len() {
+        app_name = apps[state.current_app].desktop_name.clone().unwrap_or("".to_string());
     }
     let draw_container = move |canvas: &mut skia_safe::Canvas, _w, h| {
         let color = skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.2);
@@ -225,17 +158,12 @@ pub fn view_app_switcher(state: &AppSwitcher) -> ViewLayer {
             })
             .children(
                 state
-                    .apps
+                    .apps()
                     .iter()
-                    .enumerate()
-                    .map(|(i, (app, _))| {
-                        let icon = state.preview_images.get(&app.name).cloned();
-                        view_app_icon(
-                            AppIconState {
-                                name: app.name.clone(),
-                                index: i,
-                                icon,
-                            },
+                    // .enumerate()
+                    .map(|app| {
+                        render_app_view(
+                           app.clone(),
                             icon_size,
                         )
                     })

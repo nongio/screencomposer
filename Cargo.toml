@@ -34,6 +34,7 @@ xdgkit = "3.2.5"
 freedesktop-desktop-entry = "0.5.0"
 usvg = "0.37.0"
 skia-bindings = {version = "0.62", default-features = true }
+tokio = { version = "1", features = ["full"] }
 
 [dependencies.smithay]
 path = "../smithay"

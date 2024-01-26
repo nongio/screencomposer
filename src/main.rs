@@ -12,7 +12,8 @@ static POSSIBLE_BACKENDS: &[&str] = &[
 static GLOBAL: profiling::tracy_client::ProfiledAllocator<std::alloc::System> =
     profiling::tracy_client::ProfiledAllocator::new(std::alloc::System, 10);
 
-fn main() {
+#[tokio::main]
+async fn main() {
     if let Ok(env_filter) = tracing_subscriber::EnvFilter::try_from_default_env() {
         tracing_subscriber::fmt()
             .compact()
