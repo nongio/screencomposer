@@ -1,5 +1,4 @@
 use layers::{engine::LayersEngine, prelude::Layer};
-use smithay::backend::renderer::utils::CommitCounter;
 
 use self::{view::{view_workspace, WorkspaceViewState}, background::{BackgroundViewState, view_background}};
 
@@ -7,7 +6,7 @@ pub mod view;
 pub mod background;
 
 pub struct WorkspaceView {
-    engine: layers::prelude::LayersEngine,
+    // engine: layers::prelude::LayersEngine,
     pub view: layers::prelude::View<WorkspaceViewState>,
     pub state: WorkspaceViewState,
 }
@@ -28,7 +27,7 @@ impl WorkspaceView {
         view.render(&state);
         Self {
             view,
-            engine: layers_engine,
+            // engine: layers_engine,
             state,
         }
     }
@@ -38,13 +37,13 @@ impl WorkspaceView {
 }
 
 pub struct BackgroundView {
-    engine: layers::prelude::LayersEngine,
+    // engine: layers::prelude::LayersEngine,
     pub view: layers::prelude::View<BackgroundViewState>,
     pub state: BackgroundViewState,
 }
 
 impl BackgroundView {
-    pub fn new(layers_engine: LayersEngine, layer: Layer) -> Self {
+    pub fn new(_layers_engine: LayersEngine, layer: Layer) -> Self {
         let mut view = layers::prelude::View::new(layer, Box::new(view_background));
         let state = BackgroundViewState {
             image: None,
@@ -53,7 +52,7 @@ impl BackgroundView {
         view.render(&state);
         Self {
             view,
-            engine: layers_engine,
+            // engine: layers_engine,
             state,
         }
     }

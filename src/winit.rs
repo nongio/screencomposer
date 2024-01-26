@@ -6,6 +6,7 @@ use std::{
 };
 
 use layers::types::Size;
+
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;
 #[cfg(feature = "debug")]
@@ -20,8 +21,8 @@ use smithay::{
         egl::EGLDevice,
         renderer::{
             damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
-            element::{AsRenderElements},
-            ImportDma, ImportMemWl, utils::{import_surface, RendererSurfaceStateUserData, RendererSurfaceState},
+            element::AsRenderElements,
+            ImportDma, ImportMemWl, utils::{import_surface, RendererSurfaceState},
         },
         winit::{self, WinitEvent, WinitGraphicsBackend},
         SwapBuffersError,
@@ -32,7 +33,7 @@ use smithay::{
     reexports::{
         calloop::EventLoop,
         wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
-        wayland_server::{protocol::wl_surface, Display, Resource},
+        wayland_server::{protocol::wl_surface, Display},
         winit::platform::pump_events::PumpStatus,
     },
     utils::{IsAlive, Scale, Transform},
@@ -48,7 +49,7 @@ use tracing::{error, info, warn};
 use crate::{
     drawing::*, render::*,
     skia_renderer::{SkiaRenderer, SkiaTexture},
-    state::{post_repaint, take_presentation_feedback, ScreenComposer, Backend, CalloopData}, render_elements::{custom_render_elements::CustomRenderElements, skia_element::SkiaElement},
+    state::{post_repaint, take_presentation_feedback, ScreenComposer, Backend, CalloopData}, render_elements::custom_render_elements::CustomRenderElements,
 };
 
 pub const OUTPUT_NAME: &str = "winit";
@@ -60,7 +61,6 @@ pub struct WinitData {
     full_redraw: u8,
     #[cfg(feature = "debug")]
     pub fps: fps_ticker::Fps,
-    skia_element: SkiaElement,
 }
 
 impl DmabufHandler for ScreenComposer<WinitData> {
@@ -196,7 +196,6 @@ pub fn run_winit() {
         info!("EGL hardware-acceleration enabled");
     };
 
-    let skia_element = SkiaElement::new();
     let data = {
         let damage_tracker = OutputDamageTracker::from_output(&output);
 
@@ -205,7 +204,6 @@ pub fn run_winit() {
             damage_tracker,
             dmabuf_state,
             full_redraw: 0,
-            skia_element,
             #[cfg(feature = "debug")]
             fps: fps_ticker::Fps::default(),
         }
@@ -298,7 +296,6 @@ pub fn run_winit() {
             *full_redraw = full_redraw.saturating_sub(1);
             let space = &mut state.space;
             let damage_tracker = &mut state.backend_data.damage_tracker;
-            let show_window_preview = state.show_window_preview;
 
             let dnd_icon = state.dnd_icon.as_ref();
 

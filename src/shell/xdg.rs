@@ -231,6 +231,8 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     .map(|mode| mode == Mode::ServerSide)
                     .unwrap_or(false);
                 window.set_ssd(is_ssd);
+                self.update_appswitcher();
+
             }
         }
     }

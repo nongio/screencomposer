@@ -1,16 +1,16 @@
 use std::{
     os::unix::io::OwnedFd,
     sync::{atomic::AtomicBool, Arc, Mutex},
-    time::Duration, borrow::Borrow, collections::{HashMap, VecDeque},
+    time::Duration, collections::{HashMap, VecDeque},
 };
 
-use layers::{engine::{Engine, LayersEngine, animation::{Transition, timing::{Easing, TimingFunction}}}, prelude::{Layer, BuildLayerTree, taffy, Interpolate}, types::{Color, BorderRadius}};
+use layers::{engine::{LayersEngine, animation::{Transition, timing::{Easing, TimingFunction}}}, prelude::{Layer, taffy, Interpolate}, types::{Color, BorderRadius}};
 use tracing::{info, warn};
 
 use smithay::{
     backend::renderer::{element::{
-        default_primary_scanout_output_compare, utils::select_dmabuf_feedback, RenderElementStates, Id, AsRenderElements, RenderElement,
-    }, utils::{RendererSurfaceStateUserData, RendererSurfaceState}, Renderer},
+        default_primary_scanout_output_compare, utils::select_dmabuf_feedback, RenderElementStates,
+    }, utils::{RendererSurfaceStateUserData, RendererSurfaceState}},
     delegate_compositor, delegate_data_control, delegate_data_device, delegate_fractional_scale,
     delegate_input_method_manager, delegate_keyboard_shortcuts_inhibit, delegate_layer_shell,
     delegate_output, delegate_pointer_constraints, delegate_pointer_gestures, delegate_presentation,
@@ -44,7 +44,7 @@ use smithay::{
     },
     utils::{Clock, Monotonic, Rectangle},
     wayland::{
-        compositor::{get_parent, with_states, with_surface_tree_downward, with_surface_tree_upward, CompositorClientState, CompositorState, SubsurfaceCachedState, SubsurfaceUserData, SurfaceAttributes, SurfaceData, TraversalAction},
+        compositor::{get_parent, with_states, CompositorClientState, CompositorState, SurfaceAttributes, SurfaceData, TraversalAction},
         dmabuf::DmabufFeedback,
         fractional_scale::{with_fractional_scale, FractionalScaleHandler, FractionalScaleManagerState},
         input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface},
@@ -73,7 +73,7 @@ use smithay::{
             wlr_layer::WlrLayerShellState,
             xdg::{
                 decoration::{XdgDecorationHandler, XdgDecorationState},
-                ToplevelSurface, XdgShellState, XdgToplevelSurfaceData, SurfaceCachedState, XdgPopupSurfaceRoleAttributes,
+                ToplevelSurface, XdgShellState, XdgToplevelSurfaceData, SurfaceCachedState,
             },
         },
         shm::{ShmHandler, ShmState},
@@ -90,7 +90,7 @@ use smithay::{
 
 #[cfg(feature = "xwayland")]
 use crate::cursor::Cursor;
-use crate::{focus::FocusTarget, render, render_elements::{scene_element::SceneElement, app_switcher::AppSwitcherElement}, shell::WindowElement, utils::image_from_path, window_view::{WindowView, view::WindowViewSurface}, workspace_view::BackgroundView};
+use crate::{app_switcher::AppSwitcherView, focus::FocusTarget, render_elements::scene_element::SceneElement, shell::WindowElement, utils::image_from_path, window_view::{WindowView, view::WindowViewSurface}, workspace_view::BackgroundView};
 #[cfg(feature = "xwayland")]
 use smithay::{
     delegate_xwayland_keyboard_grab,
@@ -169,7 +169,7 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
 
     pub layers_engine: LayersEngine,
     pub scene_element: SceneElement,
-    pub app_switcher: AppSwitcherElement,
+    pub app_switcher: AppSwitcherView,
     pub window_views: HashMap<ObjectId, WindowView>,
     pub show_all: bool,
     pub show_desktop: bool,
@@ -690,7 +690,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         layers_engine.scene_add_layer(overlay_layer.clone());
 
         let scene_element = SceneElement::with_engine(layers_engine.clone());
-        let app_switcher = AppSwitcherElement::new(layers_engine.clone());
+        let app_switcher = AppSwitcherView::new(layers_engine.clone());
         let mut background_view = BackgroundView::new(layers_engine.clone(), background_layer.clone());
         let background_image = image_from_path("./resources/background.jpg");
         background_view.state.image = Some(background_image);
@@ -757,7 +757,13 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     pub fn update_appswitcher(&mut self) {
         let windows = self.xdg_shell_state.toplevel_surfaces().iter()
             .map(|tl| {
-                self.space.elements().find(|window| window.wl_surface().as_ref() == Some(&tl.wl_surface())).unwrap().to_owned()
+                self.space.elements().find(|window| {
+                    if let Some(surface) = window.wl_surface().as_ref() {
+                        surface.id() == tl.wl_surface().id()
+                    } else {
+                        false
+                    }
+                }).unwrap().to_owned()
             }).collect::<Vec<_>>();
         self.app_switcher.update_with_window_elements(windows.as_slice());
     }
@@ -878,39 +884,31 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         let toplevels = self.xdg_shell_state.toplevel_surfaces().iter();
 
         for toplevel in toplevels {
-            // let window = self.space.elements().find(|window| window.wl_surface().as_ref() == Some(toplevel.wl_surface())).unwrap().to_owned();
-            // let element_geometry = self.space.element_geometry(&window);
-            // let window_geometry = window.geometry();
             let id = toplevel.wl_surface().id();
             if let Some(window_layer_id) = self.windows_layer.id() {
                 let view = self.window_views.entry(id).or_insert_with(|| WindowView::new(self.layers_engine.clone(), window_layer_id));
-                with_states(toplevel.wl_surface(), |states| {
-                    let r = states.data_map.get::<RendererSurfaceStateUserData>()
-                    .unwrap().borrow();
+                let delta = delta.x.clamp(0.0, 1.0);
 
-                    let delta = delta.x.clamp(0.0, 1.0);
-
-                    let to_x = -view.state.w;
-                    let x= view.state.x.interpolate(&to_x, delta);
-                    let to_y = -view.state.h;
-                    let y= view.state.y.interpolate(&to_y, delta);
-                    
-                    if delta != 0.0 && delta != 1.0 {
-                        view.layer.set_position(layers::types::Point {
-                            x,
-                            y,
-                        }, None);
-                    } else {
-                        view.layer.set_position(layers::types::Point {
-                            x,
-                            y,
-                        }, Some(Transition {
-                            duration: 0.5,
-                            timing: TimingFunction::Easing(Easing::ease_in()),
-                            ..Default::default()
-                        }));
-                    }
-                });
+                let to_x = -view.state.w;
+                let x= view.state.x.interpolate(&to_x, delta);
+                let to_y = -view.state.h;
+                let y= view.state.y.interpolate(&to_y, delta);
+                
+                if delta != 0.0 && delta != 1.0 {
+                    view.layer.set_position(layers::types::Point {
+                        x,
+                        y,
+                    }, None);
+                } else {
+                    view.layer.set_position(layers::types::Point {
+                        x,
+                        y,
+                    }, Some(Transition {
+                        duration: 0.5,
+                        timing: TimingFunction::Easing(Easing::ease_in()),
+                        ..Default::default()
+                    }));
+                }
             }
             
         }
@@ -941,43 +939,40 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             
             let id = toplevel.wl_surface().id();
             if let Some(view) = self.window_views.get(&id) {
-                with_states(toplevel.wl_surface(), |states| {
+                let scale = 1.0.interpolate(&0.8, delta);
+                let to_x = cell_center.x - view.state.w / 2.0 * scale;
+                let to_y = cell_center.y - view.state.h / 2.0 * scale;
+                let delta = delta.clamp(0.0, 1.0);
+                let x= view.state.x.interpolate(&to_x, delta);
+                let y= view.state.y.interpolate(&to_y, delta);
 
-                    let scale = 1.0.interpolate(&0.8, delta);
-                    let to_x = cell_center.x - view.state.w / 2.0 * scale;
-                    let to_y = cell_center.y - view.state.h / 2.0 * scale;
-                    let delta = delta.clamp(0.0, 1.0);
-                    let x= view.state.x.interpolate(&to_x, delta);
-                    let y= view.state.y.interpolate(&to_y, delta);
-
-                    if delta != 0.0 && delta != 1.0 {
-                        view.layer.set_position(layers::types::Point {
-                            x,
-                            y,
-                        }, None);
-                        view.layer.set_scale(layers::types::Point {
-                            x: scale,
-                            y: scale,
-                        }, None);
-                    } else {
-                        view.layer.set_position(layers::types::Point {
-                            x,
-                            y,
-                        }, Some(Transition {
-                            duration: 0.5,
-                            timing: TimingFunction::Easing(Easing::ease_in()),
-                            ..Default::default()
-                        }));
-                        view.layer.set_scale(layers::types::Point {
-                            x: scale,
-                            y: scale,
-                        }, Some(Transition {
-                            duration: 0.5,
-                            timing: TimingFunction::Easing(Easing::ease_in()),
-                            ..Default::default()
-                        }));
-                    }
-                });
+                if delta != 0.0 && delta != 1.0 {
+                    view.layer.set_position(layers::types::Point {
+                        x,
+                        y,
+                    }, None);
+                    view.layer.set_scale(layers::types::Point {
+                        x: scale,
+                        y: scale,
+                    }, None);
+                } else {
+                    view.layer.set_position(layers::types::Point {
+                        x,
+                        y,
+                    }, Some(Transition {
+                        duration: 0.5,
+                        timing: TimingFunction::Easing(Easing::ease_in()),
+                        ..Default::default()
+                    }));
+                    view.layer.set_scale(layers::types::Point {
+                        x: scale,
+                        y: scale,
+                    }, Some(Transition {
+                        duration: 0.5,
+                        timing: TimingFunction::Easing(Easing::ease_in()),
+                        ..Default::default()
+                    }));
+                }
             }
         }
     }

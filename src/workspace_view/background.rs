@@ -12,24 +12,24 @@ use smithay::{
 
 use crate::{shell::WindowElement, skia_renderer::SkiaRenderer};
 
-struct FontCache {
-    font_collection: skia_safe::textlayout::FontCollection,
-    font_mgr: skia_safe::FontMgr,
-    type_face_font_provider: RefCell<skia_safe::textlayout::TypefaceFontProvider>,
-}
+// struct FontCache {
+//     font_collection: skia_safe::textlayout::FontCollection,
+//     font_mgr: skia_safe::FontMgr,
+//     type_face_font_provider: RefCell<skia_safe::textlayout::TypefaceFontProvider>,
+// }
 
-// source: slint ui
-// https://github.com/slint-ui/slint/blob/64e7bb27d12dd8f884275292c2333d37f4e224d5/internal/renderers/skia/textlayout.rs#L31
-thread_local! {
-    static FONT_CACHE: FontCache = {
-        let font_mgr = skia_safe::FontMgr::new();
-        let type_face_font_provider = skia_safe::textlayout::TypefaceFontProvider::new();
-        let mut font_collection = skia_safe::textlayout::FontCollection::new();
-        font_collection.set_asset_font_manager(Some(type_face_font_provider.clone().into()));
-        font_collection.set_dynamic_font_manager(font_mgr.clone());
-        FontCache { font_collection, font_mgr, type_face_font_provider: RefCell::new(type_face_font_provider) }
-    };
-}
+// // source: slint ui
+// // https://github.com/slint-ui/slint/blob/64e7bb27d12dd8f884275292c2333d37f4e224d5/internal/renderers/skia/textlayout.rs#L31
+// thread_local! {
+//     static FONT_CACHE: FontCache = {
+//         let font_mgr = skia_safe::FontMgr::new();
+//         let type_face_font_provider = skia_safe::textlayout::TypefaceFontProvider::new();
+//         let mut font_collection = skia_safe::textlayout::FontCollection::new();
+//         font_collection.set_asset_font_manager(Some(type_face_font_provider.clone().into()));
+//         font_collection.set_dynamic_font_manager(font_mgr.clone());
+//         FontCache { font_collection, font_mgr, type_face_font_provider: RefCell::new(type_face_font_provider) }
+//     };
+// }
 
 pub struct BackgroundViewState {
     pub image: Option<skia_safe::Image>,

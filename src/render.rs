@@ -19,7 +19,7 @@ use smithay::{
 
 use crate::{
     drawing::{CLEAR_COLOR, CLEAR_COLOR_FULLSCREEN},
-    shell::{FullscreenSurface, WindowElement, WindowRenderElement}, render_elements::{custom_render_elements::CustomRenderElements, output_render_elements::OutputRenderElements, skia_element::SkiaElement, scene_element::SceneElement, app_switcher::AppSwitcherElement}, skia_renderer::SkiaFrame,
+    shell::{FullscreenSurface, WindowElement, WindowRenderElement}, render_elements::{output_render_elements::OutputRenderElements, skia_element::SkiaElement, scene_element::SceneElement}, skia_renderer::SkiaFrame,
 };
 
 pub fn space_preview_elements<'a, R, C>(
@@ -122,13 +122,13 @@ where
             .collect::<Vec<_>>();
 
 
-        let space_elements = smithay::desktop::space::space_render_elements::<_, WindowElement, _>(
-            renderer,
-            [space],
-            output,
-            1.0,
-        )
-        .expect("Failed to render space elements");
+        // let space_elements = smithay::desktop::space::space_render_elements::<_, WindowElement, _>(
+        //     renderer,
+        //     [space],
+        //     output,
+        //     1.0,
+        // )
+        // .expect("Failed to render space elements");
 
         // output_render_elements.extend(space_elements.into_iter().map(OutputRenderElements::Space));
 
@@ -150,7 +150,6 @@ where
     R::TextureId: Clone + 'static,
     SkiaElement: smithay::backend::renderer::element::RenderElement<R>,
     SceneElement: smithay::backend::renderer::element::RenderElement<R>,
-    AppSwitcherElement: (smithay::backend::renderer::element::RenderElement<R>),
 
     <R as smithay::backend::renderer::Renderer>::Frame<'frame>: Clone,
     <R as smithay::backend::renderer::Renderer>::Frame<'frame>: (AsMut<SkiaFrame>),
