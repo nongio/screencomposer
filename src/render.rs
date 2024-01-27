@@ -122,13 +122,13 @@ where
             .collect::<Vec<_>>();
 
 
-        // let space_elements = smithay::desktop::space::space_render_elements::<_, WindowElement, _>(
-        //     renderer,
-        //     [space],
-        //     output,
-        //     1.0,
-        // )
-        // .expect("Failed to render space elements");
+        let space_elements = smithay::desktop::space::space_render_elements::<_, WindowElement, _>(
+            renderer,
+            [space],
+            output,
+            1.0,
+        )
+        .expect("Failed to render space elements");
 
         // output_render_elements.extend(space_elements.into_iter().map(OutputRenderElements::Space));
 

@@ -90,7 +90,7 @@ use smithay::{
 
 #[cfg(feature = "xwayland")]
 use crate::cursor::Cursor;
-use crate::{app_switcher::AppSwitcherView, focus::FocusTarget, render_elements::scene_element::SceneElement, shell::WindowElement, utils::image_from_path, window_view::{WindowView, view::WindowViewSurface}, workspace_view::BackgroundView};
+use crate::{app_switcher::AppSwitcherView, focus::FocusTarget, render_elements::scene_element::SceneElement, shell::WindowElement, utils::{bin_pack, image_from_path}, window_view::{WindowView, view::WindowViewSurface}, workspace_view::BackgroundView};
 #[cfg(feature = "xwayland")]
 use smithay::{
     delegate_xwayland_keyboard_grab,
@@ -915,48 +915,50 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     }
 
     pub fn expose_show_all(&mut self, delta: f32) {
-        let toplevels = self.xdg_shell_state.toplevel_surfaces().iter().enumerate();
+
+        let toplevels: std::slice::Iter<'_, ToplevelSurface> = self.xdg_shell_state.toplevel_surfaces().iter();
         let padding_top = 200.0;
         let screen_size_w = self.scene_element.size.0;
         let screen_size_h = self.scene_element.size.1 - padding_top;
+        let bin = bin_pack(&self.window_views, screen_size_w, screen_size_h);
 
-        let cell_width = screen_size_w / 3.0;
-        let cell_height = screen_size_h / 3.0;
+        
         let mut delta = delta.max(0.0);
         delta = delta.powf(0.7);
 
-        for (index, toplevel) in toplevels {
-            let cell_x = (index % 3) as f32 * cell_width;
-            let cell_y = padding_top + (index / 3) as f32 * cell_height;
-            let cell_center = layers::types::Point {
-                x: cell_x + cell_width / 2.0,
-                y: cell_y + cell_height / 2.0,
-            };
-
-            // let window = self.space.elements().find(|window| window.wl_surface().as_ref() == Some(toplevel.wl_surface())).unwrap().to_owned();
-            // let element_geometry = self.space.element_geometry(&window);
-            // let window_geometry = window.geometry();
+        for (_, window) in self.window_views.iter() {
             
-            let id = toplevel.wl_surface().id();
-            if let Some(view) = self.window_views.get(&id) {
-                let scale = 1.0.interpolate(&0.8, delta);
-                let to_x = cell_center.x - view.state.w / 2.0 * scale;
-                let to_y = cell_center.y - view.state.h / 2.0 * scale;
-                let delta = delta.clamp(0.0, 1.0);
-                let x= view.state.x.interpolate(&to_x, delta);
-                let y= view.state.y.interpolate(&to_y, delta);
+            let id = window.layer.id().unwrap();
+            let id:usize = id.0.into();
+            if let Some(rect) = bin.find_by_id(id as isize) {
+                let to_x = rect.x() as f32;
+                let to_y = rect.y() as f32;
+                let to_width = rect.width() as f32;
+                let to_height = rect.height() as f32;
+                let size = window.layer.size();
+                let (window_width, window_height) = match (size.width, size.height) {
+                    (taffy::Dimension::Points(width), taffy::Dimension::Points(height)) => (width, height),
+                    _ => (0.0, 0.0),
+                };
+                let scale_x = to_width / window_width;
+                let scale_y = to_height / window_height;
+                let scale = scale_x.min(scale_y).min(1.0);
 
+                let scale = 1.0.interpolate(&scale, delta);
+                let delta = delta.clamp(0.0, 1.0);
+                let x= window.state.x.interpolate(&to_x, delta);
+                let y= window.state.y.interpolate(&to_y, delta);
                 if delta != 0.0 && delta != 1.0 {
-                    view.layer.set_position(layers::types::Point {
+                    window.layer.set_position(layers::types::Point {
                         x,
                         y,
                     }, None);
-                    view.layer.set_scale(layers::types::Point {
+                    window.layer.set_scale(layers::types::Point {
                         x: scale,
                         y: scale,
                     }, None);
                 } else {
-                    view.layer.set_position(layers::types::Point {
+                    window.layer.set_position(layers::types::Point {
                         x,
                         y,
                     }, Some(Transition {
@@ -964,7 +966,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                         timing: TimingFunction::Easing(Easing::ease_in()),
                         ..Default::default()
                     }));
-                    view.layer.set_scale(layers::types::Point {
+                    window.layer.set_scale(layers::types::Point {
                         x: scale,
                         y: scale,
                     }, Some(Transition {
