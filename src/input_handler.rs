@@ -254,17 +254,19 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         if wl_pointer::ButtonState::Pressed == state {
             self.update_keyboard_focus(serial);
         };
-        let pointer = self.pointer.clone();
-        pointer.button(
-            self,
-            &ButtonEvent {
-                button,
-                state: state.try_into().unwrap(),
-                serial,
-                time: evt.time_msec(),
-            },
-        );
-        pointer.frame(self);
+        if !self.show_all {
+            let pointer = self.pointer.clone();
+            pointer.button(
+                self,
+                &ButtonEvent {
+                    button,
+                    state: state.try_into().unwrap(),
+                    serial,
+                    time: evt.time_msec(),
+                },
+            );
+            pointer.frame(self);
+        }
     }
 
     fn update_keyboard_focus(&mut self, serial: Serial) {
@@ -431,6 +433,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                     frame = frame.stop(Axis::Vertical);
                 }
             }
+
             let pointer = self.pointer.clone();
             pointer.axis(self, frame);
             pointer.frame(self);
@@ -578,8 +581,11 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
         let pos = evt.position_transformed(output_geo.size) + output_geo.loc.to_f64();
         let serial = SCOUNTER.next_serial();
 
+        let mut under = None;
         let pointer = self.pointer.clone();
-        let under = self.surface_under(pos);
+        if !self.show_all {
+            under = self.surface_under(pos);
+        }
         pointer.motion(
             self,
             under,
