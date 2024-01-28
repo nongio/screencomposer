@@ -1,5 +1,4 @@
-use layers::{engine::{LayersEngine, NodeRef}, prelude::{taffy, Layer}};
-use smithay::backend::renderer::utils::CommitCounter;
+use layers::{engine::{LayersEngine, NodeRef}, prelude::taffy};
 
 use self::view::{view_window, WindowViewState};
 

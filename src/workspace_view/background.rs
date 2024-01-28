@@ -1,16 +1,6 @@
-use std::{
-    cell::RefCell,
-    hash::{Hash, Hasher},
-};
+use std::hash::{Hash, Hasher};
 
-use layers::{prelude::*, types::Size};
-use skia_safe::canvas::SrcRectConstraint;
-use smithay::{
-    backend::{renderer::utils::{RendererSurfaceStateUserData, SurfaceView, CommitCounter}, egl::surface}, desktop::space::SpaceElement,
-    reexports::wayland_server::Resource, wayland::compositor::{self, with_states},
-};
-
-use crate::{shell::WindowElement, skia_renderer::SkiaRenderer};
+use layers::prelude::*;
 
 // struct FontCache {
 //     font_collection: skia_safe::textlayout::FontCollection,

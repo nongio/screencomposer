@@ -61,16 +61,17 @@ impl<'a> Element for PhantomElement<'a> {
     }
 }
 
+#[allow(clippy::extra_unused_lifetimes)]
 impl<'renderer, 'alloc, R> RenderElement<R> for PhantomElement<'renderer>
 where
     R: smithay::backend::renderer::Renderer + 'renderer,
 {
     fn draw(
         &self,
-        frame: &mut <R as smithay::backend::renderer::Renderer>::Frame<'_>,
-        src: smithay::utils::Rectangle<f64, smithay::utils::Buffer>,
-        dst: smithay::utils::Rectangle<i32, smithay::utils::Physical>,
-        damage: &[smithay::utils::Rectangle<i32, smithay::utils::Physical>],
+        _frame: &mut <R as smithay::backend::renderer::Renderer>::Frame<'_>,
+        _src: smithay::utils::Rectangle<f64, smithay::utils::Buffer>,
+        _dst: smithay::utils::Rectangle<i32, smithay::utils::Physical>,
+        _damage: &[smithay::utils::Rectangle<i32, smithay::utils::Physical>],
     ) -> Result<(), <R as smithay::backend::renderer::Renderer>::Error>
     
     {

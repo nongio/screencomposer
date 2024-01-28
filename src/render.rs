@@ -122,7 +122,7 @@ where
             .collect::<Vec<_>>();
 
 
-        let space_elements = smithay::desktop::space::space_render_elements::<_, WindowElement, _>(
+        let _space_elements = smithay::desktop::space::space_render_elements::<_, WindowElement, _>(
             renderer,
             [space],
             output,

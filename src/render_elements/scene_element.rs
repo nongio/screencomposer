@@ -1,7 +1,4 @@
-
-use std::sync::Arc;
-
-use layers::{engine::{ NodeRef, node::SceneNode, LayersEngine}, drawing::scene::render_node_tree};
+use layers::{engine::{ node::SceneNode, LayersEngine}, drawing::scene::render_node_tree};
 
 use smithay::{
     backend::renderer::{
@@ -83,7 +80,7 @@ impl Element for SceneElement {
     /// Get the damage since the provided commit relative to the element
     fn damage_since(
         &self,
-        scale: Scale<f64>,
+        _scale: Scale<f64>,
         _commit: Option<CommitCounter>,
     ) -> Vec<Rectangle<i32, Physical>> {
         let scene_damage = self.engine.damage();
@@ -119,7 +116,7 @@ fn draw(
         &self,
         frame: &mut <SkiaRenderer as Renderer>::Frame<'_>,
         _src: Rectangle<f64, Buffer>,
-        dst: Rectangle<i32, Physical>,
+        _dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
     ) -> Result<(), <SkiaRenderer as Renderer>::Error> {
         #[cfg(feature = "profile-with-puffin")]

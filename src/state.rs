@@ -916,7 +916,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
 
     pub fn expose_show_all(&mut self, delta: f32) {
 
-        let toplevels: std::slice::Iter<'_, ToplevelSurface> = self.xdg_shell_state.toplevel_surfaces().iter();
+        // let _toplevels: std::slice::Iter<'_, ToplevelSurface> = self.xdg_shell_state.toplevel_surfaces().iter();
         let padding_top = 200.0;
         let screen_size_w = self.scene_element.size.0;
         let screen_size_h = self.scene_element.size.1 - padding_top;

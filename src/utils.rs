@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use layers::prelude::taffy;
-use smithay::{reexports::wayland_server::backend::ObjectId, wayland::shell::xdg::ToplevelSurface};
+use smithay::reexports::wayland_server::backend::ObjectId;
 use usvg::TreeParsing;
 
 use crate::window_view::WindowView;
@@ -57,7 +57,7 @@ pub fn bin_pack(window_views: &HashMap<ObjectId, WindowView>, bin_width: f32, bi
     let total_bin_area = bin_width * bin_height;
     let mut scale_factor = (total_bin_area / total_window_area).sqrt();
     let mut items_to_place = Vec::new();
-    for (id, window) in window_views.iter() {
+    for (_id, window) in window_views.iter() {
         let size = window.layer.size();
         let (window_width, window_height) = match (size.width, size.height) {
             (taffy::Dimension::Points(width), taffy::Dimension::Points(height)) => (width, height),
@@ -76,7 +76,7 @@ pub fn bin_pack(window_views: &HashMap<ObjectId, WindowView>, bin_width: f32, bi
         scale_factor *= 0.99;
         scale_factor = scale_factor.max(0.1);
         let mut items_to_place = Vec::new();
-        for (id, window) in window_views.iter() {
+        for (_id, window) in window_views.iter() {
             let size = window.layer.size();
             let (window_width, window_height) = match (size.width, size.height) {
                 (taffy::Dimension::Points(width), taffy::Dimension::Points(height)) => (width, height),

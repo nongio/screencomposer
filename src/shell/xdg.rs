@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 
-use layers::{engine::animation::Transition};
 use smithay::{
     desktop::{
         find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output, space::SpaceElement,
@@ -71,13 +70,11 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         self.update_appswitcher();
         let id = toplevel.wl_surface().id();
         if let Some(view) = self.window_views.get(&id) {
-            // let animation = view.layer.set_opacity(0.0, Some(Transition::default()));
-            let id = view.layer.id().unwrap();
-            let scene_layer = self.layers_engine.scene_get_node(id).unwrap();
+            let noderef = view.layer.id().unwrap();
+            let scene_layer = self.layers_engine.scene_get_node(noderef).unwrap();
             let scene_layer = scene_layer.get().clone();
             scene_layer.delete();
-            // view.layer.on_finish(animation, move |_,| {
-            // });
+            self.window_views.remove(&id);
         }
         self.update_appswitcher();
     }

@@ -24,7 +24,7 @@ use smithay::{
         },
         egl::{EGLContext, EGLDisplay},
         renderer::{
-            damage::OutputDamageTracker, element::AsRenderElements, gles::GlesRenderer, Bind, ImportDma,
+            damage::OutputDamageTracker, element::AsRenderElements, Bind, ImportDma,
             ImportMemWl,
         },
         vulkan::{version::Version, Instance, PhysicalDevice},
@@ -91,7 +91,7 @@ impl Backend for X11Data {
         self.surface.reset_buffers();
     }
     fn early_import(&mut self, _surface: &wl_surface::WlSurface) {}
-    fn image_for_surface(&self, surface: &smithay::backend::renderer::utils::RendererSurfaceState) -> Option<skia_safe::Image> {
+    fn image_for_surface(&self, _surface: &smithay::backend::renderer::utils::RendererSurfaceState) -> Option<skia_safe::Image> {
         None
     }
 }

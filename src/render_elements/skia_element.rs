@@ -8,7 +8,7 @@ use smithay::{
     utils::{Buffer, Physical, Point, Rectangle, Scale},
 };
 
-use crate::{skia_renderer::{SkiaRenderer, SkiaFrame}, udev::UdevRenderer};
+use crate::{skia_renderer::{SkiaRenderer}, udev::UdevRenderer};
 
 #[derive(Debug, Clone)]
 pub struct SkiaElement {

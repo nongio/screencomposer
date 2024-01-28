@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{state::SurfaceDmabufFeedback, render_elements::{skia_element::SkiaElement, scene_element::SceneElement, output_render_elements::OutputRenderElements}, shell::WindowRenderElement};
+use crate::{state::SurfaceDmabufFeedback, render_elements::{scene_element::SceneElement, output_render_elements::OutputRenderElements}, shell::WindowRenderElement};
 use crate::{
     drawing::*,
     render::*,
@@ -131,7 +131,6 @@ pub struct UdevData {
     fps_texture: Option<MultiTexture>,
     pointer_image: crate::cursor::Cursor,
     debug_flags: DebugFlags,
-    skia_element: SkiaElement,
 }
 
 impl UdevData {
@@ -248,7 +247,6 @@ pub fn run_udev() {
     info!("Using {} as primary gpu.", primary_gpu);
 
     let gpus = GpuManager::new(GbmGlesBackend::with_context_priority(ContextPriority::High)).unwrap();
-    let skia_element = SkiaElement::new();
 
     let data = UdevData {
         dh: display_handle.clone(),
@@ -264,7 +262,6 @@ pub fn run_udev() {
         #[cfg(feature = "debug")]
         fps_texture: None,
         debug_flags: DebugFlags::empty(),
-        skia_element,
     };
     let mut state = ScreenComposer::init(display, event_loop.handle(), data, true);
 
