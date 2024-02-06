@@ -8,7 +8,7 @@ use std::{
 use crate::{
     drawing::*,
     render::*,
-    state::{post_repaint, take_presentation_feedback, ScreenComposer, Backend, CalloopData}, skia_renderer::SkiaRenderer, render_elements::custom_render_elements::CustomRenderElements,
+    state::{post_repaint, take_presentation_feedback, ScreenComposer, Backend, CalloopData}, skia_renderer::{SkiaRenderer, SkiaTexture}, render_elements::custom_render_elements::CustomRenderElements,
 };
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;
@@ -91,7 +91,7 @@ impl Backend for X11Data {
         self.surface.reset_buffers();
     }
     fn early_import(&mut self, _surface: &wl_surface::WlSurface) {}
-    fn image_for_surface(&self, _surface: &smithay::backend::renderer::utils::RendererSurfaceState) -> Option<skia_safe::Image> {
+    fn texture_for_surface(&self, _surface: &smithay::backend::renderer::utils::RendererSurfaceState) -> Option<SkiaTexture> {
         None
     }
 }

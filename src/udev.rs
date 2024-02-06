@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{state::SurfaceDmabufFeedback, render_elements::{scene_element::SceneElement, output_render_elements::OutputRenderElements}, shell::WindowRenderElement};
+use crate::{render_elements::{scene_element::SceneElement, output_render_elements::OutputRenderElements}, shell::WindowRenderElement, skia_renderer::SkiaTexture, state::SurfaceDmabufFeedback};
 use crate::{
     drawing::*,
     render::*,
@@ -66,7 +66,7 @@ use smithay::{
             EventLoop, LoopHandle, RegistrationToken,
         },
         drm::{
-            control::{connector, crtc, Device, ModeTypeFlags},
+            control::{connector::{self, SubPixel}, crtc, Device, ModeTypeFlags},
             Device as _,
         },
         input::Libinput,
@@ -77,7 +77,7 @@ use smithay::{
         },
         wayland_server::{backend::GlobalId, protocol::wl_surface, Display, DisplayHandle},
     },
-    utils::{Clock, DeviceFd, IsAlive, Logical, Monotonic, Physical, Point, Rectangle, Scale, Transform},
+    utils::{Clock, DeviceFd, IsAlive, Logical, Monotonic, Physical, Point, Rectangle, Scale, Size, Transform},
     wayland::{
         compositor,
         dmabuf::{
@@ -199,12 +199,12 @@ impl Backend for UdevData {
         }
     }
 
-    fn image_for_surface(&self, surface: &smithay::backend::renderer::utils::RendererSurfaceState) -> Option<skia_safe::Image> {
+    fn texture_for_surface(&self, surface: &smithay::backend::renderer::utils::RendererSurfaceState) -> Option<SkiaTexture> {
         let tex =  surface.texture::<UdevRenderer>(99);
         if let Some(multitexture) = tex {
             let texture = multitexture.get::<GbmGlesBackend<SkiaRenderer>>(&self.primary_gpu);
             if let Some(texture) = texture {
-                return Some(texture.image.clone());
+                return Some(texture.clone());
             }
         }
         None
@@ -525,8 +525,6 @@ pub fn run_udev() {
         if result.is_err() {
             state.running.store(false, Ordering::SeqCst);
         } else {
-            state.space.refresh();
-            state.popups.cleanup();
             display_handle.flush_clients().unwrap();
         }
     }
@@ -886,6 +884,7 @@ impl ScreenComposer<UdevData> {
                         data.state.frame_finish(node, crtc, metadata);
                     }
                     DrmEvent::Error(error) => {
+                        profiling::scope!("drmerror", &format!("{error:?}"));
                         error!("{:?}", error);
                     }
                 },
@@ -995,13 +994,22 @@ impl ScreenComposer<UdevData> {
                     return;
                 }
             };
-
+            let subpixel = match connector.subpixel() {
+                SubPixel::Unknown => Subpixel::Unknown,
+                SubPixel::None => Subpixel::None,
+                SubPixel::NotImplemented => Subpixel::Unknown,
+                SubPixel::HorizontalRgb => Subpixel::HorizontalRgb,
+                SubPixel::HorizontalBgr => Subpixel::HorizontalBgr,
+                SubPixel::VerticalRgb => Subpixel::VerticalRgb,
+                SubPixel::VerticalBgr => Subpixel::VerticalBgr,
+                _ => Subpixel::Unknown,
+            };
             let (phys_w, phys_h) = connector.size().unwrap_or((0, 0));
             let output = Output::new(
                 output_name,
                 PhysicalProperties {
                     size: (phys_w as i32, phys_h as i32).into(),
-                    subpixel: Subpixel::Unknown,
+                    subpixel,
                     make,
                     model,
                 },
@@ -1023,7 +1031,7 @@ impl ScreenComposer<UdevData> {
                 .fold(0, |acc, o| acc + self.space.output_geometry(o).unwrap().size.w);
             let position = (x, 0).into();
             output.set_preferred(wl_mode);
-            output.change_current_state(Some(wl_mode), None, Some(smithay::output::Scale::Fractional(1.5)), Some(position));
+            output.change_current_state(Some(wl_mode), None, Some(smithay::output::Scale::Fractional(1.0)), Some(position));
             self.space.map_output(&output, position);
 
             output.user_data().insert_if_missing(|| UdevOutputId {
@@ -1485,7 +1493,6 @@ impl ScreenComposer<UdevData> {
             // somehow we got called with an invalid output
             return;
         };
-        self.scene_element.update();
 
         let result = render_surface(
             surface,
@@ -1501,7 +1508,10 @@ impl ScreenComposer<UdevData> {
             self.scene_element.clone(),
         );
         {
+            self.space.refresh();
+            self.popups.cleanup();
             self.update_windows();
+            self.scene_element.update();
         }
         let reschedule = match &result {
             Ok(has_rendered) => !has_rendered,

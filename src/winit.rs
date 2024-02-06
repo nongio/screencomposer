@@ -18,11 +18,9 @@ use smithay::{
 use smithay::{
     backend::{
         allocator::dmabuf::Dmabuf,
-        egl::EGLDevice,
+        egl::{context::GlAttributes, EGLDevice},
         renderer::{
-            damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
-            element::AsRenderElements,
-            ImportDma, ImportMemWl, utils::{import_surface, RendererSurfaceState},
+            damage::{Error as OutputDamageTrackerError, OutputDamageTracker}, element::AsRenderElements, utils::{import_surface, RendererSurfaceState}, ImportDma, ImportMemWl
         },
         winit::{self, WinitEvent, WinitGraphicsBackend},
         SwapBuffersError,
@@ -34,7 +32,7 @@ use smithay::{
         calloop::EventLoop,
         wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
         wayland_server::{protocol::wl_surface, Display},
-        winit::platform::pump_events::PumpStatus,
+        winit::{dpi::LogicalSize, platform::pump_events::PumpStatus, window::WindowBuilder},
     },
     utils::{IsAlive, Scale, Transform},
     wayland::{
@@ -96,8 +94,8 @@ impl Backend for WinitData {
            let _ = import_surface(self.backend.renderer(), states);
         });
     }
-    fn image_for_surface(&self, render_surface: &RendererSurfaceState) -> Option<skia_safe::Image> {
-        render_surface.texture::<SkiaRenderer>(99).map(|texture| texture.image.clone())
+    fn texture_for_surface(&self, render_surface: &RendererSurfaceState) -> Option<SkiaTexture> {
+        render_surface.texture::<SkiaRenderer>(99).cloned()
     }
 }
 
@@ -105,9 +103,19 @@ pub fn run_winit() {
     let mut event_loop = EventLoop::try_new().unwrap();
     let display = Display::new().unwrap();
     let mut display_handle = display.handle();
-
     #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
-    let (mut backend, mut winit) = match winit::init::<SkiaRenderer>() {
+    let (mut backend, mut winit) = match winit::init_from_builder_with_gl_attr::<SkiaRenderer>(
+        WindowBuilder::new()
+        .with_inner_size(LogicalSize::new(2256.0, 1504.0-100.0))
+        .with_title("Screen Composer")
+        .with_visible(true),
+        GlAttributes {
+            version: (3, 0),
+            profile: None,
+            debug: cfg!(debug_assertions),
+            vsync: false,
+        },
+    ) {
         Ok(ret) => ret,
         Err(err) => {
             error!("Failed to initialize Winit backend: {}", err);
@@ -130,7 +138,7 @@ pub fn run_winit() {
         },
     );
     let _global = output.create_global::<ScreenComposer<WinitData>>(&display.handle());
-    output.change_current_state(Some(mode), Some(Transform::Flipped180), Some(smithay::output::Scale::Fractional(1.5)), Some((0, 0).into()));
+    output.change_current_state(Some(mode), Some(Transform::Flipped180), Some(smithay::output::Scale::Fractional(1.0)), Some((0, 0).into()));
     output.set_preferred(mode);
 
     #[cfg(feature = "debug")]
@@ -239,6 +247,20 @@ pub fn run_winit() {
         #[cfg(feature = "profile-with-puffin")]
         profiling::puffin::GlobalProfiler::lock().new_frame();
 
+        #[cfg(feature = "debug")]
+        state.backend_data.fps.tick();
+
+        {
+            #[cfg(feature = "profile-with-puffin")]
+            profiling::puffin::profile_scope!("update_windows");
+            state.update_windows();
+        }
+        {
+            #[cfg(feature = "profile-with-puffin")]
+            profiling::puffin::profile_scope!("engine_update");
+            state.scene_element.update();
+        }
+        
         let status = winit.dispatch_new_events(|event| match event {
             WinitEvent::Resized { size, .. } => {
                 // We only have one output
@@ -253,7 +275,7 @@ pub fn run_winit() {
                 crate::shell::fixup_positions(&mut state.space, state.pointer.current_location());
                 state.scene_element.set_size(size.w as f32, size.h as f32);
                 root.layer.set_size(Size::points(size.w as f32, size.h as f32), None);
-            
+                state.background_view.set_debug_text(format!("scene_size {:?}", size));
             }
             WinitEvent::Input(event) => {
                 state.process_input_event_windowed(&display_handle, event, OUTPUT_NAME)
@@ -475,18 +497,6 @@ pub fn run_winit() {
             display_handle.flush_clients().unwrap();
         }
 
-        #[cfg(feature = "debug")]
-        state.backend_data.fps.tick();
 
-        {
-            #[cfg(feature = "profile-with-puffin")]
-            profiling::puffin::profile_scope!("update_windows");
-            state.update_windows();
-        }
-        {
-            #[cfg(feature = "profile-with-puffin")]
-            profiling::puffin::profile_scope!("engine_update");
-            state.scene_element.update();
-        }
     }
 }

@@ -1100,5 +1100,5 @@ pub trait Backend {
     fn seat_name(&self) -> String;
     fn reset_buffers(&mut self, output: &Output);
     fn early_import(&mut self, surface: &WlSurface);
-    fn image_for_surface(&self, surface: &RendererSurfaceState) -> Option<skia_safe::Image>;
+    fn texture_for_surface(&self, surface: &RendererSurfaceState) -> Option<SkiaTexture>;
 }
