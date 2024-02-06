@@ -1,12 +1,13 @@
+use std::{cell::RefCell, rc::Rc};
+
 use layers::{engine::{ node::SceneNode, LayersEngine}, drawing::scene::render_node_tree};
 
 use smithay::{
     backend::renderer::{
         element::{Element, Id, RenderElement},
-        utils::CommitCounter,
+        utils::{CommitCounter, DamageBag, DamageSnapshot},
         Renderer,
-    },
-    utils::{Buffer, Physical, Point, Rectangle, Scale},
+    }, utils::{Buffer, Physical, Point, Rectangle, Scale}
 };
 
 use crate::{skia_renderer::SkiaRenderer, udev::UdevRenderer};
@@ -18,6 +19,8 @@ pub struct SceneElement {
     engine:LayersEngine,
     last_update: std::time::Instant,
     pub size: (f32, f32),
+    damage: Rc<RefCell<DamageBag<i32, Physical>>>,
+
 }
 
 impl SceneElement {
@@ -28,13 +31,19 @@ impl SceneElement {
             engine,
             last_update: std::time::Instant::now(),
             size: (0.0, 0.0),
+            damage: Rc::new(RefCell::new(DamageBag::new(5))),
         }
     }
+    #[profiling::function]
     pub fn update(&mut self) {
         let dt = self.last_update.elapsed().as_secs_f32();
         self.last_update = std::time::Instant::now();
         if self.engine.update(dt) {
             self.commit_counter.increment();
+            let scene_damage = self.engine.damage();
+            let safe = 0;
+            let damage = Rectangle::from_loc_and_size((scene_damage.x() as i32 - safe, scene_damage.y() as i32 -safe), (scene_damage.width() as i32 + safe * 2, scene_damage.height() as i32 + safe * 2));
+            self.damage.borrow_mut().add(vec![damage]);    
         }
     }
     pub fn root_layer(&self) -> Option<SceneNode> {
@@ -54,7 +63,7 @@ impl Element for SceneElement {
     fn location(&self, _scale: Scale<f64>) -> Point<i32, Physical> {
         if let Some(root) = self.root_layer() {
             let bounds = root.bounds();
-            (bounds.x as i32, bounds.y as i32).into()
+            (bounds.x() as i32, bounds.y() as i32).into()
         } else {
             (0, 0).into()
         }
@@ -67,7 +76,7 @@ impl Element for SceneElement {
     fn geometry(&self, scale: Scale<f64>) -> Rectangle<i32, Physical> {
         if let Some(root) = self.root_layer() {
             let bounds = root.bounds();
-            Rectangle::from_loc_and_size(self.location(scale), (bounds.width as i32, bounds.height as i32))
+            Rectangle::from_loc_and_size(self.location(scale), (bounds.width() as i32, bounds.height() as i32))
         } else {
             Rectangle::from_loc_and_size(self.location(scale), (0, 0))
         }
@@ -75,17 +84,15 @@ impl Element for SceneElement {
     }
 
     fn current_commit(&self) -> CommitCounter {
-        self.commit_counter
+        self.damage.borrow().current_commit()
     }
     /// Get the damage since the provided commit relative to the element
     fn damage_since(
         &self,
         _scale: Scale<f64>,
-        _commit: Option<CommitCounter>,
+        commit: Option<CommitCounter>,
     ) -> Vec<Rectangle<i32, Physical>> {
-        let scene_damage = self.engine.damage();
-        let safe = 50;
-            vec![Rectangle::from_loc_and_size((scene_damage.x as i32 - safe, scene_damage.y as i32 -safe), (scene_damage.width as i32 + safe, scene_damage.height as i32 + safe))]
+        self.damage.borrow().damage_since(commit).unwrap_or_default()
     }
     fn alpha(&self) -> f32 {
         1.0

@@ -7,11 +7,12 @@ use std::{
 use layers::{prelude::*, types::Size};
 use smithay::{
     backend::renderer::utils::CommitCounter,
-    reexports::wayland_server::{backend::ObjectId, Resource},
+    reexports::wayland_server::backend::ObjectId,
     utils::Transform,
 };
 
-use crate::shell::WindowElement;
+use crate::{shell::WindowElement, skia_renderer::SkiaTexture};
+
 
 // struct FontCache {
 //     font_collection: skia_safe::textlayout::FontCollection,
@@ -41,7 +42,7 @@ pub struct WindowViewSurface {
     pub(crate) h: f32,
     pub(crate) offset_x: f32,
     pub(crate) offset_y: f32,
-    pub(crate) image: Option<skia_safe::Image>,
+    pub(crate) texture: Option<SkiaTexture>,
     pub(crate) commit: CommitCounter,
     pub(crate) transform: Transform,
 }
@@ -61,83 +62,83 @@ impl fmt::Debug for WindowViewSurface {
     }
 }
 pub struct WindowViewState {
-    pub x: f32,
-    pub y: f32,
-    pub w: f32,
-    pub h: f32,
+    pub base_rect: WindowViewBase,
     pub window_element: Option<WindowElement>,
     pub render_elements: Vec<WindowViewSurface>,
     pub title: String,
 }
-impl Hash for WindowViewState {
+
+pub struct WindowViewBase {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+impl Hash for WindowViewBase {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        // self.x.to_bits().hash(state);
+        // self.y.to_bits().hash(state);
         self.w.to_bits().hash(state);
         self.h.to_bits().hash(state);
-
-        let id = self
-            .window_element
-            .as_ref()
-            .and_then(|we| we.wl_surface().map(|s| s.id()));
-        id.hash(state);
-
-        for wvs in self.render_elements.iter() {
-            wvs.id.hash(state);
-            let distance = wvs
-                .commit
-                .distance(Some(CommitCounter::default()))
-                .unwrap_or(0);
-            if let Some(image) = wvs.image.as_ref() {
-                image.unique_id().hash(state);
-                distance.hash(state);
-            }
-            // println!("distance: {:?}", distance);
-            wvs.x.to_bits().hash(state);
-            wvs.y.to_bits().hash(state);
-            wvs.w.to_bits().hash(state);
-            wvs.h.to_bits().hash(state);
-            wvs.offset_x.to_bits().hash(state);
-            wvs.offset_y.to_bits().hash(state);
-        }
     }
 }
+impl Hash for WindowViewSurface {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let distance = self
+            .commit
+            .distance(Some(CommitCounter::default()))
+            .unwrap_or(0);
+        if let Some(image) = self.texture.as_ref().map(|t| t.image.as_ref()) {
+            image.unique_id().hash(state);
+            distance.hash(state);
+        }
+        self.id.hash(state);
+        self.x.to_bits().hash(state);
+        self.y.to_bits().hash(state);
+        self.w.to_bits().hash(state);
+        self.h.to_bits().hash(state);
+        self.offset_x.to_bits().hash(state);
+        self.offset_y.to_bits().hash(state);
+    }
+}
+
 #[profiling::function]
-pub fn view_window(state: &WindowViewState) -> ViewLayer {
+pub fn view_base_window(state: &WindowViewBase) -> ViewLayer {
     let w = state.w;
     let h = state.h;
 
-    let render_elements = state.render_elements.clone();
-    let resampler = skia_safe::CubicResampler::catmull_rom();
+    println!("view_base_window render");
 
-    const SAFE_AREA: f32 = 100.0;
+    const SAFE_AREA: f32 = 200.0;
     let draw_shadow = move |canvas: &mut skia_safe::Canvas, w: f32, h: f32| {
+        println!("drop shadow render");
+
         // draw shadow
-        let window_corner_radius = 12.0;
+        // let window_corner_radius = 12.0;
+        let rect = skia_safe::Rect::from_xywh(
+            SAFE_AREA,
+            SAFE_AREA,
+            w - SAFE_AREA * 2.0,
+            h - SAFE_AREA * 2.0,
+        );
         // let rrect = skia_safe::RRect::new_rect_xy(
-        //     skia_safe::Rect::from_xywh(
-        //         SAFE_AREA,
-        //         SAFE_AREA,
-        //         w - SAFE_AREA * 2.0,
-        //         h - SAFE_AREA * 2.0,
-        //     ),
+        //     rect,
         //     window_corner_radius,
         //     window_corner_radius,
         // );
-
+        
         let mut shadow_paint =
             skia_safe::Paint::new(skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.25), None);
-        // shadow_paint.set_mask_filter(skia_safe::MaskFilter::blur(skia_safe::BlurStyle::Normal, 3.0, false));
-        // // canvas.clip_rrect(rrect, Some(skia_safe::ClipOp::Difference), Some(true));
-        // canvas.draw_rrect(rrect, &shadow_paint);
+        shadow_paint.set_mask_filter(skia_safe::MaskFilter::blur(skia_safe::BlurStyle::Normal, 3.0, false));
+        canvas.draw_rect(rect, &shadow_paint);
 
-        let rrect = skia_safe::RRect::new_rect_xy(
-            skia_safe::Rect::from_xywh(
-                SAFE_AREA,
-                SAFE_AREA + 36.0,
-                w - SAFE_AREA * 2.0,
-                h - SAFE_AREA * 2.0,
-            ),
-            window_corner_radius,
-            window_corner_radius,
+
+        let rect= skia_safe::Rect::from_xywh(
+            SAFE_AREA,
+            SAFE_AREA + 36.0,
+            w - SAFE_AREA * 2.0,
+            h - SAFE_AREA * 2.0,
         );
 
         shadow_paint.set_mask_filter(skia_safe::MaskFilter::blur(
@@ -146,7 +147,9 @@ pub fn view_window(state: &WindowViewState) -> ViewLayer {
             false,
         ));
         shadow_paint.set_color4f(skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.7), None);
-        canvas.draw_rrect(rrect, &shadow_paint);
+
+        canvas.draw_rect(rect, &shadow_paint);
+        skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
     };
     ViewLayerBuilder::default()
         .id("window_view")
@@ -178,130 +181,147 @@ pub fn view_window(state: &WindowViewState) -> ViewLayer {
                     },
                     None,
                 ))
-                .border_color((layers::types::Color::new_hex("000000ff"), None))
-                // .border_width((1.0, None))
+                // .border_width((10.0, None))
                 .content(Some(draw_shadow))
                 .build()
-                .unwrap(),
-            ViewLayerBuilder::default()
-                .id("window_view_content")
-                .size((
-                    Size {
-                        width: taffy::Dimension::Points(w),
-                        height: taffy::Dimension::Points(h),
-                    },
-                    None,
-                ))
-                // .content(Some(draw_container))
-                .children(
-                    render_elements
-                        .iter()
-                        .enumerate()
-                        .map(|(index, render_element)| {
-                            let wvs = render_element.clone();
-                            let mut font = skia_safe::Font::default();
-                            let font_size = 26.0;
-                            font.set_size(font_size);
-
-                            let draw_container = move |canvas: &mut skia_safe::Canvas, w, h| {
-                                // let window_corner_radius = 12.0;
-                                // let color = skia_safe::Color4f::new(1.0, 0.0, 0.0, 1.0);
-                                // let mut stroke_paint = skia_safe::Paint::new(color, None);
-                                // stroke_paint.set_stroke(true);
-                                // stroke_paint.set_stroke_width(2.0);
-                                // stroke_paint.set_anti_alias(true);
-                                // let rrect = skia_safe::RRect::new_rect_xy(
-                                //     skia_safe::Rect::from_xywh(0.0, 0.0, w, h),
-                                //     window_corner_radius,
-                                //     window_corner_radius,
-                                // );
-                                // canvas.draw_rrect(rrect, &stroke_paint);
-                                // canvas.draw_str(
-                                //     format!("{} {}", wvs.offset_x, wvs.offset_y),
-                                //     (0.0, -50.0),
-                                //     &font,
-                                //     &stroke_paint,
-                                // );
-                                let rect = skia_safe::Rect::from_xywh(0.0, 0.0, w, h);
-                                // let rrect = skia_safe::RRect::new_rect_xy(
-                                //     rect,
-                                //     window_corner_radius,
-                                //     window_corner_radius,
-                                // );
-
-                                if let Some(image) = wvs.image.as_ref() {
-                                    let scale = wvs.h / image.height() as f32;
-
-                                    let mut matrix = skia_safe::Matrix::new_identity();
-                                    match wvs.transform {
-                                        Transform::Normal => {
-                                            // matrix.pre_translate(((-wvs.offset_x), (-wvs.offset_x)));
-                                            matrix.pre_scale((scale, scale), None);
-                                        }
-                                        Transform::Flipped180 => {
-                                            matrix.pre_scale((scale, -scale), None);
-                                            // matrix.pre_translate((( -wvs.offset_x), (wvs.offset_y)));
-                                        }
-                                        Transform::_90 => {}
-                                        Transform::_180 => {}
-                                        Transform::_270 => {}
-                                        Transform::Flipped => {}
-                                        Transform::Flipped90 => {}
-                                        Transform::Flipped270 => {}
-                                    }
-                                    let mut paint = skia_safe::Paint::new(
-                                        skia_safe::Color4f::new(1.0, 1.0, 1.0, 1.0),
-                                        None,
-                                    );
-                                    // paint.set_blend_mode(skia_safe::BlendMode::SrcOver);
-
-                                    paint.set_shader(image.to_shader(
-                                        (skia_safe::TileMode::Repeat, skia_safe::TileMode::Repeat),
-                                        skia_safe::SamplingOptions::from(resampler),
-                                        // skia_safe::SamplingOptions::default(),
-                                        &matrix,
-                                    ));
-
-                                    // canvas.draw_rrect(rrect, &paint);
-                                    canvas.draw_rect(rect, &paint);
-                                    // let mut paint = skia_safe::Paint::new(skia_safe::Color4f::new(1.0, 1.0, 0.0, 0.5), None);
-                                    // paint.set_stroke(true);
-                                    // canvas.draw_rrect(rrect, &paint);
-                                }
-
-                                // let mut paint = skia_safe::Paint::new(skia_safe::Color4f::new(1.0, 0.0, 0.0, 1.0), None);
-                                // paint.set_stroke(true);
-                                // canvas.draw_rrect(rrect, &paint);
-                            };
-                            ViewLayerBuilder::default()
-                                .id(format!("window_view_content_{}", index))
-                                .layout_style(taffy::Style {
-                                    position: taffy::Position::Absolute,
-                                    ..Default::default()
-                                })
-                                .position((
-                                    Point {
-                                        x: wvs.x + wvs.offset_x,
-                                        y: wvs.y + wvs.offset_y,
-                                    },
-                                    None,
-                                ))
-                                .size((
-                                    Size {
-                                        width: taffy::Dimension::Points(wvs.w),
-                                        height: taffy::Dimension::Points(wvs.h),
-                                    },
-                                    None,
-                                ))
-                                .content(Some(draw_container))
-                                .build()
-                                .unwrap()
-                        })
-                        .collect::<Vec<_>>(),
-                )
-                .build()
-                .unwrap(),
+                .unwrap()
         ])
+        .build()
+        .unwrap()
+}
+
+#[profiling::function]
+pub fn view_content_window(render_elements: &Vec<WindowViewSurface>) -> ViewLayer {
+    // let w = state.w;
+    // let h = state.h;
+
+    // let render_elements = state.render_elements.clone();
+    let resampler = skia_safe::CubicResampler::catmull_rom();
+
+    const SAFE_AREA: f32 = 80.0;
+
+    
+    ViewLayerBuilder::default()
+        .id("window_view_content")
+        .size((
+            Size {
+                width: taffy::Dimension::Points(0.0),
+                height: taffy::Dimension::Points(0.0),
+            },
+            None,
+        ))
+        // .border_width((10.0, None))
+        // .border_color((
+        //     layers::types::Color::new_hex("34aeebff"),
+        //     None,
+        // ))
+        .children(
+            render_elements
+                .iter()
+                .enumerate()
+                .filter(|(_, render_element)| render_element.w > 0.0 && render_element.h > 0.0)
+                .map(|(index, render_element)| {
+                    let wvs = render_element.clone();
+                    let mut font = skia_safe::Font::default();
+                    let font_size = 26.0;
+                    font.set_size(font_size);
+                    
+                    let texture = wvs.texture.as_ref();
+                    let image =  texture.map(|t| t.image.clone());
+                    // let image = image.as_ref();
+                    let mut damage = skia_safe::Rect::default();
+                    let buffer_damages = texture.and_then(|t| t.damage.clone()).unwrap_or_default();
+                    // if let Some(tex) = texture {
+                    //     let image_id = tex.image.unique_id();
+                    //     // println!("render dmabuf {} {:?}", image_id, damage);
+                    // }
+                    
+
+                    buffer_damages.iter().for_each(|bd| {
+                        let r = skia_safe::Rect::from_xywh(bd.loc.x as f32, bd.loc.y as f32, bd.size.w as f32, bd.size.h as f32);
+                        damage.join(r);
+                    });
+                    let draw_container = move |canvas: &mut skia_safe::Canvas, w, h| {
+                        if w == 0.0 || h == 0.0 {
+                            return damage;
+                        }
+                        let rect = skia_safe::Rect::from_xywh(0.0, 0.0, w, h);
+
+                        if let Some(image) = image.as_ref() {
+                            let scale = 1.0;//wvs.h / image.height() as f32;
+
+                            let mut matrix = skia_safe::Matrix::new_identity();
+                            match wvs.transform {
+                                Transform::Normal => {
+                                    // matrix.pre_translate(((-wvs.offset_x), (-wvs.offset_x)));
+                                    matrix.pre_scale((scale, scale), None);
+                                }
+                                Transform::Flipped180 => {
+                                    matrix.pre_scale((scale, -scale), None);
+                                    // matrix.pre_translate((( -wvs.offset_x), (wvs.offset_y)));
+                                }
+                                Transform::_90 => {}
+                                Transform::_180 => {}
+                                Transform::_270 => {}
+                                Transform::Flipped => {}
+                                Transform::Flipped90 => {}
+                                Transform::Flipped270 => {}
+                            }
+                            let mut paint = skia_safe::Paint::new(
+                                skia_safe::Color4f::new(1.0, 1.0, 1.0, 1.0),
+                                None,
+                            );
+                            // paint.set_blend_mode(skia_safe::BlendMode::SrcOver);
+
+                            paint.set_shader(image.to_shader(
+                                (skia_safe::TileMode::Repeat, skia_safe::TileMode::Repeat),
+                                // skia_safe::SamplingOptions::from(resampler),
+                                skia_safe::SamplingOptions::default(),
+                                &matrix,
+                            ));
+
+                            // canvas.draw_rrect(rrect, &paint);
+                            // canvas.save();
+                            // canvas.clip_rect(damage, None, None);
+                            canvas.draw_rect(rect, &paint);
+                            // canvas.restore();
+                            // let mut paint = skia_safe::Paint::new(skia_safe::Color4f::new(1.0, 1.0, 0.0, 0.5), None);
+                            // paint.set_stroke(true);
+                            // canvas.draw_rrect(rrect, &paint);
+                        
+                        }
+
+                        // let mut paint = skia_safe::Paint::new(skia_safe::Color4f::new(1.0, 0.0, 0.0, 1.0), None);
+                        // paint.set_stroke(true);
+                        // canvas.draw_rrect(rrect, &paint);
+                        damage
+                    };
+                    ViewLayerBuilder::default()
+                        .id(format!("window_view_content_{}", index))
+                        .layout_style(taffy::Style {
+                            position: taffy::Position::Absolute,
+                            ..Default::default()
+                        })
+                        .position((
+                            Point {
+                                x: wvs.x + wvs.offset_x,
+                                y: wvs.y + wvs.offset_y,
+                            },
+                            None,
+                        ))
+                        .size((
+                            Size {
+                                width: taffy::Dimension::Points(wvs.w),
+                                height: taffy::Dimension::Points(wvs.h),
+                            },
+                            None,
+                        ))
+                        .content(Some(draw_container))
+                        .build()
+                        .unwrap()
+                })
+                .collect::<Vec<_>>(),
+        )
         .build()
         .unwrap()
 }

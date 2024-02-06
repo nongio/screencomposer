@@ -52,7 +52,7 @@ pub fn render_appswitcher_view(state: &AppSwitcherState) -> ViewLayer {
     if !apps.is_empty() && state.current_app < apps.len() {
         app_name = apps[state.current_app].desktop_name.clone().unwrap_or("".to_string());
     }
-    let draw_container = move |canvas: &mut skia_safe::Canvas, _w, h| {
+    let draw_container = move |canvas: &mut skia_safe::Canvas, w, h| {
         let color = skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.2);
         let paint = skia_safe::Paint::new(color, None);
 
@@ -106,6 +106,7 @@ pub fn render_appswitcher_view(state: &AppSwitcherState) -> ViewLayer {
             paragraph.paint(canvas, (text_x, text_y));
             // };
         }
+        skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
     };
     ViewLayerBuilder::default()
         .id("apps_switcher")

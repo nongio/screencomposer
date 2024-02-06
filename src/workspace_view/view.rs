@@ -41,6 +41,8 @@ pub fn view_workspace(_state: &WorkspaceViewState) -> ViewLayer {
         let rrect =
             skia_safe::RRect::new_rect_xy(skia_safe::Rect::from_xywh(0.0, 0.0, w, h), 20.0, 20.0);
         canvas.draw_rrect(rrect, &paint);
+
+        skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
     };
 
     ViewLayerBuilder::default()

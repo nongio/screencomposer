@@ -7,21 +7,16 @@ use super::state::AppSwitcherAppState;
 pub fn render_app_view(state: AppSwitcherAppState, icon_width: f32) -> ViewLayer {
     const PADDING: f32 = 20.0;
 
-    let draw_picture = move |canvas: &mut skia_safe::Canvas, w: f32, _h| {
+    let draw_picture = move |canvas: &mut skia_safe::Canvas, w: f32, h: f32| {
         if let Some(image) = &state.icon {
             let mut paint =
                 skia_safe::Paint::new(skia_safe::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
-            paint.set_anti_alias(true);
+            // paint.set_anti_alias(true);
             paint.set_style(skia_safe::paint::Style::Fill);
 
             // draw image with shadow
-            // let shadow_offset = skia_safe::Vector::new(10.0, 10.0);
             let shadow_color = skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.5);
-            // let shadow_blur_radius = 5.0;
-
             let mut shadow_paint = skia_safe::Paint::new(shadow_color, None);
-            // shadow_paint.set_mask_filter(skia_safe::MaskFilter::blur(skia_safe::BlurStyle::Normal, shadow_blur_radius, None));
-            // let rect = skia_safe::Rect::from_xywh( shadow_offset.x,  shadow_offset.y, ICON_SIZE, ICON_SIZE);
             let shadow_offset = skia_safe::Vector::new(5.0, 5.0);
             let shadow_color = skia_safe::Color::from_argb(128, 0, 0, 0); // semi-transparent black
             let shadow_blur_radius = 5.0;
@@ -50,6 +45,7 @@ pub fn render_app_view(state: AppSwitcherAppState, icon_width: f32) -> ViewLayer
                 &paint,
             );
         }
+        skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
     };
     ViewLayerBuilder::default()
         .id(format!("app_{}", state.identifier))
