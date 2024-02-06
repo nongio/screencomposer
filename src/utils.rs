@@ -43,7 +43,7 @@ pub fn bin_pack(window_views: &HashMap<ObjectId, WindowView>, bin_width: f32, bi
         window_views
             .iter()
             .map(|(_id, window)| {
-                let size = window.layer.size();
+                let size = window.base_layer.size();
                 match (size.width, size.height) {
                     (taffy::Dimension::Points(width), taffy::Dimension::Points(height)) => {
                         width * height
@@ -58,12 +58,12 @@ pub fn bin_pack(window_views: &HashMap<ObjectId, WindowView>, bin_width: f32, bi
     let mut scale_factor = (total_bin_area / total_window_area).sqrt();
     let mut items_to_place = Vec::new();
     for (_id, window) in window_views.iter() {
-        let size = window.layer.size();
+        let size = window.base_layer.size();
         let (window_width, window_height) = match (size.width, size.height) {
             (taffy::Dimension::Points(width), taffy::Dimension::Points(height)) => (width, height),
             _ => (0.0, 0.0),
         };
-        let id = window.layer.id().unwrap();
+        let id = window.base_layer.id().unwrap();
         let id:usize = id.0.into();
         let dimension = binpack2d::Dimension::with_id(id as isize, (window_width * scale_factor) as i32, (window_height * scale_factor) as i32, 20);
         items_to_place.push(dimension);
@@ -77,12 +77,12 @@ pub fn bin_pack(window_views: &HashMap<ObjectId, WindowView>, bin_width: f32, bi
         scale_factor = scale_factor.max(0.1);
         let mut items_to_place = Vec::new();
         for (_id, window) in window_views.iter() {
-            let size = window.layer.size();
+            let size = window.base_layer.size();
             let (window_width, window_height) = match (size.width, size.height) {
                 (taffy::Dimension::Points(width), taffy::Dimension::Points(height)) => (width, height),
                 _ => (0.0, 0.0),
             };
-            let id = window.layer.id().unwrap();
+            let id = window.base_layer.id().unwrap();
             let id:usize = id.0.into();
             let dimension = binpack2d::Dimension::with_id(id as isize, (window_width * scale_factor) as i32, (window_height * scale_factor) as i32, 20);
             items_to_place.push(dimension);
