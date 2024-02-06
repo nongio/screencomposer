@@ -90,7 +90,7 @@ use smithay::{
 
 #[cfg(feature = "xwayland")]
 use crate::cursor::Cursor;
-use crate::{app_switcher::AppSwitcherView, focus::FocusTarget, render_elements::scene_element::SceneElement, shell::WindowElement, utils::{bin_pack, image_from_path}, window_view::{WindowView, view::WindowViewSurface}, workspace_view::BackgroundView};
+use crate::{app_switcher::AppSwitcherView, focus::FocusTarget, render_elements::scene_element::SceneElement, shell::WindowElement, skia_renderer::SkiaTexture, utils::{bin_pack, image_from_path}, window_view::{WindowView, view::WindowViewSurface}, workspace_view::BackgroundView};
 #[cfg(feature = "xwayland")]
 use smithay::{
     delegate_xwayland_keyboard_grab,
@@ -767,7 +767,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             }).collect::<Vec<_>>();
         self.app_switcher.update_with_window_elements(windows.as_slice());
     }
-
+    #[profiling::function]
     fn window_view_for_surface(&self, surface: &WlSurface, states: &SurfaceData, location: &smithay::utils::Point<f64, smithay::utils::Physical>, scale: f64) -> Option<WindowViewSurface> {
         let id = surface.id();
         let cached_state = states.cached_state.current::<SurfaceCachedState>();
@@ -776,7 +776,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         if let Some(render_surface) = states.data_map.get::<RendererSurfaceStateUserData>() {
             let render_surface = render_surface.borrow();
             if let Some(view) = render_surface.view() {
-                let image = self.backend_data.image_for_surface(&render_surface);
+                let texture = self.backend_data.texture_for_surface(&render_surface);
                 let wvs = WindowViewSurface {
                     id: id.clone(),
                     offset_x: view.offset.x as f32 * scale as f32,//geometry.loc.x as f32,
@@ -785,7 +785,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                     y: location.y as f32 - surface_geometry.loc.y as f32,
                     w: view.dst.w as f32 * scale as f32,//surface_geometry.size.w as f32,
                     h: view.dst.h as f32 * scale as f32,//surface_geometry.size.h as f32,
-                    image,
+                    texture,
                     commit: render_surface.current_commit(),
                     transform: surface_attributes.buffer_transform.into(),
                 };
@@ -794,6 +794,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         };
         None
     }
+    #[profiling::function]
     pub fn update_windows(&mut self) {
         let windows = self.space.elements();
         for window in windows {
@@ -870,10 +871,10 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             
             if let Some(view) = self.window_views.get_mut(&id) {
                 view.state.window_element = Some(window.clone());
-                view.state.x = location.x as f32;
-                view.state.y = location.y as f32;
-                view.state.w = window_geometry.size.w as f32;
-                view.state.h = window_geometry.size.h as f32;
+                view.state.base_rect.x = location.x as f32;
+                view.state.base_rect.y = location.y as f32;
+                view.state.base_rect.w = window_geometry.size.w as f32;
+                view.state.base_rect.h = window_geometry.size.h as f32;
                 view.state.render_elements = render_elements.into();
                 view.state.title = title;
                 view.render();
@@ -889,10 +890,10 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 let view = self.window_views.entry(id).or_insert_with(|| WindowView::new(self.layers_engine.clone(), window_layer_id));
                 let delta = delta.x.clamp(0.0, 1.0);
 
-                let to_x = -view.state.w;
-                let x= view.state.x.interpolate(&to_x, delta);
-                let to_y = -view.state.h;
-                let y= view.state.y.interpolate(&to_y, delta);
+                let to_x = -view.state.base_rect.w;
+                let x= view.state.base_rect.x.interpolate(&to_x, delta);
+                let to_y = -view.state.base_rect.h;
+                let y= view.state.base_rect.y.interpolate(&to_y, delta);
                 
                 if delta != 0.0 && delta != 1.0 {
                     view.layer.set_position(layers::types::Point {
@@ -928,14 +929,14 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
 
         for (_, window) in self.window_views.iter() {
             
-            let id = window.layer.id().unwrap();
+            let id = window.base_layer.id().unwrap();
             let id:usize = id.0.into();
             if let Some(rect) = bin.find_by_id(id as isize) {
                 let to_x = rect.x() as f32;
                 let to_y = rect.y() as f32;
                 let to_width = rect.width() as f32;
                 let to_height = rect.height() as f32;
-                let size = window.layer.size();
+                let size = window.base_layer.size();
                 let (window_width, window_height) = match (size.width, size.height) {
                     (taffy::Dimension::Points(width), taffy::Dimension::Points(height)) => (width, height),
                     _ => (0.0, 0.0),
@@ -946,8 +947,8 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
 
                 let scale = 1.0.interpolate(&scale, delta);
                 let delta = delta.clamp(0.0, 1.0);
-                let x= window.state.x.interpolate(&to_x, delta);
-                let y= window.state.y.interpolate(&to_y, delta);
+                let x= window.state.base_rect.x.interpolate(&to_x, delta);
+                let y= window.state.base_rect.y.interpolate(&to_y, delta);
                 if delta != 0.0 && delta != 1.0 {
                     window.layer.set_position(layers::types::Point {
                         x,
