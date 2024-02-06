@@ -23,7 +23,7 @@ use smithay::{
 };
 use tracing::{error, trace};
 
-use crate::{focus::FocusTarget, state::Backend, AnvilState, CalloopData};
+use crate::{focus::FocusTarget, state::Backend, ScreenComposer, CalloopData};
 
 use super::{
     place_new_window, FullscreenSurface, MoveSurfaceGrab, ResizeData, ResizeState, ResizeSurfaceGrab,
@@ -317,7 +317,7 @@ impl<BackendData: Backend> XwmHandler for CalloopData<BackendData> {
     }
 }
 
-impl<BackendData: Backend> AnvilState<BackendData> {
+impl<BackendData: Backend> ScreenComposer<BackendData> {
     pub fn maximize_request_x11(&mut self, window: &X11Surface) {
         let Some(elem) = self
             .space

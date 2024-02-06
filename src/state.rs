@@ -518,7 +518,7 @@ impl<BackendData: Backend + 'static> XWaylandKeyboardGrabHandler for ScreenCompo
     }
 }
 #[cfg(feature = "xwayland")]
-delegate_xwayland_keyboard_grab!(@<BackendData: Backend + 'static> AnvilState<BackendData>);
+delegate_xwayland_keyboard_grab!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
 impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     pub fn init(
