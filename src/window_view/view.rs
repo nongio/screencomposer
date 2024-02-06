@@ -111,7 +111,7 @@ pub fn view_base_window(state: &WindowViewBase) -> ViewLayer {
     println!("view_base_window render");
 
     const SAFE_AREA: f32 = 200.0;
-    let draw_shadow = move |canvas: &mut skia_safe::Canvas, w: f32, h: f32| {
+    let draw_shadow = move |canvas: &skia_safe::Canvas, w: f32, h: f32| {
         println!("drop shadow render");
 
         // draw shadow
@@ -241,7 +241,7 @@ pub fn view_content_window(render_elements: &Vec<WindowViewSurface>) -> ViewLaye
                         let r = skia_safe::Rect::from_xywh(bd.loc.x as f32, bd.loc.y as f32, bd.size.w as f32, bd.size.h as f32);
                         damage.join(r);
                     });
-                    let draw_container = move |canvas: &mut skia_safe::Canvas, w, h| {
+                    let draw_container = move |canvas: &skia_safe::Canvas, w, h| {
                         if w == 0.0 || h == 0.0 {
                             return damage;
                         }

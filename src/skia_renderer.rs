@@ -6,8 +6,6 @@ use std::{
     rc::Rc, time::{Instant, Duration},
 };
 
-use sb::SkClipOp;
-use skia::font_style::Width;
 use skia_safe as skia;
 
 use smithay::{
@@ -29,10 +27,7 @@ use smithay::{
     },
     reexports::wayland_server::{protocol::wl_buffer::WlBuffer, DisplayHandle},
     utils::{Buffer, Physical, Rectangle, Size, Transform},
-    wayland::{
-        compositor::SurfaceData,
-        shm::{shm_format_to_fourcc, with_buffer_contents},
-    },
+    wayland::compositor::SurfaceData,
 };
 
 #[derive(Clone)]
@@ -41,7 +36,7 @@ pub struct SkiaSurface {
     pub surface: skia::Surface,
 }
 impl SkiaSurface {
-    pub fn canvas(&mut self) -> &mut skia::Canvas {
+    pub fn canvas(&mut self) -> &skia::Canvas {
         self.surface.canvas()
     }
 }
@@ -61,6 +56,7 @@ impl SkiaSurface {
             skia::gpu::gl::FramebufferInfo {
                 fboid: fboid.try_into().unwrap(),
                 format: skia::gpu::gl::Format::RGBA8.into(),
+                ..Default::default()
             }
         };
         let backend_render_target = skia::gpu::BackendRenderTarget::new_gl(
@@ -110,12 +106,14 @@ impl SkiaSurface {
             target: ffi::TEXTURE_2D,
             id: texid.into(),
             format: skia::gpu::gl::Format::RGBA8.into(),
+            ..Default::default()
         };
         let backend_texture = unsafe {
-            skia::gpu::BackendTexture::new_gl(
+            skia::gpu::backend_textures::make_gl(
                 (width.into(), height.into()),
-                skia::gpu::MipMapped::No,
+                skia::gpu::Mipmapped::No,
                 gl_info,
+                ""
             )
         };
         let mut gr_context: skia::gpu::DirectContext = if let Some(context) = context {
@@ -263,13 +261,13 @@ impl std::fmt::Debug for SkiaRenderer {
     }
 }
 
-#[allow(dead_code)]
-fn save_surface(surface: &mut skia::Surface, name: &str) {
-    surface.flush_submit_and_sync_cpu();
-    let image = surface.image_snapshot();
+// #[allow(dead_code)]
+// fn save_surface(surface: &mut skia::Surface, name: &str) {
+//     surface.flush_submit_and_sync_cpu();
+//     let image = surface.image_snapshot();
     
-    save_image(&image, name);
-}
+//     save_image(&image, name);
+// }
 #[allow(dead_code)]
 fn save_image(image: &skia::Image, name: &str) {
     use std::fs::File;
@@ -800,7 +798,7 @@ impl<'a> Frame for SkiaFrame {
         };
         {
             profiling::scope!("context_submit");
-            surface.gr_context.submit(false);
+            surface.gr_context.submit(None);
         }
         // surface.surface.flush_submit_and_sync_cpu();
         Ok(syncpoint)
@@ -982,12 +980,14 @@ impl SkiaRenderer {
                 target,
                 id: texture.tex_id(),
                 format: skia_format.unwrap().into(),
+                ..Default::default()
             };
 
-            let texture = skia::gpu::BackendTexture::new_gl(
+            let texture = skia::gpu::backend_textures::make_gl(
                 (size.x as i32, size.y as i32),
-                skia::gpu::MipMapped::No,
+                skia::gpu::Mipmapped::No,
                 texture_info,
+                ""
             );
 
             skia::Image::from_texture(
@@ -999,35 +999,6 @@ impl SkiaRenderer {
                 None,
             )
         }
-    }
-    #[profiling::function]
-    fn import_skia_image_from_raster_data(
-        &mut self,
-        data: &[u8],
-        size: Size<i32, Buffer>,
-        format: Fourcc,
-    ) -> Option<skia::Image> {
-        let size = skia::ISize::new(size.w, size.h);
-
-        let color_type = match format {
-            Fourcc::Argb8888 => skia::ColorType::RGBA8888,
-            Fourcc::Abgr8888 => skia::ColorType::RGBA8888,
-            Fourcc::Abgr2101010 => skia::ColorType::RGBA1010102,
-            _ => skia::ColorType::RGBA8888,
-        };
-        let info = skia::ImageInfo::new(size, color_type, skia::AlphaType::Premul, None);
-        let pixmap = skia::Pixmap::new(&info, data, size.width as usize * 4);
-        let context = self.context.as_mut().unwrap();
-
-        let image =
-            skia::Image::new_cross_context_from_pixmap(context, &pixmap, false, None)
-                .unwrap();
-
-        println!("image {:?}", image.is_texture_backed());
-        // image.clone().flush_and_submit(context);
-
-        // image.new_texture_image(context, skia::gpu::MipMapped::No)
-        Some(image)
     }
 }
 impl ImportMemWl for SkiaRenderer {

@@ -7,7 +7,7 @@ use super::state::AppSwitcherAppState;
 pub fn render_app_view(state: AppSwitcherAppState, icon_width: f32) -> ViewLayer {
     const PADDING: f32 = 20.0;
 
-    let draw_picture = move |canvas: &mut skia_safe::Canvas, w: f32, h: f32| {
+    let draw_picture = move |canvas:  &skia_safe::Canvas, w: f32, h: f32| -> skia_safe::Rect {
         if let Some(image) = &state.icon {
             let mut paint =
                 skia_safe::Paint::new(skia_safe::Color4f::new(0.0, 0.0, 0.0, 1.0), None);

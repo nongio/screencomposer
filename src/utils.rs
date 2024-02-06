@@ -13,10 +13,10 @@ pub fn image_from_svg(image_data: &[u8]) -> skia_safe::Image {
     rtree.size = usvg::Size::from_wh(512.0, 512.0).unwrap();
     let xml_options = usvg::XmlOptions::default();
     let xml = usvg::TreeWriting::to_string(&rtree, &xml_options);
+    let font_mgr = skia_safe::FontMgr::new();
+    let svg = skia_safe::svg::Dom::from_bytes(xml.as_bytes(), font_mgr).unwrap();
 
-    let svg = skia_safe::svg::Dom::from_bytes(xml.as_bytes()).unwrap();
-
-    let mut surface = skia_safe::surface::Surface::new_raster_n32_premul((512, 512)).unwrap();
+    let mut surface = skia_safe::surfaces::raster_n32_premul((512, 512)).unwrap();
     let canvas = surface.canvas();
     svg.render(canvas);
     surface.image_snapshot()

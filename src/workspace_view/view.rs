@@ -34,7 +34,7 @@ impl Hash for WorkspaceViewState {
     }
 }
 pub fn view_workspace(_state: &WorkspaceViewState) -> ViewLayer {
-    let draw_container = move |canvas: &mut skia_safe::Canvas, w, h| {
+    let draw_container = move |canvas: &skia_safe::Canvas, w, h| {
         let color = skia_safe::Color4f::new(1.0, 1.0, 1.0, 1.0);
         let paint = skia_safe::Paint::new(color, None);
 

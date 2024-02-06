@@ -11,11 +11,11 @@ use layers::{
     taffy::style::Style,
     types::Size,
 };
-use smithay::wayland::shell::xdg::XdgToplevelSurfaceData;
+use smithay::{input::pointer::PointerTarget, wayland::shell::xdg::XdgToplevelSurfaceData};
 
 use crate::{
     app_switcher::appswitcher_view::render_appswitcher_view,
-    shell::WindowElement,
+    shell::WindowElement, state::Backend, ScreenComposer,
 };
 
 use self::state::AppSwitcherState;
@@ -142,3 +142,7 @@ impl AppSwitcherView {
         }
     }
 }
+
+// impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for AppSwitcherView {
+    
+// }
