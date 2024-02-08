@@ -100,7 +100,7 @@ impl AppSwitcherState {
                 }).map(|icon| {
                     icon.to_str().unwrap().to_string()
                 });
-                let icon = icon_path.as_ref().map(|icon_path| {image_from_path(icon_path)});
+                let icon = icon_path.as_ref().and_then(|icon_path| {image_from_path(icon_path)});
                 let state = AppSwitcherAppState {
                     identifier: app_id.to_string(),
                     desktop_name: desktop_entry.name(None).map(|name| name.to_string()),
