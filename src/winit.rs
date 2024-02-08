@@ -103,10 +103,11 @@ pub fn run_winit() {
     let mut event_loop = EventLoop::try_new().unwrap();
     let display = Display::new().unwrap();
     let mut display_handle = display.handle();
+
     #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
     let (mut backend, mut winit) = match winit::init_from_builder_with_gl_attr::<SkiaRenderer>(
         WindowBuilder::new()
-        .with_inner_size(LogicalSize::new(2256.0, 1504.0-100.0))
+        .with_inner_size(LogicalSize::new(2256.0/2.0, 1504.0/2.0))
         .with_title("Screen Composer")
         .with_visible(true),
         GlAttributes {
@@ -217,6 +218,7 @@ pub fn run_winit() {
         }
     };
     let mut state = ScreenComposer::init(display, event_loop.handle(), data, true);
+
 
     let root = state.scene_element.root_layer().unwrap();
     let scene_size = size;
@@ -343,20 +345,7 @@ pub fn run_winit() {
             let render_res = backend.bind().and_then(|_| {
                 #[cfg(feature = "debug")]
                 if let Some(renderdoc) = renderdoc.as_mut() {
-                    renderdoc.start_frame_capture(
-                        backend.renderer().egl_context().get_context_handle(),
-                        backend
-                            .window()
-                            .window_handle()
-                            .map(|handle| {
-                                if let RawWindowHandle::Wayland(handle) = handle.as_raw() {
-                                    handle.surface.as_ptr()
-                                } else {
-                                    std::ptr::null_mut()
-                                }
-                            })
-                            .unwrap_or_else(|_| std::ptr::null_mut()),
-                    );
+                    renderdoc.start_frame_capture(std::ptr::null(), std::ptr::null());
                 }
                 let age = if *full_redraw > 0 {
                     0
@@ -417,20 +406,7 @@ pub fn run_winit() {
 
                     #[cfg(feature = "debug")]
                     if let Some(renderdoc) = renderdoc.as_mut() {
-                        renderdoc.end_frame_capture(
-                            backend.renderer().egl_context().get_context_handle(),
-                            backend
-                                .window()
-                                .window_handle()
-                                .map(|handle| {
-                                    if let RawWindowHandle::Wayland(handle) = handle.as_raw() {
-                                        handle.surface.as_ptr()
-                                    } else {
-                                        std::ptr::null_mut()
-                                    }
-                                })
-                                .unwrap_or_else(|_| std::ptr::null_mut()),
-                        );
+                        renderdoc.end_frame_capture(std::ptr::null(), std::ptr::null());
                     }
 
                     backend.window().set_cursor_visible(cursor_visible);
