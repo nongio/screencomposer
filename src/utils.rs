@@ -21,9 +21,9 @@ pub fn image_from_svg(image_data: &[u8]) -> skia_safe::Image {
     svg.render(canvas);
     surface.image_snapshot()
 }
-pub fn image_from_path(image_path: &str) -> skia_safe::Image {
+pub fn image_from_path(image_path: &str) -> Option<skia_safe::Image> {
     let image_path = std::path::Path::new(image_path);
-    let image_data = std::fs::read(image_path).unwrap();
+    let image_data = std::fs::read(image_path).ok()?;
 
     let image = if image_path
         .extension()
@@ -35,7 +35,7 @@ pub fn image_from_path(image_path: &str) -> skia_safe::Image {
         skia_safe::Image::from_encoded(skia_safe::Data::new_copy(image_data.as_slice())).unwrap()
     };
 
-    image
+    Some(image)
 }
 
 pub fn bin_pack(window_views: &HashMap<ObjectId, WindowView>, bin_width: f32, bin_height: f32) -> Box<dyn binpack2d::BinPacker> {
