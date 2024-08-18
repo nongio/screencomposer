@@ -157,8 +157,8 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
             }
         }
         self.popups.commit(surface);
-
-        ensure_initial_configure(surface, &self.space, &mut self.popups)
+        let popups = &mut self.popups;
+        ensure_initial_configure(surface, &self.space, popups)
     }
 }
 

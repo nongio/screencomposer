@@ -12,6 +12,7 @@ pub mod cursor;
 pub mod drawing;
 pub mod focus;
 pub mod input_handler;
+pub mod interactive_view;
 pub mod render;
 pub mod shell;
 pub mod render_elements;

@@ -32,7 +32,7 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>> for MoveSurf
         &mut self,
         data: &mut ScreenComposer<BackendData>,
         handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
-        _focus: Option<(FocusTarget, Point<i32, Logical>)>,
+        _focus: Option<(FocusTarget<BackendData>, Point<i32, Logical>)>,
         event: &MotionEvent,
     ) {
         // While the grab is active, no client has pointer focus
@@ -46,7 +46,7 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>> for MoveSurf
             .map_element(self.window.clone(), new_location.to_i32_round(), true);
 
         if let Some(id) = self.window.wl_surface().map(|s| s.id()) {
-            if let Some(view) = data.window_views.get(&id) {
+            if let Some(view) = data.get_window_view(&id) {
                 let location = new_location.to_physical(scale);
                 view.layer.set_position(layers::types::Point {
                     x: location.x as f32,
@@ -60,7 +60,7 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>> for MoveSurf
         &mut self,
         data: &mut ScreenComposer<BackendData>,
         handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
-        focus: Option<(FocusTarget, Point<i32, Logical>)>,
+        focus: Option<(FocusTarget<BackendData>, Point<i32, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
         handle.relative_motion(data, focus, event);
@@ -257,7 +257,7 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>> for ResizeSu
         &mut self,
         data: &mut ScreenComposer<BackendData>,
         handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
-        _focus: Option<(FocusTarget, Point<i32, Logical>)>,
+        _focus: Option<(FocusTarget<BackendData>, Point<i32, Logical>)>,
         event: &MotionEvent,
     ) {
         // While the grab is active, no client has pointer focus
@@ -342,7 +342,7 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>> for ResizeSu
         &mut self,
         data: &mut ScreenComposer<BackendData>,
         handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
-        focus: Option<(FocusTarget, Point<i32, Logical>)>,
+        focus: Option<(FocusTarget<BackendData>, Point<i32, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
         handle.relative_motion(data, focus, event);

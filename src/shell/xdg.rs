@@ -29,7 +29,7 @@ use tracing::{trace, warn};
 
 use crate::{
     focus::FocusTarget,
-    state::{ScreenComposer, Backend}, window_view::WindowView,
+    state::{ScreenComposer, Backend}, workspace::WindowView,
 };
 
 use super::{
@@ -53,30 +53,34 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         let scale = self.space.outputs_for_element(&window).first().unwrap().current_scale().fractional_scale();
         let location = self.space.element_location(&window).unwrap_or_default().to_f64().to_physical(scale);
         let keyboard = self.seat.get_keyboard().unwrap();
-        keyboard.set_focus(self, Some(window.into()), Serial::from(0));
-        if let Some(window_layer_id) = self.windows_layer.id() {
-            let view = self.window_views.entry(id.clone()).or_insert_with(|| WindowView::new(self.layers_engine.clone(), window_layer_id));
-            view.layer.set_position(layers::types::Point {
-                    x: location.x as f32,
-                    y: location.y as f32,
-                }, None);
-        }
+        keyboard.set_focus(self, Some(window.clone().into()), Serial::from(0));
+        {
+            if let Some(window_layer_id) = self.workspace.windows_layer.id() {
+                let view = self.get_or_add_window_view(&id, window_layer_id, window.clone());
 
-        self.update_appswitcher();
+                view.layer.set_position(layers::types::Point {
+                        x: location.x as f32,
+                        y: location.y as f32,
+                    }, None);
+            }
+        }
+        self.update_workspace_applications();
 
     }
     
     fn toplevel_destroyed(&mut self, toplevel: ToplevelSurface) {
-        self.update_appswitcher();
+        self.update_workspace_applications();
         let id = toplevel.wl_surface().id();
-        if let Some(view) = self.window_views.get(&id) {
-            let noderef = view.layer.id().unwrap();
-            let scene_layer = self.layers_engine.scene_get_node(noderef).unwrap();
-            let scene_layer = scene_layer.get().clone();
-            scene_layer.delete();
-            self.window_views.remove(&id);
+        {
+            if let Some(view) = self.get_window_view(&id) {
+                let noderef = view.layer.id().unwrap();
+                let scene_layer = self.layers_engine.scene_get_node(noderef).unwrap();
+                let scene_layer = scene_layer.get().clone();
+                scene_layer.delete();
+                self.remove_window_view(&id);
+            }
         }
-        self.update_appswitcher();
+        self.update_workspace_applications();
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
@@ -216,10 +220,11 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 }
             }
 
-            let window = self
-                .space
+            let window = self.space
                 .elements()
-                .find(|element| element.wl_surface().as_ref() == Some(&surface));
+                .find(|element| element.wl_surface().as_ref() == Some(&surface))
+                .cloned();
+
             if let Some(window) = window {
                 use xdg_decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
                 let is_ssd = configure
@@ -228,7 +233,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     .map(|mode| mode == Mode::ServerSide)
                     .unwrap_or(false);
                 window.set_ssd(is_ssd);
-                self.update_appswitcher();
+                self.update_workspace_applications();
 
             }
         }
@@ -334,13 +339,13 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             self.space.map_element(window, geometry.loc, true);
 
             let id = surface.wl_surface().id();
-            if let Some(window_layer_id) = self.windows_layer.id() {
-                
-                let view = self.window_views.entry(id.clone()).or_insert_with(|| WindowView::new(self.layers_engine.clone(), window_layer_id));
-                view.layer.set_position(layers::types::Point {
-                        x: location.x as f32,
-                        y: location.y as f32,
-                    }, None);
+            if let Some(window_layer_id) = self.workspace.windows_layer.id() {
+                if let Some(view) = self.get_window_view(&id) {
+                    view.layer.set_position(layers::types::Point {
+                            x: location.x as f32,
+                            y: location.y as f32,
+                        }, None);
+                }
             }
         }
 
@@ -366,15 +371,16 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         let id = surface.wl_surface().id();
         let window = self.window_for_surface(surface.wl_surface()).unwrap();
 
-        if let Some(window_layer_id) = self.windows_layer.id() {
+        if let Some(window_layer_id) = self.workspace.windows_layer.id() {
             let scale = self.space.outputs_for_element(&window).first().unwrap().current_scale().fractional_scale();
 
             let location = self.space.element_location(&window).unwrap_or_default().to_f64().to_physical(scale);
-            let view = self.window_views.entry(id.clone()).or_insert_with(|| WindowView::new(self.layers_engine.clone(), window_layer_id));
-            view.layer.set_position(layers::types::Point {
-                    x: location.x as f32,
-                    y: location.y as f32,
-                }, None);
+            if let Some(view) = self.get_window_view(&id) {
+                view.layer.set_position(layers::types::Point {
+                        x: location.x as f32,
+                        y: location.y as f32,
+                    }, None);
+            }
         }
 
         surface.send_pending_configure();

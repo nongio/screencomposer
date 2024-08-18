@@ -2,9 +2,9 @@ use std::cell::RefCell;
 
 use layers::{prelude::*, types::Size};
 
-use crate::app_switcher::app_icon_view::render_app_view;
+use super::render_app::render_app_view;
 
-use super::AppSwitcherState;
+use super::model::AppSwitcherModel;
 
 #[allow(dead_code)]
 struct FontCache {
@@ -27,7 +27,8 @@ thread_local! {
 }
 
 
-pub fn render_appswitcher_view(state: &AppSwitcherState) -> ViewLayer {
+pub fn render_appswitcher_view(state: &AppSwitcherModel, view: &View<AppSwitcherModel>) -> ViewLayer {
+    println!("Rendering app switcher view: {:?}", state);
     const COMPONENT_PADDING_H: f32 = 30.0;
     const COMPONENT_PADDING_V: f32 = 50.0;
     const ICON_PADDING: f32 = 25.0;
@@ -36,21 +37,20 @@ pub fn render_appswitcher_view(state: &AppSwitcherState) -> ViewLayer {
     const FONT_SIZE: f32 = 24.0;
 
     let available_width = state.width as f32;
-    let apps_len = state.apps().len() as f32;
+    let apps_len = state.apps.len() as f32;
     let total_gaps = (apps_len - 1.0) * GAP; // gaps between items
 
     let total_padding = 2.0 * COMPONENT_PADDING_H + apps_len * ICON_PADDING * 2.0; // padding on both sides
     let available_icon_size =
-        (available_width - total_padding - total_gaps) / state.apps().len() as f32;
+        (available_width - total_padding - total_gaps) / state.apps.len() as f32;
     let icon_size = ICON_SIZE.min(available_icon_size);
     let component_width = apps_len * icon_size + total_gaps + total_padding;
     let component_height = icon_size + ICON_PADDING * 2.0 + COMPONENT_PADDING_V * 2.0;
     let background_color = Color::new_rgba(1.0, 1.0, 1.0, 0.4);
     let current_app = state.current_app as f32;
     let mut app_name = "".to_string();
-    let apps = state.apps();
-    if !apps.is_empty() && state.current_app < apps.len() {
-        app_name = apps[state.current_app].desktop_name.clone().unwrap_or("".to_string());
+    if !state.apps.is_empty() && state.current_app < state.apps.len() {
+        app_name = state.apps[state.current_app].desktop_name.clone().unwrap_or("".to_string());
     }
     let draw_container = move |canvas: &skia_safe::Canvas, w, h| {
         let color = skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.2);
@@ -83,7 +83,7 @@ pub fn render_appswitcher_view(state: &AppSwitcherState) -> ViewLayer {
             text_style.set_letter_spacing(-1.0);
             let foreground_paint =
                 skia_safe::Paint::new(skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.5), None);
-            text_style.set_foreground_color(&foreground_paint);
+            text_style.set_foreground_paint(&foreground_paint);
             text_style.set_font_families(&["Inter"]);
 
             let mut paragraph_style = skia_safe::textlayout::ParagraphStyle::new();
@@ -109,7 +109,7 @@ pub fn render_appswitcher_view(state: &AppSwitcherState) -> ViewLayer {
         skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
     };
     ViewLayerBuilder::default()
-        .id("apps_switcher")
+        .key("apps_switcher")
         .size((
             Size {
                 width: taffy::Dimension::Points(component_width),
@@ -138,7 +138,7 @@ pub fn render_appswitcher_view(state: &AppSwitcherState) -> ViewLayer {
             ..Default::default()
         })
         .children(vec![ViewLayerBuilder::default()
-            .id("apps_container")
+            .key("apps_container")
             .size((
                 Size {
                     width: taffy::Dimension::Auto,
@@ -159,12 +159,14 @@ pub fn render_appswitcher_view(state: &AppSwitcherState) -> ViewLayer {
             })
             .children(
                 state
-                    .apps()
+                    .apps
                     .iter()
-                    // .enumerate()
-                    .map(|app| {
+                    .enumerate()
+                    .map(|(index, app)| {
                         render_app_view(
-                           app.clone(),
+                            index,
+                            app.clone(),
+                            view.clone(),
                             icon_size,
                         )
                     })

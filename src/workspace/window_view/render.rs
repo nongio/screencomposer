@@ -1,17 +1,10 @@
-use core::fmt;
-use std::{
-    // cell::RefCell,
-    hash::{Hash, Hasher},
-};
+
 
 use layers::{prelude::*, types::Size};
-use smithay::{
-    backend::renderer::utils::CommitCounter,
-    reexports::wayland_server::backend::ObjectId,
-    utils::Transform,
-};
+use smithay::utils::Transform;
 
-use crate::{shell::WindowElement, skia_renderer::SkiaTexture};
+use super::model::{WindowViewBaseModel, WindowViewSurface};
+
 
 
 // struct FontCache {
@@ -33,84 +26,15 @@ use crate::{shell::WindowElement, skia_renderer::SkiaTexture};
 //     };
 // }
 
-#[derive(Clone)]
-pub struct WindowViewSurface {
-    pub(crate) id: ObjectId,
-    pub(crate) x: f32,
-    pub(crate) y: f32,
-    pub(crate) w: f32,
-    pub(crate) h: f32,
-    pub(crate) offset_x: f32,
-    pub(crate) offset_y: f32,
-    pub(crate) texture: Option<SkiaTexture>,
-    pub(crate) commit: CommitCounter,
-    pub(crate) transform: Transform,
-}
-impl fmt::Debug for WindowViewSurface {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("WindowViewSurface")
-            .field("id", &self.id)
-            .field("x", &self.x)
-            .field("y", &self.y)
-            .field("w", &self.w)
-            .field("h", &self.h)
-            .field("offset_x", &self.offset_x)
-            .field("offset_y", &self.offset_y)
-            .field("commit", &self.commit)
-            .field("transform", &self.transform)
-            .finish()
-    }
-}
-pub struct WindowViewState {
-    pub base_rect: WindowViewBase,
-    pub window_element: Option<WindowElement>,
-    pub render_elements: Vec<WindowViewSurface>,
-    pub title: String,
-}
-
-pub struct WindowViewBase {
-    pub x: f32,
-    pub y: f32,
-    pub w: f32,
-    pub h: f32,
-}
-
-impl Hash for WindowViewBase {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        // self.x.to_bits().hash(state);
-        // self.y.to_bits().hash(state);
-        self.w.to_bits().hash(state);
-        self.h.to_bits().hash(state);
-    }
-}
-impl Hash for WindowViewSurface {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        let distance = self
-            .commit
-            .distance(Some(CommitCounter::default()))
-            .unwrap_or(0);
-        if let Some(image) = self.texture.as_ref().map(|t| t.image.as_ref()) {
-            image.unique_id().hash(state);
-            distance.hash(state);
-        }
-        self.id.hash(state);
-        self.x.to_bits().hash(state);
-        self.y.to_bits().hash(state);
-        self.w.to_bits().hash(state);
-        self.h.to_bits().hash(state);
-        self.offset_x.to_bits().hash(state);
-        self.offset_y.to_bits().hash(state);
-    }
-}
 
 #[profiling::function]
-pub fn view_base_window(state: &WindowViewBase) -> ViewLayer {
+pub fn view_base_window(state: &WindowViewBaseModel, _view: &View<WindowViewBaseModel>) -> ViewLayer {
     let w = state.w;
     let h = state.h;
 
     println!("view_base_window render");
-
-    const SAFE_AREA: f32 = 200.0;
+    
+    const SAFE_AREA: f32 = 100.0;
     let draw_shadow = move |canvas: &skia_safe::Canvas, w: f32, h: f32| {
         println!("drop shadow render");
 
@@ -122,6 +46,8 @@ pub fn view_base_window(state: &WindowViewBase) -> ViewLayer {
             w - SAFE_AREA * 2.0,
             h - SAFE_AREA * 2.0,
         );
+
+        canvas.clip_rect(rect, skia_safe::ClipOp::Difference, false);
         // let rrect = skia_safe::RRect::new_rect_xy(
         //     rect,
         //     window_corner_radius,
@@ -152,7 +78,7 @@ pub fn view_base_window(state: &WindowViewBase) -> ViewLayer {
         skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
     };
     ViewLayerBuilder::default()
-        .id("window_view")
+        .key("window_view")
         .size((
             Size {
                 width: taffy::Dimension::Points(w),
@@ -162,7 +88,7 @@ pub fn view_base_window(state: &WindowViewBase) -> ViewLayer {
         ))
         .children(vec![
             ViewLayerBuilder::default()
-                .id("window_view_shadow")
+                .key("window_view_shadow")
                 .layout_style(taffy::Style {
                     position: taffy::Position::Absolute,
                     ..Default::default()
@@ -181,8 +107,8 @@ pub fn view_base_window(state: &WindowViewBase) -> ViewLayer {
                     },
                     None,
                 ))
-                // .border_width((10.0, None))
                 .content(Some(draw_shadow))
+                .image_cache(true)
                 .build()
                 .unwrap()
         ])
@@ -190,19 +116,18 @@ pub fn view_base_window(state: &WindowViewBase) -> ViewLayer {
         .unwrap()
 }
 
+#[allow(clippy::ptr_arg)]
 #[profiling::function]
-pub fn view_content_window(render_elements: &Vec<WindowViewSurface>) -> ViewLayer {
+pub fn view_content_window(render_elements: &Vec<WindowViewSurface>, _view: &View<Vec<WindowViewSurface>>) -> ViewLayer {
     // let w = state.w;
     // let h = state.h;
 
     // let render_elements = state.render_elements.clone();
     let resampler = skia_safe::CubicResampler::catmull_rom();
 
-    const SAFE_AREA: f32 = 80.0;
-
     
     ViewLayerBuilder::default()
-        .id("window_view_content")
+        .key("window_view_content")
         .size((
             Size {
                 width: taffy::Dimension::Points(0.0),
@@ -245,7 +170,7 @@ pub fn view_content_window(render_elements: &Vec<WindowViewSurface>) -> ViewLaye
                         if w == 0.0 || h == 0.0 {
                             return damage;
                         }
-                        let rect = skia_safe::Rect::from_xywh(0.0, 0.0, w, h);
+                        // let rect = skia_safe::Rect::from_xywh(0.0, 0.0, w, h);
 
                         if let Some(image) = image.as_ref() {
                             let scale = 1.0;//wvs.h / image.height() as f32;
@@ -258,7 +183,7 @@ pub fn view_content_window(render_elements: &Vec<WindowViewSurface>) -> ViewLaye
                                 }
                                 Transform::Flipped180 => {
                                     matrix.pre_scale((scale, -scale), None);
-                                    // matrix.pre_translate((( -wvs.offset_x), (wvs.offset_y)));
+                                    // matrix.pre_translate((0.0, (-wvs.h)));
                                 }
                                 Transform::_90 => {}
                                 Transform::_180 => {}
@@ -271,24 +196,31 @@ pub fn view_content_window(render_elements: &Vec<WindowViewSurface>) -> ViewLaye
                                 skia_safe::Color4f::new(1.0, 1.0, 1.0, 1.0),
                                 None,
                             );
-                            // paint.set_blend_mode(skia_safe::BlendMode::SrcOver);
-
                             paint.set_shader(image.to_shader(
                                 (skia_safe::TileMode::Repeat, skia_safe::TileMode::Repeat),
-                                // skia_safe::SamplingOptions::from(resampler),
-                                skia_safe::SamplingOptions::default(),
+                                skia_safe::SamplingOptions::from(resampler),
+                                // skia_safe::SamplingOptions::default(),
                                 &matrix,
                             ));
 
-                            // canvas.draw_rrect(rrect, &paint);
-                            // canvas.save();
+                            let split = 1;
+                            let rect_size_w = w / split as f32;
+                            let rect_size_h = h / split as f32;
+
+                            canvas.save();
                             // canvas.clip_rect(damage, None, None);
-                            canvas.draw_rect(rect, &paint);
+                            for i in 0..split {
+                                for j in 0..split {
+                                    let rect = skia_safe::Rect::from_xywh(i as f32 * rect_size_w, j as f32 * rect_size_h, rect_size_w, rect_size_h);
+                                    // if rect.intersect(damage) {
+                                        canvas.draw_rect(rect, &paint);
+                                    // }
+                                }
+                            }
                             // canvas.restore();
-                            // let mut paint = skia_safe::Paint::new(skia_safe::Color4f::new(1.0, 1.0, 0.0, 0.5), None);
-                            // paint.set_stroke(true);
-                            // canvas.draw_rrect(rrect, &paint);
-                        
+                            // canvas.draw_rect(rect, &paint);
+                            // canvas.concat(&matrix);
+                            // canvas.draw_image(image, (0, 0), Some(&paint));                      
                         }
 
                         // let mut paint = skia_safe::Paint::new(skia_safe::Color4f::new(1.0, 0.0, 0.0, 1.0), None);
@@ -297,7 +229,7 @@ pub fn view_content_window(render_elements: &Vec<WindowViewSurface>) -> ViewLaye
                         damage
                     };
                     ViewLayerBuilder::default()
-                        .id(format!("window_view_content_{}", index))
+                        .key(format!("window_view_content_{}", index))
                         .layout_style(taffy::Style {
                             position: taffy::Position::Absolute,
                             ..Default::default()
