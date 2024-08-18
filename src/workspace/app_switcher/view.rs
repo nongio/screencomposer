@@ -1,4 +1,4 @@
-use std::sync::{atomic::AtomicBool, Arc};
+use std::{collections::{HashMap, HashSet}, sync::{atomic::AtomicBool, Arc}};
 
 use layers::{
     engine::{
@@ -11,7 +11,7 @@ use layers::{
 };
 use smithay::utils::IsAlive;
 
-use crate::{interactive_view::ViewInteractions, state::Backend, utils::Observer, workspace::Workspace};
+use crate::{interactive_view::ViewInteractions, shell::WindowElement, state::Backend, utils::Observer, workspace::{Workspace, WorkspaceModel}};
 
 use super::render::render_appswitcher_view;
 
@@ -85,23 +85,7 @@ impl AppSwitcherView {
         //     // }
         // }
     }
-    // pub fn next_app(&mut self) {
-    //     // let apps = self.apps.read().unwrap();
-    //     if !self.apps.is_empty() {
-    //         self.current_app = (self.current_app + 1) % self.apps.len();
-    //     } else {
-    //         self.current_app = 0;
-    //     }
-    // }
-    // pub fn previous_app(&mut self) {
-    //     // let apps = self.apps.read().unwrap();
-        
-    //     if !self.apps.is_empty() {
-    //         self.current_app = (self.current_app + self.apps.len() - 1) % self.apps.len();
-    //     } else {
-    //         self.current_app = 0;
-    //     }
-    // }
+
     pub fn next(&self) {
         let app_switcher = self.view.get_state();
         let mut current_app = app_switcher.current_app;
@@ -163,31 +147,81 @@ impl AppSwitcherView {
         );
     }
 
-    pub fn quit_current_app(&mut self) {
-        // if self.active {
-        //     let windows = self.app_switcher.current_window_elements();
-        //     for we in windows {
-        //         match we {
-        //             WindowElement::Wayland(w) => w.toplevel().send_close(),
-        //             #[cfg(feature = "xwayland")]
-        //             WindowElement::X11(w) => {
-        //                 let _ = w.close();
-        //             }
-        //         };
-        //     }
-        // }
+    pub fn quit_current_app(&self) {
+        if self.active.load(std::sync::atomic::Ordering::Relaxed) {
+            let state = self.view.get_state();
+            if let Some(app) = state.apps.get(state.current_app) {
+                for window in app.windows.iter() {
+                    match window.window_element.as_ref().unwrap() {
+                        WindowElement::Wayland(w) => w.toplevel().send_close(),
+                        #[cfg(feature = "xwayland")]
+                        WindowElement::X11(w) => {
+                            let _ = w.close();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn next_window(&self) {
+        let state = self.view.get_state();
+        if let Some(app) = state.apps.get(state.current_app) {
+            let windows = app.windows.iter().collect::<Vec<_>>();
+            if !windows.is_empty() {
+                // let mut current_window = windows.iter().position(|w| w.is_focused).unwrap();
+                // current_window = (current_window + 1) % windows.len();
+                // for (i, window) in windows.iter().enumerate() {
+                //     if i == current_window {
+                //         match window.window_element.as_ref().unwrap() {
+                //             WindowElement::Wayland(w) => w.toplevel().send_activate(),
+                //             #[cfg(feature = "xwayland")]
+                //             WindowElement::X11(w) => {
+                //                 let _ = w.activate();
+                //             }
+                //         }
+                //     }
+                // }
+            }
+        }
+    }
+    pub fn prev_window(&self) {
+        let state = self.view.get_state();
+        if let Some(app) = state.apps.get(state.current_app) {
+            let windows = app.windows.iter().collect::<Vec<_>>();
+            if !windows.is_empty() {
+                // let mut current_window = windows.iter().position(|w| w.is_focused).unwrap();
+                // current_window = (current_window + 1) % windows.len();
+                // for (i, window) in windows.iter().enumerate() {
+                //     if i == current_window {
+                //         match window.window_element.as_ref().unwrap() {
+                //             WindowElement::Wayland(w) => w.toplevel().send_activate(),
+                //             #[cfg(feature = "xwayland")]
+                //             WindowElement::X11(w) => {
+                //                 let _ = w.activate();
+                //             }
+                //         }
+                //     }
+                // }
+            }
+        }
     }
 }
 
-impl Observer<Workspace> for AppSwitcherView {
-   fn notify(&self, event: &Workspace) {
-        println!("AppSwitcherView received event");
-
-        let workspace = event.model.read().unwrap();
-
-        let apps = workspace.application_list.iter().map(|app_id| {
-            workspace.applications.get(app_id).unwrap().to_owned()
+impl Observer<WorkspaceModel> for AppSwitcherView {
+   fn notify(&self, event: &WorkspaceModel) {
+        let workspace = event;
+        let mut app_set = HashSet::new();
+        let apps = workspace.application_list.iter()
+            .filter_map(|app_id| {
+                let app = workspace.applications.get(app_id).unwrap().to_owned();
+                if app_set.insert(app.identifier.clone()) {
+                    Some(app)
+                } else {
+                    None
+                }
         }).collect();
+
         self.view.update_state(AppSwitcherModel {
             apps,
             ..self.view.get_state()

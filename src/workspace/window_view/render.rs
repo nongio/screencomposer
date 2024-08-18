@@ -31,12 +31,9 @@ use super::model::{WindowViewBaseModel, WindowViewSurface};
 pub fn view_base_window(state: &WindowViewBaseModel, _view: &View<WindowViewBaseModel>) -> ViewLayer {
     let w = state.w;
     let h = state.h;
-
-    println!("view_base_window render");
     
     const SAFE_AREA: f32 = 100.0;
     let draw_shadow = move |canvas: &skia_safe::Canvas, w: f32, h: f32| {
-        println!("drop shadow render");
 
         // draw shadow
         // let window_corner_radius = 12.0;

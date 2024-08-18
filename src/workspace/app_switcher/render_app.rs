@@ -8,7 +8,7 @@ use super::model::AppSwitcherModel;
 
 pub fn render_app_view(index: usize, state: Application, view: View<AppSwitcherModel>, icon_width: f32) -> ViewLayer {
     const PADDING: f32 = 20.0;
-    println!("Rendering app view: {:?}", state);
+    // println!("Rendering app view: {:?}", state);
     let draw_picture = move |canvas:  &skia_safe::Canvas, w: f32, h: f32| -> skia_safe::Rect {
         if let Some(image) = &state.icon {
             let mut paint =

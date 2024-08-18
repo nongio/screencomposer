@@ -163,11 +163,12 @@ impl  Workspace {
         layers_engine.scene_add_layer_to(workspace_selector_layer.clone(), Some(workspace_id));
         layers_engine.scene_add_layer(overlay_layer.clone());
 
+        let mut model = WorkspaceModel::default();
 
         let app_switcher = AppSwitcherView::new(layers_engine.clone());
         let app_switcher = Arc::new(app_switcher);
 
-        
+        model.add_listener(app_switcher.clone());
         let background_view = BackgroundView::new(layers_engine.clone(), background_layer.clone());
         if let Some(background_image) = image_from_path("./resources/background.jpg") {
             background_view.set_image(background_image);
@@ -180,7 +181,7 @@ impl  Workspace {
         let workspace_selector_view = WorkspaceSelectorView::new(layers_engine.clone(), workspace_selector_layer.clone());
 
         Arc::new(Self {
-            model: Arc::new(RwLock::new(WorkspaceModel::default())),
+            model: Arc::new(RwLock::new(model)),
             
             windows_map: Arc::new(RwLock::new(HashMap::new())),
             app_switcher,
@@ -249,20 +250,9 @@ impl  Workspace {
                             .unwrap()
                             .lock()
                             .unwrap();
-                        if let Some(app_id) = attributes.app_id.as_ref() {
-                            {
-                                let mut model = self.model.write().unwrap();
-                                model.application_list.push(app_id.clone());
-                                if !model.applications.contains_key(app_id) {
-                                    model.applications.insert(app_id.to_owned(), Application {
-                                        identifier: app_id.to_string(),
-                                        ..Default::default()
-                                    });
 
-                                    drop(model);
-                                    self.load_async_app_info(app_id);
-                                }
-                            }
+                            
+                        if let Some(app_id) = attributes.app_id.as_ref() {
                             let id = w.wl_surface().unwrap().id();
                             let window = Window {
                                 app_id: app_id.to_string(),
@@ -279,6 +269,27 @@ impl  Workspace {
                                 is_minimized: false,
 
                             };
+                            {
+                                let mut model = self.model.write().unwrap();
+                                // don't allow duplicates in app switcher
+                                // TODO use config
+                                if !model.application_list.iter().any(|id| id == app_id) {
+                                    model.application_list.push(app_id.clone());
+                                }
+                                if !model.applications.contains_key(app_id) {
+                                    model.applications.insert(app_id.to_owned(), Application {
+                                        identifier: app_id.to_string(),
+                                        ..Default::default()
+                                    });
+                                }
+                                let app = model.applications.get_mut(app_id).unwrap();
+                                app.windows.push(window.clone());
+                                {
+                                    drop(model);
+                                    self.load_async_app_info(app_id);
+                                }
+                            }
+                            
 
                             {
                                 let mut map = self.windows_map.write().unwrap();
@@ -321,6 +332,8 @@ impl  Workspace {
                 }
             }
             if let Some(desktop_entry) = desktop_entry {
+                let mut model_mut = model.write().unwrap();
+
                 let icon_path = desktop_entry.icon().map(|icon| icon.to_string())
                 .and_then(|icon_name| {
                     xdgkit::icon_finder::find_icon(icon_name, 512, 1)
@@ -328,17 +341,20 @@ impl  Workspace {
                     icon.to_str().unwrap().to_string()
                 });
                 let icon = icon_path.as_ref().and_then(|icon_path| {image_from_path(icon_path)});
-                let state = Application {
-                    identifier: app_id.to_string(),
-                    desktop_name: desktop_entry.name(None).map(|name| name.to_string()),
-                    icon_path,
-                    icon: icon.clone(),
-                    ..Default::default()
-                };
-                
-                println!("Updating model for {:?}", app_id);
-                let mut model_mut = model.write().unwrap();
-                model_mut.applications.insert(app_id, state);
+                if let Some(state) = model_mut.applications.get_mut(&app_id) {
+                    state.desktop_name = desktop_entry.name(None).map(|name| name.to_string());
+                    state.icon_path = icon_path;
+                    state.icon = icon.clone();
+                } else {
+                    let state = Application {
+                        identifier: app_id.to_string(),
+                        desktop_name: desktop_entry.name(None).map(|name| name.to_string()),
+                        icon_path,
+                        icon: icon.clone(),
+                        ..Default::default()
+                    };
+                    model_mut.applications.insert(app_id, state);
+                }
                 
                 model_mut.notify_observers(&model_mut.clone());
             }

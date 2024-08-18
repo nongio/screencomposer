@@ -230,7 +230,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             .unwrap_or(KeyAction::None);
 
         if KeyState::Released == state  && keycode == 56 {
-            // self.app_switcher.hide();
+            self.workspace.app_switcher.hide();
         //    for we in self.app_switcher.app_switcher.current_window_elements() {
         //         let id = we.wl_surface().unwrap().id();
         //         self.space.raise_element(&we, true);
@@ -522,16 +522,16 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     self.backend_data.reset_buffers(&output);
                 }
                 KeyAction::ApplicationSwitchNext => {
-                    // self.app_switcher.next();
+                    self.workspace.app_switcher.next();
                 }
                 KeyAction::ApplicationSwitchPrev => {
-                    // self.app_switcher.previous();
+                    self.workspace.app_switcher.previous();
                 }
                 KeyAction::ApplicationSwitchQuit => {
-                    // self.app_switcher.quit_current_app();
+                    self.workspace.app_switcher.quit_current_app();
                 }
                 KeyAction::ApplicationSwitchNextWindow => {
-                    // self.app_switcher.next_window();
+                    self.workspace.app_switcher.next_window();
                     // for we in self.app_switcher.app_switcher.current_window_elements() {
                     //     let id = we.wl_surface().unwrap().id();
                     //     self.space.raise_element(&we, true);
@@ -759,16 +759,16 @@ impl ScreenComposer<UdevData> {
                     self.backend_data.set_debug_flags(debug_flags);
                 }
                 KeyAction::ApplicationSwitchNext => {
-                    // self.app_switcher.next();
+                    self.workspace.app_switcher.next();
                 }
                 KeyAction::ApplicationSwitchPrev => {
-                    // self.app_switcher.previous();
+                    self.workspace.app_switcher.previous();
                 }
                 KeyAction::ApplicationSwitchNextWindow => {
-                    // self.app_switcher.next_window();
+                    self.workspace.app_switcher.next_window();
                 }
                 KeyAction::ApplicationSwitchQuit => {
-                    // self.app_switcher.quit_current_app();
+                    self.workspace.app_switcher.quit_current_app();
                 }
                 KeyAction::ExposeShowDesktop => {
                     if self.workspace.get_show_desktop() {
