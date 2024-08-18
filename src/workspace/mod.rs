@@ -232,7 +232,7 @@ impl  Workspace {
             let mut model_mut = self.model.write().unwrap();
             model_mut.application_list = Vec::new();
             model_mut.windows = Vec::new();
-
+            model_mut.applications = HashMap::new();
             let mut map = self.windows_map.write().unwrap();
             map.clear();
         }

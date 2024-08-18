@@ -495,7 +495,7 @@ impl SkiaRenderer {
         // self.make_current()?;
         
         let texture = self.existing_dmabuf_texture(dmabuf)?.map(Ok).unwrap_or_else(|| {
-            println!("importing dmabuf {:?}", dmabuf);
+            // println!("importing dmabuf {:?}", dmabuf);
             let is_external = !self.egl_context().dmabuf_render_formats().contains(&dmabuf.format());
 
             let egl_image = self

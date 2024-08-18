@@ -11,7 +11,7 @@ use layers::{
 };
 use smithay::utils::IsAlive;
 
-use crate::{interactive_view::ViewInteractions, shell::WindowElement, state::Backend, utils::Observer, workspace::{Workspace, WorkspaceModel}};
+use crate::{interactive_view::ViewInteractions, shell::WindowElement, state::Backend, utils::Observer, workspace::{Application, Window, Workspace, WorkspaceModel}};
 
 use super::render::render_appswitcher_view;
 
@@ -205,6 +205,16 @@ impl AppSwitcherView {
                 // }
             }
         }
+    }
+
+    pub fn get_current_app(&self) -> Option<Application> {
+        let state = self.view.get_state();
+        state.apps.get(state.current_app).cloned()
+    }
+    pub fn get_current_app_windows(&self) -> Vec<Window> {
+        self.get_current_app().map_or(vec![],|app| {
+            app.windows.clone()
+        })
     }
 }
 

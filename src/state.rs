@@ -271,7 +271,7 @@ impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
         set_primary_focus(dh, seat, focus);
     }
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
-        println!("change icon {:?}", image);
+        // println!("change icon {:?}", image);
         // *self.cursor_status.lock().unwrap() = image;
     }
 }
@@ -735,12 +735,12 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 let texture = self.backend_data.texture_for_surface(&render_surface);
                 let wvs = WindowViewSurface {
                     id: id.clone(),
-                    offset_x: view.offset.x as f32 * scale as f32,//geometry.loc.x as f32,
-                    offset_y: view.offset.y as f32 * scale as f32,//geometry.loc.y as f32,
+                    offset_x: view.offset.x as f32 * scale as f32,
+                    offset_y: view.offset.y as f32 * scale as f32,
                     x: location.x as f32 - surface_geometry.loc.x as f32,
                     y: location.y as f32 - surface_geometry.loc.y as f32,
-                    w: view.dst.w as f32 * scale as f32,//surface_geometry.size.w as f32,
-                    h: view.dst.h as f32 * scale as f32,//surface_geometry.size.h as f32,
+                    w: view.dst.w as f32 * scale as f32,
+                    h: view.dst.h as f32 * scale as f32,
                     texture,
                     commit: render_surface.current_commit(),
                     transform: surface_attributes.buffer_transform.into(),

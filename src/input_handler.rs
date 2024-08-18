@@ -227,14 +227,16 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
         if KeyState::Released == state  && keycode == 56 {
             self.workspace.app_switcher.hide();
-        //    for we in self.app_switcher.app_switcher.current_window_elements() {
-        //         let id = we.wl_surface().unwrap().id();
-        //         self.space.raise_element(&we, true);
-        //         keyboard.set_focus(self, Some(we.clone().into()), serial);
-        //         if let Some(view) = self.window_views.get_mut(&id) {
-        //             view.raise();
-        //         }
-        //     }
+            for win in self.workspace.app_switcher.get_current_app_windows() {
+                if let Some(we) = win.window_element.as_ref() {
+                    let id = we.wl_surface().unwrap().id();
+                    self.space.raise_element(we, true);
+                    keyboard.set_focus(self, Some(we.clone().into()), serial);
+                    if let Some(view) = self.window_views.get_mut(&id) {
+                        view.raise();
+                    }
+                }
+            }
         }
          
         self.suppressed_keys = suppressed_keys;
