@@ -543,15 +543,13 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     
                 }
                 KeyAction::ExposeShowDesktop => {
-                    self.show_desktop = !self.show_desktop;
-                    // if self.show_desktop {
-                    //     self.expose_show_desktop(layers::types::Point {x:0.0, y: 0.0});
-                    // } else {
-                    //     self.expose_show_desktop(layers::types::Point {x:1.0, y: 1.0});
-                    // }
+                    if self.workspace.get_show_desktop() {
+                        self.expose_show_desktop(-1.0, true);
+                    } else {
+                        self.expose_show_desktop(1.0, true);
+                    }
                 }
                 KeyAction::ExposeShowAll => {
-                    // self.workspace.set_show_all(!self.workspace.get_show_all());
                     if self.workspace.get_show_all() {
                         self.expose_show_all(-1.0, true);
                     } else {
@@ -773,12 +771,11 @@ impl ScreenComposer<UdevData> {
                     // self.app_switcher.quit_current_app();
                 }
                 KeyAction::ExposeShowDesktop => {
-                    self.show_desktop = !self.show_desktop;
-                    // if self.show_desktop {
-                    //     self.expose_show_desktop(layers::types::Point {x:0.0, y: 0.0});
-                    // } else {
-                    //     self.expose_show_desktop(layers::types::Point {x:1.0, y: 1.0});
-                    // }
+                    if self.workspace.get_show_desktop() {
+                        self.expose_show_desktop(-1.0, true);
+                    } else {
+                        self.expose_show_desktop(1.0, true);
+                    }
                 }
                 KeyAction::ExposeShowAll => {
                     // self.workspace.set_show_all(!self.workspace.get_show_all());
@@ -1187,7 +1184,6 @@ impl ScreenComposer<UdevData> {
         if evt.fingers() == 4 && !self.is_swiping {
             self.is_pinching = true;
         }
-        // self.background_view.set_debug_text(format!("on_gesture_pinch_begin: {:?}", evt.fingers()));
 
         pointer.gesture_pinch_begin(
             self,
@@ -1203,17 +1199,18 @@ impl ScreenComposer<UdevData> {
         let pointer = self.pointer.clone();
         let multiplier = 1.1;
         let mut delta = evt.scale()as f32 * multiplier;
-        if !self.show_desktop {
-            delta -= 1.0;
-        }
+        
+        // if !self.show_desktop {
+        //     delta -= 1.0;
+        // }
 
-        self.pinch_gesture = layers::types::Point {
-            x: delta,//(self.pinch_gesture.x - delta),
-            y: delta,//(self.pinch_gesture.y - delta),
-        };
+        // self.pinch_gesture = layers::types::Point {
+        //     x: delta,//(self.pinch_gesture.x - delta),
+        //     y: delta,//(self.pinch_gesture.y - delta),
+        // };
         if self.is_pinching {    
             // self.background_view.set_debug_text(format!("on_gesture_pinch_update: {:?}", delta));
-            // self.expose_show_desktop(self.pinch_gesture);
+            self.expose_show_desktop(delta, false);
         }
         pointer.gesture_pinch_update(
             self,
@@ -1232,29 +1229,7 @@ impl ScreenComposer<UdevData> {
         
         // self.background_view.set_debug_text(format!("on_gesture_pinch_end"));
         if self.is_pinching {
-            if self.show_desktop {
-                if self.pinch_gesture.x < 0.9 {
-                    self.show_desktop = false;
-                    self.pinch_gesture = (0.0, 0.0).into();
-                    // self.expose_show_desktop(self.pinch_gesture);
-                    self.is_pinching = false;
-
-                } else {
-                    self.show_desktop = true;
-                    self.pinch_gesture = (1.0, 1.0).into();
-                    // self.expose_show_desktop(self.pinch_gesture);
-                }
-            } else if self.pinch_gesture.x > 0.1 {
-                self.show_desktop = true;
-                self.pinch_gesture = (1.0, 1.0).into();
-                // self.expose_show_desktop(self.pinch_gesture);
-            } else {
-                self.show_desktop = false;
-                self.pinch_gesture = (0.0, 0.0).into();
-                // self.expose_show_desktop(self.pinch_gesture);
-                self.is_pinching = false;
-
-            }
+            self.expose_show_desktop(0.0, true);
         }
         pointer.gesture_pinch_end(
             self,

@@ -55,9 +55,6 @@ pub struct WinitData {
     damage_tracker: OutputDamageTracker,
     dmabuf_state: (DmabufState, DmabufGlobal, Option<DmabufFeedback>),
     full_redraw: u8,
-    cursor_manager: cursor::Cursor,
-    cursor_texture: Option<TextureBuffer<SkiaTexture>>,
-    clock: Clock<Monotonic>,
     #[cfg(feature = "debug")]
     pub fps: fps_ticker::Fps,
 }
@@ -218,9 +215,6 @@ pub fn run_winit() {
             full_redraw: 0,
             #[cfg(feature = "debug")]
             fps: fps_ticker::Fps::default(),
-            cursor_manager: cursor::Cursor::load(),
-            cursor_texture: None,
-            clock: Clock::new(),
         }
     };
     let mut state = ScreenComposer::init(display, event_loop.handle(), data, true);

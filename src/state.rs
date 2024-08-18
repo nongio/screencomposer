@@ -845,45 +845,15 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             
         }
     }
-    // pub fn expose_show_desktop(&mut self, delta: layers::types::Point) {
-    //     let toplevels = self.xdg_shell_state.toplevel_surfaces().iter();
-
-    //     for toplevel in toplevels {
-    //         let id = toplevel.wl_surface().id();
-    //         if let Some(window_layer_id) = self.windows_layer.id() {
-    //             let view = self.window_views.entry(id).or_insert_with(|| WindowView::new(self.layers_engine.clone(), window_layer_id));
-    //             let delta = delta.x.clamp(0.0, 1.0);
-
-    //             let view_base = view.view_base.get_state();
-    //             let to_x = -view_base.w;
-    //             let x= view_base.x.interpolate(&to_x, delta);
-    //             let to_y = -view_base.h;
-    //             let y= view_base.y.interpolate(&to_y, delta);
-                
-    //             if delta != 0.0 && delta != 1.0 {
-    //                 view.layer.set_position(layers::types::Point {
-    //                     x,
-    //                     y,
-    //                 }, None);
-    //             } else {
-    //                 view.layer.set_position(layers::types::Point {
-    //                     x,
-    //                     y,
-    //                 }, Some(Transition {
-    //                     duration: 0.5,
-    //                     timing: TimingFunction::Easing(Easing::ease_in()),
-    //                     ..Default::default()
-    //                 }));
-    //             }
-    //         }
-            
-    //     }
-    // }
 
     // scene_element
     // window_views
-    pub fn expose_show_all(&self, delta: f32, end_gesture: bool) {
+    pub fn expose_show_all(&mut self, delta: f32, end_gesture: bool) {
         self.workspace.expose_show_all(delta, end_gesture);
+    }
+
+    pub fn expose_show_desktop(&mut self, delta: f32, end_gesture: bool) {
+        self.workspace.expose_show_desktop(delta, end_gesture);
     }
 
     pub fn get_or_add_window_view(&mut self, object_id: &ObjectId, parent_layer_id: NodeRef, window: WindowElement) -> &WindowView {

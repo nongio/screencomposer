@@ -129,10 +129,7 @@ pub struct UdevData {
     pointer_element: PointerElement<MultiTexture>,
     #[cfg(feature = "debug")]
     fps_texture: Option<MultiTexture>,
-    pointer_image: crate::cursor::Cursor,
     debug_flags: DebugFlags,
-    cursor_texture: Option<TextureBuffer<MultiTexture>>,
-    clock: Clock<Monotonic>,
     cursor_manager: Cursor,
     
 }
@@ -265,14 +262,11 @@ pub fn run_udev() {
         gpus,
         allocator: None,
         backends: HashMap::new(),
-        pointer_image: crate::cursor::Cursor::load(),
         pointer_images: Vec::new(),
         pointer_element: PointerElement::default(),
         #[cfg(feature = "debug")]
         fps_texture: None,
         debug_flags: DebugFlags::empty(),
-        cursor_texture: None,
-        clock: Clock::new(),
         cursor_manager: Cursor::load(),
     };
     let mut state = ScreenComposer::init(display, event_loop.handle(), data, true);

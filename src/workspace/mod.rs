@@ -87,8 +87,10 @@ pub struct Workspace {
     pub windows_layer: Layer,
     pub overlay_layer: Layer,
     pub show_all: AtomicBool,
+    pub show_desktop: AtomicBool,
     pub expose_bin: Arc<RwLock<HashMap<ObjectId, LayoutRect>>>,
-    pub expose_gesture: AtomicI32,
+    pub show_all_gesture: AtomicI32,
+    pub show_desktop_gesture: AtomicI32,
 }
 
 #[derive(Default, Clone)]
@@ -190,8 +192,10 @@ impl  Workspace {
             overlay_layer,
             workspace_layer,
             show_all: AtomicBool::new(false),
+            show_desktop: AtomicBool::new(false),
             expose_bin: Arc::new(RwLock::new(HashMap::new())),
-            expose_gesture: AtomicI32::new(0),
+            show_all_gesture: AtomicI32::new(0),
+            show_desktop_gesture: AtomicI32::new(0),
         })
     }
 
@@ -201,6 +205,14 @@ impl  Workspace {
 
     fn set_show_all(&self, show_all: bool) {
         self.show_all.store(show_all, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn get_show_desktop(&self) -> bool {
+        self.show_desktop.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn set_show_desktop(&self, show_all: bool) {
+        self.show_desktop.store(show_all, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub(crate) fn update_window(&self, id: &ObjectId, model: &WindowViewBaseModel) {
@@ -338,33 +350,35 @@ impl  Workspace {
     // }
     pub fn expose_show_all(&self, delta: f32, end_gesture: bool) {
         const MULTIPLIER: f32 = 1000.0;
-        let gesture = self.expose_gesture.load(std::sync::atomic::Ordering::Relaxed);
+        let gesture = self.show_all_gesture.load(std::sync::atomic::Ordering::Relaxed);
         
         let mut new_gesture = gesture + (delta * MULTIPLIER) as i32;
-        let show_all = self.get_show_all();
+        let mut show_all = self.get_show_all();
         if end_gesture {
             if show_all {
                 if new_gesture <= (9.0 * MULTIPLIER / 10.0) as i32 {
                     new_gesture = 0;
-                    self.set_show_all(false);
+                    show_all = false;
                 } else {
                     new_gesture = MULTIPLIER as i32;
-                    self.set_show_all(true);
+                    show_all = true;
                 }
             } else {
                 #[allow(clippy::collapsible_else_if)]
                 if new_gesture >= (1.0 * MULTIPLIER / 10.0) as i32 {
                     new_gesture = MULTIPLIER as i32;
-                    self.set_show_all(true);
+                    show_all = true;
                 } else {
                     new_gesture = 0;
-                    self.set_show_all(false);
+                    show_all = false;
                 }
             }
+
+            self.set_show_all(show_all);
         }
 
         let delta = new_gesture as f32 / 1000.0;
-        self.expose_gesture.store(new_gesture, std::sync::atomic::Ordering::Relaxed);
+        self.show_all_gesture.store(new_gesture, std::sync::atomic::Ordering::Relaxed);
         
         let workspace_selector_height = 250.0;
         let padding_top = 10.0;
@@ -463,6 +477,74 @@ impl  Workspace {
 
         if end_gesture {
             *bin = HashMap::new();
+        }
+    }
+
+    pub fn expose_show_desktop(&self, delta: f32, end_gesture: bool) {
+        const MULTIPLIER: f32 = 1000.0;
+        let gesture = self.show_desktop_gesture.load(std::sync::atomic::Ordering::Relaxed);
+        
+        let mut new_gesture = gesture + (delta * MULTIPLIER) as i32;
+        let show_desktop = self.get_show_desktop();
+       
+        let size = self.workspace_layer.render_size();
+        let padding_top = 10.0;
+        let padding_bottom = 10.0;
+        let screen_size_w = size.x;
+        let screen_size_h = size.y - padding_top - padding_bottom;
+        let model = self.model.read().unwrap();
+        let map = self.windows_map.read().unwrap();
+        
+        if end_gesture {
+            if show_desktop {
+                if new_gesture <= (9.0 * MULTIPLIER / 10.0) as i32 {
+                    new_gesture = 0;
+                    self.set_show_desktop(false);
+                } else {
+                    new_gesture = MULTIPLIER as i32;
+                    self.set_show_desktop(true);
+                }
+            } else {
+                #[allow(clippy::collapsible_else_if)]
+                if new_gesture >= (1.0 * MULTIPLIER / 10.0) as i32 {
+                    new_gesture = MULTIPLIER as i32;
+                    self.set_show_desktop(true);
+                } else {
+                    new_gesture = 0;
+                    self.set_show_desktop(false);
+                }
+            }
+        } else {
+            if !show_desktop {
+                new_gesture -= MULTIPLIER as i32;
+            }
+        }
+
+        let mut delta = new_gesture as f32 / 1000.0;
+        
+        let delta = delta.clamp(0.0, 1.0);
+
+        let mut transition = Some(Transition {
+            duration: 0.5,
+            timing: TimingFunction::Easing(Easing::ease_in()),
+            ..Default::default()
+        });
+        if !end_gesture {
+            // in the middle of the gesture
+            transition = None;
+        }
+
+        for window in model.windows.iter() {
+            let window = map.get(window).unwrap();
+            let to_x = -window.w;
+            let to_y = -window.h;
+            let x= window.x.interpolate(&to_x, delta);
+            let y= window.y.interpolate(&to_y, delta);
+
+            window.base_layer.set_position(layers::types::Point {
+                x,
+                y,
+            }, transition);
         }
     }
 }

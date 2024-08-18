@@ -17,11 +17,11 @@ async fn main() {
     if let Ok(_env_filter) = tracing_subscriber::EnvFilter::try_from_default_env() {
         tracing_subscriber::fmt()
             .compact()
-            .with_env_filter("trace")
+            // .with_env_filter("trace")
             .init();
     } else {
         tracing_subscriber::fmt()
-        .with_env_filter("trace")
+        // .with_env_filter("trace")
         .compact().init();
     }
 

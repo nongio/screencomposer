@@ -299,6 +299,8 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                 }
             }
             data.expose_show_all(-1.0, true);
+            data.set_cursor(&CursorImageStatus::default_named());
+
         }
         
     }
