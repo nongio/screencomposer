@@ -42,7 +42,6 @@ pub struct WindowSelection {
 pub struct WindowSelectorState {
     pub rects: Vec<WindowSelection>,
     pub current_selection: Option<usize>,
-    pub cursor_handler: std::sync::Arc<std::sync::Mutex<CursorImageStatus>>,
 }
 
 impl Hash for WindowSelectorState {
@@ -100,7 +99,6 @@ impl WindowSelectorView {
         let state = WindowSelectorState {
             rects: vec![],
             current_selection: None,
-            cursor_handler,
         };
         let view = layers::prelude::View::new(layer.clone(), state, Box::new(view_window_selector));
         Self {
@@ -253,7 +251,10 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
     fn is_alive(&self) -> bool {
         !self.view.layer.hidden()
     }
-    fn on_motion(&self, event: &smithay::input::pointer::MotionEvent) {
+    fn on_motion(&self, 
+            seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
+            data: &mut crate::ScreenComposer<Backend>, 
+            event: &smithay::input::pointer::MotionEvent) {
 
         let mut state = self.view.get_state().clone();
         let rect = state.rects.iter().find(|rect| {
@@ -262,15 +263,14 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                 rect.y < event.location.y as f32 && 
                 rect.y + rect.h > event.location.y as f32 {
                 state.current_selection = Some(rect.index);
-                // println!("window selector motion ({}) {}, {}, {}, {}", rect.index, rect.x, rect.y, rect.w, rect.h);
                 let state = self.view.get_state();
-                let mut c = state.cursor_handler.lock().unwrap();
-                *c = CursorImageStatus::Named(CursorIcon::Pointer);
+                let cursor = CursorImageStatus::Named(CursorIcon::Pointer);
+                *data.cursor_status.lock().unwrap() = cursor;
                 true
             } else {
                 let state = self.view.get_state();
-                let mut c = state.cursor_handler.lock().unwrap();
-                *c = CursorImageStatus::Named(CursorIcon::default());
+                let cursor = CursorImageStatus::Named(CursorIcon::default());
+                *data.cursor_status.lock().unwrap() = cursor;
                 false
             }
         }).map(|x| x.index);

@@ -202,7 +202,10 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for AppSwitcherVi
     fn is_alive(&self) -> bool {
         self.alive()
     }
-    fn on_motion(&self, event: &smithay::input::pointer::MotionEvent) {
+    fn on_motion(&self, 
+            _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
+            _data: &mut crate::ScreenComposer<Backend>, 
+            event: &smithay::input::pointer::MotionEvent) {
         // println!("AppSwitcherView on_motion {} {}", event.location.x, event.location.y);
         let id = self.view_layer.id().unwrap();
         self.view_layer.engine.pointer_move((event.location.x as f32, event.location.y as f32), id.0);

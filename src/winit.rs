@@ -335,7 +335,9 @@ pub fn run_winit() {
             }
             let cursor_visible = !matches!(*cursor_guard, CursorImageStatus::Surface(_));
 
-            
+            if let CursorImageStatus::Named(cursor) = *cursor_guard {
+                backend.window().set_cursor_icon(cursor);
+            }
             pointer_element.set_status(cursor_guard.clone());
 
 

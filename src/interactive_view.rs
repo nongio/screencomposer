@@ -5,16 +5,18 @@ use smithay::{input::{keyboard::KeyboardTarget, pointer::PointerTarget}, utils::
 use crate::ScreenComposer;
 
 
-#[allow(unused_variables)]
 pub trait ViewInteractions<Backend: crate::state::Backend>: Sync + Send {
     fn id(&self) -> Option<usize>;
     fn is_alive(&self) -> bool;
-    fn on_motion(&self, _event: &smithay::input::pointer::MotionEvent) {}
+    fn on_motion(&self, 
+        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
+        _data: &mut ScreenComposer<Backend>, 
+        _event: &smithay::input::pointer::MotionEvent) {}
     fn on_relative_motion(&self, _event: &smithay::input::pointer::RelativeMotionEvent) {}
     fn on_button(&self,
-        seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        data: &mut ScreenComposer<Backend>,
-        event: &smithay::input::pointer::ButtonEvent) {}
+        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
+        _data: &mut ScreenComposer<Backend>,
+        _event: &smithay::input::pointer::ButtonEvent) {}
     fn on_axis(&self, _event: &smithay::input::pointer::AxisFrame) {}
     fn on_enter(&self, _event: &smithay::input::pointer::MotionEvent) {}
     fn on_leave(&self, _serial: smithay::utils::Serial, _time: u32) {}
@@ -192,11 +194,11 @@ impl<Backend: crate::state::Backend> PointerTarget<ScreenComposer<Backend>> for 
     }
     fn motion(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        seat: &smithay::input::Seat<ScreenComposer<Backend>>,
+        data: &mut ScreenComposer<Backend>,
         event: &smithay::input::pointer::MotionEvent,
     ) {
-        self.view.on_motion(event);
+        self.view.on_motion(seat, data, event);
     }
     fn relative_motion(
         &self,
