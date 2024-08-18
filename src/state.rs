@@ -171,12 +171,10 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub window_views: HashMap<ObjectId, WindowView>,
     // layers
     pub layers_engine: LayersEngine,
-    pub show_window_preview: bool,
 
     pub show_desktop: bool,
     pub is_swiping: bool,
     pub is_pinching: bool,
-    pub pinch_gesture: layers::types::Point,
 }
 
 delegate_compositor!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
@@ -698,13 +696,11 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
 
             // WIP workspace
             workspace,
-            show_window_preview: false,
             layers_engine,
             scene_element,
             window_views: HashMap::new(),
             show_desktop: false,
             // support variables for gestures
-            pinch_gesture: (0.0, 0.0).into(),
             is_swiping: false,
             is_pinching: false,
         }

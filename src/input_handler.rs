@@ -100,10 +100,6 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                 }
             }
 
-            KeyAction::TogglePreview => {
-                self.show_window_preview = !self.show_window_preview;
-            }
-
             KeyAction::ToggleDecorations => {
                 for element in self.space.elements() {
                     #[allow(irrefutable_let_patterns)]
