@@ -33,9 +33,11 @@ freedesktop-icons = "0.2.4"
 xdgkit = "3.2.5"
 freedesktop-desktop-entry = "0.5.0"
 usvg = "0.37.0"
-skia-bindings = {version = "0.62", default-features = true }
+skia-bindings = {version = "0.70", default-features = true }
 tokio = { version = "1", features = ["full"] }
 binpack2d = "1.0"
+skia-safe = "0.70"
+
 
 [dependencies.smithay]
 path = "../smithay"
@@ -47,9 +49,6 @@ features = [
     "backend_gbm",
     "backend_drm",
 ]
-
-[dependencies.skia-safe]
-version = "0.62"
 
 [dependencies.x11rb]
 default-features = false
@@ -63,7 +62,7 @@ members = ["wlcs_screencomposer"]
 
 
 [features]
-default = ["egl", "winit", "x11", "udev", "debug", "profile-with-puffin"]
+default = ["egl", "winit", "x11", "udev", "debug", "profile-with-puffin", "xwayland"]
 debug = ["fps_ticker", "image/png", "renderdoc"]
 egl = ["smithay/use_system_lib", "smithay/backend_egl"]
 test_all_features = ["default", "debug"]
