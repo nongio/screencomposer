@@ -91,11 +91,8 @@ impl Backend for X11Data {
         self.surface.reset_buffers();
     }
     fn early_import(&mut self, _surface: &wl_surface::WlSurface) {}
-    fn set_cursor(&self, _image: &CursorImageStatus) {
+    fn set_cursor(&mut self, _image: &CursorImageStatus) {
         
-    }
-    fn get_cursor_texture(&self) -> Option<smithay::backend::renderer::element::texture::TextureBuffer<SkiaTexture>> {
-        None
     }
     fn texture_for_surface(&self, _surface: &smithay::backend::renderer::utils::RendererSurfaceState) -> Option<SkiaTexture> {
         None

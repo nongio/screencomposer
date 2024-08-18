@@ -213,26 +213,10 @@ impl Backend for UdevData {
         }
         None
     }
-    fn set_cursor(&self, _image: &CursorImageStatus) {
-        // if let CursorImageStatus::Named(image) = image {
-        //     self.cursor_manager.load_icon(image.name());
-        //     let cursor_frame = self.cursor_manager.get_image(1, self.clock.now().try_into().unwrap());
-                    
-        //     let pointer_texture = TextureBuffer::from_memory(
-        //         self.,
-        //         &cursor_frame.pixels_rgba,
-        //         Fourcc::Abgr8888,
-        //         (cursor_frame.width as i32, cursor_frame.height as i32),
-        //         false,
-        //         1,
-        //         Transform::Normal,
-        //         None,
-        //     ).ok();
-        //     self.cursor_texture = pointer_texture;
-        // }
-    }
-    fn get_cursor_texture(&self) -> Option<TextureBuffer<SkiaTexture>> {
-        None
+    fn set_cursor(&mut self, image: &CursorImageStatus) {
+        if let CursorImageStatus::Named(image) = image {
+            self.cursor_manager.load_icon(image.name());
+        }
     }
 }
 
@@ -1456,11 +1440,6 @@ impl ScreenComposer<UdevData> {
 
         let start = Instant::now();
 
-        // TODO get scale from the rendersurface when supporting HiDPI
-        let cursor_frame = self
-            .backend_data
-            .pointer_image
-            .get_image(1 /*scale*/, self.clock.now().try_into().unwrap());
 
         let render_node = surface.render_node;
         let primary_gpu = self.backend_data.primary_gpu;
@@ -1482,6 +1461,8 @@ impl ScreenComposer<UdevData> {
             )
         }
         .unwrap();
+        // TODO get scale from the rendersurface when supporting HiDPI
+        let cursor_frame = self.backend_data.cursor_manager.get_image(1, self.clock.now().try_into().unwrap());
 
         let pointer_images = &mut self.backend_data.pointer_images;
         let pointer_image = pointer_images

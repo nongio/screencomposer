@@ -98,26 +98,7 @@ impl Backend for WinitData {
     fn texture_for_surface(&self, render_surface: &RendererSurfaceState) -> Option<SkiaTexture> {
         render_surface.texture::<SkiaRenderer>(99).cloned()
     }
-    fn set_cursor(&self, _image: &CursorImageStatus){//, renderer: &mut SkiaRenderer) {
-        // if let CursorImageStatus::Named(image) = image {
-        //     self.cursor_manager.load_icon(image.name());
-        //     let cursor_frame = self.cursor_manager.get_image(1, self.clock.now().try_into().unwrap());
-                    
-        //     let pointer_texture = TextureBuffer::from_memory(
-        //         renderer,
-        //         &cursor_frame.pixels_rgba,
-        //         Fourcc::Abgr8888,
-        //         (cursor_frame.width as i32, cursor_frame.height as i32),
-        //         false,
-        //         1,
-        //         Transform::Normal,
-        //         None,
-        //     ).ok();
-        //     self.cursor_texture = pointer_texture;
-        // }
-    }
-    fn get_cursor_texture(&self) -> Option<TextureBuffer<SkiaTexture>> {
-        self.cursor_texture.clone()
+    fn set_cursor(&mut self, _image: &CursorImageStatus){
     }
 }
 

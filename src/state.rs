@@ -900,6 +900,11 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     pub fn get_window_view(&self, id: &ObjectId) -> Option<&WindowView> {
         self.window_views.get(id)
     }
+
+    pub fn set_cursor(&mut self, image: &CursorImageStatus) {
+        *self.cursor_status.lock().unwrap() = image.clone();
+        self.backend_data.set_cursor(image);
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -1023,6 +1028,5 @@ pub trait Backend {
     fn reset_buffers(&mut self, output: &Output);
     fn early_import(&mut self, surface: &WlSurface);
     fn texture_for_surface(&self, surface: &RendererSurfaceState) -> Option<SkiaTexture>;
-    fn set_cursor(&self, image: &CursorImageStatus);//, renderer: &mut SkiaRenderer);
-    fn get_cursor_texture(&self) -> Option<TextureBuffer<SkiaTexture>>;
+    fn set_cursor(&mut self, image: &CursorImageStatus);//, renderer: &mut SkiaRenderer);
 }

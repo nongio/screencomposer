@@ -1,6 +1,6 @@
 use std::{cell::RefCell, hash::{Hash, Hasher}};
 use layers::prelude::*;
-use smithay::input::pointer::{CursorIcon, CursorImageStatus};
+use smithay::input::{pointer::{CursorIcon, CursorImageStatus}, SeatHandler};
 
 use crate::{interactive_view::ViewInteractions, utils::Observer};
 
@@ -263,14 +263,12 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                 rect.y < event.location.y as f32 && 
                 rect.y + rect.h > event.location.y as f32 {
                 state.current_selection = Some(rect.index);
-                let state = self.view.get_state();
                 let cursor = CursorImageStatus::Named(CursorIcon::Pointer);
-                *data.cursor_status.lock().unwrap() = cursor;
+                data.set_cursor(&cursor);
                 true
             } else {
-                let state = self.view.get_state();
                 let cursor = CursorImageStatus::Named(CursorIcon::default());
-                *data.cursor_status.lock().unwrap() = cursor;
+                data.set_cursor(&cursor);
                 false
             }
         }).map(|x| x.index);
