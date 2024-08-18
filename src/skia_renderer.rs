@@ -6,6 +6,7 @@ use std::{
     rc::Rc, time::{Instant, Duration},
 };
 
+use sb::GrSyncCpu;
 use skia_safe as skia;
 
 use smithay::{
@@ -59,7 +60,7 @@ impl SkiaSurface {
                 ..Default::default()
             }
         };
-        let backend_render_target = skia::gpu::BackendRenderTarget::new_gl(
+        let backend_render_target = skia::gpu::backend_render_targets::make_gl(
             (width.into(), height.into()),
             sample_count.into(),
             stencil_bits.into(),
@@ -72,7 +73,7 @@ impl SkiaSurface {
             skia::gpu::DirectContext::new_gl(None, None).unwrap()
         };
         gr_context.reset(None);
-        let surface = skia::Surface::from_backend_render_target(
+        let surface = skia::gpu::surfaces::wrap_backend_render_target(
             &mut gr_context,
             &backend_render_target,
             origin,
@@ -122,7 +123,7 @@ impl SkiaSurface {
             skia::gpu::DirectContext::new_gl(None, None).unwrap()
         };
         gr_context.reset(None);
-        let surface = skia::Surface::from_backend_texture(
+        let surface = skia::gpu::surfaces::wrap_backend_texture(
             &mut gr_context,
             &backend_texture,
             origin,
@@ -399,9 +400,9 @@ impl SkiaRenderer {
         self.gl_renderer.egl_context()
     }
     pub fn current_skia_renderer(&mut self) -> Option<&SkiaSurface> {
-        let current_target = self.current_target.as_ref().unwrap();
-
-        let renderer = self.target_renderer.get(&current_target);
+        let renderer = self.current_target.as_ref().and_then(|current_target| {
+            self.target_renderer.get(current_target)
+        });
         renderer
     }
     #[profiling::function]
@@ -493,7 +494,8 @@ impl SkiaRenderer {
 
         // self.make_current()?;
         
-        let mut texture = self.existing_dmabuf_texture(dmabuf)?.map(Ok).unwrap_or_else(|| {
+        let texture = self.existing_dmabuf_texture(dmabuf)?.map(Ok).unwrap_or_else(|| {
+            println!("importing dmabuf {:?}", dmabuf);
             let is_external = !self.egl_context().dmabuf_render_formats().contains(&dmabuf.format());
 
             let egl_image = self
@@ -513,7 +515,7 @@ impl SkiaRenderer {
                 .import_skia_image_from_texture(&gles_texture)
                 .ok_or("")
                 .map_err(|_| GlesError::MappingError)?;
-            let image_id = image.unique_id();
+
             let texture = SkiaTexture {
                 texture: gles_texture,
                 image,
@@ -798,10 +800,12 @@ impl<'a> Frame for SkiaFrame {
         };
         {
             profiling::scope!("context_submit");
-            surface.gr_context.submit(None);
+            // surface.gr_context.submit(None);
+            surface.gr_context.flush_and_submit_surface(&mut surface.surface, GrSyncCpu::No);
         }
         // surface.surface.flush_submit_and_sync_cpu();
         Ok(syncpoint)
+        // Ok(SyncPoint::signaled())
     }
 }
 
@@ -899,26 +903,26 @@ impl Renderer for SkiaRenderer {
                     Fourcc::Abgr2101010 => skia::ColorType::RGBA8888,
                     _ => skia::ColorType::RGBA8888,
                 };
-                // SkiaSurface::new_with_fbo(
-                //     output_size.w,
-                //     output_size.h,
-                //     0_usize,
-                //     8_usize,
-                //     buffer.fbo,
-                //     color_type,
-                //     context,
-                //     buffer.origin,
-                // )
-                SkiaSurface::new_with_texture(
+                SkiaSurface::new_with_fbo(
                     output_size.w,
                     output_size.h,
                     0_usize,
-                    // 8_usize,
-                    buffer.tex_id,
+                    8_usize,
+                    buffer.fbo,
                     color_type,
                     context,
                     buffer.origin,
                 )
+                // SkiaSurface::new_with_texture(
+                //     output_size.w,
+                //     output_size.h,
+                //     0_usize,
+                //     // 8_usize,
+                //     buffer.tex_id,
+                //     color_type,
+                //     context,
+                //     buffer.origin,
+                // )
             });
 
         unsafe {
@@ -929,11 +933,11 @@ impl Renderer for SkiaRenderer {
 
             if status != ffi::FRAMEBUFFER_COMPLETE {
                 println!("framebuffer incomplete");
-                // return Err(GlesError::FramebufferBindingError);
+                return Err(GlesError::FramebufferBindingError);
             }
             self.gl.BindFramebuffer(ffi::FRAMEBUFFER, 0);
         }
-        let surface = self.target_renderer.get_mut(&self.current_target.as_ref().unwrap()).unwrap();
+        let surface = self.target_renderer.get_mut(self.current_target.as_ref().unwrap()).unwrap();
         
         Ok(SkiaFrame {
             skia_surface: surface.clone(),
@@ -990,14 +994,21 @@ impl SkiaRenderer {
                 ""
             );
 
-            skia::Image::from_texture(
+            let image = skia::Image::from_texture(
                 context,
                 &texture,
                 skia::gpu::SurfaceOrigin::TopLeft,
                 skia_color.unwrap(),
                 skia::AlphaType::Premul,
                 None,
-            )
+            ).unwrap();
+            if let Some(surface) = self.current_skia_renderer() {
+                let mut ctx = surface.gr_context.clone();
+                ctx.flush_and_submit_image(&image);
+                // ctx.flush_submit_and_sync_cpu();
+                // println!("flush image");
+            }
+            Some(image)
         }
     }
 }
@@ -1017,6 +1028,7 @@ impl ImportMemWl for SkiaRenderer {
             .import_skia_image_from_texture(&texture)
             .ok_or("")
             .map_err(|_| GlesError::MappingError)?;
+
         let format = texture.format();
         Ok(SkiaTexture {
             texture,
@@ -1100,8 +1112,7 @@ impl ImportDma for SkiaRenderer {
         Ok(texture)
     }
     fn dmabuf_formats(&self) -> Box<dyn Iterator<Item = Format>> {
-        let formats = self.gl_renderer.dmabuf_formats();
-        formats
+        self.gl_renderer.dmabuf_formats()
     }
 }
 
@@ -1357,32 +1368,32 @@ impl Bind<Dmabuf> for SkiaRenderer {
                 let mut texture = 0;
                 // .map_err(GlesError::BindBufferEGLError)?;
                 let size = dmabuf.size();
-                let width = size.w;
-                let height = size.h;
+                let _width = size.w;
+                let _height = size.h;
 
                 unsafe {
                     self.gl.GenTextures(1, &mut texture);
                     self.gl.BindTexture(ffi::TEXTURE_2D, texture);
                     self.gl.EGLImageTargetTexture2DOES(ffi::TEXTURE_2D, image);
 
-                    // let mut rbo = 0;
-                    // self.gl.GenRenderbuffers(1, &mut rbo as *mut _);
-                    // self.gl.BindRenderbuffer(ffi::RENDERBUFFER, rbo);
-                    // // self.gl.RenderbufferStorageMultisample(ffi::RENDERBUFFER, 2, ffi::RGBA8, width, height);
-                    // self.gl
-                    //     .EGLImageTargetRenderbufferStorageOES(ffi::RENDERBUFFER, image);
-                    // self.gl.BindRenderbuffer(ffi::RENDERBUFFER, 0);
+                    let mut rbo = 0;
+                    self.gl.GenRenderbuffers(1, &mut rbo as *mut _);
+                    self.gl.BindRenderbuffer(ffi::RENDERBUFFER, rbo);
+                    // self.gl.RenderbufferStorageMultisample(ffi::RENDERBUFFER, 2, ffi::RGBA8, width, height);
+                    self.gl
+                        .EGLImageTargetRenderbufferStorageOES(ffi::RENDERBUFFER, image);
+                    self.gl.BindRenderbuffer(ffi::RENDERBUFFER, 0);
 
                     let mut fbo = 0;
-                    // self.gl.GenFramebuffers(1, &mut fbo as *mut _);
-                    // self.gl.BindFramebuffer(ffi::FRAMEBUFFER, fbo);
+                    self.gl.GenFramebuffers(1, &mut fbo as *mut _);
+                    self.gl.BindFramebuffer(ffi::FRAMEBUFFER, fbo);
                     
-                    // self.gl.FramebufferRenderbuffer(
-                    //     ffi::FRAMEBUFFER,
-                    //     ffi::COLOR_ATTACHMENT0,
-                    //     ffi::RENDERBUFFER,
-                    //     rbo,
-                    // );
+                    self.gl.FramebufferRenderbuffer(
+                        ffi::FRAMEBUFFER,
+                        ffi::COLOR_ATTACHMENT0,
+                        ffi::RENDERBUFFER,
+                        rbo,
+                    );
                     // self.gl.FramebufferTexture2D(
                     //     ffi::FRAMEBUFFER,
                     //     ffi::COLOR_ATTACHMENT0,

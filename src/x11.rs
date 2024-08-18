@@ -91,6 +91,12 @@ impl Backend for X11Data {
         self.surface.reset_buffers();
     }
     fn early_import(&mut self, _surface: &wl_surface::WlSurface) {}
+    fn set_cursor(&self, _image: &CursorImageStatus) {
+        
+    }
+    fn get_cursor_texture(&self) -> Option<smithay::backend::renderer::element::texture::TextureBuffer<SkiaTexture>> {
+        None
+    }
     fn texture_for_surface(&self, _surface: &smithay::backend::renderer::utils::RendererSurfaceState) -> Option<SkiaTexture> {
         None
     }
@@ -252,9 +258,11 @@ pub fn run_x11() {
     state
         .shm_state
         .update_formats(state.backend_data.renderer.shm_formats());
+
     state.space.map_output(&output, (0, 0));
 
     let output_clone = output.clone();
+
     event_loop
         .handle()
         .insert_source(backend, move |event, _, data| match event {

@@ -14,7 +14,11 @@ smithay = { path = "../../smithay", default-features = false, features = [
     "backend_egl",
     "use_system_lib",
 ] }
-screen-composer = { path = "../", default-features = false }
+screen-composer = { path = "../", default-features = false,  features = [
+    "udev",
+    "winit",
+    "debug",
+] }
 layers = { path = "../../layers", features = ["export-taffy"] }
 wayland-sys = { version = "0.30.1", features = ["client", "server"] }
 libc = "0.2"

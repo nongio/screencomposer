@@ -230,15 +230,15 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             .unwrap_or(KeyAction::None);
 
         if KeyState::Released == state  && keycode == 56 {
-            self.app_switcher.hide();
-           for we in self.app_switcher.app_switcher.current_window_elements() {
-                let id = we.wl_surface().unwrap().id();
-                self.space.raise_element(&we, true);
-                keyboard.set_focus(self, Some(we.clone().into()), serial);
-                if let Some(view) = self.window_views.get_mut(&id) {
-                    view.raise();
-                }
-            }
+            // self.app_switcher.hide();
+        //    for we in self.app_switcher.app_switcher.current_window_elements() {
+        //         let id = we.wl_surface().unwrap().id();
+        //         self.space.raise_element(&we, true);
+        //         keyboard.set_focus(self, Some(we.clone().into()), serial);
+        //         if let Some(view) = self.window_views.get_mut(&id) {
+        //             view.raise();
+        //         }
+        //     }
         }
          
         self.suppressed_keys = suppressed_keys;
@@ -254,7 +254,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         if wl_pointer::ButtonState::Pressed == state {
             self.update_keyboard_focus(serial);
         };
-        if !self.show_all {
+        // if !self.workspace.get_show_all() {
             let pointer = self.pointer.clone();
             pointer.button(
                 self,
@@ -266,7 +266,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                 },
             );
             pointer.frame(self);
-        }
+        // }
     }
 
     fn update_keyboard_focus(&mut self, serial: Serial) {
@@ -325,16 +325,20 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                     }
                 }
             }
-
-            if let Some((window, _)) = self
+            let window_under = self
                 .space
                 .element_under(self.pointer.current_location())
-                .map(|(w, p)| (w.clone(), p))
+                .map(|(w, p)| (w.clone(), p));
+
+            if let Some((window, _)) = window_under
             {
                 self.space.raise_element(&window, true);
                 let id = window.wl_surface().unwrap().id();
-                if let Some(view) = self.window_views.get_mut(&id) {
-                    view.raise();
+                {
+                    // let window_views = self.workspace.window_views.read().unwrap();
+                    if let Some(view) = self.get_window_view(&id) {
+                        view.raise();
+                    }
                 }
                 keyboard.set_focus(self, Some(window.clone().into()), serial);
                 #[cfg(feature = "xwayland")]
@@ -366,7 +370,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         }
     }
 
-    pub fn surface_under(&self, pos: Point<f64, Logical>) -> Option<(FocusTarget, Point<i32, Logical>)> {
+    pub fn surface_under(&self, pos: Point<f64, Logical>) -> Option<(FocusTarget<BackendData>, Point<i32, Logical>)> {
         let output = self.space.outputs().find(|o| {
             let geometry = self.space.output_geometry(o).unwrap();
             geometry.contains(pos.to_i32_round())
@@ -375,6 +379,20 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         let layers = layer_map_for_output(output);
 
         let mut under = None;
+        
+        // if self.app_switcher.alive() {
+        //     let focus = self.app_switcher.as_ref().clone().into();
+        //     // let position = self.app_switcher.view_layer.render_position();
+        //     // return Some((focus, (position.x as i32,position.y as i32).into()));
+        //     return Some((focus, (0, 0).into()));
+        // }
+        if self.workspace.get_show_all() {
+
+            let focus = self.workspace.window_selector_view.as_ref().clone().into();
+            let position = self.workspace.window_selector_view.layer.render_position();
+
+            return Some((focus,  (position.x as i32,position.y as i32).into()));
+        }
         if let Some(window) = output
             .user_data()
             .get::<FullscreenSurface>()
@@ -504,40 +522,40 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     self.backend_data.reset_buffers(&output);
                 }
                 KeyAction::ApplicationSwitchNext => {
-                    self.app_switcher.next();
+                    // self.app_switcher.next();
                 }
                 KeyAction::ApplicationSwitchPrev => {
-                    self.app_switcher.previous();
+                    // self.app_switcher.previous();
                 }
                 KeyAction::ApplicationSwitchQuit => {
-                    self.app_switcher.quit_current_app();
+                    // self.app_switcher.quit_current_app();
                 }
                 KeyAction::ApplicationSwitchNextWindow => {
-                    self.app_switcher.next_window();
-                    for we in self.app_switcher.app_switcher.current_window_elements() {
-                        let id = we.wl_surface().unwrap().id();
-                        self.space.raise_element(&we, true);
-                        // keyboard.set_focus(self, Some(we.clone().into()), serial);
-                        if let Some(view) = self.window_views.get_mut(&id) {
-                            view.raise();
-                        }
-                    }
+                    // self.app_switcher.next_window();
+                    // for we in self.app_switcher.app_switcher.current_window_elements() {
+                    //     let id = we.wl_surface().unwrap().id();
+                    //     self.space.raise_element(&we, true);
+                    //     // keyboard.set_focus(self, Some(we.clone().into()), serial);
+                    //     if let Some(view) = self.window_views.get_mut(&id) {
+                    //         view.raise();
+                    //     }
+                    // }
                     
                 }
                 KeyAction::ExposeShowDesktop => {
                     self.show_desktop = !self.show_desktop;
-                    if self.show_desktop {
-                        self.expose_show_desktop(layers::types::Point {x:0.0, y: 0.0});
-                    } else {
-                        self.expose_show_desktop(layers::types::Point {x:1.0, y: 1.0});
-                    }
+                    // if self.show_desktop {
+                    //     self.expose_show_desktop(layers::types::Point {x:0.0, y: 0.0});
+                    // } else {
+                    //     self.expose_show_desktop(layers::types::Point {x:1.0, y: 1.0});
+                    // }
                 }
                 KeyAction::ExposeShowAll => {
-                    self.show_all = !self.show_all;
-                    if self.show_all {
-                        self.expose_show_all(1.0);
+                    // self.workspace.set_show_all(!self.workspace.get_show_all());
+                    if self.workspace.get_show_all() {
+                        self.expose_show_all(-1.0, true);
                     } else {
-                        self.expose_show_all(0.0);
+                        self.expose_show_all(1.0, true);
                     }
                 }
                 action => match action {
@@ -583,9 +601,10 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
 
         let mut under = None;
         let pointer = self.pointer.clone();
-        if !self.show_all {
+        // if !self.workspace.get_show_all() {
             under = self.surface_under(pos);
-        }
+        // }
+        // println!("Pointer move absolute: {:?}", pos);
         pointer.motion(
             self,
             under,
@@ -742,31 +761,31 @@ impl ScreenComposer<UdevData> {
                     self.backend_data.set_debug_flags(debug_flags);
                 }
                 KeyAction::ApplicationSwitchNext => {
-                    self.app_switcher.next();
+                    // self.app_switcher.next();
                 }
                 KeyAction::ApplicationSwitchPrev => {
-                    self.app_switcher.previous();
+                    // self.app_switcher.previous();
                 }
                 KeyAction::ApplicationSwitchNextWindow => {
-                    self.app_switcher.next_window();
+                    // self.app_switcher.next_window();
                 }
                 KeyAction::ApplicationSwitchQuit => {
-                    self.app_switcher.quit_current_app();
+                    // self.app_switcher.quit_current_app();
                 }
                 KeyAction::ExposeShowDesktop => {
                     self.show_desktop = !self.show_desktop;
-                    if self.show_desktop {
-                        self.expose_show_desktop(layers::types::Point {x:0.0, y: 0.0});
-                    } else {
-                        self.expose_show_desktop(layers::types::Point {x:1.0, y: 1.0});
-                    }
+                    // if self.show_desktop {
+                    //     self.expose_show_desktop(layers::types::Point {x:0.0, y: 0.0});
+                    // } else {
+                    //     self.expose_show_desktop(layers::types::Point {x:1.0, y: 1.0});
+                    // }
                 }
                 KeyAction::ExposeShowAll => {
-                    self.show_all = !self.show_all;
-                    if self.show_all {
-                        self.expose_show_all(1.0);
+                    // self.workspace.set_show_all(!self.workspace.get_show_all());
+                    if self.workspace.get_show_all() {
+                        self.expose_show_all(-1.0, true);
                     } else {
-                        self.expose_show_all(0.0);
+                        self.expose_show_all(1.0, true);
                     }
                 }
                 action => match action {
@@ -930,19 +949,17 @@ impl ScreenComposer<UdevData> {
         evt: B::PointerMotionAbsoluteEvent,
     ) {
         let serial = SCOUNTER.next_serial();
-
-        let max_x = self
-            .space
+        let max_x = self.space
             .outputs()
             .fold(0, |acc, o| acc + self.space.output_geometry(o).unwrap().size.w);
 
-        let max_h_output = self
-            .space
+        let max_h_output = self.space
             .outputs()
             .max_by_key(|o| self.space.output_geometry(o).unwrap().size.h)
-            .unwrap();
+            .unwrap()
+            .clone();
 
-        let max_y = self.space.output_geometry(max_h_output).unwrap().size.h;
+        let max_y = self.space.output_geometry(&max_h_output).unwrap().size.h;
 
         let mut pointer_location = (evt.x_transformed(max_x), evt.y_transformed(max_y)).into();
 
@@ -967,8 +984,7 @@ impl ScreenComposer<UdevData> {
     fn on_tablet_tool_axis<B: InputBackend>(&mut self, evt: B::TabletToolAxisEvent) {
         let tablet_seat = self.seat.tablet_seat();
 
-        let output_geometry = self
-            .space
+        let output_geometry = self.space
             .outputs()
             .next()
             .map(|o| self.space.output_geometry(o).unwrap());
@@ -1031,8 +1047,7 @@ impl ScreenComposer<UdevData> {
     ) {
         let tablet_seat = self.seat.tablet_seat();
 
-        let output_geometry = self
-            .space
+        let output_geometry = self.space
             .outputs()
             .next()
             .map(|o| self.space.output_geometry(o).unwrap());
@@ -1133,14 +1148,9 @@ impl ScreenComposer<UdevData> {
         let pointer = self.pointer.clone();
         let multiplier = 800.0;
         let delta = evt.delta_y() as f32 / multiplier;
-        self.swipe_gesture = layers::types::Point {
-            x: (self.swipe_gesture.x - delta),
-            y: (self.swipe_gesture.y - delta),
-        };
-        // self.background_view.set_debug_text(format!("swipe_update ({}): {:?} ", self.show_all, self.swipe_gesture));
         
         if self.is_swiping {
-            self.expose_show_all(self.swipe_gesture.x);
+            self.expose_show_all(-delta, false);
         }
         pointer.gesture_swipe_update(
             self,
@@ -1155,35 +1165,10 @@ impl ScreenComposer<UdevData> {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
         
-
-        // tracing::error!("on_gesture_swipe_end: {:?}", self.swipe_gesture);
-        // self.background_view.set_debug_text(format!("on_gesture_swipe_end: {:?}", self.swipe_gesture));
-
         if self.is_swiping {
-            if self.show_all {
-                if self.swipe_gesture.x < 0.9 {
-                    self.show_all = false;
-                    self.expose_show_all(0.0);
-                    self.swipe_gesture = (0.0, 0.0).into();
-                    self.is_swiping = false;
-                } else {
-                    self.show_all = true;
-                    self.expose_show_all(1.0);
-                    self.swipe_gesture = (1.0, 1.0).into();
-                }
-            } else { 
-                if self.swipe_gesture.x > 0.1 {
-                    self.expose_show_all(1.0);
-                    self.show_all = true;
+            self.expose_show_all(0.0, true);
+            self.is_swiping = false;
 
-                    self.swipe_gesture = (1.0, 1.0).into();
-                } else {
-                    self.expose_show_all(0.0);
-                    self.show_all = false;
-                    self.swipe_gesture = (0.0, 0.0).into();
-                    self.is_swiping = false;
-                }
-            }
         }
         pointer.gesture_swipe_end(
             self,
@@ -1219,7 +1204,7 @@ impl ScreenComposer<UdevData> {
         let multiplier = 1.1;
         let mut delta = evt.scale()as f32 * multiplier;
         if !self.show_desktop {
-            delta = delta - 1.0;
+            delta -= 1.0;
         }
 
         self.pinch_gesture = layers::types::Point {
@@ -1228,7 +1213,7 @@ impl ScreenComposer<UdevData> {
         };
         if self.is_pinching {    
             // self.background_view.set_debug_text(format!("on_gesture_pinch_update: {:?}", delta));
-            self.expose_show_desktop(self.pinch_gesture);
+            // self.expose_show_desktop(self.pinch_gesture);
         }
         pointer.gesture_pinch_update(
             self,
@@ -1251,26 +1236,24 @@ impl ScreenComposer<UdevData> {
                 if self.pinch_gesture.x < 0.9 {
                     self.show_desktop = false;
                     self.pinch_gesture = (0.0, 0.0).into();
-                    self.expose_show_desktop(self.pinch_gesture);
+                    // self.expose_show_desktop(self.pinch_gesture);
                     self.is_pinching = false;
 
                 } else {
                     self.show_desktop = true;
                     self.pinch_gesture = (1.0, 1.0).into();
-                    self.expose_show_desktop(self.pinch_gesture);
+                    // self.expose_show_desktop(self.pinch_gesture);
                 }
-            } else { 
-                if self.pinch_gesture.x > 0.1 {
-                    self.show_desktop = true;
-                    self.pinch_gesture = (1.0, 1.0).into();
-                    self.expose_show_desktop(self.pinch_gesture);
-                } else {
-                    self.show_desktop = false;
-                    self.pinch_gesture = (0.0, 0.0).into();
-                    self.expose_show_desktop(self.pinch_gesture);
-                    self.is_pinching = false;
+            } else if self.pinch_gesture.x > 0.1 {
+                self.show_desktop = true;
+                self.pinch_gesture = (1.0, 1.0).into();
+                // self.expose_show_desktop(self.pinch_gesture);
+            } else {
+                self.show_desktop = false;
+                self.pinch_gesture = (0.0, 0.0).into();
+                // self.expose_show_desktop(self.pinch_gesture);
+                self.is_pinching = false;
 
-                }
             }
         }
         pointer.gesture_pinch_end(

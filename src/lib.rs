@@ -26,8 +26,6 @@ pub mod winit;
 pub mod x11;
 
 pub use state::{ScreenComposer, CalloopData, ClientState};
-pub mod app_switcher;
-pub mod window_view;
-pub mod workspace_view;
+mod workspace;
 
-pub mod utils;
+mod utils;

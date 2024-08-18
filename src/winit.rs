@@ -20,7 +20,7 @@ use smithay::{
         allocator::dmabuf::Dmabuf,
         egl::{context::GlAttributes, EGLDevice},
         renderer::{
-            damage::{Error as OutputDamageTrackerError, OutputDamageTracker}, element::AsRenderElements, utils::{import_surface, RendererSurfaceState}, ImportDma, ImportMemWl
+            damage::{Error as OutputDamageTrackerError, OutputDamageTracker}, element::{texture::TextureBuffer, AsRenderElements}, utils::{import_surface, RendererSurfaceState}, ImportDma, ImportMemWl
         },
         winit::{self, WinitEvent, WinitGraphicsBackend},
         SwapBuffersError,
@@ -34,7 +34,7 @@ use smithay::{
         wayland_server::{protocol::wl_surface, Display},
         winit::{dpi::LogicalSize, platform::pump_events::PumpStatus, window::WindowBuilder},
     },
-    utils::{IsAlive, Scale, Transform},
+    utils::{Clock, IsAlive, Monotonic, Scale, Transform},
     wayland::{
         compositor::{self, with_states},
         dmabuf::{
@@ -45,9 +45,7 @@ use smithay::{
 use tracing::{error, info, warn};
 
 use crate::{
-    drawing::*, render::*,
-    skia_renderer::{SkiaRenderer, SkiaTexture},
-    state::{post_repaint, take_presentation_feedback, ScreenComposer, Backend, CalloopData}, render_elements::custom_render_elements::CustomRenderElements,
+    cursor, drawing::*, render::*, render_elements::custom_render_elements::CustomRenderElements, skia_renderer::{SkiaRenderer, SkiaTexture}, state::{post_repaint, take_presentation_feedback, Backend, CalloopData, ScreenComposer}
 };
 
 pub const OUTPUT_NAME: &str = "winit";
@@ -57,6 +55,9 @@ pub struct WinitData {
     damage_tracker: OutputDamageTracker,
     dmabuf_state: (DmabufState, DmabufGlobal, Option<DmabufFeedback>),
     full_redraw: u8,
+    cursor_manager: cursor::Cursor,
+    cursor_texture: Option<TextureBuffer<SkiaTexture>>,
+    clock: Clock<Monotonic>,
     #[cfg(feature = "debug")]
     pub fps: fps_ticker::Fps,
 }
@@ -96,6 +97,27 @@ impl Backend for WinitData {
     }
     fn texture_for_surface(&self, render_surface: &RendererSurfaceState) -> Option<SkiaTexture> {
         render_surface.texture::<SkiaRenderer>(99).cloned()
+    }
+    fn set_cursor(&self, _image: &CursorImageStatus){//, renderer: &mut SkiaRenderer) {
+        // if let CursorImageStatus::Named(image) = image {
+        //     self.cursor_manager.load_icon(image.name());
+        //     let cursor_frame = self.cursor_manager.get_image(1, self.clock.now().try_into().unwrap());
+                    
+        //     let pointer_texture = TextureBuffer::from_memory(
+        //         renderer,
+        //         &cursor_frame.pixels_rgba,
+        //         Fourcc::Abgr8888,
+        //         (cursor_frame.width as i32, cursor_frame.height as i32),
+        //         false,
+        //         1,
+        //         Transform::Normal,
+        //         None,
+        //     ).ok();
+        //     self.cursor_texture = pointer_texture;
+        // }
+    }
+    fn get_cursor_texture(&self) -> Option<TextureBuffer<SkiaTexture>> {
+        self.cursor_texture.clone()
     }
 }
 
@@ -215,6 +237,9 @@ pub fn run_winit() {
             full_redraw: 0,
             #[cfg(feature = "debug")]
             fps: fps_ticker::Fps::default(),
+            cursor_manager: cursor::Cursor::load(),
+            cursor_texture: None,
+            clock: Clock::new(),
         }
     };
     let mut state = ScreenComposer::init(display, event_loop.handle(), data, true);
@@ -228,6 +253,7 @@ pub fn run_winit() {
     state
         .shm_state
         .update_formats(state.backend_data.backend.renderer().shm_formats());
+
     state.space.map_output(&output, (0, 0));
 
     #[cfg(feature = "xwayland")]
@@ -244,7 +270,7 @@ pub fn run_winit() {
     info!("Initialization completed, starting the main loop.");
 
     let mut pointer_element = PointerElement::<SkiaTexture>::default();
-
+    
     while state.running.load(Ordering::SeqCst) {
         #[cfg(feature = "profile-with-puffin")]
         profiling::puffin::GlobalProfiler::lock().new_frame();
@@ -277,7 +303,7 @@ pub fn run_winit() {
                 crate::shell::fixup_positions(&mut state.space, state.pointer.current_location());
                 state.scene_element.set_size(size.w as f32, size.h as f32);
                 root.layer.set_size(Size::points(size.w as f32, size.h as f32), None);
-                state.background_view.set_debug_text(format!("scene_size {:?}", size));
+                // state.background_view.set_debug_text(format!("scene_size {:?}", size));
             }
             WinitEvent::Input(event) => {
                 state.process_input_event_windowed(&display_handle, event, OUTPUT_NAME)
@@ -309,7 +335,9 @@ pub fn run_winit() {
             }
             let cursor_visible = !matches!(*cursor_guard, CursorImageStatus::Surface(_));
 
+            
             pointer_element.set_status(cursor_guard.clone());
+
 
             #[cfg(feature = "debug")]
             let fps = state.backend_data.fps.avg().round() as u32;
@@ -318,7 +346,6 @@ pub fn run_winit() {
 
             let full_redraw = &mut state.backend_data.full_redraw;
             *full_redraw = full_redraw.saturating_sub(1);
-            let space = &mut state.space;
             let damage_tracker = &mut state.backend_data.damage_tracker;
 
             let dnd_icon = state.dnd_icon.as_ref();
@@ -380,10 +407,10 @@ pub fn run_winit() {
 
                 #[cfg(feature = "profile-with-puffin")]
                 profiling::puffin::profile_scope!("render_output");
-                
+
                 render_output(
                     &output,
-                    space,
+                    &state.space,
                     elements,
                     renderer,
                     damage_tracker,

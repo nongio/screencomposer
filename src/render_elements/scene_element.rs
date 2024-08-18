@@ -140,7 +140,16 @@ fn draw(
         damage.iter().for_each(|d| {
             damage_rect.join(skia_safe::Rect::from_xywh(d.loc.x as f32, d.loc.y as f32, d.size.w as f32, d.size.h as f32));
         });
-
+        // let mut recorder = skia_safe::PictureRecorder::new();
+        // let canvas = recorder.begin_recording(
+        //     skia_safe::Rect::from_xywh(
+        //         0.0,
+        //         0.0,
+        //         self.size.0,
+        //         self.size.1,
+        //     ),
+        //     None,
+        // );
         // println!("damage {:?}", damage_rect.width());
         if let Some(root_id) = root_id {
             let save_point= canvas.save();
@@ -150,10 +159,25 @@ fn draw(
         }
         // let mut paint = skia_safe::Paint::new(skia_safe::Color4f::new(1.0, 0.0, 0.0, 1.0), None);
         // paint.set_stroke(true);
-        // paint.set_stroke_width(1.0);
+        // paint.set_stroke_width(2.0);
+        // damage.iter().for_each(|d| {
+        //     canvas.draw_rect(skia_safe::Rect::from_xywh(d.loc.x as f32, d.loc.y as f32, d.size.w as f32, d.size.h as f32), &paint);
+        // });
         // canvas.draw_rect(damage_rect, &paint);
+        // if let Some(picture) = recorder.finish_recording_as_picture(None) {
+        //     // save the pictue as skp file
+        //     let name = "scene";
+        //     let data = picture.serialize();
+        //     let bytes = data.as_bytes();
+        //     let filename = format!("{}.skp", name);
+
+        //     use std::io::Write;
+        //     let mut file = std::fs::File::create(filename).unwrap();
+        //     file.write_all(bytes).unwrap();
+        // }
 
         self.engine.clear_damage();
+        // self.damage.borrow_mut().reset();
         Ok(())
     }
 }

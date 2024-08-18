@@ -1,17 +1,16 @@
 #![allow(clippy::too_many_arguments)]
 
 use smithay::{
-    backend::renderer::{
+    backend::{allocator::Fourcc, renderer::{
         element::{
             surface::WaylandSurfaceRenderElement,
             texture::{TextureBuffer, TextureRenderElement},
             AsRenderElements, Kind,
-        },
-        ImportAll, Renderer, Texture,
-    },
+        }, ImportAll, ImportMem, Renderer, Texture
+    }},
     input::pointer::CursorImageStatus,
     render_elements,
-    utils::{Physical, Point, Scale},
+    utils::{Clock, Monotonic, Physical, Point, Scale},
 };
 #[cfg(feature = "debug")]
 use smithay::{
@@ -23,12 +22,16 @@ use smithay::{
     utils::{Buffer, Logical, Rectangle, Size, Transform},
 };
 
+use crate::cursor::Cursor;
+
 pub static CLEAR_COLOR: [f32; 4] =  [0.0, 0.0, 0.0, 1.0];
 pub static CLEAR_COLOR_FULLSCREEN: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
 
 pub struct PointerElement<T: Texture> {
     texture: Option<TextureBuffer<T>>,
     status: CursorImageStatus,
+    cursor_manager: Cursor,
+    clock: Clock<Monotonic>,
 }
 
 impl<T: Texture> Default for PointerElement<T> {
@@ -36,12 +39,17 @@ impl<T: Texture> Default for PointerElement<T> {
         Self {
             texture: Default::default(),
             status: CursorImageStatus::default_named(),
+            cursor_manager: Cursor::load(),
+            clock: Clock::new(),
         }
     }
 }
 
 impl<T: Texture> PointerElement<T> {
     pub fn set_status(&mut self, status: CursorImageStatus) {
+        if let CursorImageStatus::Named(cursor_name) = status {
+            self.cursor_manager.load_icon(cursor_name.name());
+        }
         self.status = status;
     }
 
@@ -69,7 +77,7 @@ impl<R: Renderer> std::fmt::Debug for PointerRenderElement<R> {
 
 impl<T: Texture + Clone + 'static, R> AsRenderElements<R> for PointerElement<T>
 where
-    R: Renderer<TextureId = T> + ImportAll,
+    R: Renderer<TextureId = T> + ImportAll + ImportMem,
 {
     type RenderElement = PointerRenderElement<R>;
     fn render_elements<E>(

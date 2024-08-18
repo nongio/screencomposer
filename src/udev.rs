@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{render_elements::{scene_element::SceneElement, output_render_elements::OutputRenderElements}, shell::WindowRenderElement, skia_renderer::SkiaTexture, state::SurfaceDmabufFeedback};
+use crate::{cursor::Cursor, render_elements::{output_render_elements::OutputRenderElements, scene_element::SceneElement}, shell::WindowRenderElement, skia_renderer::SkiaTexture, state::SurfaceDmabufFeedback};
 use crate::{
     drawing::*,
     render::*,
@@ -77,7 +77,7 @@ use smithay::{
         },
         wayland_server::{backend::GlobalId, protocol::wl_surface, Display, DisplayHandle},
     },
-    utils::{Clock, DeviceFd, IsAlive, Logical, Monotonic, Physical, Point, Rectangle, Scale, Size, Transform},
+    utils::{Clock, DeviceFd, IsAlive, Logical, Monotonic, Physical, Point, Rectangle, Scale, Transform},
     wayland::{
         compositor,
         dmabuf::{
@@ -131,6 +131,10 @@ pub struct UdevData {
     fps_texture: Option<MultiTexture>,
     pointer_image: crate::cursor::Cursor,
     debug_flags: DebugFlags,
+    cursor_texture: Option<TextureBuffer<MultiTexture>>,
+    clock: Clock<Monotonic>,
+    cursor_manager: Cursor,
+    
 }
 
 impl UdevData {
@@ -209,6 +213,27 @@ impl Backend for UdevData {
         }
         None
     }
+    fn set_cursor(&self, _image: &CursorImageStatus) {
+        // if let CursorImageStatus::Named(image) = image {
+        //     self.cursor_manager.load_icon(image.name());
+        //     let cursor_frame = self.cursor_manager.get_image(1, self.clock.now().try_into().unwrap());
+                    
+        //     let pointer_texture = TextureBuffer::from_memory(
+        //         self.,
+        //         &cursor_frame.pixels_rgba,
+        //         Fourcc::Abgr8888,
+        //         (cursor_frame.width as i32, cursor_frame.height as i32),
+        //         false,
+        //         1,
+        //         Transform::Normal,
+        //         None,
+        //     ).ok();
+        //     self.cursor_texture = pointer_texture;
+        // }
+    }
+    fn get_cursor_texture(&self) -> Option<TextureBuffer<SkiaTexture>> {
+        None
+    }
 }
 
 pub fn run_udev() {
@@ -262,6 +287,9 @@ pub fn run_udev() {
         #[cfg(feature = "debug")]
         fps_texture: None,
         debug_flags: DebugFlags::empty(),
+        cursor_texture: None,
+        clock: Clock::new(),
+        cursor_manager: Cursor::load(),
     };
     let mut state = ScreenComposer::init(display, event_loop.handle(), data, true);
 
@@ -1022,7 +1050,6 @@ impl ScreenComposer<UdevData> {
             root.layer.set_size(scene_size, None);
             self.scene_element.set_size(w, h);
             self.layers_engine.set_scene_size(w, h);
-            self.background_view.set_debug_text(format!("scene_size {:?}", wl_mode));
             let global = output.create_global::<ScreenComposer<UdevData>>(&self.display_handle);
 
             let x = self
@@ -1379,7 +1406,8 @@ impl ScreenComposer<UdevData> {
                     repaint_delay,
                     crtc
                 );
-                Timer::from_duration(repaint_delay)
+                // Timer::from_duration(repaint_delay)
+                Timer::immediate()
             };
 
             self.handle
@@ -1429,7 +1457,7 @@ impl ScreenComposer<UdevData> {
         let start = Instant::now();
 
         // TODO get scale from the rendersurface when supporting HiDPI
-        let frame = self
+        let cursor_frame = self
             .backend_data
             .pointer_image
             .get_image(1 /*scale*/, self.clock.now().try_into().unwrap());
@@ -1459,7 +1487,7 @@ impl ScreenComposer<UdevData> {
         let pointer_image = pointer_images
             .iter()
             .find_map(|(image, texture)| {
-                if image == &frame {
+                if image == &cursor_frame {
                     Some(texture.clone())
                 } else {
                     None
@@ -1468,16 +1496,16 @@ impl ScreenComposer<UdevData> {
             .unwrap_or_else(|| {
                 let texture = TextureBuffer::from_memory(
                     &mut renderer,
-                    &frame.pixels_rgba,
+                    &cursor_frame.pixels_rgba,
                     Fourcc::Abgr8888,
-                    (frame.width as i32, frame.height as i32),
+                    (cursor_frame.width as i32, cursor_frame.height as i32),
                     false,
                     1,
                     Transform::Normal,
                     None,
                 )
                 .expect("Failed to import cursor bitmap");
-                pointer_images.push((frame, texture.clone()));
+                pointer_images.push((cursor_frame, texture.clone()));
                 texture
             });
 
