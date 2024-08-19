@@ -5,14 +5,15 @@ use std::{
     time::Duration,
 };
 
-use layers::types::Size;
 
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;
 #[cfg(feature = "debug")]
 use smithay::{
     backend::{allocator::Fourcc, renderer::ImportMem},
-    reexports::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle},
+    reexports::winit::{
+        dpi::Size,
+        raw_window_handle::{HasWindowHandle, RawWindowHandle}},
 };
 
 use smithay::{
@@ -32,7 +33,7 @@ use smithay::{
         calloop::EventLoop,
         wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
         wayland_server::{protocol::wl_surface, Display},
-        winit::{dpi::LogicalSize, platform::pump_events::PumpStatus, window::WindowBuilder},
+        winit::{dpi::LogicalSize, platform::pump_events::PumpStatus, window::WindowAttributes},
     },
     utils::{Clock, IsAlive, Monotonic, Scale, Transform},
     wayland::{
@@ -105,11 +106,13 @@ pub fn run_winit() {
     let mut display_handle = display.handle();
 
     #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
-    let (mut backend, mut winit) = match winit::init_from_builder_with_gl_attr::<SkiaRenderer>(
-        WindowBuilder::new()
-        .with_inner_size(LogicalSize::new(2256.0/2.0, 1504.0/2.0))
-        .with_title("Screen Composer")
-        .with_visible(true),
+    let (mut backend, mut winit) = match winit::init_from_attributes_with_gl_attr::<SkiaRenderer>(
+        WindowAttributes {
+            title: "Screen Composer".to_string(),
+            inner_size: Some(Size::new(LogicalSize::new(2256.0/2.0, 1504.0/2.0))),
+            visible: true,
+            ..WindowAttributes::default()
+        },
         GlAttributes {
             version: (3, 0),
             profile: None,
@@ -167,7 +170,7 @@ pub fn run_winit() {
 
     let dmabuf_default_feedback = match render_node {
         Ok(Some(node)) => {
-            let dmabuf_formats = backend.renderer().dmabuf_formats().collect::<Vec<_>>();
+            let dmabuf_formats = backend.renderer().dmabuf_formats();
             let dmabuf_default_feedback = DmabufFeedbackBuilder::new(node.dev_id(), dmabuf_formats)
                 .build()
                 .unwrap();
@@ -193,7 +196,7 @@ pub fn run_winit() {
         );
         (dmabuf_state, dmabuf_global, Some(default_feedback))
     } else {
-        let dmabuf_formats = backend.renderer().dmabuf_formats().collect::<Vec<_>>();
+        let dmabuf_formats = backend.renderer().dmabuf_formats();
         let mut dmabuf_state = DmabufState::new();
         let dmabuf_global =
             dmabuf_state.create_global::<ScreenComposer<WinitData>>(&display.handle(), dmabuf_formats);
@@ -223,7 +226,7 @@ pub fn run_winit() {
     let root = state.scene_element.root_layer().unwrap();
     let scene_size = size;
     state.layers_engine.set_scene_size(scene_size.w as f32, scene_size.h as f32);
-    root.layer.set_size(Size::points(scene_size.w as f32, scene_size.h as f32), None);
+    root.layer.set_size(layers::types::Size::points(scene_size.w as f32, scene_size.h as f32), None);
 
     state
         .shm_state
@@ -232,15 +235,7 @@ pub fn run_winit() {
     state.space.map_output(&output, (0, 0));
 
     #[cfg(feature = "xwayland")]
-    if let Err(e) = state.xwayland.start(
-        state.handle.clone(),
-        None,
-        std::iter::empty::<(OsString, OsString)>(),
-        true,
-        |_| {},
-    ) {
-        error!("Failed to start XWayland: {}", e);
-    }
+    state.start_xwayland();
 
     info!("Initialization completed, starting the main loop.");
 
@@ -277,12 +272,9 @@ pub fn run_winit() {
                 output.set_preferred(mode);
                 crate::shell::fixup_positions(&mut state.space, state.pointer.current_location());
                 state.scene_element.set_size(size.w as f32, size.h as f32);
-                root.layer.set_size(Size::points(size.w as f32, size.h as f32), None);
-                // state.background_view.set_debug_text(format!("scene_size {:?}", size));
+                root.layer.set_size(layers::types::Size::points(size.w as f32, size.h as f32), None);
             }
-            WinitEvent::Input(event) => {
-                state.process_input_event_windowed(&display_handle, event, OUTPUT_NAME)
-            }
+            WinitEvent::Input(event) => state.process_input_event_windowed(event, OUTPUT_NAME),
             _ => (),
         });
 
@@ -323,6 +315,7 @@ pub fn run_winit() {
 
             let full_redraw = &mut state.backend_data.full_redraw;
             *full_redraw = full_redraw.saturating_sub(1);
+            let space = &mut state.space;
             let damage_tracker = &mut state.backend_data.damage_tracker;
 
             let dnd_icon = state.dnd_icon.as_ref();
@@ -349,7 +342,20 @@ pub fn run_winit() {
             let render_res = backend.bind().and_then(|_| {
                 #[cfg(feature = "debug")]
                 if let Some(renderdoc) = renderdoc.as_mut() {
-                    renderdoc.start_frame_capture(std::ptr::null(), std::ptr::null());
+                    renderdoc.start_frame_capture(
+                        backend.renderer().egl_context().get_context_handle(),
+                        backend
+                            .window()
+                            .window_handle()
+                            .map(|handle| {
+                                if let RawWindowHandle::Wayland(handle) = handle.as_raw() {
+                                    handle.surface.as_ptr()
+                                } else {
+                                    std::ptr::null_mut()
+                                }
+                            })
+                            .unwrap_or_else(|_| std::ptr::null_mut()),
+                    );
                 }
                 let age = if *full_redraw > 0 {
                     0
@@ -387,7 +393,7 @@ pub fn run_winit() {
 
                 render_output(
                     &output,
-                    &state.space,
+                    space,
                     elements,
                     renderer,
                     damage_tracker,
@@ -403,14 +409,27 @@ pub fn run_winit() {
                 Ok(render_output_result) => {
                     let has_rendered = render_output_result.damage.is_some();
                     if let Some(damage) = render_output_result.damage {
-                        if let Err(err) = backend.submit(Some(&*damage)) {
+                        if let Err(err) = backend.submit(Some(damage)) {
                             warn!("Failed to submit buffer: {}", err);
                         }
                     }
 
                     #[cfg(feature = "debug")]
                     if let Some(renderdoc) = renderdoc.as_mut() {
-                        renderdoc.end_frame_capture(std::ptr::null(), std::ptr::null());
+                        renderdoc.end_frame_capture(
+                            backend.renderer().egl_context().get_context_handle(),
+                            backend
+                                .window()
+                                .window_handle()
+                                .map(|handle| {
+                                    if let RawWindowHandle::Wayland(handle) = handle.as_raw() {
+                                        handle.surface.as_ptr()
+                                    } else {
+                                        std::ptr::null_mut()
+                                    }
+                                })
+                                .unwrap_or_else(|_| std::ptr::null_mut()),
+                        );
                     }
 
                     backend.window().set_cursor_visible(cursor_visible);
@@ -459,16 +478,7 @@ pub fn run_winit() {
             }
         }
 
-        let mut calloop_data = CalloopData {
-            state,
-            display_handle,
-        };
-        let result = event_loop.dispatch(Some(Duration::from_millis(1)), &mut calloop_data);
-        CalloopData {
-            state,
-            display_handle,
-        } = calloop_data;
-
+        let result = event_loop.dispatch(Some(Duration::from_millis(1)), &mut state);
         if result.is_err() {
             state.running.store(false, Ordering::SeqCst);
         } else {
