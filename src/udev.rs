@@ -26,14 +26,10 @@ use smithay::backend::renderer::ImportMem;
 use smithay::{
     backend::{
         allocator::{
-            dmabuf::{AnyError, Dmabuf, DmabufAllocator},
-            gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
-            vulkan::{ImageUsageFlags, VulkanAllocator},
-            Allocator, Fourcc,
+            dmabuf::{AnyError, Dmabuf, DmabufAllocator}, format::FormatSet, gbm::{GbmAllocator, GbmBufferFlags, GbmDevice}, vulkan::{ImageUsageFlags, VulkanAllocator}, Allocator, Fourcc
         },
         drm::{
-            compositor::DrmCompositor, CreateDrmNodeError, DrmDevice, DrmDeviceFd, DrmError, DrmEvent,
-            DrmEventMetadata, DrmNode, DrmSurface, GbmBufferedSurface, NodeType,
+            compositor::DrmCompositor, CreateDrmNodeError, DrmAccessError, DrmDevice, DrmDeviceFd, DrmError, DrmEvent, DrmEventMetadata, DrmNode, DrmSurface, GbmBufferedSurface, NodeType
         },
         egl::{self, context::ContextPriority, EGLDevice, EGLDisplay},
         libinput::{LibinputInputBackend, LibinputSessionInterface},
@@ -60,7 +56,6 @@ use smithay::{
     input::pointer::{CursorImageAttributes, CursorImageStatus},
     output::{Mode as WlMode, Output, PhysicalProperties, Subpixel},
     reexports::{
-        ash::vk::ExtPhysicalDeviceDrmFn,
         calloop::{
             timer::{TimeoutAction, Timer},
             EventLoop, LoopHandle, RegistrationToken,
@@ -108,8 +103,13 @@ const SUPPORTED_FORMATS: &[Fourcc] = &[
 ];
 const SUPPORTED_FORMATS_8BIT_ONLY: &[Fourcc] = &[Fourcc::Abgr8888, Fourcc::Argb8888];
 
-pub type UdevRenderer<'a, 'b> =
-    MultiRenderer<'a, 'a, 'b, GbmGlesBackend<SkiaRenderer>, GbmGlesBackend<SkiaRenderer>>;
+pub type UdevRenderer<'a> =
+    MultiRenderer<
+    'a,
+    'a,
+    GbmGlesBackend<SkiaRenderer, DrmDeviceFd>,
+    GbmGlesBackend<SkiaRenderer, DrmDeviceFd>
+>;
 
 #[derive(Debug, PartialEq)]
 struct UdevOutputId {
@@ -123,7 +123,7 @@ pub struct UdevData {
     dmabuf_state: Option<(DmabufState, DmabufGlobal)>,
     primary_gpu: DrmNode,
     allocator: Option<Box<dyn Allocator<Buffer = Dmabuf, Error = AnyError>>>,
-    gpus: GpuManager<GbmGlesBackend<SkiaRenderer>>,
+    gpus: GpuManager<GbmGlesBackend<SkiaRenderer, DrmDeviceFd>>,
     backends: HashMap<DrmNode, BackendData>,
     pointer_images: Vec<(xcursor::parser::Image, TextureBuffer<MultiTexture>)>,
     pointer_element: PointerElement<MultiTexture>,
@@ -194,7 +194,7 @@ impl Backend for UdevData {
     fn early_import(&mut self, surface: &wl_surface::WlSurface) {
         if let Err(err) = self
             .gpus
-            .early_import(Some(self.primary_gpu), self.primary_gpu, surface)
+            .early_import( self.primary_gpu, surface)
         {
             warn!("Early buffer import failed: {}", err);
         }
@@ -203,7 +203,7 @@ impl Backend for UdevData {
     fn texture_for_surface(&self, surface: &smithay::backend::renderer::utils::RendererSurfaceState) -> Option<SkiaTexture> {
         let tex =  surface.texture::<UdevRenderer>(99);
         if let Some(multitexture) = tex {
-            let texture = multitexture.get::<GbmGlesBackend<SkiaRenderer>>(&self.primary_gpu);
+            let texture = multitexture.get::<GbmGlesBackend<SkiaRenderer, DrmDeviceFd>>(&self.primary_gpu);
             if let Some(texture) = texture {
                 return Some(texture.clone());
             }
@@ -297,8 +297,8 @@ pub fn run_udev() {
     event_loop
         .handle()
         .insert_source(libinput_backend, move |event, _, data| {
-            let dh = data.state.backend_data.dh.clone();
-            data.state.process_input_event(&dh, event)
+            let dh = data.backend_data.dh.clone();
+            data.process_input_event(&dh, event)
         })
         .unwrap();
 
@@ -310,7 +310,7 @@ pub fn run_udev() {
                 libinput_context.suspend();
                 info!("pausing session");
 
-                for backend in data.state.backend_data.backends.values_mut() {
+                for backend in data.backend_data.backends.values_mut() {
                     backend.drm.pause();
                     backend.active_leases.clear();
                     if let Some(lease_global) = backend.leasing_global.as_mut() {
@@ -325,13 +325,12 @@ pub fn run_udev() {
                     error!("Failed to resume libinput context: {:?}", err);
                 }
                 for (node, backend) in data
-                    .state
                     .backend_data
                     .backends
                     .iter_mut()
                     .map(|(handle, backend)| (*handle, backend))
                 {
-                    backend.drm.activate();
+                    backend.drm.activate(false);
                     if let Some(lease_global) = backend.leasing_global.as_mut() {
                         lease_global.resume::<ScreenComposer<UdevData>>();
                     }
@@ -345,7 +344,7 @@ pub fn run_udev() {
                         // otherwise
                         surface.compositor.reset_buffers();
                     }
-                    handle.insert_idle(move |data| data.state.render(node, None));
+                    handle.insert_idle(move |data| data.render(node, None));
                 }
             }
         })
@@ -374,31 +373,6 @@ pub fn run_udev() {
         })
         .unwrap_or(false);
 
-    if !skip_vulkan {
-        if let Ok(instance) = Instance::new(Version::VERSION_1_2, None) {
-            if let Some(physical_device) = PhysicalDevice::enumerate(&instance).ok().and_then(|devices| {
-                devices
-                    .filter(|phd| phd.has_device_extension(ExtPhysicalDeviceDrmFn::name()))
-                    .find(|phd| {
-                        phd.primary_node().unwrap() == Some(primary_gpu)
-                            || phd.render_node().unwrap() == Some(primary_gpu)
-                    })
-            }) {
-                match VulkanAllocator::new(
-                    &physical_device,
-                    ImageUsageFlags::COLOR_ATTACHMENT | ImageUsageFlags::SAMPLED,
-                ) {
-                    Ok(allocator) => {
-                        state.backend_data.allocator = Some(Box::new(DmabufAllocator(allocator))
-                            as Box<dyn Allocator<Buffer = Dmabuf, Error = AnyError>>);
-                    }
-                    Err(err) => {
-                        warn!("Failed to create vulkan allocator: {}", err);
-                    }
-                }
-            }
-        }
-    }
 
     if state.backend_data.allocator.is_none() {
         info!("No vulkan allocator found, using GBM.");
@@ -451,7 +425,7 @@ pub fn run_udev() {
     }
 
     // init dmabuf support with format list from our primary gpu
-    let dmabuf_formats = renderer.dmabuf_formats().collect::<Vec<_>>();
+    let dmabuf_formats = renderer.dmabuf_formats();
     let default_feedback = DmabufFeedbackBuilder::new(primary_gpu.dev_id(), dmabuf_formats)
         .build()
         .unwrap();
@@ -481,19 +455,19 @@ pub fn run_udev() {
             UdevEvent::Added { device_id, path } => {
                 if let Err(err) = DrmNode::from_dev_id(device_id)
                     .map_err(DeviceAddError::DrmNode)
-                    .and_then(|node| data.state.device_added(node, &path))
+                    .and_then(|node| data.device_added(node, &path))
                 {
                     error!("Skipping device {device_id}: {err}");
                 }
             }
             UdevEvent::Changed { device_id } => {
                 if let Ok(node) = DrmNode::from_dev_id(device_id) {
-                    data.state.device_changed(node)
+                    data.device_changed(node)
                 }
             }
             UdevEvent::Removed { device_id } => {
                 if let Ok(node) = DrmNode::from_dev_id(device_id) {
-                    data.state.device_removed(node)
+                    data.device_removed(node)
                 }
             }
         })
@@ -503,15 +477,7 @@ pub fn run_udev() {
      * Start XWayland if supported
      */
     #[cfg(feature = "xwayland")]
-    if let Err(e) = state.xwayland.start(
-        state.handle.clone(),
-        None,
-        std::iter::empty::<(OsString, OsString)>(),
-        true,
-        |_| {},
-    ) {
-        error!("Failed to start XWayland: {}", e);
-    }
+    state.start_xwayland();
 
     /*
      * And run our loop
@@ -522,7 +488,7 @@ pub fn run_udev() {
             state,
             display_handle,
         };
-        let result = event_loop.dispatch(Some(Duration::from_millis(16)), &mut calloop_data);
+        let result = event_loop.dispatch(Some(Duration::from_millis(16)), &mut state);
         CalloopData {
             state,
             display_handle,
@@ -568,9 +534,24 @@ impl DrmLeaseHandler for ScreenComposer<UdevData> {
                 builder.add_connector(conn);
                 builder.add_crtc(*crtc);
                 let planes = backend.drm.planes(crtc).map_err(LeaseRejected::with_cause)?;
-                builder.add_plane(planes.primary.handle);
-                if let Some(cursor) = planes.cursor {
-                    builder.add_plane(cursor.handle);
+                let (primary_plane, primary_plane_claim) = planes
+                    .primary
+                    .iter()
+                    .find_map(|plane| {
+                        backend
+                            .drm
+                            .claim_plane(plane.handle, *crtc)
+                            .map(|claim| (plane, claim))
+                    })
+                    .ok_or_else(LeaseRejected::default)?;
+                builder.add_plane(primary_plane.handle, primary_plane_claim);
+                if let Some((cursor, claim)) = planes.cursor.iter().find_map(|plane| {
+                    backend
+                        .drm
+                        .claim_plane(plane.handle, *crtc)
+                        .map(|claim| (plane, claim))
+                }) {
+                    builder.add_plane(cursor.handle, claim);
                 }
             } else {
                 tracing::warn!(?conn, "Lease requested for desktop connector, denying request");
@@ -612,11 +593,11 @@ enum SurfaceComposition {
     Compositor(GbmDrmCompositor),
 }
 
-struct SurfaceCompositorRenderResult {
+struct SurfaceCompositorRenderResult<'a> {
     rendered: bool,
     states: RenderElementStates,
     sync: Option<SyncPoint>,
-    damage: Option<Vec<Rectangle<i32, Physical>>>,
+    damage: Option<&'a Vec<Rectangle<i32, Physical>>>,
 }
 
 impl SurfaceComposition {
@@ -719,7 +700,7 @@ impl SurfaceComposition {
                         element.sync.wait();
                     }
                     SurfaceCompositorRenderResult {
-                        rendered: render_frame_result.damage.is_some(),
+                        rendered: !render_frame_result.is_empty,
                         damage: None,
                         states: render_frame_result.states,
                         sync: None,
@@ -803,26 +784,17 @@ enum DeviceAddError {
 fn get_surface_dmabuf_feedback(
     primary_gpu: DrmNode,
     render_node: DrmNode,
-    gpus: &mut GpuManager<GbmGlesBackend<SkiaRenderer>>,
+    gpus: &mut GpuManager<GbmGlesBackend<SkiaRenderer, DrmDeviceFd>>,
     composition: &SurfaceComposition,
 ) -> Option<DrmSurfaceDmabufFeedback> {
-    let primary_formats = gpus
-        .single_renderer(&primary_gpu)
-        .ok()?
-        .dmabuf_formats()
-        .collect::<HashSet<_>>();
-
-    let render_formats = gpus
-        .single_renderer(&render_node)
-        .ok()?
-        .dmabuf_formats()
-        .collect::<HashSet<_>>();
+    let primary_formats = gpus.single_renderer(&primary_gpu).ok()?.dmabuf_formats();
+    let render_formats = gpus.single_renderer(&render_node).ok()?.dmabuf_formats();
 
     let all_render_formats = primary_formats
         .iter()
         .chain(render_formats.iter())
         .copied()
-        .collect::<HashSet<_>>();
+        .collect::<FormatSet>();
 
     let surface = composition.surface();
     let planes = surface.planes().clone();
@@ -830,15 +802,16 @@ fn get_surface_dmabuf_feedback(
     // We limit the scan-out tranche to formats we can also render from
     // so that there is always a fallback render path available in case
     // the supplied buffer can not be scanned out directly
-    let planes_formats = planes
-        .primary
+    let planes_formats = surface
+        .plane_info()
         .formats
-        .into_iter()
+        .iter()
+        .copied()
         .chain(planes.overlay.into_iter().flat_map(|p| p.formats))
-        .collect::<HashSet<_>>()
+        .collect::<FormatSet>()
         .intersection(&all_render_formats)
         .copied()
-        .collect::<Vec<_>>();
+        .collect::<FormatSet>();
 
     let builder = DmabufFeedbackBuilder::new(primary_gpu.dev_id(), primary_formats);
     let render_feedback = builder
@@ -884,20 +857,19 @@ impl ScreenComposer<UdevData> {
             .handle
             .insert_source(
                 notifier,
-                move |event, metadata, data: &mut CalloopData<_>| match event {
+                move |event, metadata, data: &mut ScreenComposer<_>| match event {
                     DrmEvent::VBlank(crtc) => {
                         profiling::scope!("vblank", &format!("{crtc:?}"));
-                        data.state.frame_finish(node, crtc, metadata);
+                        data.frame_finish(node, crtc, metadata);
                     }
                     DrmEvent::Error(error) => {
-                        profiling::scope!("drmerror", &format!("{error:?}"));
                         error!("{:?}", error);
                     }
                 },
             )
             .unwrap();
 
-        let render_node = EGLDevice::device_for_display(&EGLDisplay::new(gbm.clone()).unwrap())
+        let render_node = EGLDevice::device_for_display(&unsafe { EGLDisplay::new(gbm.clone()).unwrap() })
             .ok()
             .and_then(|x| x.try_get_render_node().ok().flatten())
             .unwrap_or(node);
@@ -1184,7 +1156,15 @@ impl ScreenComposer<UdevData> {
             return;
         };
 
-        for event in device.drm_scanner.scan_connectors(&device.drm) {
+        let scan_result = match device.drm_scanner.scan_connectors(&device.drm) {
+            Ok(scan_result) => scan_result,
+            Err(err) => {
+                tracing::warn!(?err, "Failed to scan connectors");
+                return;
+            }
+        };
+
+        for event in scan_result {
             match event {
                 DrmScanEvent::Connected {
                     connector,
@@ -1326,10 +1306,10 @@ impl ScreenComposer<UdevData> {
                     }
                     SwapBuffersError::TemporaryFailure(err) => matches!(
                         err.downcast_ref::<DrmError>(),
-                        Some(DrmError::Access {
+                        Some(DrmError::Access(DrmAccessError {
                             source,
                             ..
-                        }) if source.kind() == io::ErrorKind::PermissionDenied
+                        })) if source.kind() == io::ErrorKind::PermissionDenied
                     ),
                     SwapBuffersError::ContextLost(err) => panic!("Rendering loop lost: {}", err),
                 }
@@ -1390,7 +1370,7 @@ impl ScreenComposer<UdevData> {
 
             self.handle
                 .insert_source(timer, move |_, _, data| {
-                    data.state.render(dev_id, Some(crtc));
+                    data.render(dev_id, Some(crtc));
                     TimeoutAction::Drop
                 })
                 .expect("failed to schedule frame timer");
@@ -1441,18 +1421,10 @@ impl ScreenComposer<UdevData> {
             self.backend_data.gpus.single_renderer(&render_node)
         } else {
             let format = surface.compositor.format();
-            self.backend_data.gpus.renderer(
-                &primary_gpu,
-                &render_node,
-                self.backend_data
-                    .allocator
-                    .as_mut()
-                    // TODO: We could build some kind of `GLAllocator` using Renderbuffers in theory for this case.
-                    //  That would work for memcpy's of offscreen contents.
-                    .expect("We need an allocator for multigpu systems")
-                    .as_mut(),
-                format,
-            )
+            
+            self.backend_data
+                .gpus
+                .renderer(&primary_gpu, &render_node, format)
         }
         .unwrap();
         // TODO get scale from the rendersurface when supporting HiDPI
@@ -1524,7 +1496,7 @@ impl ScreenComposer<UdevData> {
                     SwapBuffersError::AlreadySwapped => false,
                     SwapBuffersError::TemporaryFailure(err) => match err.downcast_ref::<DrmError>() {
                         Some(DrmError::DeviceInactive) => true,
-                        Some(DrmError::Access { source, .. }) => {
+                        Some(DrmError::Access(DrmAccessError { source, .. })) => {
                             source.kind() == io::ErrorKind::PermissionDenied
                         }
                         _ => false,
@@ -1551,7 +1523,7 @@ impl ScreenComposer<UdevData> {
             let timer = Timer::from_duration(reschedule_duration);
             self.handle
                 .insert_source(timer, move |_, _, data| {
-                    data.state.render(node, Some(crtc));
+                    data.render(node, Some(crtc));
                     TimeoutAction::Drop
                 })
                 .expect("failed to schedule frame timer");
@@ -1567,7 +1539,7 @@ impl ScreenComposer<UdevData> {
         &mut self,
         node: DrmNode,
         crtc: crtc::Handle,
-        evt_handle: LoopHandle<'static, CalloopData<UdevData>>,
+        evt_handle: LoopHandle<'static, ScreenComposer<UdevData>>,
     ) {
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
             device
@@ -1595,7 +1567,7 @@ impl ScreenComposer<UdevData> {
                     warn!("Failed to submit page_flip: {}", err);
                     let handle = evt_handle.clone();
                     evt_handle
-                        .insert_idle(move |data| data.state.schedule_initial_render(node, crtc, handle));
+                        .insert_idle(move |data| data.schedule_initial_render(node, crtc, handle));
                 }
                 SwapBuffersError::ContextLost(err) => panic!("Rendering loop lost: {}", err),
             }
@@ -1607,7 +1579,7 @@ impl ScreenComposer<UdevData> {
 #[profiling::function]
 fn render_surface<'a, 'b>(
     surface: &'a mut SurfaceData,
-    renderer: &mut UdevRenderer<'a, 'b>,
+    renderer: &mut UdevRenderer<'a>,
     space: &Space<WindowElement>,
     output: &Output,
     pointer_location: Point<f64, Logical>,
@@ -1663,7 +1635,7 @@ fn render_surface<'a, 'b>(
         {
             if let Some(wl_surface) = dnd_icon.as_ref() {
                 if wl_surface.alive() {
-                    custom_elements.extend(AsRenderElements::<UdevRenderer<'a, 'b>>::render_elements(
+                    custom_elements.extend(AsRenderElements::<UdevRenderer<'a>>::render_elements(
                         &SurfaceTree::from_surface(wl_surface),
                         renderer,
                         cursor_pos_scaled,
@@ -1691,13 +1663,18 @@ fn render_surface<'a, 'b>(
     let (elements, clear_color) =
         output_elements(output, space, elements, renderer);
 
-    let res = surface
+    let SurfaceCompositorRenderResult {
+        rendered,
+        states,
+        sync,
+        damage,
+    } = surface
         .compositor
             .render_frame::<_, _, SkiaGLesFbo>(renderer, &elements, clear_color)?;
 
     post_repaint(
         output,
-        &res.states,
+        &states,
         space,
         surface
             .dmabuf_feedback
@@ -1709,20 +1686,22 @@ fn render_surface<'a, 'b>(
         clock.now(),
     );
 
-    if res.rendered {
-        let output_presentation_feedback = take_presentation_feedback(output, space, &res.states);
+    if rendered {
+        let output_presentation_feedback = take_presentation_feedback(output, space, &states);
+        let damage = damage.cloned();
         surface
             .compositor
-            .queue_frame(res.sync, res.damage, Some(output_presentation_feedback))
+            .queue_frame(sync, damage, Some(output_presentation_feedback))
             .map_err(Into::<SwapBuffersError>::into)?;
     }
 
-    Ok(res.rendered)
+
+    Ok(rendered)
 }
 
 fn initial_render(
     surface: &mut SurfaceData,
-    renderer: &mut UdevRenderer<'_, '_>,
+    renderer: &mut UdevRenderer<'_>,
 ) -> Result<(), SwapBuffersError> {
     surface
         .compositor
