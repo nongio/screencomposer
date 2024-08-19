@@ -34,11 +34,7 @@ use smithay::{
     input::pointer::{CursorImageAttributes, CursorImageStatus},
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::{
-        ash::vk::ExtPhysicalDeviceDrmFn,
-        calloop::EventLoop,
-        gbm,
-        wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
-        wayland_server::{protocol::wl_surface, Display},
+        ash::ext, calloop::EventLoop, gbm, wayland_protocols::wp::presentation_time::server::wp_presentation_feedback, wayland_server::{protocol::wl_surface, Display}
     },
     utils::{DeviceFd, IsAlive, Scale},
     wayland::{
@@ -115,7 +111,7 @@ pub fn run_x11() {
     // Create the gbm device for buffer allocation.
     let device = gbm::Device::new(DeviceFd::from(fd)).expect("Failed to create gbm device");
     // Initialize EGL using the GBM device.
-    let egl = EGLDisplay::new(device.clone()).expect("Failed to create EGLDisplay");
+    let egl = unsafe { EGLDisplay::new(device.clone()).expect("Failed to create EGLDisplay") };
     // Create the OpenGL context
     let context = EGLContext::new(&egl).expect("Failed to create EGLContext");
 
@@ -136,7 +132,7 @@ pub fn run_x11() {
             .and_then(|instance| {
                 PhysicalDevice::enumerate(&instance).ok().and_then(|devices| {
                     devices
-                        .filter(|phd| phd.has_device_extension(ExtPhysicalDeviceDrmFn::name()))
+                        .filter(|phd| phd.has_device_extension(ext::physical_device_drm::NAME))
                         .find(|phd| {
                             phd.primary_node().unwrap() == Some(node)
                                 || phd.render_node().unwrap() == Some(node)
@@ -186,7 +182,7 @@ pub fn run_x11() {
         info!("EGL hardware-acceleration enabled");
     }
 
-    let dmabuf_formats = renderer.dmabuf_formats().collect::<Vec<_>>();
+    let dmabuf_formats = renderer.dmabuf_formats();
     let dmabuf_default_feedback = DmabufFeedbackBuilder::new(node.dev_id(), dmabuf_formats)
         .build()
         .unwrap();
@@ -264,43 +260,37 @@ pub fn run_x11() {
         .handle()
         .insert_source(backend, move |event, _, data| match event {
             X11Event::CloseRequested { .. } => {
-                data.state.running.store(false, Ordering::SeqCst);
+                data.running.store(false, Ordering::SeqCst);
             }
             X11Event::Resized { new_size, .. } => {
                 let output = &output_clone;
                 let size = { (new_size.w as i32, new_size.h as i32).into() };
 
-                data.state.backend_data.mode = Mode {
+                data.backend_data.mode = Mode {
                     size,
                     refresh: 60_000,
                 };
                 output.delete_mode(output.current_mode().unwrap());
-                output.change_current_state(Some(data.state.backend_data.mode), None, None, None);
-                output.set_preferred(data.state.backend_data.mode);
-                crate::shell::fixup_positions(&mut data.state.space, data.state.pointer.current_location());
+                output.change_current_state(Some(data.backend_data.mode), None, None, None);
+                output.set_preferred(data.backend_data.mode);
+                crate::shell::fixup_positions(&mut data.space, data.pointer.current_location());
 
-                data.state.backend_data.render = true;
+                data.backend_data.render = true;
             }
             X11Event::PresentCompleted { .. } | X11Event::Refresh { .. } => {
-                data.state.backend_data.render = true;
+                data.backend_data.render = true;
             }
-            X11Event::Input(event) => {
-                data.state
-                    .process_input_event_windowed(&data.display_handle, event, OUTPUT_NAME)
+            X11Event::Input { event, .. } => data.process_input_event_windowed(event, OUTPUT_NAME),
+            X11Event::Focus { focused: false, .. } => {
+                data.release_all_keys();
             }
+            _ => {}
         })
         .expect("Failed to insert X11 Backend into event loop");
 
     #[cfg(feature = "xwayland")]
-    if let Err(e) = state.xwayland.start(
-        state.handle.clone(),
-        None,
-        std::iter::empty::<(OsString, OsString)>(),
-        true,
-        |_| {},
-    ) {
-        error!("Failed to start XWayland: {}", e);
-    }
+    state.start_xwayland();
+
     info!("Initialization completed, starting the main loop.");
 
     let mut pointer_element = PointerElement::default();
@@ -460,16 +450,7 @@ pub fn run_x11() {
             profiling::finish_frame!();
         }
 
-        let mut calloop_data = CalloopData {
-            state,
-            display_handle,
-        };
-        let result = event_loop.dispatch(Some(Duration::from_millis(16)), &mut calloop_data);
-        CalloopData {
-            state,
-            display_handle,
-        } = calloop_data;
-
+        let result = event_loop.dispatch(Some(Duration::from_millis(16)), &mut state);
         if result.is_err() {
             state.running.store(false, Ordering::SeqCst);
         } else {
