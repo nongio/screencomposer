@@ -12,16 +12,16 @@ use skia_safe as skia;
 use smithay::{
     backend::{
         allocator::{
-            dmabuf::{Dmabuf, WeakDmabuf}, format::has_alpha, Buffer as DmaBuffer, Format, Fourcc
+            dmabuf::{Dmabuf, WeakDmabuf}, format::{has_alpha, FormatSet}, Buffer as DmaBuffer, Format, Fourcc
         },
-        egl::{self, display::EGLBufferReader, ffi::egl::types::EGLImage, EGLContext, EGLSurface},
+        egl::{self, display::EGLBufferReader, fence::EGLFence, ffi::egl::types::EGLImage, wrap_egl_call, EGLContext, EGLSurface},
         renderer::{
             gles::{
                 ffi::{self, types::{GLint, GLuint}},
                 format::{fourcc_to_gl_formats, gl_internal_format_to_fourcc},
                 Capability, GlesError, GlesRenderbuffer, GlesRenderer, GlesTexture,
             },
-            sync::{Fence, SyncPoint},
+            sync::{Fence, Interrupted, SyncPoint},
             Bind, DebugFlags, ExportMem, Frame, ImportDma, ImportDmaWl, ImportEgl, ImportMem,
             ImportMemWl, Offscreen, Renderer, Texture, TextureFilter, TextureMapping, Unbind,
         },
@@ -213,6 +213,7 @@ pub struct SkiaTexture {
     pub damage: Option<Vec<Rectangle<i32, Buffer>>>,
 }
 
+unsafe impl Send for SkiaTexture {}
 
 #[derive(Clone)]
 pub struct SkiaFrame {
@@ -677,7 +678,8 @@ impl<'a> Frame for SkiaFrame {
         src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
-        transform: Transform,
+        opaque_regions: &[Rectangle<i32, Physical>],
+        src_transform: Transform,
         alpha: f32,
     ) -> Result<(), Self::Error> {
 
@@ -718,7 +720,7 @@ impl<'a> Frame for SkiaFrame {
         let canvas = surface.canvas();
         let scale_x = dst.size.w as f32 / src.size.w as f32;
         let scale_y = dst.size.h as f32 / src.size.h as f32;
-        match transform {
+        match src_transform {
             Transform::Normal => {
                 matrix.pre_scale((scale_x, scale_y), None);
                 matrix.pre_translate((
@@ -735,14 +737,14 @@ impl<'a> Frame for SkiaFrame {
             }
             Transform::Flipped90 => {
 
-                panic!("unhandled transform {:?}", transform);
+                panic!("unhandled transform {:?}", src_transform);
             }
             Transform::Flipped270 => {
 
-                panic!("unhandled transform {:?}", transform);
+                panic!("unhandled transform {:?}", src_transform);
             }
             _ => {
-                panic!("unhandled transform {:?}", transform);
+                panic!("unhandled transform {:?}", src_transform);
             }
         }
 
@@ -790,22 +792,27 @@ impl<'a> Frame for SkiaFrame {
                 
         FINISHED_PROC_STATE.store(false, Ordering::SeqCst);
 
-        let semaphores = surface.gr_context.flush(info);
-        let syncpoint = if semaphores == skia::gpu::SemaphoresSubmitted::Yes {
-            profiling::scope!("FINISHED_PROC_STATE");
-            let skia_sync = SkiaSync {};
-            SyncPoint::from(skia_sync)
-        } else {
-            SyncPoint::signaled()
-        };
+        // let semaphores = surface.gr_context.flush(info);
+        // let syncpoint = if semaphores == skia::gpu::SemaphoresSubmitted::Yes {
+        //     profiling::scope!("FINISHED_PROC_STATE");
+        //     let skia_sync = SkiaSync {};
+        //     SyncPoint::from(skia_sync)
+        // } else {
+        //     SyncPoint::signaled()
+        // };
         {
             profiling::scope!("context_submit");
             // surface.gr_context.submit(None);
             surface.gr_context.flush_and_submit_surface(&mut surface.surface, GrSyncCpu::No);
         }
         // surface.surface.flush_submit_and_sync_cpu();
-        Ok(syncpoint)
-        // Ok(SyncPoint::signaled())
+        // Ok(syncpoint)
+        Ok(SyncPoint::signaled())
+    }
+
+    fn wait(&mut self, sync: &smithay::backend::renderer::sync::SyncPoint) -> Result<(), Self::Error> {
+        sync.wait();
+        Ok(())
     }
 }
 
@@ -834,30 +841,49 @@ unsafe extern "C" fn finished_proc(_: *mut ::core::ffi::c_void) {
     FINISHED_PROC_STATE.store(true, Ordering::SeqCst);
 }
 
-#[derive(Debug, Clone)]
-struct SkiaSync {}
+// #[derive(Debug, Clone)]
+// struct SkiaSync {}
 
-impl Fence for SkiaSync {
-    fn export(&self) -> Option<std::os::unix::prelude::OwnedFd> {
-        None
-    }
-    fn is_exportable(&self) -> bool {
-        false
-    }
-    fn is_signaled(&self) -> bool {
-        FINISHED_PROC_STATE.load(Ordering::SeqCst)
-    }
-    fn wait(&self) {
-        let start = Instant::now();
+// impl Fence for SkiaSync {
+//     fn export(&self) -> Option<std::os::unix::prelude::OwnedFd> {
+//         None
+//     }
+//     fn is_exportable(&self) -> bool {
+//         false
+//     }
+//     fn is_signaled(&self) -> bool {
+//         FINISHED_PROC_STATE.load(Ordering::SeqCst)
+//     }
+//     fn wait(&self) -> Result<(), Interrupted> {
+//         use smithay::backend::egl::ffi;
 
-        while !self.is_signaled() {
-            if start.elapsed() >= Duration::from_millis(2) {
-                break;
-            }
-        }
-        // while !self.is_signaled() {}
-    }
-}
+//         let start = Instant::now();
+//         let timeout = Some(Duration::from_millis(2))
+//             .map(|t| t.as_nanos() as ffi::egl::types::EGLuint64KHR)
+//             .unwrap_or(ffi::egl::FOREVER);
+//         let flush = false;
+//         let flags = if flush {
+//             ffi::egl::SYNC_FLUSH_COMMANDS_BIT as ffi::egl::types::EGLint
+//         } else {
+//             0
+//         };
+//         let status = wrap_egl_call(
+//             || unsafe { ffi::egl::ClientWaitSync(**self.0.display_handle, self.0.handle, flags, timeout) },
+//             ffi::egl::FALSE as ffi::egl::types::EGLint,
+//         ).map_err(|err| {
+//             tracing::warn!(?err, "Waiting for fence was interrupted");
+//             Interrupted
+//         })?;
+
+//         Ok(())
+//         // while !self.is_signaled() {
+//         //     if start.elapsed() >=  {
+//         //         break;
+//         //     }
+//         // }
+//         // while !self.is_signaled() {}
+//     }
+// }
 impl Renderer for SkiaRenderer {
     type Error = GlesError;
     type TextureId = SkiaTexture;
@@ -944,6 +970,37 @@ impl Renderer for SkiaRenderer {
             size: output_size,
             id,
         })
+    }
+
+    fn wait(&mut self, sync: &smithay::backend::renderer::sync::SyncPoint) -> Result<(), Self::Error> {
+
+        let display = self.egl_context().display();
+
+        // if the sync point holds a EGLFence we can try
+        // to directly insert it in our context
+        if let Some(fence) = sync.get::<EGLFence>() {
+            if fence.wait(display).is_ok() {
+                return Ok(());
+            }
+        }
+
+        // alternative we try to create a temporary fence
+        // out of the native fence if available and try
+        // to insert it in our context
+        if let Some(native) = EGLFence::supports_importing(display)
+            .then(|| sync.export())
+            .flatten()
+        {
+            if let Ok(fence) = EGLFence::import(display, native) {
+                if fence.wait(display).is_ok() {
+                    return Ok(());
+                }
+            }
+        }
+
+        // if everything above failed we can only
+        // block until the sync point has been reached
+        sync.wait().map_err(|_| GlesError::SyncInterrupted)
     }
 }
 
@@ -1111,7 +1168,7 @@ impl ImportDma for SkiaRenderer {
         let texture = self.import_dmabuf_internal(dmabuf, damage)?;
         Ok(texture)
     }
-    fn dmabuf_formats(&self) -> Box<dyn Iterator<Item = Format>> {
+    fn dmabuf_formats(&self) -> FormatSet {
         self.gl_renderer.dmabuf_formats()
     }
 }
@@ -1293,6 +1350,10 @@ impl ExportMem for SkiaRenderer {
         
         let ptr = data.as_ptr();
         unsafe { Ok(std::slice::from_raw_parts(ptr, len)) }
+    }
+
+    fn can_read_texture(&mut self, texture: &Self::TextureId) -> Result<bool, Self::Error> {
+        self.gl_renderer.can_read_texture(&texture.texture)
     }
 }
 
