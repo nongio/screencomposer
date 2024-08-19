@@ -6,7 +6,7 @@ use layers::{engine::{LayersEngine, NodeRef}, prelude::taffy};
 use tracing::{info, warn};
 
 use smithay::{
-    backend::
+    backend::{input::TabletToolDescriptor, 
         renderer::{
             element::{
                 default_primary_scanout_output_compare, texture::TextureBuffer, utils::select_dmabuf_feedback, RenderElementStates
@@ -14,7 +14,7 @@ use smithay::{
             utils::{
                 RendererSurfaceState, RendererSurfaceStateUserData
             }
-        }
+        }}
     ,
     delegate_compositor, delegate_data_control, delegate_data_device, delegate_fractional_scale,
     delegate_input_method_manager, delegate_keyboard_shortcuts_inhibit, delegate_layer_shell,
@@ -37,10 +37,10 @@ use smithay::{
     output::Output,
     reexports::{
         calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
-        wayland_protocols::xdg::{decoration::{
+        wayland_protocols::xdg::decoration::{
             self as xdg_decoration, 
             zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
-        }, shell::client::xdg_toplevel},
+        },
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason, ObjectId},
             protocol::{wl_data_source::WlDataSource, wl_surface::WlSurface},
@@ -56,7 +56,7 @@ use smithay::{
         keyboard_shortcuts_inhibit::{
             KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState, KeyboardShortcutsInhibitor,
         },
-        output::OutputManagerState,
+        output::{OutputHandler, OutputManagerState},
         pointer_constraints::{with_pointer_constraint, PointerConstraintsHandler, PointerConstraintsState},
         pointer_gestures::PointerGesturesState,
         presentation::PresentationState,
@@ -77,7 +77,7 @@ use smithay::{
         },
         shm::{ShmHandler, ShmState},
         socket::ListeningSocketSource,
-        tablet_manager::TabletSeatTrait,
+        tablet_manager::{TabletSeatHandler, TabletSeatTrait},
         text_input::TextInputManagerState,
         viewporter::ViewporterState,
         virtual_keyboard::VirtualKeyboardManagerState,
@@ -86,6 +86,7 @@ use smithay::{
         },
     },
 };
+use x11rb::protocol::xproto::Screen;
 
 #[cfg(feature = "xwayland")]
 use crate::cursor::Cursor;
@@ -121,7 +122,7 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub socket_name: Option<String>,
     pub display_handle: DisplayHandle,
     pub running: Arc<AtomicBool>,
-    pub handle: LoopHandle<'static, CalloopData<BackendData>>,
+    pub handle: LoopHandle<'static, ScreenComposer<BackendData>>,
 
     // desktop
     pub space: Space<WindowElement>,
@@ -200,6 +201,8 @@ impl<BackendData: Backend> ServerDndGrabHandler for ScreenComposer<BackendData> 
 }
 delegate_data_device!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
+impl<BackendData: Backend> OutputHandler for ScreenComposer<BackendData> {}
+
 delegate_output!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
 impl<BackendData: Backend> SelectionHandler for ScreenComposer<BackendData> {
@@ -256,7 +259,7 @@ delegate_shm!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
     type KeyboardFocus = FocusTarget<BackendData>;
     type PointerFocus = FocusTarget<BackendData>;
-
+    type TouchFocus = FocusTarget<BackendData>;
     fn seat_state(&mut self) -> &mut SeatState<ScreenComposer<BackendData>> {
         &mut self.seat_state
     }
@@ -274,9 +277,17 @@ impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
         // println!("change icon {:?}", image);
         // *self.cursor_status.lock().unwrap() = image;
     }
+    
 }
 delegate_seat!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
+impl<BackendData: Backend> TabletSeatHandler for ScreenComposer<BackendData> {
+    fn tablet_tool_image(&mut self, _tool: &TabletToolDescriptor, image: CursorImageStatus) {
+        // TODO: tablet tools should have their own cursors
+        let mut cursor_status = self.cursor_status.lock().unwrap();
+        *cursor_status = image;
+    }
+}
 delegate_tablet_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
 delegate_text_input_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
@@ -299,6 +310,9 @@ impl<BackendData: Backend> InputMethodHandler for ScreenComposer<BackendData> {
             .elements()
             .find_map(|window| (window.wl_surface().as_ref() == Some(parent)).then(|| window.geometry()))
             .unwrap_or_default()
+    }
+    fn popup_repositioned(&mut self, surface: PopupSurface) {
+        // TODO
     }
 }
 
@@ -517,7 +531,7 @@ delegate_xwayland_keyboard_grab!(@<BackendData: Backend + 'static> ScreenCompose
 impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     pub fn init(
         display: Display<ScreenComposer<BackendData>>,
-        handle: LoopHandle<'static, CalloopData<BackendData>>,
+        handle: LoopHandle<'static, ScreenComposer<BackendData>>,
         backend_data: BackendData,
         listen_on_socket: bool,
     ) -> ScreenComposer<BackendData> {
@@ -616,23 +630,23 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             let dh = dh.clone();
             let ret = handle.insert_source(channel, move |event, _, data| match event {
                 XWaylandEvent::Ready {
-                    connection,
-                    client,
-                    client_fd: _,
-                    display,
+                    x11_socket,
+                    display_number
                 } => {
-                    let mut wm = X11Wm::start_wm(data.state.handle.clone(), dh.clone(), connection, client)
-                        .expect("Failed to attach X11 Window Manager");
-                    let cursor = Cursor::load();
-                    let image = cursor.get_image(1, Duration::ZERO);
-                    wm.set_cursor(
-                        &image.pixels_rgba,
-                        Size::from((image.width as u16, image.height as u16)),
-                        Point::from((image.xhot as u16, image.yhot as u16)),
-                    )
-                    .expect("Failed to set xwayland default cursor");
-                    data.state.xwm = Some(wm);
-                    data.state.xdisplay = Some(display);
+                    // let connection = X11Connection::connect(x11_socket).expect("Failed to connect to X11 server");
+                    // let client = X11Client::new(display_number, connection.clone());
+                    // let mut wm = X11Wm::start_wm(data.state.handle.clone(), dh.clone(), connection, client)
+                    //     .expect("Failed to attach X11 Window Manager");
+                    // let cursor = Cursor::load();
+                    // let image = cursor.get_image(1, Duration::ZERO);
+                    // wm.set_cursor(
+                    //     &image.pixels_rgba,
+                    //     Size::from((image.width as u16, image.height as u16)),
+                    //     Point::from((image.xhot as u16, image.yhot as u16)),
+                    // )
+                    // .expect("Failed to set xwayland default cursor");
+                    // data.state.xwm = Some(wm);
+                    // data.state.xdisplay = Some(display);
                 }
                 XWaylandEvent::Exited => {
                     let _ = data.state.xwm.take();
@@ -706,6 +720,50 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         }
     }
 
+    #[cfg(feature = "xwayland")]
+    pub fn start_xwayland(&mut self) {
+        use std::process::Stdio;
+
+        let (xwayland, client) = XWayland::spawn(
+            &self.display_handle,
+            None,
+            std::iter::empty::<(String, String)>(),
+            true,
+            Stdio::null(),
+            Stdio::null(),
+            |_| (),
+        )
+        .expect("failed to start XWayland");
+
+        let ret = self
+            .handle
+            .insert_source(xwayland, move |event, _, data| match event {
+                XWaylandEvent::Ready {
+                    x11_socket,
+                    display_number,
+                } => {
+                    let mut wm = X11Wm::start_wm(data.handle.clone(), x11_socket, client.clone())
+                        .expect("Failed to attach X11 Window Manager");
+
+                    let cursor = Cursor::load();
+                    let image = cursor.get_image(1, Duration::ZERO);
+                    wm.set_cursor(
+                        &image.pixels_rgba,
+                        Size::from((image.width as u16, image.height as u16)),
+                        Point::from((image.xhot as u16, image.yhot as u16)),
+                    )
+                    .expect("Failed to set xwayland default cursor");
+                    data.xwm = Some(wm);
+                    data.xdisplay = Some(display_number);
+                }
+                XWaylandEvent::Error => {
+                    warn!("XWayland crashed on startup");
+                }
+            });
+        if let Err(e) = ret {
+            tracing::error!("Failed to insert the XWaylandSource into the event loop: {}", e);
+        }
+    }
     pub fn update_workspace_applications(&mut self) {
         let windows = self.xdg_shell_state.toplevel_surfaces().iter()
             .map(|tl| {
