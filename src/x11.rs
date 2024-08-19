@@ -1,14 +1,11 @@
 #[cfg(feature = "xwayland")]
 use std::ffi::OsString;
 use std::{
-    sync::{atomic::Ordering, Mutex},
-    time::Duration,
+    cell::RefCell, sync::{atomic::Ordering, Mutex}, time::Duration
 };
 
 use crate::{
-    drawing::*,
-    render::*,
-    state::{post_repaint, take_presentation_feedback, ScreenComposer, Backend, CalloopData}, skia_renderer::{SkiaRenderer, SkiaTexture}, render_elements::custom_render_elements::CustomRenderElements,
+    drawing::*, render::*, render_elements::custom_render_elements::CustomRenderElements, shell::{place_new_window, WindowElement}, skia_renderer::{SkiaRenderer, SkiaTexture}, state::{post_repaint, take_presentation_feedback, Backend, CalloopData, ScreenComposer}
 };
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;
@@ -28,7 +25,7 @@ use smithay::{
             ImportMemWl,
         },
         vulkan::{version::Version, Instance, PhysicalDevice},
-        x11::{WindowBuilder, X11Backend, X11Event, X11Surface},
+        x11::{Window, WindowBuilder, X11Backend, X11Event, X11Surface},
     },
     delegate_dmabuf,
     input::pointer::{CursorImageAttributes, CursorImageStatus},
@@ -36,15 +33,35 @@ use smithay::{
     reexports::{
         ash::ext, calloop::EventLoop, gbm, wayland_protocols::wp::presentation_time::server::wp_presentation_feedback, wayland_server::{protocol::wl_surface, Display}
     },
-    utils::{DeviceFd, IsAlive, Scale},
+    utils::{DeviceFd, IsAlive, Logical, Rectangle, Scale},
     wayland::{
         compositor,
         dmabuf::{
             DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier,
-        },
-    },
+        }, xwayland_shell::{XWaylandShellHandler, XWaylandShellState},
+    }, xwayland::{xwm::{Reorder, XwmId}, X11Wm, XwmHandler},
 };
 use tracing::{error, info, trace, warn};
+
+
+#[derive(Debug, Default)]
+struct OldGeometry(RefCell<Option<Rectangle<i32, Logical>>>);
+impl OldGeometry {
+    pub fn save(&self, geo: Rectangle<i32, Logical>) {
+        *self.0.borrow_mut() = Some(geo);
+    }
+
+    pub fn restore(&self) -> Option<Rectangle<i32, Logical>> {
+        self.0.borrow_mut().take()
+    }
+}
+
+impl<BackendData: Backend> XWaylandShellHandler for ScreenComposer<BackendData> {
+    fn xwayland_shell_state(&mut self) -> &mut XWaylandShellState {
+        &mut self.xwayland_shell_state
+    }
+}
+
 
 pub const OUTPUT_NAME: &str = "x11";
 
