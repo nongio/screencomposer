@@ -90,9 +90,9 @@ impl Element for SceneElement {
     fn damage_since(
         &self,
         _scale: Scale<f64>,
-        commit: Option<CommitCounter>,
-    ) -> Vec<Rectangle<i32, Physical>> {
-        self.damage.borrow().damage_since(commit).unwrap_or_default()
+        commit: Option<CommitCounter>
+    ) -> smithay::backend::renderer::utils::DamageSet<i32, Physical> {
+            self.damage.borrow().damage_since(commit).unwrap_or_default()
     }
     fn alpha(&self) -> f32 {
         1.0
@@ -100,18 +100,19 @@ impl Element for SceneElement {
 
 }
 
-impl<'renderer, 'alloc> RenderElement<UdevRenderer<'renderer, 'alloc>> for SceneElement
+impl<'renderer> RenderElement<UdevRenderer<'renderer>> for SceneElement
 {
     fn draw(
         &self,
-        frame: &mut <UdevRenderer<'renderer, 'alloc> as Renderer>::Frame<'_>,
+        frame: &mut <UdevRenderer<'renderer> as Renderer>::Frame<'_>,
         src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
-    ) -> Result<(), <UdevRenderer<'renderer, 'alloc> as Renderer>::Error>
+        opaque_regions: &[Rectangle<i32, Physical>],
+    ) -> Result<(), <UdevRenderer<'renderer> as Renderer>::Error>
     
     {
-        RenderElement::<SkiaRenderer>::draw(self, frame.as_mut(), src, dst, damage)
+        RenderElement::<SkiaRenderer>::draw(self, frame.as_mut(), src, dst, damage, opaque_regions)
         .map_err(|e| {
             e.into()
         })
@@ -125,6 +126,7 @@ fn draw(
         _src: Rectangle<f64, Buffer>,
         _dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
+        _opaque_regions: &[Rectangle<i32, Physical>],
     ) -> Result<(), <SkiaRenderer as Renderer>::Error> {
         #[cfg(feature = "profile-with-puffin")]
         profiling::puffin::profile_scope!("render_scene");
@@ -140,44 +142,13 @@ fn draw(
         damage.iter().for_each(|d| {
             damage_rect.join(skia_safe::Rect::from_xywh(d.loc.x as f32, d.loc.y as f32, d.size.w as f32, d.size.h as f32));
         });
-        // let mut recorder = skia_safe::PictureRecorder::new();
-        // let canvas = recorder.begin_recording(
-        //     skia_safe::Rect::from_xywh(
-        //         0.0,
-        //         0.0,
-        //         self.size.0,
-        //         self.size.1,
-        //     ),
-        //     None,
-        // );
-        // println!("damage {:?}", damage_rect.width());
         if let Some(root_id) = root_id {
             let save_point= canvas.save();
             canvas.clip_rect(damage_rect, None, None);
             render_node_tree(root_id, arena, canvas, 1.0);
             canvas.restore_to_count(save_point);
         }
-        // let mut paint = skia_safe::Paint::new(skia_safe::Color4f::new(1.0, 0.0, 0.0, 1.0), None);
-        // paint.set_stroke(true);
-        // paint.set_stroke_width(2.0);
-        // damage.iter().for_each(|d| {
-        //     canvas.draw_rect(skia_safe::Rect::from_xywh(d.loc.x as f32, d.loc.y as f32, d.size.w as f32, d.size.h as f32), &paint);
-        // });
-        // canvas.draw_rect(damage_rect, &paint);
-        // if let Some(picture) = recorder.finish_recording_as_picture(None) {
-        //     // save the pictue as skp file
-        //     let name = "scene";
-        //     let data = picture.serialize();
-        //     let bytes = data.as_bytes();
-        //     let filename = format!("{}.skp", name);
-
-        //     use std::io::Write;
-        //     let mut file = std::fs::File::create(filename).unwrap();
-        //     file.write_all(bytes).unwrap();
-        // }
-
         self.engine.clear_damage();
-        // self.damage.borrow_mut().reset();
         Ok(())
     }
 }

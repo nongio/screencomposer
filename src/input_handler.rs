@@ -16,7 +16,7 @@ use smithay::{
         self, Axis, AxisSource, Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent,
         PointerAxisEvent, PointerButtonEvent,
     },
-    desktop::{layer_map_for_output, WindowSurfaceType},
+    desktop::{layer_map_for_output, WindowSurface, WindowSurfaceType},
     input::{
         keyboard::{keysyms as xkb, FilterResult, Keysym, ModifiersState},
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
@@ -103,8 +103,8 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             KeyAction::ToggleDecorations => {
                 for element in self.space.elements() {
                     #[allow(irrefutable_let_patterns)]
-                    if let WindowElement::Wayland(window) = element {
-                        let toplevel = window.toplevel();
+                    if let WindowElement(window) = element {
+                        let toplevel = window.toplevel().unwrap();
                         let mode_changed = toplevel.with_pending_state(|state| {
                             if let Some(current_mode) = state.decoration_mode {
                                 let new_mode =
@@ -153,7 +153,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
         for layer in self.layer_shell_state.layer_surfaces().rev() {
             let data = with_states(layer.wl_surface(), |states| {
-                *states.cached_state.current::<LayerSurfaceCachedState>()
+                *states.cached_state.get::<LayerSurfaceCachedState>().current()
             });
             if data.keyboard_interactivity == KeyboardInteractivity::Exclusive
                 && (data.layer == WlrLayer::Top || data.layer == WlrLayer::Overlay)
@@ -292,12 +292,12 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                     .get::<FullscreenSurface>()
                     .and_then(|f| f.get())
                 {
-                    if let Some((_, _)) = window.surface_under(
+                    if let Some((_, _)) = window.surface_under::<BackendData>(
                         self.pointer.current_location() - output_geo.loc.to_f64(),
                         WindowSurfaceType::ALL,
                     ) {
                         #[cfg(feature = "xwayland")]
-                        if let WindowElement::X11(surf) = &window {
+                        if let WindowSurface::X11(surf) = window.underlying_surface() {
                             self.xwm.as_mut().unwrap().raise_window(surf).unwrap();
                         }
                         keyboard.set_focus(self, Some(window.into()), serial);
@@ -340,7 +340,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                 }
                 keyboard.set_focus(self, Some(window.clone().into()), serial);
                 #[cfg(feature = "xwayland")]
-                if let WindowElement::X11(surf) = &window {
+                if let WindowSurface::X11(surf) = &window.underlying_surface() {
                     self.xwm.as_mut().unwrap().raise_window(surf).unwrap();
                 }
                 return;
@@ -368,8 +368,9 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         }
     }
 
-    pub fn surface_under(&self, pos: Point<f64, Logical>) -> Option<(PointerFocusTarget, Point<i32, Logical>)> {
-        let output = self.space.outputs().find(|o| {
+    pub fn surface_under(&self, pos: Point<f64, Logical>) 
+        -> Option<(PointerFocusTarget, Point<f64, Logical>)> {
+    let output = self.space.outputs().find(|o| {
             let geometry = self.space.output_geometry(o).unwrap();
             geometry.contains(pos.to_i32_round())
         })?;
@@ -384,13 +385,13 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         //     // return Some((focus, (position.x as i32,position.y as i32).into()));
         //     return Some((focus, (0, 0).into()));
         // }
-        if self.workspace.get_show_all() {
+        // if self.workspace.get_show_all() {
 
-            let focus = self.workspace.window_selector_view.as_ref().clone().into();
-            let position = self.workspace.window_selector_view.layer.render_position();
+        //     let focus = self.workspace.window_selector_view.as_ref().clone().into();
+        //     let position = self.workspace.window_selector_view.layer.render_position();
 
-            return Some((focus,  (position.x as i32,position.y as i32).into()));
-        }
+        //     return Some((focus,  (position.x as f64, position.y  as f64).into()));
+        // }
         if let Some(window) = output
             .user_data()
             .get::<FullscreenSurface>()
@@ -412,7 +413,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             let layer_loc = layers.layer_geometry(layer).unwrap().loc;
             under = Some((layer.clone().into(), output_geo.loc + layer_loc));
         };
-        under
+        under.map(|(s, l)| (s, l.to_f64()))
     }
 
     fn on_pointer_axis<B: InputBackend>(&mut self, evt: B::PointerAxisEvent) {
@@ -859,7 +860,7 @@ impl ScreenComposer<UdevData> {
                 Some(constraint) if constraint.is_active() => {
                     // Constraint does not apply if not within region
                     if !constraint.region().map_or(true, |x| {
-                        x.contains(pointer_location.to_i32_round() - *surface_loc)
+                        x.contains((pointer_location - *surface_loc).to_i32_round())
                     }) {
                         return;
                     }
@@ -909,7 +910,7 @@ impl ScreenComposer<UdevData> {
                     return;
                 }
                 if let Some(region) = confine_region {
-                    if !region.contains(pointer_location.to_i32_round() - *surface_loc) {
+                    if !region.contains((pointer_location - *surface_loc).to_i32_round()) {
                         pointer.frame(self);
                         return;
                     }
@@ -931,11 +932,11 @@ impl ScreenComposer<UdevData> {
         // If pointer is now in a constraint region, activate it
         // TODO Anywhere else pointer is moved needs to do this
         if let Some((under, surface_location)) =
-            new_under.and_then(|(target, loc)| Some((target.wl_surface()?, loc)))
+            new_under.and_then(|(target, loc)| Some((target.wl_surface()?.into_owned(), loc)))
         {
             with_pointer_constraint(&under, &pointer, |constraint| match constraint {
                 Some(constraint) if !constraint.is_active() => {
-                    let point = pointer_location.to_i32_round() - surface_location;
+                    let point = (pointer_location - surface_location).to_i32_round();
                     if constraint.region().map_or(true, |region| region.contains(point)) {
                         constraint.activate();
                     }
@@ -1029,9 +1030,10 @@ impl ScreenComposer<UdevData> {
                     tool.wheel(evt.wheel_delta(), evt.wheel_delta_discrete());
                 }
 
+
                 tool.motion(
                     pointer_location,
-                    under.and_then(|(f, loc)| f.wl_surface().map(|s| (s, loc))),
+                    under.and_then(|(f, loc)| f.wl_surface().map(|s| (s.into_owned(), loc))),
                     &tablet,
                     SCOUNTER.next_serial(),
                     evt.time_msec(),
@@ -1077,7 +1079,7 @@ impl ScreenComposer<UdevData> {
             pointer.frame(self);
 
             if let (Some(under), Some(tablet), Some(tool)) = (
-                under.and_then(|(f, loc)| f.wl_surface().map(|s| (s, loc))),
+                under.and_then(|(f, loc)| f.wl_surface().map(|s| (s.into_owned(), loc))),
                 tablet,
                 tool,
             ) {

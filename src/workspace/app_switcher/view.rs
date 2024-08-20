@@ -152,13 +152,13 @@ impl AppSwitcherView {
             let state = self.view.get_state();
             if let Some(app) = state.apps.get(state.current_app) {
                 for window in app.windows.iter() {
-                    match window.window_element.as_ref().unwrap() {
-                        WindowElement::Wayland(w) => w.toplevel().send_close(),
-                        #[cfg(feature = "xwayland")]
-                        WindowElement::X11(w) => {
-                            let _ = w.close();
-                        }
-                    }
+                    // match window.window_element.as_ref().unwrap() {
+                    //     WindowElement::Wayland(w) => w.toplevel().send_close(),
+                    //     #[cfg(feature = "xwayland")]
+                    //     WindowElement::X11(w) => {
+                    //         let _ = w.close();
+                    //     }
+                    // }
                 }
             }
         }

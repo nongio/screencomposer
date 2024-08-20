@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque}, fmt::Debug, os::unix::io::OwnedFd, sync::{atomic::AtomicBool, Arc, Mutex, RwLock}, time::Duration
+    borrow::Borrow, collections::{HashMap, VecDeque}, fmt::Debug, os::unix::io::OwnedFd, sync::{atomic::AtomicBool, Arc, Mutex, RwLock}, time::Duration
 };
 
 use layers::{engine::{LayersEngine, NodeRef}, prelude::taffy};
@@ -14,28 +14,17 @@ use smithay::{
             utils::{
                 RendererSurfaceState, RendererSurfaceStateUserData
             }
-        }}
-    ,
-    delegate_compositor, delegate_data_control, delegate_data_device, delegate_fractional_scale,
-    delegate_input_method_manager, delegate_keyboard_shortcuts_inhibit, delegate_layer_shell,
-    delegate_output, delegate_pointer_constraints, delegate_pointer_gestures, delegate_presentation,
-    delegate_primary_selection, delegate_relative_pointer, delegate_seat, delegate_security_context,
-    delegate_shm, delegate_tablet_manager, delegate_text_input_manager, delegate_viewporter,
-    delegate_virtual_keyboard_manager, delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
-    desktop::{
+        }}, delegate_compositor, delegate_data_control, delegate_data_device, delegate_fractional_scale, delegate_input_method_manager, delegate_keyboard_shortcuts_inhibit, delegate_layer_shell, delegate_output, delegate_pointer_constraints, delegate_pointer_gestures, delegate_presentation, delegate_primary_selection, delegate_relative_pointer, delegate_seat, delegate_security_context, delegate_shm, delegate_tablet_manager, delegate_text_input_manager, delegate_viewporter, delegate_virtual_keyboard_manager, delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell, delegate_xwayland_shell, desktop::{
         space::SpaceElement,
         utils::{
             surface_presentation_feedback_flags_from_states, surface_primary_scanout_output, update_surface_primary_scanout_output, with_surfaces_surface_tree, OutputPresentationFeedback
         },
         PopupKind, PopupManager, Space,
-    },
-    input::{
+    }, input::{
         keyboard::{Keysym, XkbConfig},
         pointer::{CursorImageStatus, PointerHandle},
         Seat, SeatHandler, SeatState,
-    },
-    output::Output,
-    reexports::{
+    }, output::Output, reexports::{
         calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
         wayland_protocols::xdg::decoration::{
             self as xdg_decoration, 
@@ -46,51 +35,29 @@ use smithay::{
             protocol::{wl_data_source::WlDataSource, wl_surface::WlSurface},
             Display, DisplayHandle, Resource,
         },
-    },
-    utils::{Clock, Monotonic, Rectangle},
-    wayland::{
-        compositor::{get_parent, with_states, CompositorClientState, CompositorState, SurfaceAttributes, SurfaceData, TraversalAction},
-        dmabuf::DmabufFeedback,
-        fractional_scale::{with_fractional_scale, FractionalScaleHandler, FractionalScaleManagerState},
-        input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface},
-        keyboard_shortcuts_inhibit::{
+    }, utils::{Clock, Monotonic, Rectangle}, wayland::{
+        compositor::{get_parent, with_states, CompositorClientState, CompositorState, SurfaceAttributes, SurfaceData, TraversalAction}, dmabuf::DmabufFeedback, fractional_scale::{with_fractional_scale, FractionalScaleHandler, FractionalScaleManagerState}, input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface}, keyboard_shortcuts_inhibit::{
             KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState, KeyboardShortcutsInhibitor,
-        },
-        output::{OutputHandler, OutputManagerState},
-        pointer_constraints::{with_pointer_constraint, PointerConstraintsHandler, PointerConstraintsState},
-        pointer_gestures::PointerGesturesState,
-        presentation::PresentationState,
-        relative_pointer::RelativePointerManagerState,
-        seat::WaylandFocus,
-        security_context::{
+        }, output::{OutputHandler, OutputManagerState}, pointer_constraints::{with_pointer_constraint, PointerConstraintsHandler, PointerConstraintsState}, pointer_gestures::PointerGesturesState, presentation::PresentationState, relative_pointer::RelativePointerManagerState, seat::WaylandFocus, security_context::{
             SecurityContext, SecurityContextHandler, SecurityContextListenerSource, SecurityContextState,
-        },
-        selection::{data_device::{
+        }, selection::{data_device::{
             set_data_device_focus, ClientDndGrabHandler, DataDeviceHandler, DataDeviceState,
             ServerDndGrabHandler,
-        }, primary_selection::{set_primary_focus, PrimarySelectionHandler, PrimarySelectionState}, wlr_data_control::{DataControlHandler, DataControlState}, SelectionHandler},
-        shell::{
+        }, primary_selection::{set_primary_focus, PrimarySelectionHandler, PrimarySelectionState}, wlr_data_control::{DataControlHandler, DataControlState}, SelectionHandler}, shell::{
             wlr_layer::WlrLayerShellState,
             xdg::{
                 decoration::{XdgDecorationHandler, XdgDecorationState}, SurfaceCachedState, ToplevelSurface, XdgShellState, XdgToplevelSurfaceData
             },
-        },
-        shm::{ShmHandler, ShmState},
-        socket::ListeningSocketSource,
-        tablet_manager::{TabletSeatHandler, TabletSeatTrait},
-        text_input::TextInputManagerState,
-        viewporter::ViewporterState,
-        virtual_keyboard::VirtualKeyboardManagerState,
-        xdg_activation::{
+        }, shm::{ShmHandler, ShmState}, socket::ListeningSocketSource, tablet_manager::{TabletManagerState, TabletSeatHandler, TabletSeatTrait}, text_input::TextInputManagerState, viewporter::ViewporterState, virtual_keyboard::VirtualKeyboardManagerState, xdg_activation::{
             XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
-        },
-    },
+        }, xdg_foreign::{XdgForeignHandler, XdgForeignState}, xwayland_shell
+    }
 };
 use x11rb::protocol::xproto::Screen;
 
 #[cfg(feature = "xwayland")]
 use crate::cursor::Cursor;
-use crate::{focus::FocusTarget, render_elements::scene_element::SceneElement, shell::WindowElement, skia_renderer::SkiaTexture, workspace::{self, WindowView, WindowViewBaseModel, WindowViewSurface, Workspace}};
+use crate::{focus::{KeyboardFocusTarget, PointerFocusTarget}, render_elements::scene_element::SceneElement, shell::WindowElement, skia_renderer::SkiaTexture, workspace::{self, WindowView, WindowViewBaseModel, WindowViewSurface, Workspace}};
 #[cfg(feature = "xwayland")]
 use smithay::{
     delegate_xwayland_keyboard_grab,
@@ -144,6 +111,10 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub xdg_shell_state: XdgShellState,
     pub presentation_state: PresentationState,
     pub fractional_scale_manager_state: FractionalScaleManagerState,
+    pub xdg_foreign_state: XdgForeignState,
+
+    #[cfg(feature = "xwayland")]
+    pub xwayland_shell_state: xwayland_shell::XWaylandShellState,
 
     pub dnd_icon: Option<WlSurface>,
 
@@ -155,8 +126,6 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub clock: Clock<Monotonic>,
     pub pointer: PointerHandle<ScreenComposer<BackendData>>,
 
-    #[cfg(feature = "xwayland")]
-    pub xwayland: XWayland,
     #[cfg(feature = "xwayland")]
     pub xwm: Option<X11Wm>,
     #[cfg(feature = "xwayland")]
@@ -257,14 +226,15 @@ impl<BackendData: Backend> ShmHandler for ScreenComposer<BackendData> {
 delegate_shm!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
 impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
-    type KeyboardFocus = FocusTarget<BackendData>;
-    type PointerFocus = FocusTarget<BackendData>;
-    type TouchFocus = FocusTarget<BackendData>;
+    type KeyboardFocus = KeyboardFocusTarget<BackendData>;
+    type PointerFocus = PointerFocusTarget;
+    type TouchFocus = PointerFocusTarget;
+
     fn seat_state(&mut self) -> &mut SeatState<ScreenComposer<BackendData>> {
         &mut self.seat_state
     }
 
-    fn focus_changed(&mut self, seat: &Seat<Self>, target: Option<&FocusTarget<BackendData>>) {
+    fn focus_changed(&mut self, seat: &Seat<Self>, target: Option<&KeyboardFocusTarget<BackendData>>) {
         let dh = &self.display_handle;
 
         let wl_surface = target.and_then(WaylandFocus::wl_surface);
@@ -273,6 +243,7 @@ impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
         set_data_device_focus(dh, seat, focus.clone());
         set_primary_focus(dh, seat, focus);
     }
+    
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
         // println!("change icon {:?}", image);
         // *self.cursor_status.lock().unwrap() = image;
@@ -299,6 +270,8 @@ impl<BackendData: Backend> InputMethodHandler for ScreenComposer<BackendData> {
         }
     }
 
+    fn popup_repositioned(&mut self, _: PopupSurface) {}
+
     fn dismiss_popup(&mut self, surface: PopupSurface) {
         if let Some(parent) = surface.get_parent().map(|parent| parent.surface.clone()) {
             let _ = PopupManager::dismiss_popup(&parent, &PopupKind::from(surface));
@@ -308,11 +281,8 @@ impl<BackendData: Backend> InputMethodHandler for ScreenComposer<BackendData> {
     fn parent_geometry(&self, parent: &WlSurface) -> Rectangle<i32, smithay::utils::Logical> {
         self.space
             .elements()
-            .find_map(|window| (window.wl_surface().as_ref() == Some(parent)).then(|| window.geometry()))
+            .find_map(|window| (window.wl_surface().as_deref() == Some(parent)).then(|| window.geometry()))
             .unwrap_or_default()
-    }
-    fn popup_repositioned(&mut self, surface: PopupSurface) {
-        // TODO
     }
 }
 
@@ -340,7 +310,10 @@ delegate_relative_pointer!(@<BackendData: Backend + 'static> ScreenComposer<Back
 impl<BackendData: Backend> PointerConstraintsHandler for ScreenComposer<BackendData> {
     fn new_constraint(&mut self, surface: &WlSurface, pointer: &PointerHandle<Self>) {
         // XXX region
-        if pointer.current_focus().and_then(|x| x.wl_surface()).as_ref() == Some(surface) {
+        let Some(current_focus) = pointer.current_focus() else {
+            return;
+        };
+        if current_focus.wl_surface().as_deref() == Some(surface) {
             with_pointer_constraint(surface, pointer, |constraint| {
                 constraint.unwrap().activate();
             });
@@ -380,7 +353,7 @@ impl<BackendData: Backend> XdgActivationHandler for ScreenComposer<BackendData> 
             let w = self
                 .space
                 .elements()
-                .find(|window| window.wl_surface().map(|s| s == surface).unwrap_or(false))
+                .find(|window| window.wl_surface().map(|s| *s == surface).unwrap_or(false))
                 .cloned();
             if let Some(window) = w {
                 self.space.raise_element(&window, true);
@@ -517,16 +490,28 @@ delegate_security_context!(@<BackendData: Backend + 'static> ScreenComposer<Back
 
 #[cfg(feature = "xwayland")]
 impl<BackendData: Backend + 'static> XWaylandKeyboardGrabHandler for ScreenComposer<BackendData> {
-    fn keyboard_focus_for_xsurface(&self, surface: &WlSurface) -> Option<FocusTarget<BackendData>> {
+    fn keyboard_focus_for_xsurface(&self, surface: &WlSurface) -> Option<KeyboardFocusTarget<BackendData>> {
         let elem = self
             .space
             .elements()
-            .find(|elem| elem.wl_surface().as_ref() == Some(surface))?;
-        Some(FocusTarget::Window(elem.clone()))
+            .find(|elem| elem.wl_surface().as_deref() == Some(surface))?;
+        Some(KeyboardFocusTarget::Window(elem.clone()))
     }
 }
 #[cfg(feature = "xwayland")]
 delegate_xwayland_keyboard_grab!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+
+#[cfg(feature = "xwayland")]
+delegate_xwayland_shell!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+
+
+impl<BackendData: Backend> XdgForeignHandler for ScreenComposer<BackendData> {
+    fn xdg_foreign_state(&mut self) -> &mut XdgForeignState {
+        &mut self.xdg_foreign_state
+    }
+}
+smithay::delegate_xdg_foreign!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+
 
 impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     pub fn init(
@@ -565,7 +550,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                     profiling::scope!("dispatch_clients");
                     // Safety: we don't drop the display
                     unsafe {
-                        display.get_mut().dispatch_clients(&mut data.state).unwrap();
+                        display.get_mut().dispatch_clients(data).unwrap();
                     }
                     Ok(PostAction::Continue)
                 },
@@ -599,11 +584,13 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         if BackendData::HAS_GESTURES {
             PointerGesturesState::new::<Self>(&dh);
         }
+        TabletManagerState::new::<Self>(&dh);
         SecurityContextState::new::<Self, _>(&dh, |client| {
             client
                 .get_data::<ClientState>()
                 .map_or(true, |client_state| client_state.security_context.is_none())
         });
+        let xdg_foreign_state = XdgForeignState::new::<Self>(&dh);
 
         // init input
         let seat_name = backend_data.seat_name();
@@ -614,49 +601,14 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         seat.add_keyboard(XkbConfig::default(), 200, 25)
             .expect("Failed to initialize the keyboard");
 
-        let cursor_status2 = cursor_status.clone();
-        seat.tablet_seat().on_cursor_surface(move |_tool, new_status| {
-            // TODO: tablet tools should have their own cursors
-            *cursor_status2.lock().unwrap() = new_status;
-        });
-
         let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
 
         #[cfg(feature = "xwayland")]
-        let xwayland = {
-            XWaylandKeyboardGrabState::new::<Self>(&dh);
+        let xwayland_shell_state = xwayland_shell::XWaylandShellState::new::<Self>(&dh.clone());
 
-            let (xwayland, channel) = XWayland::new(&dh);
-            let dh = dh.clone();
-            let ret = handle.insert_source(channel, move |event, _, data| match event {
-                XWaylandEvent::Ready {
-                    x11_socket,
-                    display_number
-                } => {
-                    // let connection = X11Connection::connect(x11_socket).expect("Failed to connect to X11 server");
-                    // let client = X11Client::new(display_number, connection.clone());
-                    // let mut wm = X11Wm::start_wm(data.state.handle.clone(), dh.clone(), connection, client)
-                    //     .expect("Failed to attach X11 Window Manager");
-                    // let cursor = Cursor::load();
-                    // let image = cursor.get_image(1, Duration::ZERO);
-                    // wm.set_cursor(
-                    //     &image.pixels_rgba,
-                    //     Size::from((image.width as u16, image.height as u16)),
-                    //     Point::from((image.xhot as u16, image.yhot as u16)),
-                    // )
-                    // .expect("Failed to set xwayland default cursor");
-                    // data.state.xwm = Some(wm);
-                    // data.state.xdisplay = Some(display);
-                }
-                XWaylandEvent::Exited => {
-                    let _ = data.state.xwm.take();
-                }
-            });
-            if let Err(e) = ret {
-                tracing::error!("Failed to insert the XWaylandSource into the event loop: {}", e);
-            }
-            xwayland
-        };
+        #[cfg(feature = "xwayland")]
+        XWaylandKeyboardGrabState::new::<Self>(&dh.clone());
+        
         let layers_engine = LayersEngine::new(500.0, 500.0);
         let root_layer = layers_engine.new_layer();
         root_layer.set_layout_style(taffy::Style {
@@ -692,6 +644,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             xdg_shell_state,
             presentation_state,
             fractional_scale_manager_state,
+            xdg_foreign_state,
             dnd_icon: None,
             suppressed_keys: Vec::new(),
             cursor_status,
@@ -700,7 +653,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             pointer,
             clock,
             #[cfg(feature = "xwayland")]
-            xwayland,
+            xwayland_shell_state,
             #[cfg(feature = "xwayland")]
             xwm: None,
             #[cfg(feature = "xwayland")]
@@ -784,11 +737,14 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     #[profiling::function]
     fn window_view_for_surface(&self, surface: &WlSurface, states: &SurfaceData, location: &smithay::utils::Point<f64, smithay::utils::Physical>, scale: f64) -> Option<WindowViewSurface> {
         let id = surface.id();
-        let cached_state = states.cached_state.current::<SurfaceCachedState>();
+        let mut cached_state = states.cached_state.get::<SurfaceCachedState>();
+        let cached_state = cached_state.current();
         let surface_geometry = cached_state.geometry.unwrap_or_default().to_f64().to_physical(scale);
-        let surface_attributes = states.cached_state.current::<SurfaceAttributes>();
+        let mut surface_attributes = states.cached_state.get::<SurfaceAttributes>();
+        let surface_attributes = surface_attributes.current();
         if let Some(render_surface) = states.data_map.get::<RendererSurfaceStateUserData>() {
-            let render_surface = render_surface.borrow();
+            let render_surface = render_surface.lock().unwrap();
+            
             if let Some(view) = render_surface.view() {
                 let texture = self.backend_data.texture_for_surface(&render_surface);
                 let wvs = WindowViewSurface {
@@ -854,11 +810,12 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                     |_, states, location| {
                         let mut location = *location;
                         let data = states.data_map.get::<RendererSurfaceStateUserData>();
-                        let cached_state = states.cached_state.current::<SurfaceCachedState>();
+                        let mut cached_state = states.cached_state.get::<SurfaceCachedState>();
+                        let cached_state = cached_state.current();
                         let surface_geometry = cached_state.geometry.unwrap_or_default();
                 
                         if let Some(data) = data {
-                            let data = &*data.borrow();
+                            let data = data.lock().unwrap();
             
                             if let Some(view) = data.view() {
                                 location += view.offset.to_f64().to_physical(scale_factor);

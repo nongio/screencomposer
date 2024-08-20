@@ -107,12 +107,10 @@ pub fn run_winit() {
 
     #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
     let (mut backend, mut winit) = match winit::init_from_attributes_with_gl_attr::<SkiaRenderer>(
-        WindowAttributes {
-            title: "Screen Composer".to_string(),
-            inner_size: Some(Size::new(LogicalSize::new(2256.0/2.0, 1504.0/2.0))),
-            visible: true,
-            ..WindowAttributes::default()
-        },
+        WindowAttributes::default()
+        .with_title("Screen Composer".to_string())
+        .with_inner_size(Size::new(LogicalSize::new(2256.0/2.0, 1504.0/2.0)))
+        .with_visible(true),
         GlAttributes {
             version: (3, 0),
             profile: None,

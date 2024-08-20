@@ -206,9 +206,10 @@ where
     fn draw(
         &self,
         frame: &mut <R as Renderer>::Frame<'_>,
-        _src: Rectangle<f64, Buffer>,
+        src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
+        opaque_regions: &[Rectangle<i32, Physical>],
     ) -> Result<(), R::Error> {
         // FIXME: respect the src for cropping
         let scale = dst.size.to_f64() / self.src().size;
@@ -250,6 +251,7 @@ where
                 texture_src.to_f64(),
                 dst,
                 &damage,
+                &[],
                 Transform::Normal,
                 1.0,
             )?;

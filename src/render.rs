@@ -142,9 +142,9 @@ pub fn render_output<'frame, R>(
     space: &Space<WindowElement>,
     custom_elements: impl IntoIterator<Item = impl Into<OutputRenderElements<'frame, R, WindowRenderElement<R>>>>,
     renderer: &mut R,
-    damage_tracker: &mut OutputDamageTracker,
+    damage_tracker: &'frame mut OutputDamageTracker,
     age: usize,
-) -> Result<RenderOutputResult, OutputDamageTrackerError<R>>
+) -> Result<RenderOutputResult<'frame>, OutputDamageTrackerError<R>>
 where
     R: Renderer + ImportAll + ImportMem + 'frame,
     R::TextureId: Clone + 'static,

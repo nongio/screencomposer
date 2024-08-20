@@ -5,8 +5,7 @@ use smithay::xwayland::{X11Wm, XWaylandClientData};
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
     desktop::{
-        layer_map_for_output, space::SpaceElement, LayerSurface, PopupKind, PopupManager, Space,
-        WindowSurfaceType,
+        layer_map_for_output, space::SpaceElement, LayerSurface, PopupKind, PopupManager, Space, WindowSurface, WindowSurfaceType
     },
     output::Output,
     reexports::{
@@ -67,7 +66,7 @@ fn fullscreen_output_geometry(
         .or_else(|| {
             let w = space
                 .elements()
-                .find(|window| window.wl_surface().map(|s| s == *wl_surface).unwrap_or(false))
+                .find(|window| window.wl_surface().map(|s| &*s == wl_surface).unwrap_or(false))
                 .cloned();
             w.and_then(|w| space.outputs_for_element(&w).get(0).cloned())
         })
@@ -115,35 +114,33 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
             let maybe_dmabuf = with_states(surface, |surface_data| {
                 surface_data
                     .cached_state
-                    .pending::<SurfaceAttributes>()
+                    .get::<SurfaceAttributes>()
+                    .pending()
                     .buffer
                     .as_ref()
                     .and_then(|assignment| match assignment {
-                        BufferAssignment::NewBuffer(buffer) => get_dmabuf(buffer).ok(),
+                        BufferAssignment::NewBuffer(buffer) => get_dmabuf(buffer).cloned().ok(),
                         _ => None,
                     })
             });
             if let Some(dmabuf) = maybe_dmabuf {
                 if let Ok((blocker, source)) = dmabuf.generate_blocker(Interest::READ) {
-                    let client = surface.client().unwrap();
-                    let res = state.handle.insert_source(source, move |_, _, data| {
-                        data.state
-                            .client_compositor_state(&client)
-                            .blocker_cleared(&mut data.state, &data.display_handle);
-                        Ok(())
-                    });
-                    if res.is_ok() {
-                        add_blocker(surface, blocker);
+                    if let Some(client) = surface.client() {
+                        let res = state.handle.insert_source(source, move |_, _, data| {
+                            let dh = data.display_handle.clone();
+                            data.client_compositor_state(&client).blocker_cleared(data, &dh);
+                            Ok(())
+                        });
+                        if res.is_ok() {
+                            add_blocker(surface, blocker);
+                        }
                     }
                 }
             }
-        })
+        });
     }
 
     fn commit(&mut self, surface: &WlSurface) {
-        #[cfg(feature = "xwayland")]
-        X11Wm::commit_hook::<CalloopData<BackendData>>(surface);
-
         on_commit_buffer_handler::<Self>(surface);
         self.backend_data.early_import(surface);
 
@@ -152,13 +149,13 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
             while let Some(parent) = get_parent(&root) {
                 root = parent;
             }
-            if let Some(WindowElement::Wayland(window)) = self.window_for_surface(&root) {
-                window.on_commit();
+            if let Some(window) = self.window_for_surface(&root) {
+                window.0.on_commit();
             }
         }
         self.popups.commit(surface);
-        let popups = &mut self.popups;
-        ensure_initial_configure(surface, &self.space, popups)
+
+        ensure_initial_configure(surface, &self.space, &mut self.popups)
     }
 }
 
@@ -200,7 +197,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
     pub fn window_for_surface(&self, surface: &WlSurface) -> Option<WindowElement> {
         self.space
             .elements()
-            .find(|window| window.wl_surface().map(|s| s == *surface).unwrap_or(false))
+            .find(|window| window.wl_surface().map(|s| &*s == surface).unwrap_or(false))
             .cloned()
     }
 }
@@ -226,12 +223,12 @@ fn ensure_initial_configure(surface: &WlSurface, space: &Space<WindowElement>, p
 
     if let Some(window) = space
         .elements()
-        .find(|window| window.wl_surface().map(|s| s == *surface).unwrap_or(false))
+        .find(|window| window.wl_surface().map(|s| &*s == surface).unwrap_or(false))
         .cloned()
     {
         // send the initial configure if relevant
         #[cfg_attr(not(feature = "xwayland"), allow(irrefutable_let_patterns))]
-        if let WindowElement::Wayland(ref toplevel) = window {
+        if let WindowSurface::Wayland(ref toplevel) = window.underlying_surface() {
             let initial_configure_sent = with_states(surface, |states| {
                 states
                     .data_map
@@ -242,7 +239,7 @@ fn ensure_initial_configure(surface: &WlSurface, space: &Space<WindowElement>, p
                     .initial_configure_sent
             });
             if !initial_configure_sent {
-                toplevel.toplevel().send_configure();
+                toplevel.send_configure();
             }
         }
 
@@ -320,7 +317,7 @@ fn ensure_initial_configure(surface: &WlSurface, space: &Space<WindowElement>, p
     };
 }
 
-fn place_new_window(
+pub fn place_new_window(
     space: &mut Space<WindowElement>,
     pointer_location: Point<f64, Logical>,
     window: &WindowElement,
@@ -346,8 +343,8 @@ fn place_new_window(
 
     // set the initial toplevel bounds
     #[allow(irrefutable_let_patterns)]
-    if let WindowElement::Wayland(window) = window {
-        window.toplevel().with_pending_state(|state| {
+    if let WindowSurface::Wayland(window) = window.underlying_surface() {
+        window.with_pending_state(|state| {
             state.bounds = Some(output_geometry.size);
         });
     }

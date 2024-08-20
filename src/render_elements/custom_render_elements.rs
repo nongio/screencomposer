@@ -1,4 +1,4 @@
-use smithay::backend::renderer::{ImportAll, ImportMem, element::{surface::WaylandSurfaceRenderElement, Id, Element, RenderElement}, utils::CommitCounter};
+use smithay::{backend::renderer::{element::{surface::WaylandSurfaceRenderElement, Element, Id, RenderElement}, utils::{CommitCounter, DamageSet}, ImportAll, ImportMem}, utils::{Physical, Rectangle, Scale}};
 
 use crate::{drawing::{PointerRenderElement, FpsElement}, skia_renderer::SkiaFrame};
 
@@ -51,11 +51,11 @@ impl<'a> Element for PhantomElement<'a> {
     /// Get the damage since the provided commit relative to the element
     fn damage_since(
         &self,
-        scale: smithay::utils::Scale<f64>,
-        _commit: Option<CommitCounter>,
-    ) -> Vec<smithay::utils::Rectangle<i32, smithay::utils::Physical>> {
-            vec![smithay::utils::Rectangle::from_loc_and_size((0, 0), self.geometry(scale).size)]
-    }
+        scale: Scale<f64>,
+        _commit: Option<CommitCounter>) -> smithay::backend::renderer::utils::DamageSet<i32, Physical> {
+            DamageSet::from_slice(&[Rectangle::from_loc_and_size((0, 0), self.geometry(scale).size)])
+
+        }
     fn alpha(&self) -> f32 {
         0.0
     }
@@ -72,6 +72,8 @@ where
         _src: smithay::utils::Rectangle<f64, smithay::utils::Buffer>,
         _dst: smithay::utils::Rectangle<i32, smithay::utils::Physical>,
         _damage: &[smithay::utils::Rectangle<i32, smithay::utils::Physical>],
+        _opaque_regions: &[Rectangle<i32, Physical>],
+ 
     ) -> Result<(), <R as smithay::backend::renderer::Renderer>::Error>
     
     {

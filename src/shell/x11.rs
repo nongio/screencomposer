@@ -1,7 +1,7 @@
 use std::{cell::RefCell, os::unix::io::OwnedFd};
 
 use smithay::{
-    desktop::{space::SpaceElement, Window},
+    desktop::{space::SpaceElement, Window, WindowSurface},
     input::pointer::Focus, utils::{Logical, Rectangle, SERIAL_COUNTER}, wayland::{
         compositor::with_states,
         selection::{data_device::{
@@ -21,7 +21,7 @@ use tracing::{error, trace};
 use crate::{focus::{KeyboardFocusTarget, PointerFocusTarget}, state::Backend, CalloopData, ScreenComposer};
 
 use super::{
-    place_new_window, FullscreenSurface, PointerMoveSurfaceGrab, PointerResizeSurfaceGrab, ResizeData, ResizeState, ResizeSurfaceGrab, SurfaceData, TouchMoveSurfaceGrab, WindowElement
+    place_new_window, FullscreenSurface, PointerMoveSurfaceGrab, PointerResizeSurfaceGrab, ResizeData, ResizeState, SurfaceData, TouchMoveSurfaceGrab, WindowElement
 };
 
 #[derive(Debug, Default)]
@@ -53,7 +53,7 @@ impl<BackendData: Backend> XwmHandler for ScreenComposer<BackendData> {
             unreachable!()
         };
         xsurface.configure(Some(bbox)).unwrap();
-        window.set_ssd(!xsurface.is_decorated());
+        // window.set_ssd(!xsurface.is_decorated());
     }
 
     fn mapped_override_redirect_window(&mut self, _xwm: XwmId, window: X11Surface) {
@@ -160,7 +160,7 @@ impl<BackendData: Backend> XwmHandler for ScreenComposer<BackendData> {
             let geometry = self.space.output_geometry(output).unwrap();
 
             window.set_fullscreen(true).unwrap();
-            elem.set_ssd(false);
+            // elem.set_ssd(false);
             window.configure(geometry).unwrap();
             output.user_data().insert_if_missing(FullscreenSurface::default);
             output
@@ -179,7 +179,7 @@ impl<BackendData: Backend> XwmHandler for ScreenComposer<BackendData> {
             .find(|e| matches!(e.0.x11_surface(), Some(w) if w == &window))
         {
             window.set_fullscreen(false).unwrap();
-            elem.set_ssd(!window.is_decorated());
+            // elem.set_ssd(!window.is_decorated());
             if let Some(output) = self.space.outputs().find(|o| {
                 o.user_data()
                     .get::<FullscreenSurface>()
@@ -245,7 +245,7 @@ impl<BackendData: Backend> XwmHandler for ScreenComposer<BackendData> {
         if let Some(keyboard) = self.seat.get_keyboard() {
             // check that an X11 window is focused
             if let Some(KeyboardFocusTarget::Window(w)) = keyboard.current_focus() {
-                if let Some(surface) = w.x11_surface() {
+                if let WindowSurface::X11(surface) = w.underlying_surface() {
                     if surface.xwm_id().unwrap() == xwm {
                         return true;
                     }

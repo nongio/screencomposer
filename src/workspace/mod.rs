@@ -10,7 +10,7 @@ use layers::{engine::LayersEngine, prelude::{taffy, Easing, Interpolate, Layer, 
 use workspace_selector::WorkspaceSelectorView;
 use core::fmt;
 use std::{collections::HashMap, fmt::Debug, hash::{Hash, Hasher}, sync::{atomic::{AtomicBool, AtomicI32, AtomicU32}, Arc, Mutex, RwLock, Weak}};
-use smithay::{input::pointer::CursorImageStatus, reexports::wayland_server::{backend::ObjectId, protocol::wl_surface::WlSurface, Resource}, wayland::shell::xdg::XdgToplevelSurfaceData};
+use smithay::{input::pointer::CursorImageStatus, reexports::wayland_server::{backend::ObjectId, protocol::wl_surface::{self, WlSurface}, Resource}, wayland::shell::xdg::XdgToplevelSurfaceData};
 use crate::{shell::WindowElement, utils::{image_from_path, natural_layout::{natural_layout, LayoutRect}, Observable, Observer}};
 
 pub use background::BackgroundView;
@@ -241,8 +241,9 @@ impl  Workspace {
         windows
             .filter(|(w,l, state)| w.wl_surface().is_some()) // do we need this?
             .for_each(|(w, l, state)| {
+                let surface = w.wl_surface().map(|s| (s.as_ref()).clone()).unwrap();
                 smithay::wayland::compositor::with_states(
-                    w.wl_surface().as_ref().unwrap(),
+                    &surface,
                     |states| {
                         let attributes: std::sync::MutexGuard<'_, smithay::wayland::shell::xdg::XdgToplevelSurfaceRoleAttributes> = states
                             .data_map
@@ -254,9 +255,10 @@ impl  Workspace {
                             
                         if let Some(app_id) = attributes.app_id.as_ref() {
                             let id = w.wl_surface().unwrap().id();
+                            let wl_surface = w.wl_surface().map(|s| (s.as_ref()).clone());
                             let window = Window {
                                 app_id: app_id.to_string(),
-                                wl_surface: w.wl_surface(),
+                                wl_surface,
                                 window_element: Some(w),
                                 base_layer: l,
                                 x: state.x,

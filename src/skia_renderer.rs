@@ -803,9 +803,9 @@ impl<'a> Frame for SkiaFrame {
         {
             profiling::scope!("context_submit");
             // surface.gr_context.submit(None);
-            surface.gr_context.flush_and_submit_surface(&mut surface.surface, GrSyncCpu::No);
+            surface.gr_context.flush_and_submit_surface(&mut surface.surface, GrSyncCpu::Yes);
         }
-        // surface.surface.flush_submit_and_sync_cpu();
+        
         // Ok(syncpoint)
         Ok(SyncPoint::signaled())
     }

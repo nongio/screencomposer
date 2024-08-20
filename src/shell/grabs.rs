@@ -41,7 +41,7 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>> for PointerM
         &mut self,
         data: &mut ScreenComposer<BackendData>,
         handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
-        _focus: Option<(PointerFocusTarget<BackendData>, Point<f64, Logical>)>,
+        _focus: Option<(PointerFocusTarget, Point<f64, Logical>)>,
         event: &MotionEvent,
     ) {
         // While the grab is active, no client has pointer focus
@@ -69,7 +69,7 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>> for PointerM
         &mut self,
         data: &mut ScreenComposer<BackendData>,
         handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
-        focus: Option<(PointerFocusTarget<BackendData>, Point<f64, Logical>)>,
+        focus: Option<(PointerFocusTarget, Point<f64, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
         handle.relative_motion(data, focus, event);
@@ -361,7 +361,7 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>> for PointerR
         &mut self,
         data: &mut ScreenComposer<BackendData>,
         handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
-        _focus: Option<(PointerFocusTarget<BackendData>, Point<f64, Logical>)>,
+        _focus: Option<(PointerFocusTarget, Point<f64, Logical>)>,
         event: &MotionEvent,
     ) {
         // While the grab is active, no client has pointer focus
@@ -438,7 +438,7 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>> for PointerR
         &mut self,
         data: &mut ScreenComposer<BackendData>,
         handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
-        focus: Option<(PointerFocusTarget<BackendData>, Point<f64, Logical>)>,
+        focus: Option<(PointerFocusTarget, Point<f64, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
         handle.relative_motion(data, focus, event);

@@ -3,21 +3,21 @@ use std::cell::RefCell;
 use smithay::{
     desktop::{
         find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output, space::SpaceElement,
-        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, Window, WindowSurfaceType,
+        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, Space, Window,
+        WindowSurfaceType,
     },
     input::{pointer::Focus, Seat},
     output::Output,
     reexports::{
-        wayland_protocols::xdg::decoration as xdg_decoration,
-        wayland_protocols::xdg::shell::server::xdg_toplevel,
+        wayland_protocols::xdg::{decoration as xdg_decoration, shell::server::xdg_toplevel},
         wayland_server::{
             protocol::{wl_output, wl_seat, wl_surface::WlSurface},
             Resource,
         },
     },
-    utils::Serial,
+    utils::{Logical, Point, Serial},
     wayland::{
-        compositor::with_states,
+        compositor::{self, with_states},
         seat::WaylandFocus,
         shell::xdg::{
             Configure, PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
@@ -28,11 +28,11 @@ use smithay::{
 use tracing::{trace, warn};
 
 use crate::{
-    focus::PointerFocusTarget, shell::TouchResizeSurfaceGrab, state::{Backend, ScreenComposer}, workspace::WindowView
+    focus::{KeyboardFocusTarget, PointerFocusTarget}, shell::TouchResizeSurfaceGrab, state::{Backend, ScreenComposer}, workspace::WindowView
 };
 
 use super::{
-    fullscreen_output_geometry, place_new_window, FullscreenSurface, PointerMoveSurfaceGrab, PointerResizeSurfaceGrab, ResizeData, ResizeState, ResizeSurfaceGrab, SurfaceData, TouchMoveSurfaceGrab, WindowElement
+    fullscreen_output_geometry, place_new_window, FullscreenSurface, PointerMoveSurfaceGrab, PointerResizeSurfaceGrab, ResizeData, ResizeState, SurfaceData, TouchMoveSurfaceGrab, WindowElement
 };
 
 impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
@@ -45,7 +45,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         // of a xdg_surface has to be sent during the commit if
         // the surface is not already configured
         let id = surface.wl_surface().id();
-        let window = WindowElement::Wayland(Window::new(surface));
+        let window = WindowElement(Window::new_wayland_window(surface));
         place_new_window(&mut self.space, self.pointer.current_location(), &window, true);
         self.space.refresh();
         let scale = self.space.outputs_for_element(&window).first().unwrap().current_scale().fractional_scale();
@@ -116,7 +116,62 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         edges: xdg_toplevel::ResizeEdge,
     ) {
         let seat: Seat<ScreenComposer<BackendData>> = Seat::from_resource(&seat).unwrap();
-        // TODO: touch resize.
+
+        if let Some(touch) = seat.get_touch() {
+            if touch.has_grab(serial) {
+                let start_data = touch.grab_start_data().unwrap();
+                tracing::info!(?start_data);
+
+                // If the client disconnects after requesting a move
+                // we can just ignore the request
+                let Some(window) = self.window_for_surface(surface.wl_surface()) else {
+                    tracing::info!("no window");
+                    return;
+                };
+
+                // If the focus was for a different surface, ignore the request.
+                if start_data.focus.is_none()
+                    || !start_data
+                        .focus
+                        .as_ref()
+                        .unwrap()
+                        .0
+                        .same_client_as(&surface.wl_surface().id())
+                {
+                    tracing::info!("different surface");
+                    return;
+                }
+                let geometry = window.geometry();
+                let loc = self.space.element_location(&window).unwrap();
+                let (initial_window_location, initial_window_size) = (loc, geometry.size);
+
+                with_states(surface.wl_surface(), move |states| {
+                    states
+                        .data_map
+                        .get::<RefCell<SurfaceData>>()
+                        .unwrap()
+                        .borrow_mut()
+                        .resize_state = ResizeState::Resizing(ResizeData {
+                        edges: edges.into(),
+                        initial_window_location,
+                        initial_window_size,
+                    });
+                });
+
+                let grab = TouchResizeSurfaceGrab {
+                    start_data,
+                    window,
+                    edges: edges.into(),
+                    initial_window_location,
+                    initial_window_size,
+                    last_window_size: initial_window_size,
+                };
+
+                touch.set_grab(self, grab, serial);
+                return;
+            }
+        }
+
         let pointer = seat.get_pointer().unwrap();
 
         // Check that this surface has a click grab.
@@ -157,7 +212,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             });
         });
 
-        let grab = ResizeSurfaceGrab {
+        let grab = PointerResizeSurfaceGrab {
             start_data,
             window,
             edges: edges.into(),
@@ -218,11 +273,12 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 }
             }
 
+            let surface_clone = surface.clone();
+            use std::borrow::Cow;
+            
             let window = self.space
                 .elements()
-                .find(|element| element.wl_surface().as_ref() == Some(&surface))
-                .cloned();
-
+                .find(|element| element.wl_surface().map(|s| s) == Some(Cow::Borrowed(&surface)));
             if let Some(window) = window {
                 use xdg_decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
                 let is_ssd = configure
@@ -230,7 +286,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     .decoration_mode
                     .map(|mode| mode == Mode::ServerSide)
                     .unwrap_or(false);
-                window.set_ssd(is_ssd);
+                // window.set_ssd(is_ssd);
                 self.update_workspace_applications();
 
             }
@@ -262,7 +318,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 let window = self
                     .space
                     .elements()
-                    .find(|window| window.wl_surface().map(|s| s == *wl_surface).unwrap_or(false))
+                    .find(|window| window.wl_surface().map(|s| &*s == wl_surface).unwrap_or(false))
                     .unwrap();
 
                 surface.with_pending_state(|state| {
@@ -390,9 +446,9 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         if let Some(root) = find_popup_root_surface(&kind).ok().and_then(|root| {
             self.space
                 .elements()
-                .find(|w| w.wl_surface().map(|s| s == root).unwrap_or(false))
+                .find(|w| w.wl_surface().map(|s| *s == root).unwrap_or(false))
                 .cloned()
-                .map(PointerFocusTarget::Window)
+                .map(KeyboardFocusTarget::from)
                 .or_else(|| {
                     self.space
                         .outputs()
@@ -400,7 +456,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                             let map = layer_map_for_output(o);
                             map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL).cloned()
                         })
-                        .map(PointerFocusTarget::LayerSurface)
+                        .map(KeyboardFocusTarget::LayerSurface)
                 })
         }) {
             let ret = self.popups.grab_popup(root, kind, &seat, serial);

@@ -2,7 +2,7 @@
 use smithay::{
     backend::renderer::{
         element::{Element, Id, RenderElement},
-        utils::CommitCounter,
+        utils::{CommitCounter, DamageSet},
         Renderer,
     },
     utils::{Buffer, Physical, Point, Rectangle, Scale},
@@ -58,9 +58,8 @@ impl Element for SkiaElement {
     fn damage_since(
         &self,
         scale: Scale<f64>,
-        _commit: Option<CommitCounter>,
-    ) -> Vec<Rectangle<i32, Physical>> {
-            vec![Rectangle::from_loc_and_size((0, 0), self.geometry(scale).size)]
+        _commit: Option<CommitCounter>) -> smithay::backend::renderer::utils::DamageSet<i32, Physical> {
+            DamageSet::from_slice(&[Rectangle::from_loc_and_size((0, 0), self.geometry(scale).size)])
     }
     fn alpha(&self) -> f32 {
         0.5
@@ -75,6 +74,7 @@ fn draw(
         _src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
+        _opaque_regions: &[Rectangle<i32, Physical>],
     ) -> Result<(), <SkiaRenderer as Renderer>::Error> {
         
         let mut canvas = frame.skia_surface.clone();
@@ -152,18 +152,19 @@ fn draw(
 }
 
 
-impl<'renderer, 'alloc> RenderElement<UdevRenderer<'renderer, 'alloc>> for SkiaElement
+impl<'renderer> RenderElement<UdevRenderer<'renderer>> for SkiaElement
 {
     fn draw(
         &self,
-        frame: &mut <UdevRenderer<'renderer, 'alloc> as Renderer>::Frame<'_>,
+        frame: &mut <UdevRenderer<'renderer> as Renderer>::Frame<'_>,
         src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
-    ) -> Result<(), <UdevRenderer<'renderer, 'alloc> as Renderer>::Error>
+        opaque_regions: &[Rectangle<i32, Physical>]
+    ) -> Result<(), <UdevRenderer<'renderer> as Renderer>::Error>
     
     {
-        RenderElement::<SkiaRenderer>::draw(self, frame.as_mut(), src, dst, damage)
+        RenderElement::<SkiaRenderer>::draw(self, frame.as_mut(), src, dst, damage, opaque_regions)
         .map_err(|e| {
             e.into()
         })

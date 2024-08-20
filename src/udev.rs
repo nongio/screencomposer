@@ -484,16 +484,7 @@ pub fn run_udev() {
      */
 
     while state.running.load(Ordering::SeqCst) {
-        let mut calloop_data = CalloopData {
-            state,
-            display_handle,
-        };
         let result = event_loop.dispatch(Some(Duration::from_millis(16)), &mut state);
-        CalloopData {
-            state,
-            display_handle,
-        } = calloop_data;
-
         if result.is_err() {
             state.running.store(false, Ordering::SeqCst);
         } else {
