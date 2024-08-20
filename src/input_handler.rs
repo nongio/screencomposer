@@ -1,7 +1,7 @@
 use std::{convert::TryInto, process::Command, sync::atomic::Ordering};
 
 use crate::{
-    focus::FocusTarget,
+    focus::PointerFocusTarget,
     shell::{FullscreenSurface, WindowElement},
     ScreenComposer,
 };
@@ -368,7 +368,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         }
     }
 
-    pub fn surface_under(&self, pos: Point<f64, Logical>) -> Option<(FocusTarget<BackendData>, Point<i32, Logical>)> {
+    pub fn surface_under(&self, pos: Point<f64, Logical>) -> Option<(PointerFocusTarget, Point<i32, Logical>)> {
         let output = self.space.outputs().find(|o| {
             let geometry = self.space.output_geometry(o).unwrap();
             geometry.contains(pos.to_i32_round())
@@ -415,13 +415,13 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         under
     }
 
-    fn on_pointer_axis<B: InputBackend>(&mut self, _dh: &DisplayHandle, evt: B::PointerAxisEvent) {
+    fn on_pointer_axis<B: InputBackend>(&mut self, evt: B::PointerAxisEvent) {
         let horizontal_amount = evt
             .amount(input::Axis::Horizontal)
-            .unwrap_or_else(|| evt.amount_v120(input::Axis::Horizontal).unwrap_or(0.0) * 3.0 / 120.);
+            .unwrap_or_else(|| evt.amount_v120(input::Axis::Horizontal).unwrap_or(0.0) * 15.0 / 120.);
         let vertical_amount = evt
             .amount(input::Axis::Vertical)
-            .unwrap_or_else(|| evt.amount_v120(input::Axis::Vertical).unwrap_or(0.0) * 3.0 / 120.);
+            .unwrap_or_else(|| evt.amount_v120(input::Axis::Vertical).unwrap_or(0.0) * 15.0 / 120.);
         let horizontal_amount_discrete = evt.amount_v120(input::Axis::Horizontal);
         let vertical_amount_discrete = evt.amount_v120(input::Axis::Vertical);
 
@@ -449,7 +449,6 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                     frame = frame.stop(Axis::Vertical);
                 }
             }
-
             let pointer = self.pointer.clone();
             pointer.axis(self, frame);
             pointer.frame(self);
@@ -459,12 +458,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
 #[cfg(any(feature = "winit", feature = "x11"))]
 impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
-    pub fn process_input_event_windowed<B: InputBackend>(
-        &mut self,
-        dh: &DisplayHandle,
-        event: InputEvent<B>,
-        output_name: &str,
-    ) {
+    pub fn process_input_event_windowed<B: InputBackend>(&mut self, event: InputEvent<B>, output_name: &str) {
         match event {
             InputEvent::Keyboard { event } => match self.keyboard_key_to_action::<B>(event) {
                 KeyAction::ScaleUp => {
@@ -576,17 +570,16 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     .find(|o| o.name() == output_name)
                     .unwrap()
                     .clone();
-                self.on_pointer_move_absolute_windowed::<B>(dh, event, &output)
+                self.on_pointer_move_absolute_windowed::<B>(event, &output)
             }
             InputEvent::PointerButton { event } => self.on_pointer_button::<B>(event),
-            InputEvent::PointerAxis { event } => self.on_pointer_axis::<B>(dh, event),
+            InputEvent::PointerAxis { event } => self.on_pointer_axis::<B>(event),
             _ => (), // other events are not handled in anvil (yet)
         }
     }
 
     fn on_pointer_move_absolute_windowed<B: InputBackend>(
         &mut self,
-        _dh: &DisplayHandle,
         evt: B::PointerMotionAbsoluteEvent,
         output: &Output,
     ) {
@@ -611,6 +604,20 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
             },
         );
         pointer.frame(self);
+    }
+
+    pub fn release_all_keys(&mut self) {
+        let keyboard = self.seat.get_keyboard().unwrap();
+        for keycode in keyboard.pressed_keys() {
+            keyboard.input(
+                self,
+                keycode.raw(),
+                KeyState::Released,
+                SCOUNTER.next_serial(),
+                0,
+                |_, _, _| FilterResult::Forward::<bool>,
+            );
+        }
     }
 }
 
@@ -796,7 +803,7 @@ impl ScreenComposer<UdevData> {
             InputEvent::PointerMotion { event, .. } => self.on_pointer_move::<B>(dh, event),
             InputEvent::PointerMotionAbsolute { event, .. } => self.on_pointer_move_absolute::<B>(dh, event),
             InputEvent::PointerButton { event, .. } => self.on_pointer_button::<B>(event),
-            InputEvent::PointerAxis { event, .. } => self.on_pointer_axis::<B>(dh, event),
+            InputEvent::PointerAxis { event, .. } => self.on_pointer_axis::<B>(event),
             InputEvent::TabletToolAxis { event, .. } => self.on_tablet_tool_axis::<B>(event),
             InputEvent::TabletToolProximity { event, .. } => self.on_tablet_tool_proximity::<B>(dh, event),
             InputEvent::TabletToolTip { event, .. } => self.on_tablet_tool_tip::<B>(event),
