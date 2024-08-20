@@ -1,0 +1,171 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches:
+    - main
+  pull_request:
+
+jobs:
+  format:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Cargo cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-rust_stable-${{ hashFiles('**/Cargo.toml') }}
+      - name: Format
+        run: cargo fmt --all -- --check
+  
+  clippy-check:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Get date for registry cache
+        id: date
+        run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
+      - name: Cargo registry cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ steps.date.outputs.date }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+      - name: Get cargo-cache latest version
+        id: cargocacheversion
+        run: echo "::set-output name=version::$(cargo search 'cargo-cache' --limit 1 | head -n 1 | cut -d ' ' -f 3 | cut -d '"' -f 2)"
+      - name: Cargo binaries cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/cargo-cache
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+          key: ${{ runner.os }}-cargo-binaries-${{ steps.cargocacheversion.outputs.version }}
+      - name: Install cargo-cache
+        run: cargo install cargo-cache --version ${{ steps.cargocacheversion.outputs.version }}
+      - name: Clean cargo cache of old items
+        run: cargo cache clean-unref
+      - name: System dependencies
+        run: sudo apt-get update; sudo apt-get install -y libdrm-dev libudev-dev libgbm-dev libxkbcommon-dev libegl1-mesa-dev libwayland-dev libinput-dev libdbus-1-dev libsystemd-dev libseat-dev
+      - name: Clippy ScreenComposer
+        run: cargo clippy --features "test_all_features" -- -D warnings
+  
+  check-msrv:
+    env:
+      RUSTFLAGS: "-D warnings"
+
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@1.72.0
+      - name: Get date for registry cache
+        id: date
+        run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
+      - name: Cargo registry cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ steps.date.outputs.date }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+      - name: System dependencies
+        run: sudo apt-get update; sudo apt-get install -y libdrm-dev libudev-dev libgbm-dev libxkbcommon-dev libegl1-mesa-dev libwayland-dev libinput-dev libdbus-1-dev libsystemd-dev libseat-dev
+      - name: Check
+        run: cargo check --features "test_all_features"
+
+  check-minimal:
+    env:
+      RUSTFLAGS: "-D warnings"
+
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+      - name: Get date for registry cache
+        id: date
+        run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
+      - name: Cargo registry cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ steps.date.outputs.date }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+      - name: System dependencies
+        run: sudo apt-get update; sudo apt-get install -y libdrm-dev libudev-dev libgbm-dev libxkbcommon-dev libegl1-mesa-dev libwayland-dev libinput-dev libdbus-1-dev libsystemd-dev libseat-dev
+      - name: Downgrade to minimal dependencies
+        run: cargo update -Z minimal-versions
+      - name: Fixup ahash with current nightly
+        run: cargo update -p ahash --precise 0.8.7
+      - name: Check
+        run: cargo check --features "test_all_features"
+
+  doc:
+    name: Documentation on Github Pages
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Get date for registry cache
+        id: date
+        run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
+      - name: Cargo registry cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ steps.date.outputs.date }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: System dependencies
+        run: sudo apt-get update; sudo apt-get install -y libudev-dev libgbm-dev libxkbcommon-dev libegl1-mesa-dev libwayland-dev libinput-dev libdbus-1-dev libsystemd-dev libseat-dev
+      
+      - name: Build Documentation
+        env: 
+          RUSTDOCFLAGS: --cfg=docsrs
+        run: cargo doc --no-deps --features "test_all_features" -p smithay -p calloop:0.14.0 -p drm -p gbm -p input -p udev -p wayland-server -p wayland-backend -p wayland-protocols@0.32.3 -p winit -p x11rb -p tracing
+        
+      - name: Setup index
+        run: cp ./doc_index.html ./target/doc/index.html
+
+      - name: Deploy
+        if: ${{ github.event_name == 'push' }}
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./target/doc
+          force_orphan: true
