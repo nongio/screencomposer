@@ -4,13 +4,13 @@ authors = ["Riccardo Canalicchio <riccardo.canalicchio@gmail.com>"]
 version = "0.1.6"
 edition = "2021"
 license = "MIT"
-rust-version = "1.65.0"
+rust-version = "1.80.0"
 
 [dependencies]
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 bitflags = "2.2.1"
 # this is the local version of Layers Rendering https://git.sr.ht/~nongio/layers
-layers = { path = "../layers", features = ["export-taffy"] }
+layers = { git = "https://github.com/nongio/layers", features = ["export-taffy"] }
 gl-rs = { package = "gl", version = "0.14.0" }
 wayland-server = "0.30.0"
 wayland-scanner = "0.30.0"
@@ -25,7 +25,7 @@ tracing = { version = "0.1.37", features = [
 ] }
 fps_ticker = { version = "1.0.0", optional = true }
 renderdoc = { version = "0.11.0", optional = true }
-smithay-drm-extras = { path = "../smithay/smithay-drm-extras", optional = true }
+
 puffin_http = { version = "0.13", optional = true }
 profiling = { version = "1.0" }
 thiserror = "1"
@@ -38,9 +38,14 @@ skia-bindings = {version = "0.70", default-features = true }
 tokio = { version = "1", features = ["full"] }
 skia-safe = "0.70"
 
+[dependencies.smithay-drm-extras]
+# path = "../smithay/smithay-drm-extras"
+git = "https://github.com/Smithay/smithay"
+optional = true
 
 [dependencies.smithay]
-path = "../smithay"
+# path = "../smithay"
+git = "https://github.com/Smithay/smithay"
 default-features = false
 features = [
     "backend_winit",
@@ -57,8 +62,8 @@ optional = true
 version = "0.12.0"
 
 
-[workspace]
-members = ["wlcs_screencomposer"]
+# [workspace]
+# members = ["wlcs_screencomposer"]
 
 
 [features]

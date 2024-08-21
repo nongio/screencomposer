@@ -5,7 +5,6 @@
     allow(dead_code, unused_imports)
 )]
 
-#![feature(core_panic)]
 
 #[cfg(any(feature = "udev", feature = "xwayland"))]
 pub mod cursor;

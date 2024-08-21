@@ -20,10 +20,7 @@ use smithay::{
                 ffi::{self, types::{GLint, GLuint}},
                 format::{fourcc_to_gl_formats, gl_internal_format_to_fourcc},
                 Capability, GlesError, GlesRenderbuffer, GlesRenderer, GlesTexture,
-            },
-            sync::{Fence, Interrupted, SyncPoint},
-            Bind, DebugFlags, ExportMem, Frame, ImportDma, ImportDmaWl, ImportEgl, ImportMem,
-            ImportMemWl, Offscreen, Renderer, Texture, TextureFilter, TextureMapping, Unbind,
+            }, sync::{Fence, Interrupted, SyncPoint}, Bind, Color32F, DebugFlags, ExportMem, Frame, ImportDma, ImportDmaWl, ImportEgl, ImportMem, ImportMemWl, Offscreen, Renderer, Texture, TextureFilter, TextureMapping, Unbind
         },
     },
     reexports::wayland_server::{protocol::wl_buffer::WlBuffer, DisplayHandle},
@@ -606,34 +603,31 @@ impl<'a> Frame for SkiaFrame {
         // self.renderer.id()
         self.id
     }
-    fn clear(
-        &mut self,
-        color: [f32; 4],
-        damage: &[Rectangle<i32, Physical>],
-    ) -> Result<(), Self::Error> {
+    fn clear(&mut self, color: Color32F, at: &[Rectangle<i32, Physical>]) -> Result<(), Self::Error> {
         self.draw_solid(
             Rectangle::from_loc_and_size((0, 0), self.size),
-            damage,
+            at,
             color,
         )?;
         Ok(())
     }
     fn draw_solid(
         &mut self,
-        dest: Rectangle<i32, Physical>,
+        dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
-        color: [f32; 4],
+        color: Color32F,
     ) -> Result<(), Self::Error> {
+
         let dest_rect = skia::Rect::from_xywh(
-            dest.loc.x as f32,
-            dest.loc.y as f32,
-            dest.size.w as f32,
-            dest.size.h as f32,
+            dst.loc.x as f32,
+            dst.loc.y as f32,
+            dst.size.w as f32,
+            dst.size.h as f32,
         );
         let instances = damage
             .iter()
             .map(|rect| {
-                let dest_size = dest.size;
+                let dest_size = dst.size;
 
                 let rect_constrained_loc = rect
                     .loc
@@ -645,14 +639,14 @@ impl<'a> Frame for SkiaFrame {
 
                 let rect = Rectangle::from_loc_and_size(rect_constrained_loc, rect_clamped_size);
                 skia::Rect::from_xywh(
-                    (dest.loc.x + rect.loc.x) as f32,
-                    (dest.loc.y + rect.loc.y) as f32,
+                    (dst.loc.x + rect.loc.x) as f32,
+                    (dst.loc.y + rect.loc.y) as f32,
                     (rect.size.w) as f32,
                     (rect.size.h) as f32,
                 )
             })
             .collect::<Vec<skia::Rect>>();
-        let color = skia::Color4f::new(color[0], color[1], color[2], color[3]);
+        let color = skia::Color4f::new(color.r(), color.g(), color.b(), color.a());
         // let red_color = skia::Color4f::new(1.0, 0.0, 0.0, 1.0);
         let mut paint = skia::Paint::new(color, None);
         paint.set_blend_mode(skia::BlendMode::Src);
