@@ -1,8 +1,18 @@
-use smithay::{backend::renderer::{element::{surface::WaylandSurfaceRenderElement, Element, Id, RenderElement}, utils::{CommitCounter, DamageSet}, ImportAll, ImportMem}, utils::{Physical, Rectangle, Scale}};
+use smithay::{
+    backend::renderer::{
+        element::{surface::WaylandSurfaceRenderElement, Element, Id, RenderElement},
+        utils::{CommitCounter, DamageSet},
+        ImportAll, ImportMem,
+    },
+    utils::{Physical, Rectangle, Scale},
+};
 
-use crate::{drawing::{PointerRenderElement, FpsElement}, skia_renderer::SkiaFrame};
+use crate::{
+    drawing::{FpsElement, PointerRenderElement},
+    skia_renderer::SkiaFrame,
+};
 
-use super::{skia_element::SkiaElement, scene_element::SceneElement};
+use super::{scene_element::SceneElement, skia_element::SkiaElement};
 
 smithay::backend::renderer::element::render_elements! {
     pub CustomRenderElements<'a, R> where
@@ -27,13 +37,15 @@ pub struct PhantomElement<'a> {
     phantom: std::marker::PhantomData<&'a ()>,
 }
 
-
 impl<'a> Element for PhantomElement<'a> {
     fn id(&self) -> &Id {
         &self.id
     }
 
-    fn location(&self, _scale: smithay::utils::Scale<f64>) -> smithay::utils::Point<i32, smithay::utils::Physical> {
+    fn location(
+        &self,
+        _scale: smithay::utils::Scale<f64>,
+    ) -> smithay::utils::Point<i32, smithay::utils::Physical> {
         (0, 0).into()
     }
 
@@ -41,7 +53,10 @@ impl<'a> Element for PhantomElement<'a> {
         smithay::utils::Rectangle::from_loc_and_size((0, 0), (0, 0)).to_f64()
     }
 
-    fn geometry(&self, scale: smithay::utils::Scale<f64>) -> smithay::utils::Rectangle<i32, smithay::utils::Physical> {
+    fn geometry(
+        &self,
+        scale: smithay::utils::Scale<f64>,
+    ) -> smithay::utils::Rectangle<i32, smithay::utils::Physical> {
         smithay::utils::Rectangle::from_loc_and_size(self.location(scale), (0, 0))
     }
 
@@ -52,10 +67,13 @@ impl<'a> Element for PhantomElement<'a> {
     fn damage_since(
         &self,
         scale: Scale<f64>,
-        _commit: Option<CommitCounter>) -> smithay::backend::renderer::utils::DamageSet<i32, Physical> {
-            DamageSet::from_slice(&[Rectangle::from_loc_and_size((0, 0), self.geometry(scale).size)])
-
-        }
+        _commit: Option<CommitCounter>,
+    ) -> smithay::backend::renderer::utils::DamageSet<i32, Physical> {
+        DamageSet::from_slice(&[Rectangle::from_loc_and_size(
+            (0, 0),
+            self.geometry(scale).size,
+        )])
+    }
     fn alpha(&self) -> f32 {
         0.0
     }
@@ -73,10 +91,7 @@ where
         _dst: smithay::utils::Rectangle<i32, smithay::utils::Physical>,
         _damage: &[smithay::utils::Rectangle<i32, smithay::utils::Physical>],
         _opaque_regions: &[Rectangle<i32, Physical>],
- 
-    ) -> Result<(), <R as smithay::backend::renderer::Renderer>::Error>
-    
-    {
+    ) -> Result<(), <R as smithay::backend::renderer::Renderer>::Error> {
         Ok(())
     }
 }

@@ -1,7 +1,5 @@
-#[cfg(feature = "xwayland")]
-use std::ffi::OsString;
 use std::{
-    collections::{hash_map::HashMap, HashSet},
+    collections::hash_map::HashMap,
     convert::TryInto,
     io,
     path::Path,
@@ -9,13 +7,20 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{cursor::Cursor, render_elements::{output_render_elements::OutputRenderElements, scene_element::SceneElement}, shell::WindowRenderElement, skia_renderer::SkiaTexture, state::SurfaceDmabufFeedback};
+use crate::{
+    cursor::Cursor,
+    render_elements::{output_render_elements::OutputRenderElements, scene_element::SceneElement},
+    shell::WindowRenderElement,
+    skia_renderer::SkiaTexture,
+    state::SurfaceDmabufFeedback,
+};
 use crate::{
     drawing::*,
     render::*,
+    render_elements::custom_render_elements::CustomRenderElements,
     shell::WindowElement,
-    skia_renderer::{SkiaRenderer, SkiaGLesFbo},
-    state::{post_repaint, take_presentation_feedback, ScreenComposer, Backend, CalloopData}, render_elements::custom_render_elements::CustomRenderElements,
+    skia_renderer::{SkiaGLesFbo, SkiaRenderer},
+    state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
 };
 #[cfg(feature = "renderer_sync")]
 use smithay::backend::drm::compositor::PrimaryPlaneElement;
@@ -26,16 +31,23 @@ use smithay::backend::renderer::ImportMem;
 use smithay::{
     backend::{
         allocator::{
-            dmabuf::{AnyError, Dmabuf, DmabufAllocator}, format::FormatSet, gbm::{GbmAllocator, GbmBufferFlags, GbmDevice}, vulkan::{ImageUsageFlags, VulkanAllocator}, Allocator, Fourcc
+            dmabuf::{AnyError, Dmabuf, DmabufAllocator},
+            format::FormatSet,
+            gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
+            Allocator, Fourcc,
         },
         drm::{
-            compositor::DrmCompositor, CreateDrmNodeError, DrmAccessError, DrmDevice, DrmDeviceFd, DrmError, DrmEvent, DrmEventMetadata, DrmNode, DrmSurface, GbmBufferedSurface, NodeType
+            compositor::DrmCompositor, CreateDrmNodeError, DrmAccessError, DrmDevice, DrmDeviceFd,
+            DrmError, DrmEvent, DrmEventMetadata, DrmNode, DrmSurface, GbmBufferedSurface,
+            NodeType,
         },
         egl::{self, context::ContextPriority, EGLDevice, EGLDisplay},
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{
             damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
-            element::{texture::TextureBuffer, AsRenderElements, RenderElement, RenderElementStates},
+            element::{
+                texture::TextureBuffer, AsRenderElements, RenderElement, RenderElementStates,
+            },
             multigpu::{gbm::GbmGlesBackend, GpuManager, MultiRenderer, MultiTexture},
             sync::SyncPoint,
             Bind, DebugFlags, ExportMem, ImportDma, ImportMemWl, Offscreen, Renderer,
@@ -45,7 +57,6 @@ use smithay::{
             Event as SessionEvent, Session,
         },
         udev::{all_gpus, primary_gpu, UdevBackend, UdevEvent},
-        vulkan::{version::Version, Instance, PhysicalDevice},
         SwapBuffersError,
     },
     delegate_dmabuf, delegate_drm_lease,
@@ -61,7 +72,10 @@ use smithay::{
             EventLoop, LoopHandle, RegistrationToken,
         },
         drm::{
-            control::{connector::{self, SubPixel}, crtc, Device, ModeTypeFlags},
+            control::{
+                connector::{self, SubPixel},
+                crtc, Device, ModeTypeFlags,
+            },
             Device as _,
         },
         input::Libinput,
@@ -72,14 +86,18 @@ use smithay::{
         },
         wayland_server::{backend::GlobalId, protocol::wl_surface, Display, DisplayHandle},
     },
-    utils::{Clock, DeviceFd, IsAlive, Logical, Monotonic, Physical, Point, Rectangle, Scale, Transform},
+    utils::{
+        Clock, DeviceFd, IsAlive, Logical, Monotonic, Physical, Point, Rectangle, Scale, Transform,
+    },
     wayland::{
         compositor,
         dmabuf::{
-            DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier,
+            DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState,
+            ImportNotifier,
         },
         drm_lease::{
-            DrmLease, DrmLeaseBuilder, DrmLeaseHandler, DrmLeaseRequest, DrmLeaseState, LeaseRejected,
+            DrmLease, DrmLeaseBuilder, DrmLeaseHandler, DrmLeaseRequest, DrmLeaseState,
+            LeaseRejected,
         },
     },
 };
@@ -103,12 +121,11 @@ const SUPPORTED_FORMATS: &[Fourcc] = &[
 ];
 const SUPPORTED_FORMATS_8BIT_ONLY: &[Fourcc] = &[Fourcc::Abgr8888, Fourcc::Argb8888];
 
-pub type UdevRenderer<'a> =
-    MultiRenderer<
+pub type UdevRenderer<'a> = MultiRenderer<
     'a,
     'a,
     GbmGlesBackend<SkiaRenderer, DrmDeviceFd>,
-    GbmGlesBackend<SkiaRenderer, DrmDeviceFd>
+    GbmGlesBackend<SkiaRenderer, DrmDeviceFd>,
 >;
 
 #[derive(Debug, PartialEq)]
@@ -131,7 +148,6 @@ pub struct UdevData {
     fps_texture: Option<MultiTexture>,
     debug_flags: DebugFlags,
     cursor_manager: Cursor,
-    
 }
 
 impl UdevData {
@@ -157,7 +173,12 @@ impl DmabufHandler for ScreenComposer<UdevData> {
         &mut self.backend_data.dmabuf_state.as_mut().unwrap().0
     }
 
-    fn dmabuf_imported(&mut self, _global: &DmabufGlobal, dmabuf: Dmabuf, notifier: ImportNotifier) {
+    fn dmabuf_imported(
+        &mut self,
+        _global: &DmabufGlobal,
+        dmabuf: Dmabuf,
+        notifier: ImportNotifier,
+    ) {
         if self
             .backend_data
             .gpus
@@ -192,18 +213,19 @@ impl Backend for UdevData {
     }
 
     fn early_import(&mut self, surface: &wl_surface::WlSurface) {
-        if let Err(err) = self
-            .gpus
-            .early_import( self.primary_gpu, surface)
-        {
+        if let Err(err) = self.gpus.early_import(self.primary_gpu, surface) {
             warn!("Early buffer import failed: {}", err);
         }
     }
 
-    fn texture_for_surface(&self, surface: &smithay::backend::renderer::utils::RendererSurfaceState) -> Option<SkiaTexture> {
-        let tex =  surface.texture::<UdevRenderer>(99);
+    fn texture_for_surface(
+        &self,
+        surface: &smithay::backend::renderer::utils::RendererSurfaceState,
+    ) -> Option<SkiaTexture> {
+        let tex = surface.texture::<UdevRenderer>(99);
         if let Some(multitexture) = tex {
-            let texture = multitexture.get::<GbmGlesBackend<SkiaRenderer, DrmDeviceFd>>(&self.primary_gpu);
+            let texture =
+                multitexture.get::<GbmGlesBackend<SkiaRenderer, DrmDeviceFd>>(&self.primary_gpu);
             if let Some(texture) = texture {
                 return Some(texture.clone());
             }
@@ -241,7 +263,12 @@ pub fn run_udev() {
     } else {
         primary_gpu(session.seat())
             .unwrap()
-            .and_then(|x| DrmNode::from_path(x).ok()?.node_with_type(NodeType::Render)?.ok())
+            .and_then(|x| {
+                DrmNode::from_path(x)
+                    .ok()?
+                    .node_with_type(NodeType::Render)?
+                    .ok()
+            })
             .unwrap_or_else(|| {
                 all_gpus(session.seat())
                     .unwrap()
@@ -252,7 +279,8 @@ pub fn run_udev() {
     };
     info!("Using {} as primary gpu.", primary_gpu);
 
-    let gpus = GpuManager::new(GbmGlesBackend::with_context_priority(ContextPriority::High)).unwrap();
+    let gpus =
+        GpuManager::new(GbmGlesBackend::with_context_priority(ContextPriority::High)).unwrap();
 
     let data = UdevData {
         dh: display_handle.clone(),
@@ -369,10 +397,12 @@ pub fn run_udev() {
 
     let skip_vulkan = std::env::var("ANVIL_NO_VULKAN")
         .map(|x| {
-            x == "1" || x.to_lowercase() == "true" || x.to_lowercase() == "yes" || x.to_lowercase() == "y"
+            x == "1"
+                || x.to_lowercase() == "true"
+                || x.to_lowercase() == "yes"
+                || x.to_lowercase() == "y"
         })
         .unwrap_or(false);
-
 
     if state.backend_data.allocator.is_none() {
         info!("No vulkan allocator found, using GBM.");
@@ -385,19 +415,28 @@ pub fn run_udev() {
             // Don't fail, if there is no allocator. There is a chance, that this a single gpu system and we don't need one.
             .map(|backend| backend.gbm.clone());
         state.backend_data.allocator = gbm.map(|gbm| {
-            Box::new(DmabufAllocator(GbmAllocator::new(gbm, GbmBufferFlags::RENDERING))) as Box<_>
+            Box::new(DmabufAllocator(GbmAllocator::new(
+                gbm,
+                GbmBufferFlags::RENDERING,
+            ))) as Box<_>
         });
     }
 
     #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
-    let mut renderer = state.backend_data.gpus.single_renderer(&primary_gpu).unwrap();
+    let mut renderer = state
+        .backend_data
+        .gpus
+        .single_renderer(&primary_gpu)
+        .unwrap();
 
     #[cfg(feature = "debug")]
     {
-        let fps_image =
-            image::io::Reader::with_format(std::io::Cursor::new(FPS_NUMBERS_PNG), image::ImageFormat::Png)
-                .decode()
-                .unwrap();
+        let fps_image = image::io::Reader::with_format(
+            std::io::Cursor::new(FPS_NUMBERS_PNG),
+            image::ImageFormat::Png,
+        )
+        .decode()
+        .unwrap();
         let fps_texture = renderer
             .import_memory(
                 &fps_image.to_rgba8(),
@@ -417,7 +456,10 @@ pub fn run_udev() {
 
     #[cfg(feature = "egl")]
     {
-        info!(?primary_gpu, "Trying to initialize EGL Hardware Acceleration",);
+        info!(
+            ?primary_gpu,
+            "Trying to initialize EGL Hardware Acceleration",
+        );
         match renderer.bind_wl_display(&display_handle) {
             Ok(_) => info!("EGL hardware-acceleration enabled"),
             Err(err) => info!(?err, "Failed to initialize EGL hardware-acceleration"),
@@ -430,24 +472,30 @@ pub fn run_udev() {
         .build()
         .unwrap();
     let mut dmabuf_state = DmabufState::new();
-    let global = dmabuf_state
-        .create_global_with_default_feedback::<ScreenComposer<UdevData>>(&display_handle, &default_feedback);
+    let global = dmabuf_state.create_global_with_default_feedback::<ScreenComposer<UdevData>>(
+        &display_handle,
+        &default_feedback,
+    );
     state.backend_data.dmabuf_state = Some((dmabuf_state, global));
 
     let gpus = &mut state.backend_data.gpus;
-    state.backend_data.backends.values_mut().for_each(|backend_data| {
-        // Update the per drm surface dmabuf feedback
-        backend_data.surfaces.values_mut().for_each(|surface_data| {
-            surface_data.dmabuf_feedback = surface_data.dmabuf_feedback.take().or_else(|| {
-                get_surface_dmabuf_feedback(
-                    primary_gpu,
-                    surface_data.render_node,
-                    gpus,
-                    &surface_data.compositor,
-                )
+    state
+        .backend_data
+        .backends
+        .values_mut()
+        .for_each(|backend_data| {
+            // Update the per drm surface dmabuf feedback
+            backend_data.surfaces.values_mut().for_each(|surface_data| {
+                surface_data.dmabuf_feedback = surface_data.dmabuf_feedback.take().or_else(|| {
+                    get_surface_dmabuf_feedback(
+                        primary_gpu,
+                        surface_data.render_node,
+                        gpus,
+                        &surface_data.compositor,
+                    )
+                });
             });
         });
-    });
 
     event_loop
         .handle()
@@ -524,7 +572,10 @@ impl DrmLeaseHandler for ScreenComposer<UdevData> {
             {
                 builder.add_connector(conn);
                 builder.add_crtc(*crtc);
-                let planes = backend.drm.planes(crtc).map_err(LeaseRejected::with_cause)?;
+                let planes = backend
+                    .drm
+                    .planes(crtc)
+                    .map_err(LeaseRejected::with_cause)?;
                 let (primary_plane, primary_plane_claim) = planes
                     .primary
                     .iter()
@@ -545,7 +596,10 @@ impl DrmLeaseHandler for ScreenComposer<UdevData> {
                     builder.add_plane(cursor.handle, claim);
                 }
             } else {
-                tracing::warn!(?conn, "Lease requested for desktop connector, denying request");
+                tracing::warn!(
+                    ?conn,
+                    "Lease requested for desktop connector, denying request"
+                );
                 return Err(LeaseRejected::default());
             }
         }
@@ -566,7 +620,8 @@ impl DrmLeaseHandler for ScreenComposer<UdevData> {
 
 delegate_drm_lease!(ScreenComposer<UdevData>);
 
-pub type RenderSurface = GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, Option<OutputPresentationFeedback>>;
+pub type RenderSurface =
+    GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, Option<OutputPresentationFeedback>>;
 
 pub type GbmDrmCompositor = DrmCompositor<
     GbmAllocator<DrmDeviceFd>,
@@ -593,12 +648,16 @@ struct SurfaceCompositorRenderResult<'a> {
 
 impl SurfaceComposition {
     #[profiling::function]
-    fn frame_submitted(&mut self) -> Result<Option<Option<OutputPresentationFeedback>>, SwapBuffersError> {
+    fn frame_submitted(
+        &mut self,
+    ) -> Result<Option<Option<OutputPresentationFeedback>>, SwapBuffersError> {
         match self {
-            SurfaceComposition::Compositor(c) => c.frame_submitted().map_err(Into::<SwapBuffersError>::into),
-            SurfaceComposition::Surface { surface, .. } => {
-                surface.frame_submitted().map_err(Into::<SwapBuffersError>::into)
+            SurfaceComposition::Compositor(c) => {
+                c.frame_submitted().map_err(Into::<SwapBuffersError>::into)
             }
+            SurfaceComposition::Surface { surface, .. } => surface
+                .frame_submitted()
+                .map_err(Into::<SwapBuffersError>::into),
         }
     }
 
@@ -634,9 +693,9 @@ impl SurfaceComposition {
             SurfaceComposition::Surface { surface, .. } => surface
                 .queue_buffer(sync, damage, user_data)
                 .map_err(Into::<SwapBuffersError>::into),
-            SurfaceComposition::Compositor(c) => {
-                c.queue_frame(user_data).map_err(Into::<SwapBuffersError>::into)
-            }
+            SurfaceComposition::Compositor(c) => c
+                .queue_frame(user_data)
+                .map_err(Into::<SwapBuffersError>::into),
         }
     }
 
@@ -659,8 +718,12 @@ impl SurfaceComposition {
                 damage_tracker,
                 debug_flags,
             } => {
-                let (dmabuf, age) = surface.next_buffer().map_err(Into::<SwapBuffersError>::into)?;
-                renderer.bind(dmabuf).map_err(Into::<SwapBuffersError>::into)?;
+                let (dmabuf, age) = surface
+                    .next_buffer()
+                    .map_err(Into::<SwapBuffersError>::into)?;
+                renderer
+                    .bind(dmabuf)
+                    .map_err(Into::<SwapBuffersError>::into)?;
                 let current_debug_flags = renderer.debug_flags();
                 renderer.set_debug_flags(*debug_flags);
                 let res = damage_tracker
@@ -687,7 +750,9 @@ impl SurfaceComposition {
                 .render_frame(renderer, elements, clear_color)
                 .map(|render_frame_result| {
                     #[cfg(feature = "renderer_sync")]
-                    if let PrimaryPlaneElement::Swapchain(element) = render_frame_result.primary_element {
+                    if let PrimaryPlaneElement::Swapchain(element) =
+                        render_frame_result.primary_element
+                    {
                         element.sync.wait();
                     }
                     SurfaceCompositorRenderResult {
@@ -698,7 +763,9 @@ impl SurfaceComposition {
                     }
                 })
                 .map_err(|err| match err {
-                    smithay::backend::drm::compositor::RenderFrameError::PrepareFrame(err) => err.into(),
+                    smithay::backend::drm::compositor::RenderFrameError::PrepareFrame(err) => {
+                        err.into()
+                    }
                     smithay::backend::drm::compositor::RenderFrameError::RenderFrame(
                         OutputDamageTrackerError::Rendering(err),
                     ) => err.into(),
@@ -710,7 +777,9 @@ impl SurfaceComposition {
     fn set_debug_flags(&mut self, flags: DebugFlags) {
         match self {
             SurfaceComposition::Surface {
-                surface, debug_flags, ..
+                surface,
+                debug_flags,
+                ..
             } => {
                 *debug_flags = flags;
                 surface.reset_buffers();
@@ -841,7 +910,8 @@ impl ScreenComposer<UdevData> {
 
         let fd = DrmDeviceFd::new(DeviceFd::from(fd));
 
-        let (drm, notifier) = DrmDevice::new(fd.clone(), true).map_err(DeviceAddError::DrmDevice)?;
+        let (drm, notifier) =
+            DrmDevice::new(fd.clone(), true).map_err(DeviceAddError::DrmDevice)?;
         let gbm = GbmDevice::new(fd).map_err(DeviceAddError::GbmDevice)?;
 
         let registration_token = self
@@ -860,10 +930,11 @@ impl ScreenComposer<UdevData> {
             )
             .unwrap();
 
-        let render_node = EGLDevice::device_for_display(&unsafe { EGLDisplay::new(gbm.clone()).unwrap() })
-            .ok()
-            .and_then(|x| x.try_get_render_node().ok().flatten())
-            .unwrap_or(node);
+        let render_node =
+            EGLDevice::device_for_display(&unsafe { EGLDisplay::new(gbm.clone()).unwrap() })
+                .ok()
+                .and_then(|x| x.try_get_render_node().ok().flatten())
+                .unwrap_or(node);
 
         self.backend_data
             .gpus
@@ -881,13 +952,16 @@ impl ScreenComposer<UdevData> {
                 non_desktop_connectors: Vec::new(),
                 render_node,
                 surfaces: HashMap::new(),
-                leasing_global: DrmLeaseState::new::<ScreenComposer<UdevData>>(&self.display_handle, &node)
-                    .map_err(|err| {
-                        // TODO replace with inspect_err, once stable
-                        warn!(?err, "Failed to initialize drm lease global for: {}", node);
-                        err
-                    })
-                    .ok(),
+                leasing_global: DrmLeaseState::new::<ScreenComposer<UdevData>>(
+                    &self.display_handle,
+                    &node,
+                )
+                .map_err(|err| {
+                    // TODO replace with inspect_err, once stable
+                    warn!(?err, "Failed to initialize drm lease global for: {}", node);
+                    err
+                })
+                .ok(),
                 active_leases: Vec::new(),
             },
         );
@@ -897,7 +971,12 @@ impl ScreenComposer<UdevData> {
         Ok(())
     }
 
-    fn connector_connected(&mut self, node: DrmNode, connector: connector::Info, crtc: crtc::Handle) {
+    fn connector_connected(
+        &mut self,
+        node: DrmNode,
+        connector: connector::Info,
+        crtc: crtc::Handle,
+    ) {
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
             device
         } else {
@@ -909,9 +988,17 @@ impl ScreenComposer<UdevData> {
             .gpus
             .single_renderer(&device.render_node)
             .unwrap();
-        let render_formats = renderer.as_mut().egl_context().dmabuf_render_formats().clone();
+        let render_formats = renderer
+            .as_mut()
+            .egl_context()
+            .dmabuf_render_formats()
+            .clone();
 
-        let output_name = format!("{}-{}", connector.interface().as_str(), connector.interface_id());
+        let output_name = format!(
+            "{}-{}",
+            connector.interface().as_str(),
+            connector.interface_id()
+        );
         info!(?crtc, "Trying to setup connector {}", output_name,);
 
         let non_desktop = device
@@ -937,8 +1024,13 @@ impl ScreenComposer<UdevData> {
             .unwrap_or_else(|| ("Unknown".into(), "Unknown".into()));
 
         if non_desktop {
-            info!("Connector {} is non-desktop, setting up for leasing", output_name);
-            device.non_desktop_connectors.push((connector.handle(), crtc));
+            info!(
+                "Connector {} is non-desktop, setting up for leasing",
+                output_name
+            );
+            device
+                .non_desktop_connectors
+                .push((connector.handle(), crtc));
             if let Some(lease_state) = device.leasing_global.as_mut() {
                 lease_state.add_connector::<ScreenComposer<UdevData>>(
                     connector.handle(),
@@ -956,7 +1048,10 @@ impl ScreenComposer<UdevData> {
             let drm_mode = connector.modes()[mode_id];
             let mut wl_mode = WlMode::from(drm_mode);
             wl_mode.refresh = 60 * 1000;
-            let surface = match device.drm.create_surface(crtc, drm_mode, &[connector.handle()]) {
+            let surface = match device
+                .drm
+                .create_surface(crtc, drm_mode, &[connector.handle()])
+            {
                 Ok(surface) => surface,
                 Err(err) => {
                     warn!("Failed to create drm surface: {}", err);
@@ -993,13 +1088,17 @@ impl ScreenComposer<UdevData> {
             self.layers_engine.set_scene_size(w, h);
             let global = output.create_global::<ScreenComposer<UdevData>>(&self.display_handle);
 
-            let x = self
-                .space
-                .outputs()
-                .fold(0, |acc, o| acc + self.space.output_geometry(o).unwrap().size.w);
+            let x = self.space.outputs().fold(0, |acc, o| {
+                acc + self.space.output_geometry(o).unwrap().size.w
+            });
             let position = (x, 0).into();
             output.set_preferred(wl_mode);
-            output.change_current_state(Some(wl_mode), None, Some(smithay::output::Scale::Fractional(1.0)), Some(position));
+            output.change_current_state(
+                Some(wl_mode),
+                None,
+                Some(smithay::output::Scale::Fractional(1.0)),
+                Some(position),
+            );
             self.space.map_output(&output, position);
 
             output.user_data().insert_if_missing(|| UdevOutputId {
@@ -1022,14 +1121,18 @@ impl ScreenComposer<UdevData> {
             };
 
             let compositor = if std::env::var("ANVIL_DISABLE_DRM_COMPOSITOR").is_ok() {
-                let gbm_surface =
-                    match GbmBufferedSurface::new(surface, allocator, color_formats, render_formats) {
-                        Ok(renderer) => renderer,
-                        Err(err) => {
-                            warn!("Failed to create rendering surface: {}", err);
-                            return;
-                        }
-                    };
+                let gbm_surface = match GbmBufferedSurface::new(
+                    surface,
+                    allocator,
+                    color_formats,
+                    render_formats,
+                ) {
+                    Ok(renderer) => renderer,
+                    Err(err) => {
+                        warn!("Failed to create rendering surface: {}", err);
+                        return;
+                    }
+                };
                 SurfaceComposition::Surface {
                     surface: gbm_surface,
                     damage_tracker: OutputDamageTracker::from_output(&output),
@@ -1047,7 +1150,11 @@ impl ScreenComposer<UdevData> {
                 let mut planes = surface.planes().clone();
 
                 // Using an overlay plane on a nvidia card breaks
-                if driver.name().to_string_lossy().to_lowercase().contains("nvidia")
+                if driver
+                    .name()
+                    .to_string_lossy()
+                    .to_lowercase()
+                    .contains("nvidia")
                     || driver
                         .description()
                         .to_string_lossy()
@@ -1104,7 +1211,12 @@ impl ScreenComposer<UdevData> {
         }
     }
 
-    fn connector_disconnected(&mut self, node: DrmNode, connector: connector::Info, crtc: crtc::Handle) {
+    fn connector_disconnected(
+        &mut self,
+        node: DrmNode,
+        connector: connector::Info,
+        crtc: crtc::Handle,
+    ) {
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
             device
         } else {
@@ -1215,7 +1327,12 @@ impl ScreenComposer<UdevData> {
         crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
     }
 
-    fn frame_finish(&mut self, dev_id: DrmNode, crtc: crtc::Handle, metadata: &mut Option<DrmEventMetadata>) {
+    fn frame_finish(
+        &mut self,
+        dev_id: DrmNode,
+        crtc: crtc::Handle,
+        metadata: &mut Option<DrmEventMetadata>,
+    ) {
         profiling::scope!("frame_finish", &format!("{crtc:?}"));
 
         let device_backend = match self.backend_data.backends.get_mut(&dev_id) {
@@ -1258,7 +1375,10 @@ impl ScreenComposer<UdevData> {
                         smithay::backend::drm::DrmEventTime::Monotonic(tp) => Some(tp),
                         smithay::backend::drm::DrmEventTime::Realtime(_) => None,
                     });
-                    let seq = metadata.as_ref().map(|metadata| metadata.sequence).unwrap_or(0);
+                    let seq = metadata
+                        .as_ref()
+                        .map(|metadata| metadata.sequence)
+                        .unwrap_or(0);
 
                     let (clock, flags) = if let Some(tp) = tp {
                         (
@@ -1291,7 +1411,10 @@ impl ScreenComposer<UdevData> {
                     // If the device has been deactivated do not reschedule, this will be done
                     // by session resume
                     SwapBuffersError::TemporaryFailure(err)
-                        if matches!(err.downcast_ref::<DrmError>(), Some(&DrmError::DeviceInactive)) =>
+                        if matches!(
+                            err.downcast_ref::<DrmError>(),
+                            Some(&DrmError::DeviceInactive)
+                        ) =>
                     {
                         false
                     }
@@ -1405,21 +1528,23 @@ impl ScreenComposer<UdevData> {
 
         let start = Instant::now();
 
-
         let render_node = surface.render_node;
         let primary_gpu = self.backend_data.primary_gpu;
         let mut renderer = if primary_gpu == render_node {
             self.backend_data.gpus.single_renderer(&render_node)
         } else {
             let format = surface.compositor.format();
-            
+
             self.backend_data
                 .gpus
                 .renderer(&primary_gpu, &render_node, format)
         }
         .unwrap();
         // TODO get scale from the rendersurface when supporting HiDPI
-        let cursor_frame = self.backend_data.cursor_manager.get_image(1, self.clock.now().try_into().unwrap());
+        let cursor_frame = self
+            .backend_data
+            .cursor_manager
+            .get_image(1, self.clock.now().try_into().unwrap());
 
         let pointer_images = &mut self.backend_data.pointer_images;
         let pointer_image = pointer_images
@@ -1485,7 +1610,8 @@ impl ScreenComposer<UdevData> {
                 warn!("Error during rendering: {:?}", err);
                 match err {
                     SwapBuffersError::AlreadySwapped => false,
-                    SwapBuffersError::TemporaryFailure(err) => match err.downcast_ref::<DrmError>() {
+                    SwapBuffersError::TemporaryFailure(err) => match err.downcast_ref::<DrmError>()
+                    {
                         Some(DrmError::DeviceInactive) => true,
                         Some(DrmError::Access(DrmAccessError { source, .. })) => {
                             source.kind() == io::ErrorKind::PermissionDenied
@@ -1505,7 +1631,8 @@ impl ScreenComposer<UdevData> {
             // If reschedule is true we either hit a temporary failure or more likely rendering
             // did not cause any damage on the output. In this case we just re-schedule a repaint
             // after approx. one frame to re-test for damage.
-            let reschedule_duration = Duration::from_millis((1_000_000f32 / output_refresh as f32) as u64);
+            let reschedule_duration =
+                Duration::from_millis((1_000_000f32 / output_refresh as f32) as u64);
             trace!(
                 "reschedule repaint timer with delay {:?} on {:?}",
                 reschedule_duration,
@@ -1620,7 +1747,12 @@ fn render_surface<'a, 'b>(
             pointer_element.set_status(cursor_status.clone());
         }
 
-        custom_elements.extend(pointer_element.render_elements(renderer, cursor_pos_scaled, scale, 1.0));
+        custom_elements.extend(pointer_element.render_elements(
+            renderer,
+            cursor_pos_scaled,
+            scale,
+            1.0,
+        ));
 
         // draw the dnd icon if applicable
         {
@@ -1637,8 +1769,7 @@ fn render_surface<'a, 'b>(
             }
         }
     }
-    
-    
+
     #[cfg(feature = "debug")]
     if let Some(element) = surface.fps_element.as_mut() {
         element.update_fps(surface.fps.avg().round() as u32);
@@ -1647,12 +1778,11 @@ fn render_surface<'a, 'b>(
     }
     custom_elements.push(CustomRenderElements::Scene(scene_element));
 
-
     let elements: Vec<OutputRenderElements<'a, _, WindowRenderElement<_>>> = custom_elements
         .into_iter()
-        .map(OutputRenderElements::from).collect::<Vec<_>>();
-    let (elements, clear_color) =
-        output_elements(output, space, elements, renderer);
+        .map(OutputRenderElements::from)
+        .collect::<Vec<_>>();
+    let (elements, clear_color) = output_elements(output, space, elements, renderer);
 
     let SurfaceCompositorRenderResult {
         rendered,
@@ -1661,7 +1791,7 @@ fn render_surface<'a, 'b>(
         damage,
     } = surface
         .compositor
-            .render_frame::<_, _, SkiaGLesFbo>(renderer, &elements, clear_color)?;
+        .render_frame::<_, _, SkiaGLesFbo>(renderer, &elements, clear_color)?;
 
     post_repaint(
         output,
@@ -1685,7 +1815,6 @@ fn render_surface<'a, 'b>(
             .queue_frame(sync, damage, Some(output_presentation_feedback))
             .map_err(Into::<SwapBuffersError>::into)?;
     }
-
 
     Ok(rendered)
 }

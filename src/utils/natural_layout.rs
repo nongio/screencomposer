@@ -4,7 +4,6 @@ use smithay::reexports::wayland_server::{backend::ObjectId, Resource};
 
 use crate::workspace::Window;
 
-
 trait LayoutBoundingBox {
     fn bounding_box(&self) -> LayoutRect;
 }
@@ -30,7 +29,12 @@ pub struct LayoutRect {
 
 impl LayoutRect {
     pub fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
-        LayoutRect { x, y, width, height }
+        LayoutRect {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     fn copy(&self) -> Self {
@@ -66,10 +70,10 @@ impl LayoutRect {
     }
 
     fn overlap(&self, rect2: &LayoutRect) -> bool {
-        !(self.x + self.width <= rect2.x ||
-          rect2.x + rect2.width <= self.x ||
-          self.y + self.height <= rect2.y ||
-          rect2.y + rect2.height <= self.y)
+        !(self.x + self.width <= rect2.x
+            || rect2.x + rect2.width <= self.x
+            || self.y + self.height <= rect2.y
+            || rect2.y + rect2.height <= self.y)
     }
 
     fn center(&self) -> (f32, f32) {
@@ -82,7 +86,11 @@ impl LayoutRect {
     }
 }
 
-pub fn natural_layout(windows: &Vec<Window>, area: &LayoutRect, use_more_screen: bool) -> HashMap<ObjectId, LayoutRect> {
+pub fn natural_layout(
+    windows: &Vec<Window>,
+    area: &LayoutRect,
+    use_more_screen: bool,
+) -> HashMap<ObjectId, LayoutRect> {
     let area_rect = area.copy();
     let mut bounds = area_rect.copy();
 
@@ -105,9 +113,20 @@ pub fn natural_layout(windows: &Vec<Window>, area: &LayoutRect, use_more_screen:
         for i in 0..rects.len() {
             for j in 0..rects.len() {
                 if i != j {
-                    let adjustments = [-1.0, -1.0, 1.0, 1.0].map(|v| v * WINDOW_PLACEMENT_NATURAL_GAPS);
-                    let i_adjusted = rects[i].adjusted(adjustments[0], adjustments[1], adjustments[2], adjustments[3]);
-                    let j_adjusted = rects[j].adjusted(adjustments[0], adjustments[1], adjustments[2], adjustments[3]);
+                    let adjustments =
+                        [-1.0, -1.0, 1.0, 1.0].map(|v| v * WINDOW_PLACEMENT_NATURAL_GAPS);
+                    let i_adjusted = rects[i].adjusted(
+                        adjustments[0],
+                        adjustments[1],
+                        adjustments[2],
+                        adjustments[3],
+                    );
+                    let j_adjusted = rects[j].adjusted(
+                        adjustments[0],
+                        adjustments[1],
+                        adjustments[2],
+                        adjustments[3],
+                    );
                     if i_adjusted.overlap(&j_adjusted) {
                         loop_counter += 1;
                         overlap = true;
@@ -133,8 +152,10 @@ pub fn natural_layout(windows: &Vec<Window>, area: &LayoutRect, use_more_screen:
                         rects[j].translate(diff.0, diff.1);
 
                         if use_more_screen {
-                            let mut x_section = ((rects[i].x - bounds.x) / (bounds.width / 3.0)).round() as i32;
-                            let mut y_section = ((rects[i].y - bounds.y) / (bounds.height / 3.0)).round() as i32;
+                            let mut x_section =
+                                ((rects[i].x - bounds.x) / (bounds.width / 3.0)).round() as i32;
+                            let mut y_section =
+                                ((rects[i].y - bounds.y) / (bounds.height / 3.0)).round() as i32;
 
                             let mut diff = (0.0, 0.0);
                             if x_section != 1 || y_section != 1 {

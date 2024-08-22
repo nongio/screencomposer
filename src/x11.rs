@@ -1,11 +1,15 @@
-#[cfg(feature = "xwayland")]
-use std::ffi::OsString;
 use std::{
-    cell::RefCell, sync::{atomic::Ordering, Mutex}, time::Duration
+    cell::RefCell,
+    sync::{atomic::Ordering, Mutex},
+    time::Duration,
 };
 
 use crate::{
-    drawing::*, render::*, render_elements::custom_render_elements::CustomRenderElements, shell::{place_new_window, WindowElement}, skia_renderer::{SkiaRenderer, SkiaTexture}, state::{post_repaint, take_presentation_feedback, Backend, CalloopData, ScreenComposer}
+    drawing::*,
+    render::*,
+    render_elements::custom_render_elements::CustomRenderElements,
+    skia_renderer::{SkiaRenderer, SkiaTexture},
+    state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
 };
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;
@@ -21,28 +25,32 @@ use smithay::{
         },
         egl::{EGLContext, EGLDisplay},
         renderer::{
-            damage::OutputDamageTracker, element::AsRenderElements, Bind, ImportDma,
-            ImportMemWl,
+            damage::OutputDamageTracker, element::AsRenderElements, Bind, ImportDma, ImportMemWl,
         },
         vulkan::{version::Version, Instance, PhysicalDevice},
-        x11::{Window, WindowBuilder, X11Backend, X11Event, X11Surface},
+        x11::{WindowBuilder, X11Backend, X11Event, X11Surface},
     },
     delegate_dmabuf,
     input::pointer::{CursorImageAttributes, CursorImageStatus},
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::{
-        ash::ext, calloop::EventLoop, gbm, wayland_protocols::wp::presentation_time::server::wp_presentation_feedback, wayland_server::{protocol::wl_surface, Display}
+        ash::ext,
+        calloop::EventLoop,
+        gbm,
+        wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
+        wayland_server::{protocol::wl_surface, Display},
     },
     utils::{DeviceFd, IsAlive, Logical, Rectangle, Scale},
     wayland::{
         compositor,
         dmabuf::{
-            DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier,
-        }, xwayland_shell::{XWaylandShellHandler, XWaylandShellState},
-    }, xwayland::{xwm::{Reorder, XwmId}, X11Wm, XwmHandler},
+            DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState,
+            ImportNotifier,
+        },
+        xwayland_shell::{XWaylandShellHandler, XWaylandShellState},
+    },
 };
 use tracing::{error, info, trace, warn};
-
 
 #[derive(Debug, Default)]
 struct OldGeometry(RefCell<Option<Rectangle<i32, Logical>>>);
@@ -61,7 +69,6 @@ impl<BackendData: Backend> XWaylandShellHandler for ScreenComposer<BackendData> 
         &mut self.xwayland_shell_state
     }
 }
-
 
 pub const OUTPUT_NAME: &str = "x11";
 
@@ -85,8 +92,18 @@ impl DmabufHandler for ScreenComposer<X11Data> {
         &mut self.backend_data.dmabuf_state
     }
 
-    fn dmabuf_imported(&mut self, _global: &DmabufGlobal, dmabuf: Dmabuf, notifier: ImportNotifier) {
-        if self.backend_data.renderer.import_dmabuf(&dmabuf, None).is_ok() {
+    fn dmabuf_imported(
+        &mut self,
+        _global: &DmabufGlobal,
+        dmabuf: Dmabuf,
+        notifier: ImportNotifier,
+    ) {
+        if self
+            .backend_data
+            .renderer
+            .import_dmabuf(&dmabuf, None)
+            .is_ok()
+        {
             let _ = notifier.successful::<ScreenComposer<X11Data>>();
         } else {
             notifier.failed();
@@ -103,10 +120,11 @@ impl Backend for X11Data {
         self.surface.reset_buffers();
     }
     fn early_import(&mut self, _surface: &wl_surface::WlSurface) {}
-    fn set_cursor(&mut self, _image: &CursorImageStatus) {
-        
-    }
-    fn texture_for_surface(&self, _surface: &smithay::backend::renderer::utils::RendererSurfaceState) -> Option<SkiaTexture> {
+    fn set_cursor(&mut self, _image: &CursorImageStatus) {}
+    fn texture_for_surface(
+        &self,
+        _surface: &smithay::backend::renderer::utils::RendererSurfaceState,
+    ) -> Option<SkiaTexture> {
         None
     }
 }
@@ -138,7 +156,10 @@ pub fn run_x11() {
 
     let skip_vulkan = std::env::var("ANVIL_NO_VULKAN")
         .map(|x| {
-            x == "1" || x.to_lowercase() == "true" || x.to_lowercase() == "yes" || x.to_lowercase() == "y"
+            x == "1"
+                || x.to_lowercase() == "true"
+                || x.to_lowercase() == "yes"
+                || x.to_lowercase() == "y"
         })
         .unwrap_or(false);
 
@@ -146,14 +167,16 @@ pub fn run_x11() {
         Instance::new(Version::VERSION_1_2, None)
             .ok()
             .and_then(|instance| {
-                PhysicalDevice::enumerate(&instance).ok().and_then(|devices| {
-                    devices
-                        .filter(|phd| phd.has_device_extension(ext::physical_device_drm::NAME))
-                        .find(|phd| {
-                            phd.primary_node().unwrap() == Some(node)
-                                || phd.render_node().unwrap() == Some(node)
-                        })
-                })
+                PhysicalDevice::enumerate(&instance)
+                    .ok()
+                    .and_then(|devices| {
+                        devices
+                            .filter(|phd| phd.has_device_extension(ext::physical_device_drm::NAME))
+                            .find(|phd| {
+                                phd.primary_node().unwrap() == Some(node)
+                                    || phd.render_node().unwrap() == Some(node)
+                            })
+                    })
             })
             .and_then(|physical_device| {
                 VulkanAllocator::new(
@@ -191,7 +214,8 @@ pub fn run_x11() {
     };
 
     #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
-    let mut renderer = unsafe { SkiaRenderer::new(context) }.expect("Failed to initialize renderer");
+    let mut renderer =
+        unsafe { SkiaRenderer::new(context) }.expect("Failed to initialize renderer");
 
     #[cfg(feature = "egl")]
     if renderer.bind_wl_display(&display.handle()).is_ok() {
@@ -203,10 +227,11 @@ pub fn run_x11() {
         .build()
         .unwrap();
     let mut dmabuf_state = DmabufState::new();
-    let dmabuf_global = dmabuf_state.create_global_with_default_feedback::<ScreenComposer<X11Data>>(
-        &display.handle(),
-        &dmabuf_default_feedback,
-    );
+    let dmabuf_global = dmabuf_state
+        .create_global_with_default_feedback::<ScreenComposer<X11Data>>(
+            &display.handle(),
+            &dmabuf_default_feedback,
+        );
 
     let size = {
         let s = window.size();
@@ -220,10 +245,12 @@ pub fn run_x11() {
     };
 
     #[cfg(feature = "debug")]
-    let fps_image =
-        image::io::Reader::with_format(std::io::Cursor::new(FPS_NUMBERS_PNG), image::ImageFormat::Png)
-            .decode()
-            .unwrap();
+    let fps_image = image::io::Reader::with_format(
+        std::io::Cursor::new(FPS_NUMBERS_PNG),
+        image::ImageFormat::Png,
+    )
+    .decode()
+    .unwrap();
     #[cfg(feature = "debug")]
     let fps_texture = renderer
         .import_memory(
@@ -323,7 +350,10 @@ pub fn run_x11() {
             #[cfg(feature = "debug")]
             fps_element.update_fps(fps);
 
-            let (buffer, age) = backend_data.surface.buffer().expect("gbm device was destroyed");
+            let (buffer, age) = backend_data
+                .surface
+                .buffer()
+                .expect("gbm device was destroyed");
             if let Err(err) = backend_data.renderer.bind(buffer) {
                 error!("Error while binding buffer: {}", err);
                 profiling::finish_frame!();
@@ -415,11 +445,20 @@ pub fn run_x11() {
 
                     // Send frame events so that client start drawing their next frame
                     let time = state.clock.now();
-                    post_repaint(&output, &render_output_result.states, &state.space, None, time);
+                    post_repaint(
+                        &output,
+                        &render_output_result.states,
+                        &state.space,
+                        None,
+                        time,
+                    );
 
                     if render_output_result.damage.is_some() {
-                        let mut output_presentation_feedback =
-                            take_presentation_feedback(&output, &state.space, &render_output_result.states);
+                        let mut output_presentation_feedback = take_presentation_feedback(
+                            &output,
+                            &state.space,
+                            &render_output_result.states,
+                        );
                         output_presentation_feedback.presented(
                             time,
                             output
@@ -435,13 +474,21 @@ pub fn run_x11() {
                     if render_output_result.damage.is_some() {
                         if let Some(renderdoc) = state.renderdoc.as_mut() {
                             renderdoc.end_frame_capture(
-                                state.backend_data.renderer.egl_context().get_context_handle(),
+                                state
+                                    .backend_data
+                                    .renderer
+                                    .egl_context()
+                                    .get_context_handle(),
                                 std::ptr::null(),
                             );
                         }
                     } else if let Some(renderdoc) = state.renderdoc.as_mut() {
                         renderdoc.discard_frame_capture(
-                            state.backend_data.renderer.egl_context().get_context_handle(),
+                            state
+                                .backend_data
+                                .renderer
+                                .egl_context()
+                                .get_context_handle(),
                             std::ptr::null(),
                         );
                     }

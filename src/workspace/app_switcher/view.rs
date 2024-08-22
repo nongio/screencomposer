@@ -1,4 +1,7 @@
-use std::{collections::{HashMap, HashSet}, sync::{atomic::AtomicBool, Arc}};
+use std::{
+    collections::HashSet,
+    sync::{atomic::AtomicBool, Arc},
+};
 
 use layers::{
     engine::{
@@ -11,7 +14,11 @@ use layers::{
 };
 use smithay::utils::IsAlive;
 
-use crate::{interactive_view::ViewInteractions, shell::WindowElement, state::Backend, utils::Observer, workspace::{Application, Window, Workspace, WorkspaceModel}};
+use crate::{
+    interactive_view::ViewInteractions,
+    utils::Observer,
+    workspace::{Application, Window, WorkspaceModel},
+};
 
 use super::render::render_appswitcher_view;
 
@@ -31,7 +38,7 @@ impl PartialEq for AppSwitcherView {
     }
 }
 impl IsAlive for AppSwitcherView {
-    fn alive(&self) -> bool {    
+    fn alive(&self) -> bool {
         self.active.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
@@ -54,7 +61,11 @@ impl AppSwitcherView {
         wrap.add_sublayer(layer.clone());
         let mut initial_state = AppSwitcherModel::new();
         initial_state.width = 1000;
-        let view = layers::prelude::View::new(layer.clone(), initial_state, Box::new(render_appswitcher_view));
+        let view = layers::prelude::View::new(
+            layer.clone(),
+            initial_state,
+            Box::new(render_appswitcher_view),
+        );
         Self {
             // app_switcher: Arc::new(RwLock::new(AppSwitcherModel::new())),
             wrap_layer: wrap.clone(),
@@ -100,7 +111,8 @@ impl AppSwitcherView {
             ..app_switcher
         });
 
-        self.active.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.active
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         self.wrap_layer.set_opacity(
             1.0,
             Some(Transition {
@@ -123,8 +135,9 @@ impl AppSwitcherView {
             current_app,
             ..app_switcher
         });
-        
-        self.active.store(true, std::sync::atomic::Ordering::Relaxed);
+
+        self.active
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         self.wrap_layer.set_opacity(
             1.0,
             Some(Transition {
@@ -136,7 +149,8 @@ impl AppSwitcherView {
     }
 
     pub fn hide(&self) {
-        self.active.store(false, std::sync::atomic::Ordering::Relaxed);
+        self.active
+            .store(false, std::sync::atomic::Ordering::Relaxed);
         self.wrap_layer.set_opacity(
             0.0,
             Some(Transition {
@@ -212,17 +226,18 @@ impl AppSwitcherView {
         state.apps.get(state.current_app).cloned()
     }
     pub fn get_current_app_windows(&self) -> Vec<Window> {
-        self.get_current_app().map_or(vec![],|app| {
-            app.windows.clone()
-        })
+        self.get_current_app()
+            .map_or(vec![], |app| app.windows.clone())
     }
 }
 
 impl Observer<WorkspaceModel> for AppSwitcherView {
-   fn notify(&self, event: &WorkspaceModel) {
+    fn notify(&self, event: &WorkspaceModel) {
         let workspace = event;
         let mut app_set = HashSet::new();
-        let apps = workspace.application_list.iter()
+        let apps = workspace
+            .application_list
+            .iter()
             .filter_map(|app_id| {
                 let app = workspace.applications.get(app_id).unwrap().to_owned();
                 if app_set.insert(app.identifier.clone()) {
@@ -230,7 +245,8 @@ impl Observer<WorkspaceModel> for AppSwitcherView {
                 } else {
                     None
                 }
-        }).collect();
+            })
+            .collect();
 
         self.view.update_state(AppSwitcherModel {
             apps,
@@ -246,12 +262,16 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for AppSwitcherVi
     fn is_alive(&self) -> bool {
         self.alive()
     }
-    fn on_motion(&self, 
-            _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-            _data: &mut crate::ScreenComposer<Backend>, 
-            event: &smithay::input::pointer::MotionEvent) {
+    fn on_motion(
+        &self,
+        _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
+        _data: &mut crate::ScreenComposer<Backend>,
+        event: &smithay::input::pointer::MotionEvent,
+    ) {
         // println!("AppSwitcherView on_motion {} {}", event.location.x, event.location.y);
         let id = self.view_layer.id().unwrap();
-        self.view_layer.engine.pointer_move((event.location.x as f32, event.location.y as f32), id.0);
+        self.view_layer
+            .engine
+            .pointer_move((event.location.x as f32, event.location.y as f32), id.0);
     }
 }

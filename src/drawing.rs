@@ -1,13 +1,14 @@
 #![allow(clippy::too_many_arguments)]
 
 use smithay::{
-    backend::{allocator::Fourcc, renderer::{
+    backend::renderer::{
         element::{
             surface::WaylandSurfaceRenderElement,
             texture::{TextureBuffer, TextureRenderElement},
             AsRenderElements, Kind,
-        }, ImportAll, ImportMem, Renderer, Texture
-    }},
+        },
+        ImportAll, ImportMem, Renderer, Texture,
+    },
     input::pointer::CursorImageStatus,
     render_elements,
     utils::{Clock, Monotonic, Physical, Point, Scale},
@@ -24,7 +25,7 @@ use smithay::{
 
 use crate::cursor::Cursor;
 
-pub static CLEAR_COLOR: [f32; 4] =  [0.0, 0.0, 0.0, 1.0];
+pub static CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 pub static CLEAR_COLOR_FULLSCREEN: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
 
 pub struct PointerElement<T: Texture> {
@@ -95,17 +96,17 @@ where
             // Always render `Default` for a named shape.
             CursorImageStatus::Named(_) => {
                 if let Some(texture) = self.texture.as_ref() {
-                    vec![
-                        PointerRenderElement::<R>::from(TextureRenderElement::from_texture_buffer(
+                    vec![PointerRenderElement::<R>::from(
+                        TextureRenderElement::from_texture_buffer(
                             location.to_f64(),
                             texture,
                             None,
                             None,
                             None,
                             Kind::Cursor,
-                        ))
-                        .into(),
-                    ]
+                        ),
+                    )
+                    .into()]
                 } else {
                     vec![]
                 }
@@ -217,11 +218,14 @@ where
         let mut offset: Point<f64, Physical> = Point::from((0.0, 0.0));
         for digit in value_str.chars().map(|d| d.to_digit(10).unwrap()) {
             let digit_location = dst.loc.to_f64() + offset;
-            let digit_size = Size::<i32, Logical>::from((22, 35)).to_f64().to_physical(scale);
+            let digit_size = Size::<i32, Logical>::from((22, 35))
+                .to_f64()
+                .to_physical(scale);
             let dst = Rectangle::from_loc_and_size(
                 digit_location.to_i32_round(),
-                ((digit_size.to_point() + digit_location).to_i32_round() - digit_location.to_i32_round())
-                    .to_size(),
+                ((digit_size.to_point() + digit_location).to_i32_round()
+                    - digit_location.to_i32_round())
+                .to_size(),
             );
             let damage = damage
                 .iter()

@@ -1,22 +1,33 @@
-use std::{hash::Hash, sync::{Arc, RwLock}};
+use std::{
+    hash::Hash,
+    sync::{Arc, RwLock},
+};
 
-use smithay::{input::{keyboard::KeyboardTarget, pointer::PointerTarget}, utils::IsAlive};
+use smithay::{
+    input::{keyboard::KeyboardTarget, pointer::PointerTarget},
+    utils::IsAlive,
+};
 
 use crate::ScreenComposer;
-
 
 pub trait ViewInteractions<Backend: crate::state::Backend>: Sync + Send {
     fn id(&self) -> Option<usize>;
     fn is_alive(&self) -> bool;
-    fn on_motion(&self, 
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>, 
-        _event: &smithay::input::pointer::MotionEvent) {}
-    fn on_relative_motion(&self, _event: &smithay::input::pointer::RelativeMotionEvent) {}
-    fn on_button(&self,
+    fn on_motion(
+        &self,
         _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
         _data: &mut ScreenComposer<Backend>,
-        _event: &smithay::input::pointer::ButtonEvent) {}
+        _event: &smithay::input::pointer::MotionEvent,
+    ) {
+    }
+    fn on_relative_motion(&self, _event: &smithay::input::pointer::RelativeMotionEvent) {}
+    fn on_button(
+        &self,
+        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
+        _data: &mut ScreenComposer<Backend>,
+        _event: &smithay::input::pointer::ButtonEvent,
+    ) {
+    }
     fn on_axis(&self, _event: &smithay::input::pointer::AxisFrame) {}
     fn on_enter(&self, _event: &smithay::input::pointer::MotionEvent) {}
     fn on_leave(&self, _serial: smithay::utils::Serial, _time: u32) {}
@@ -70,8 +81,11 @@ impl<Backend: crate::state::Backend> PartialEq for InteractiveView<Backend> {
         self.view.id() == other.view.id()
     }
 }
-impl<S:Hash + Clone + 'static, Backend: crate::state::Backend> ViewInteractions<Backend> for layers::prelude::View<S> where 
- Arc<RwLock<S>>: Send + Sync {
+impl<S: Hash + Clone + 'static, Backend: crate::state::Backend> ViewInteractions<Backend>
+    for layers::prelude::View<S>
+where
+    Arc<RwLock<S>>: Send + Sync,
+{
     fn id(&self) -> Option<usize> {
         self.layer.id().map(|id| id.0.into())
     }
@@ -86,8 +100,9 @@ impl<Backend: crate::state::Backend> IsAlive for InteractiveView<Backend> {
     }
 }
 
-
-impl<Backend: crate::state::Backend> PointerTarget<ScreenComposer<Backend>> for InteractiveView<Backend> {
+impl<Backend: crate::state::Backend> PointerTarget<ScreenComposer<Backend>>
+    for InteractiveView<Backend>
+{
     fn axis(
         &self,
         _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
@@ -210,7 +225,9 @@ impl<Backend: crate::state::Backend> PointerTarget<ScreenComposer<Backend>> for 
     }
 }
 
-impl<Backend: crate::state::Backend> KeyboardTarget<ScreenComposer<Backend>> for InteractiveView<Backend> {
+impl<Backend: crate::state::Backend> KeyboardTarget<ScreenComposer<Backend>>
+    for InteractiveView<Backend>
+{
     fn enter(
         &self,
         _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
@@ -218,7 +235,6 @@ impl<Backend: crate::state::Backend> KeyboardTarget<ScreenComposer<Backend>> for
         _keys: Vec<smithay::input::keyboard::KeysymHandle<'_>>,
         _serial: smithay::utils::Serial,
     ) {
-        
     }
     fn key(
         &self,
@@ -237,7 +253,6 @@ impl<Backend: crate::state::Backend> KeyboardTarget<ScreenComposer<Backend>> for
         _data: &mut ScreenComposer<Backend>,
         _serial: smithay::utils::Serial,
     ) {
-        
     }
     fn modifiers(
         &self,

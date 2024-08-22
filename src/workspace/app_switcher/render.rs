@@ -26,8 +26,10 @@ thread_local! {
     };
 }
 
-
-pub fn render_appswitcher_view(state: &AppSwitcherModel, view: &View<AppSwitcherModel>) -> ViewLayer {
+pub fn render_appswitcher_view(
+    state: &AppSwitcherModel,
+    view: &View<AppSwitcherModel>,
+) -> ViewLayer {
     // println!("Rendering app switcher view: {:?}", state);
 
     const COMPONENT_PADDING_H: f32 = 30.0;
@@ -51,7 +53,10 @@ pub fn render_appswitcher_view(state: &AppSwitcherModel, view: &View<AppSwitcher
     let current_app = state.current_app as f32;
     let mut app_name = "".to_string();
     if !state.apps.is_empty() && state.current_app < state.apps.len() {
-        app_name = state.apps[state.current_app].desktop_name.clone().unwrap_or("".to_string());
+        app_name = state.apps[state.current_app]
+            .desktop_name
+            .clone()
+            .unwrap_or("".to_string());
     }
     let draw_container = move |canvas: &skia_safe::Canvas, w, h| {
         let color = skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.2);
@@ -164,12 +169,7 @@ pub fn render_appswitcher_view(state: &AppSwitcherModel, view: &View<AppSwitcher
                     .iter()
                     .enumerate()
                     .map(|(index, app)| {
-                        render_app_view(
-                            index,
-                            app.clone(),
-                            view.clone(),
-                            icon_size,
-                        )
+                        render_app_view(index, app.clone(), view.clone(), icon_size)
                     })
                     .collect::<Vec<ViewLayer>>(),
             )

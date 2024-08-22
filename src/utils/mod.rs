@@ -1,6 +1,5 @@
 use usvg::TreeParsing;
 
-
 pub mod natural_layout;
 
 pub fn image_from_svg(image_data: &[u8]) -> skia_safe::Image {
@@ -21,11 +20,7 @@ pub fn image_from_path(image_path: &str) -> Option<skia_safe::Image> {
     let image_path = std::path::Path::new(image_path);
     let image_data = std::fs::read(image_path).ok()?;
 
-    let image = if image_path
-        .extension()
-        .and_then(std::ffi::OsStr::to_str)
-        == Some("svg")
-    {
+    let image = if image_path.extension().and_then(std::ffi::OsStr::to_str) == Some("svg") {
         image_from_svg(&image_data)
     } else {
         skia_safe::Image::from_encoded(skia_safe::Data::new_copy(image_data.as_slice())).unwrap()

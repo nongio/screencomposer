@@ -1,13 +1,17 @@
 use std::{cell::RefCell, rc::Rc};
 
-use layers::{engine::{ node::SceneNode, LayersEngine}, drawing::scene::render_node_tree};
+use layers::{
+    drawing::scene::render_node_tree,
+    engine::{node::SceneNode, LayersEngine},
+};
 
 use smithay::{
     backend::renderer::{
         element::{Element, Id, RenderElement},
-        utils::{CommitCounter, DamageBag, DamageSnapshot},
+        utils::{CommitCounter, DamageBag},
         Renderer,
-    }, utils::{Buffer, Physical, Point, Rectangle, Scale}
+    },
+    utils::{Buffer, Physical, Point, Rectangle, Scale},
 };
 
 use crate::{skia_renderer::SkiaRenderer, udev::UdevRenderer};
@@ -16,11 +20,10 @@ use crate::{skia_renderer::SkiaRenderer, udev::UdevRenderer};
 pub struct SceneElement {
     id: Id,
     commit_counter: CommitCounter,
-    engine:LayersEngine,
+    engine: LayersEngine,
     last_update: std::time::Instant,
     pub size: (f32, f32),
     damage: Rc<RefCell<DamageBag<i32, Physical>>>,
-
 }
 
 impl SceneElement {
@@ -42,15 +45,24 @@ impl SceneElement {
             self.commit_counter.increment();
             let scene_damage = self.engine.damage();
             let safe = 0;
-            let damage = Rectangle::from_loc_and_size((scene_damage.x() as i32 - safe, scene_damage.y() as i32 -safe), (scene_damage.width() as i32 + safe * 2, scene_damage.height() as i32 + safe * 2));
-            self.damage.borrow_mut().add(vec![damage]);    
+            let damage = Rectangle::from_loc_and_size(
+                (
+                    scene_damage.x() as i32 - safe,
+                    scene_damage.y() as i32 - safe,
+                ),
+                (
+                    scene_damage.width() as i32 + safe * 2,
+                    scene_damage.height() as i32 + safe * 2,
+                ),
+            );
+            self.damage.borrow_mut().add(vec![damage]);
         }
     }
     pub fn root_layer(&self) -> Option<SceneNode> {
         self.engine.root_layer()
     }
     pub fn set_size(&mut self, width: f32, height: f32) {
-        self.engine.set_scene_size(width, height);       
+        self.engine.set_scene_size(width, height);
         self.size = (width, height);
     }
 }
@@ -76,11 +88,13 @@ impl Element for SceneElement {
     fn geometry(&self, scale: Scale<f64>) -> Rectangle<i32, Physical> {
         if let Some(root) = self.root_layer() {
             let bounds = root.bounds();
-            Rectangle::from_loc_and_size(self.location(scale), (bounds.width() as i32, bounds.height() as i32))
+            Rectangle::from_loc_and_size(
+                self.location(scale),
+                (bounds.width() as i32, bounds.height() as i32),
+            )
         } else {
             Rectangle::from_loc_and_size(self.location(scale), (0, 0))
         }
-        
     }
 
     fn current_commit(&self) -> CommitCounter {
@@ -90,18 +104,19 @@ impl Element for SceneElement {
     fn damage_since(
         &self,
         _scale: Scale<f64>,
-        commit: Option<CommitCounter>
+        commit: Option<CommitCounter>,
     ) -> smithay::backend::renderer::utils::DamageSet<i32, Physical> {
-            self.damage.borrow().damage_since(commit).unwrap_or_default()
+        self.damage
+            .borrow()
+            .damage_since(commit)
+            .unwrap_or_default()
     }
     fn alpha(&self) -> f32 {
         1.0
     }
-
 }
 
-impl<'renderer> RenderElement<UdevRenderer<'renderer>> for SceneElement
-{
+impl<'renderer> RenderElement<UdevRenderer<'renderer>> for SceneElement {
     fn draw(
         &self,
         frame: &mut <UdevRenderer<'renderer> as Renderer>::Frame<'_>,
@@ -109,18 +124,14 @@ impl<'renderer> RenderElement<UdevRenderer<'renderer>> for SceneElement
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
         opaque_regions: &[Rectangle<i32, Physical>],
-    ) -> Result<(), <UdevRenderer<'renderer> as Renderer>::Error>
-    
-    {
+    ) -> Result<(), <UdevRenderer<'renderer> as Renderer>::Error> {
         RenderElement::<SkiaRenderer>::draw(self, frame.as_mut(), src, dst, damage, opaque_regions)
-        .map_err(|e| {
-            e.into()
-        })
+            .map_err(|e| e.into())
     }
 }
 
 impl RenderElement<SkiaRenderer> for SceneElement {
-fn draw(
+    fn draw(
         &self,
         frame: &mut <SkiaRenderer as Renderer>::Frame<'_>,
         _src: Rectangle<f64, Buffer>,
@@ -140,10 +151,15 @@ fn draw(
         // let damage_rect = skia_safe::Rect::from_xywh(scene_damage.x, scene_damage.y, scene_damage.width, scene_damage.height);
         let mut damage_rect = skia_safe::Rect::default();
         damage.iter().for_each(|d| {
-            damage_rect.join(skia_safe::Rect::from_xywh(d.loc.x as f32, d.loc.y as f32, d.size.w as f32, d.size.h as f32));
+            damage_rect.join(skia_safe::Rect::from_xywh(
+                d.loc.x as f32,
+                d.loc.y as f32,
+                d.size.w as f32,
+                d.size.h as f32,
+            ));
         });
         if let Some(root_id) = root_id {
-            let save_point= canvas.save();
+            let save_point = canvas.save();
             canvas.clip_rect(damage_rect, None, None);
             render_node_tree(root_id, arena, canvas, 1.0);
             canvas.restore_to_count(save_point);
@@ -152,4 +168,3 @@ fn draw(
         Ok(())
     }
 }
-

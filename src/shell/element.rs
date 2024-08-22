@@ -2,20 +2,14 @@ use std::{borrow::Cow, time::Duration};
 
 use smithay::{
     backend::renderer::{
-        element::{solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement, AsRenderElements},
+        element::{
+            solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement, AsRenderElements,
+        },
         ImportAll, ImportMem, Renderer, Texture,
     },
     desktop::{
-        space::SpaceElement, utils::OutputPresentationFeedback, Window, WindowSurface, WindowSurfaceType,
-    },
-    input::{
-        pointer::{
-            AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent,
-            GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent,
-            GestureSwipeUpdateEvent, MotionEvent, PointerTarget, RelativeMotionEvent,
-        },
-        touch::TouchTarget,
-        Seat,
+        space::SpaceElement, utils::OutputPresentationFeedback, Window, WindowSurface,
+        WindowSurfaceType,
     },
     output::Output,
     reexports::{
@@ -23,11 +17,13 @@ use smithay::{
         wayland_server::protocol::wl_surface::WlSurface,
     },
     render_elements,
-    utils::{user_data::UserDataMap, IsAlive, Logical, Physical, Point, Rectangle, Scale, Serial},
-    wayland::{compositor::SurfaceData as WlSurfaceData, dmabuf::DmabufFeedback, seat::WaylandFocus},
+    utils::{user_data::UserDataMap, IsAlive, Logical, Physical, Point, Rectangle, Scale},
+    wayland::{
+        compositor::SurfaceData as WlSurfaceData, dmabuf::DmabufFeedback, seat::WaylandFocus,
+    },
 };
 
-use crate::{focus::PointerFocusTarget, state::Backend, ScreenComposer};
+use crate::{focus::PointerFocusTarget, state::Backend};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WindowElement(pub Window);
@@ -40,7 +36,6 @@ impl WindowElement {
     ) -> Option<(PointerFocusTarget, Point<i32, Logical>)> {
         // let state = self.decoration_state();
 
-        
         // let offset = if state.is_ssd {
         //     Point::from((0, HEADER_BAR_HEIGHT))
         // } else {
@@ -48,7 +43,9 @@ impl WindowElement {
         // };
         let offset = Point::default();
 
-        let surface_under = self.0.surface_under(location - offset.to_f64(), window_type);
+        let surface_under = self
+            .0
+            .surface_under(location - offset.to_f64(), window_type);
         let (under, loc) = match self.0.underlying_surface() {
             WindowSurface::Wayland(_) => {
                 surface_under.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc))
@@ -78,7 +75,8 @@ impl WindowElement {
         T: Into<Duration>,
         F: FnMut(&WlSurface, &WlSurfaceData) -> Option<Output> + Copy,
     {
-        self.0.send_frame(output, time, throttle, primary_scan_out_output)
+        self.0
+            .send_frame(output, time, throttle, primary_scan_out_output)
     }
 
     pub fn send_dmabuf_feedback<'a, P, F>(
@@ -162,14 +160,14 @@ impl WaylandFocus for SSD {
 
 impl SpaceElement for WindowElement {
     fn geometry(&self) -> Rectangle<i32, Logical> {
-        let mut geo = SpaceElement::geometry(&self.0);
+        let geo = SpaceElement::geometry(&self.0);
         // if self.decoration_state().is_ssd {
         //     geo.size.h += HEADER_BAR_HEIGHT;
         // }
         geo
     }
     fn bbox(&self) -> Rectangle<i32, Logical> {
-        let mut bbox = SpaceElement::bbox(&self.0);
+        let bbox = SpaceElement::bbox(&self.0);
         // if self.decoration_state().is_ssd {
         //     bbox.size.h += HEADER_BAR_HEIGHT;
         // }
@@ -183,7 +181,7 @@ impl SpaceElement for WindowElement {
         //             &(*point - Point::from((0.0, HEADER_BAR_HEIGHT as f64))),
         //         )
         // } else {
-            SpaceElement::is_in_input_region(&self.0, point)
+        SpaceElement::is_in_input_region(&self.0, point)
         // }
     }
     fn z_index(&self) -> u8 {
@@ -231,7 +229,7 @@ where
     fn render_elements<C: From<Self::RenderElement>>(
         &self,
         renderer: &mut R,
-        mut location: Point<i32, Physical>,
+        location: Point<i32, Physical>,
         scale: Scale<f64>,
         alpha: f32,
     ) -> Vec<C> {
@@ -258,10 +256,10 @@ where
         //     vec.extend(window_elements);
         //     vec.into_iter().map(C::from).collect()
         // } else {
-            AsRenderElements::render_elements(&self.0, renderer, location, scale, alpha)
-                .into_iter()
-                .map(C::from)
-                .collect()
+        AsRenderElements::render_elements(&self.0, renderer, location, scale, alpha)
+            .into_iter()
+            .map(C::from)
+            .collect()
         // }
     }
 }

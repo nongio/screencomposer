@@ -1,21 +1,42 @@
-
+mod app_switcher;
 mod background;
 mod window_selector;
-mod app_switcher;
 mod window_view;
 mod workspace_selector;
 
-use freedesktop_desktop_entry::{default_paths, Iter as DesktopEntryIter, DesktopEntry};
-use layers::{engine::LayersEngine, prelude::{taffy, Easing, Interpolate, Layer, TimingFunction, Transition}};
-use workspace_selector::WorkspaceSelectorView;
+use crate::{
+    shell::WindowElement,
+    utils::{
+        image_from_path,
+        natural_layout::{natural_layout, LayoutRect},
+        Observable, Observer,
+    },
+};
 use core::fmt;
-use std::{collections::HashMap, fmt::Debug, hash::{Hash, Hasher}, sync::{atomic::{AtomicBool, AtomicI32, AtomicU32}, Arc, Mutex, RwLock, Weak}};
-use smithay::{input::pointer::CursorImageStatus, reexports::wayland_server::{backend::ObjectId, protocol::wl_surface::{self, WlSurface}, Resource}, wayland::shell::xdg::XdgToplevelSurfaceData};
-use crate::{shell::WindowElement, utils::{image_from_path, natural_layout::{natural_layout, LayoutRect}, Observable, Observer}};
+use freedesktop_desktop_entry::{default_paths, DesktopEntry, Iter as DesktopEntryIter};
+use layers::{
+    engine::LayersEngine,
+    prelude::{taffy, Easing, Interpolate, Layer, TimingFunction, Transition},
+};
+use smithay::{
+    input::pointer::CursorImageStatus,
+    reexports::wayland_server::{backend::ObjectId, protocol::wl_surface::WlSurface, Resource},
+    wayland::shell::xdg::XdgToplevelSurfaceData,
+};
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    hash::{Hash, Hasher},
+    sync::{
+        atomic::{AtomicBool, AtomicI32},
+        Arc, Mutex, RwLock, Weak,
+    },
+};
+use workspace_selector::WorkspaceSelectorView;
 
 pub use background::BackgroundView;
-pub use window_selector::{WindowSelectorView, WindowSelectorState, WindowSelection};
-pub use window_view::{WindowView, WindowViewSurface, WindowViewBaseModel};
+pub use window_selector::{WindowSelection, WindowSelectorState, WindowSelectorView};
+pub use window_view::{WindowView, WindowViewBaseModel, WindowViewSurface};
 
 pub use app_switcher::AppSwitcherView;
 
@@ -75,8 +96,8 @@ impl Hash for Application {
 }
 
 pub struct Workspace {
-    pub model : Arc<RwLock<WorkspaceModel>>,
-    
+    pub model: Arc<RwLock<WorkspaceModel>>,
+
     pub windows_map: Arc<RwLock<HashMap<ObjectId, Window>>>,
     pub app_switcher: Arc<AppSwitcherView>,
     pub window_selector_view: Arc<WindowSelectorView>,
@@ -102,7 +123,7 @@ pub struct WorkspaceModel {
     observers: Vec<Weak<dyn Observer<WorkspaceModel>>>,
 }
 
-impl  fmt::Debug for Workspace {
+impl fmt::Debug for Workspace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let model = self.model.read().unwrap();
 
@@ -123,8 +144,11 @@ impl Application {
         }
     }
 }
-impl  Workspace {
-    pub fn new(layers_engine: LayersEngine, cursor_status: Arc<Mutex<CursorImageStatus>>) -> Arc<Self> {
+impl Workspace {
+    pub fn new(
+        layers_engine: LayersEngine,
+        cursor_status: Arc<Mutex<CursorImageStatus>>,
+    ) -> Arc<Self> {
         let workspace_layer = layers_engine.new_layer();
         workspace_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
@@ -137,8 +161,10 @@ impl  Workspace {
             ..Default::default()
         });
         background_layer.set_size(layers::types::Size::percent(1.0, 1.0), None);
-        background_layer.set_background_color(layers::prelude::Color::new_rgba(0.0, 0.0, 0.0, 1.0), None);
-        background_layer.set_border_corner_radius(layers::prelude::BorderRadius::new_single(20.0), None);
+        background_layer
+            .set_background_color(layers::prelude::Color::new_rgba(0.0, 0.0, 0.0, 1.0), None);
+        background_layer
+            .set_border_corner_radius(layers::prelude::BorderRadius::new_single(20.0), None);
         // background_layer.set_opacity(0.0, None);
         let windows_layer = layers_engine.new_layer();
         windows_layer.set_layout_style(taffy::Style {
@@ -174,15 +200,17 @@ impl  Workspace {
             background_view.set_image(background_image);
         }
         let background_view = Arc::new(background_view);
-        
-        let window_selector_view = WindowSelectorView::new(layers_engine.clone(), cursor_status.clone());
+
+        let window_selector_view =
+            WindowSelectorView::new(layers_engine.clone(), cursor_status.clone());
         let window_selector_view = Arc::new(window_selector_view);
 
-        let workspace_selector_view = WorkspaceSelectorView::new(layers_engine.clone(), workspace_selector_layer.clone());
+        let workspace_selector_view =
+            WorkspaceSelectorView::new(layers_engine.clone(), workspace_selector_layer.clone());
 
         Arc::new(Self {
             model: Arc::new(RwLock::new(model)),
-            
+
             windows_map: Arc::new(RwLock::new(HashMap::new())),
             app_switcher,
             window_selector_view: window_selector_view.clone(),
@@ -205,7 +233,8 @@ impl  Workspace {
     }
 
     fn set_show_all(&self, show_all: bool) {
-        self.show_all.store(show_all, std::sync::atomic::Ordering::Relaxed);
+        self.show_all
+            .store(show_all, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub fn get_show_desktop(&self) -> bool {
@@ -213,7 +242,8 @@ impl  Workspace {
     }
 
     fn set_show_desktop(&self, show_all: bool) {
-        self.show_desktop.store(show_all, std::sync::atomic::Ordering::Relaxed);
+        self.show_desktop
+            .store(show_all, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub(crate) fn update_window(&self, id: &ObjectId, model: &WindowViewBaseModel) {
@@ -227,7 +257,9 @@ impl  Workspace {
         }
     }
     pub(crate) fn update_with_window_elements<I>(&self, windows: I)
-        where I: Iterator<Item = (WindowElement, layers::prelude::Layer, WindowViewBaseModel)> {
+    where
+        I: Iterator<Item = (WindowElement, layers::prelude::Layer, WindowViewBaseModel)>,
+    {
         {
             let mut model_mut = self.model.write().unwrap();
             model_mut.application_list = Vec::new();
@@ -236,97 +268,95 @@ impl  Workspace {
             let mut map = self.windows_map.write().unwrap();
             map.clear();
         }
-        
 
         windows
-            .filter(|(w,l, state)| w.wl_surface().is_some()) // do we need this?
+            .filter(|(w, l, state)| w.wl_surface().is_some()) // do we need this?
             .for_each(|(w, l, state)| {
                 let surface = w.wl_surface().map(|s| (s.as_ref()).clone()).unwrap();
-                smithay::wayland::compositor::with_states(
-                    &surface,
-                    |states| {
-                        let attributes: std::sync::MutexGuard<'_, smithay::wayland::shell::xdg::XdgToplevelSurfaceRoleAttributes> = states
-                            .data_map
-                            .get::<XdgToplevelSurfaceData>()
-                            .unwrap()
-                            .lock()
-                            .unwrap();
+                smithay::wayland::compositor::with_states(&surface, |states| {
+                    let attributes: std::sync::MutexGuard<
+                        '_,
+                        smithay::wayland::shell::xdg::XdgToplevelSurfaceRoleAttributes,
+                    > = states
+                        .data_map
+                        .get::<XdgToplevelSurfaceData>()
+                        .unwrap()
+                        .lock()
+                        .unwrap();
 
-                            
-                        if let Some(app_id) = attributes.app_id.as_ref() {
-                            let id = w.wl_surface().unwrap().id();
-                            let wl_surface = w.wl_surface().map(|s| (s.as_ref()).clone());
-                            let window = Window {
-                                app_id: app_id.to_string(),
-                                wl_surface,
-                                window_element: Some(w),
-                                base_layer: l,
-                                x: state.x,
-                                y: state.y,
-                                w: state.w,
-                                h: state.h,
-                                title: state.title.clone(),
-                                is_fullscreen: false,
-                                is_maximized: false,
-                                is_minimized: false,
-
-                            };
-                            {
-                                let mut model = self.model.write().unwrap();
-                                // don't allow duplicates in app switcher
-                                // TODO use config
-                                if !model.application_list.iter().any(|id| id == app_id) {
-                                    model.application_list.push(app_id.clone());
-                                }
-                                if !model.applications.contains_key(app_id) {
-                                    model.applications.insert(app_id.to_owned(), Application {
+                    if let Some(app_id) = attributes.app_id.as_ref() {
+                        let id = w.wl_surface().unwrap().id();
+                        let wl_surface = w.wl_surface().map(|s| (s.as_ref()).clone());
+                        let window = Window {
+                            app_id: app_id.to_string(),
+                            wl_surface,
+                            window_element: Some(w),
+                            base_layer: l,
+                            x: state.x,
+                            y: state.y,
+                            w: state.w,
+                            h: state.h,
+                            title: state.title.clone(),
+                            is_fullscreen: false,
+                            is_maximized: false,
+                            is_minimized: false,
+                        };
+                        {
+                            let mut model = self.model.write().unwrap();
+                            // don't allow duplicates in app switcher
+                            // TODO use config
+                            if !model.application_list.iter().any(|id| id == app_id) {
+                                model.application_list.push(app_id.clone());
+                            }
+                            if !model.applications.contains_key(app_id) {
+                                model.applications.insert(
+                                    app_id.to_owned(),
+                                    Application {
                                         identifier: app_id.to_string(),
                                         ..Default::default()
-                                    });
-                                }
-                                let app = model.applications.get_mut(app_id).unwrap();
-                                app.windows.push(window.clone());
-                                {
-                                    drop(model);
-                                    self.load_async_app_info(app_id);
-                                }
+                                    },
+                                );
                             }
-                            
-
+                            let app = model.applications.get_mut(app_id).unwrap();
+                            app.windows.push(window.clone());
                             {
-                                let mut map = self.windows_map.write().unwrap();
-                                map.insert(id.clone(), window);
-                                let mut model_mut = self.model.write().unwrap();
-                                model_mut.windows.push(id);
+                                drop(model);
+                                self.load_async_app_info(app_id);
                             }
                         }
-                    },
-                );
-            });
-            let model = self.model.read().unwrap();
-            let event = model.clone();
-            // println!("{:?}", apps.application_list);
 
-            model.notify_observers(&event);
+                        {
+                            let mut map = self.windows_map.write().unwrap();
+                            map.insert(id.clone(), window);
+                            let mut model_mut = self.model.write().unwrap();
+                            model_mut.windows.push(id);
+                        }
+                    }
+                });
+            });
+        let model = self.model.read().unwrap();
+        let event = model.clone();
+        // println!("{:?}", apps.application_list);
+
+        model.notify_observers(&event);
     }
 
     fn load_async_app_info(&self, app_id: &str) {
         let app_id = app_id.to_string();
         let model = self.model.clone();
         // let instance = self.clone();
-        tokio::spawn(async move{
+        tokio::spawn(async move {
             let mut desktop_entry: Option<DesktopEntry<'_>> = None;
             let bytes;
             let path;
             let default_paths = default_paths();
-            let path_result= DesktopEntryIter::new(default_paths).find(|path| {
-                path.to_string_lossy().contains(&app_id)
-            });
-        
+            let path_result = DesktopEntryIter::new(default_paths)
+                .find(|path| path.to_string_lossy().contains(&app_id));
+
             if let Some(p) = path_result {
                 path = p.clone();
                 let bytes_result = std::fs::read_to_string(&p);
-                if  let Ok(b) = bytes_result {
+                if let Ok(b) = bytes_result {
                     bytes = b.clone();
                     if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
                         desktop_entry = Some(entry);
@@ -336,13 +366,14 @@ impl  Workspace {
             if let Some(desktop_entry) = desktop_entry {
                 let mut model_mut = model.write().unwrap();
 
-                let icon_path = desktop_entry.icon().map(|icon| icon.to_string())
-                .and_then(|icon_name| {
-                    xdgkit::icon_finder::find_icon(icon_name, 512, 1)
-                }).map(|icon| {
-                    icon.to_str().unwrap().to_string()
-                });
-                let icon = icon_path.as_ref().and_then(|icon_path| {image_from_path(icon_path)});
+                let icon_path = desktop_entry
+                    .icon()
+                    .map(|icon| icon.to_string())
+                    .and_then(|icon_name| xdgkit::icon_finder::find_icon(icon_name, 512, 1))
+                    .map(|icon| icon.to_str().unwrap().to_string());
+                let icon = icon_path
+                    .as_ref()
+                    .and_then(|icon_path| image_from_path(icon_path));
                 if let Some(state) = model_mut.applications.get_mut(&app_id) {
                     state.desktop_name = desktop_entry.name(None).map(|name| name.to_string());
                     state.icon_path = icon_path;
@@ -357,7 +388,7 @@ impl  Workspace {
                     };
                     model_mut.applications.insert(app_id, state);
                 }
-                
+
                 model_mut.notify_observers(&model_mut.clone());
             }
         });
@@ -368,8 +399,10 @@ impl  Workspace {
     // }
     pub fn expose_show_all(&self, delta: f32, end_gesture: bool) {
         const MULTIPLIER: f32 = 1000.0;
-        let gesture = self.show_all_gesture.load(std::sync::atomic::Ordering::Relaxed);
-        
+        let gesture = self
+            .show_all_gesture
+            .load(std::sync::atomic::Ordering::Relaxed);
+
         let mut new_gesture = gesture + (delta * MULTIPLIER) as i32;
         let mut show_all = self.get_show_all();
         if end_gesture {
@@ -396,39 +429,43 @@ impl  Workspace {
         }
 
         let delta = new_gesture as f32 / 1000.0;
-        self.show_all_gesture.store(new_gesture, std::sync::atomic::Ordering::Relaxed);
-        
+        self.show_all_gesture
+            .store(new_gesture, std::sync::atomic::Ordering::Relaxed);
+
         let workspace_selector_height = 250.0;
         let padding_top = 10.0;
         let padding_bottom = 10.0;
-
 
         let size = self.workspace_layer.render_size();
         let screen_size_w = size.x;
         let screen_size_h = size.y - padding_top - padding_bottom - workspace_selector_height;
         let model = self.model.read().unwrap();
         let map = self.windows_map.read().unwrap();
-        let windows = model.windows.iter().map(|w| {
-            let w = map.get(w).unwrap();
-            w.clone()
-        }).collect();
-        
+        let windows = model
+            .windows
+            .iter()
+            .map(|w| {
+                let w = map.get(w).unwrap();
+                w.clone()
+            })
+            .collect();
+
         let mut bin = self.expose_bin.write().unwrap();
         if bin.is_empty() {
-            let layout_rect = LayoutRect::new(0.0, workspace_selector_height, screen_size_w, screen_size_h);
+            let layout_rect =
+                LayoutRect::new(0.0, workspace_selector_height, screen_size_w, screen_size_h);
             *bin = natural_layout(&windows, &layout_rect, false);
         }
 
-        let mut state = WindowSelectorState { 
+        let mut state = WindowSelectorState {
             rects: vec![],
             current_selection: None,
             ..self.window_selector_view.view.get_state()
         };
-        
+
         let mut delta = delta.max(0.0);
         delta = delta.powf(0.65);
-        
-        
+
         let mut index = 0;
 
         let mut transition = Some(Transition {
@@ -443,11 +480,16 @@ impl  Workspace {
 
         let workspace_selector_y = (-200.0).interpolate(&0.0, delta);
         let workspace_opacity = 0.0.interpolate(&1.0, delta);
-        self.workspace_selector_view.layer.set_position(layers::types::Point {
-            x: 0.0,
-            y: workspace_selector_y,
-        }, transition);
-        self.workspace_selector_view.layer.set_opacity(workspace_opacity, transition);
+        self.workspace_selector_view.layer.set_position(
+            layers::types::Point {
+                x: 0.0,
+                y: workspace_selector_y,
+            },
+            transition,
+        );
+        self.workspace_selector_view
+            .layer
+            .set_opacity(workspace_opacity, transition);
 
         for window in model.windows.iter() {
             let window = map.get(window).unwrap();
@@ -463,7 +505,7 @@ impl  Workspace {
                 let scale_x = to_width / window_width;
                 let scale_y = to_height / window_height;
                 let scale = scale_x.min(scale_y).min(1.0);
-                
+
                 let window_rect = WindowSelection {
                     x: rect.x,
                     y: rect.y,
@@ -478,17 +520,15 @@ impl  Workspace {
                 let scale = 1.0.interpolate(&scale, delta);
                 let delta = delta.clamp(0.0, 1.0);
 
-                let x= window.x.interpolate(&to_x, delta);
-                let y= window.y.interpolate(&to_y, delta);
+                let x = window.x.interpolate(&to_x, delta);
+                let y = window.y.interpolate(&to_y, delta);
 
-                window.base_layer.set_position(layers::types::Point {
-                    x,
-                    y,
-                }, transition);
-                window.base_layer.set_scale(layers::types::Point {
-                    x: scale,
-                    y: scale,
-                }, transition);
+                window
+                    .base_layer
+                    .set_position(layers::types::Point { x, y }, transition);
+                window
+                    .base_layer
+                    .set_scale(layers::types::Point { x: scale, y: scale }, transition);
             }
         }
         self.window_selector_view.view.update_state(state);
@@ -500,11 +540,13 @@ impl  Workspace {
 
     pub fn expose_show_desktop(&self, delta: f32, end_gesture: bool) {
         const MULTIPLIER: f32 = 1000.0;
-        let gesture = self.show_desktop_gesture.load(std::sync::atomic::Ordering::Relaxed);
-        
+        let gesture = self
+            .show_desktop_gesture
+            .load(std::sync::atomic::Ordering::Relaxed);
+
         let mut new_gesture = gesture + (delta * MULTIPLIER) as i32;
         let show_desktop = self.get_show_desktop();
-       
+
         let size = self.workspace_layer.render_size();
         let padding_top = 10.0;
         let padding_bottom = 10.0;
@@ -512,7 +554,7 @@ impl  Workspace {
         let screen_size_h = size.y - padding_top - padding_bottom;
         let model = self.model.read().unwrap();
         let map = self.windows_map.read().unwrap();
-        
+
         if end_gesture {
             if show_desktop {
                 if new_gesture <= (9.0 * MULTIPLIER / 10.0) as i32 {
@@ -538,8 +580,8 @@ impl  Workspace {
             }
         }
 
-        let mut delta = new_gesture as f32 / 1000.0;
-        
+        let delta = new_gesture as f32 / 1000.0;
+
         let delta = delta.clamp(0.0, 1.0);
 
         let mut transition = Some(Transition {
@@ -556,13 +598,12 @@ impl  Workspace {
             let window = map.get(window).unwrap();
             let to_x = -window.w;
             let to_y = -window.h;
-            let x= window.x.interpolate(&to_x, delta);
-            let y= window.y.interpolate(&to_y, delta);
+            let x = window.x.interpolate(&to_x, delta);
+            let y = window.y.interpolate(&to_y, delta);
 
-            window.base_layer.set_position(layers::types::Point {
-                x,
-                y,
-            }, transition);
+            window
+                .base_layer
+                .set_position(layers::types::Point { x, y }, transition);
         }
     }
 }
@@ -573,7 +614,9 @@ impl Observable<WorkspaceModel> for WorkspaceModel {
         self.observers.push(observer);
     }
 
-    fn observers<'a>(&'a self) -> Box<dyn Iterator<Item = std::sync::Weak<dyn Observer<WorkspaceModel>>> + 'a> {
+    fn observers<'a>(
+        &'a self,
+    ) -> Box<dyn Iterator<Item = std::sync::Weak<dyn Observer<WorkspaceModel>>> + 'a> {
         Box::new(self.observers.iter().cloned())
     }
 }

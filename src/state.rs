@@ -1,33 +1,54 @@
 use std::{
-    borrow::Borrow, collections::{HashMap, VecDeque}, fmt::Debug, os::unix::io::OwnedFd, sync::{atomic::AtomicBool, Arc, Mutex, RwLock}, time::Duration
+    collections::{HashMap, VecDeque},
+    fmt::Debug,
+    os::unix::io::OwnedFd,
+    sync::{atomic::AtomicBool, Arc, Mutex},
+    time::Duration,
 };
 
-use layers::{engine::{LayersEngine, NodeRef}, prelude::taffy};
+use layers::{
+    engine::{LayersEngine, NodeRef},
+    prelude::taffy,
+};
 use tracing::{info, warn};
 
 use smithay::{
-    backend::{input::TabletToolDescriptor, 
+    backend::{
+        input::TabletToolDescriptor,
         renderer::{
             element::{
-                default_primary_scanout_output_compare, texture::TextureBuffer, utils::select_dmabuf_feedback, RenderElementStates
-            }, 
-            utils::{
-                RendererSurfaceState, RendererSurfaceStateUserData
-            }
-        }}, delegate_compositor, delegate_data_control, delegate_data_device, delegate_fractional_scale, delegate_input_method_manager, delegate_keyboard_shortcuts_inhibit, delegate_layer_shell, delegate_output, delegate_pointer_constraints, delegate_pointer_gestures, delegate_presentation, delegate_primary_selection, delegate_relative_pointer, delegate_seat, delegate_security_context, delegate_shm, delegate_tablet_manager, delegate_text_input_manager, delegate_viewporter, delegate_virtual_keyboard_manager, delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell, delegate_xwayland_shell, desktop::{
+                default_primary_scanout_output_compare, utils::select_dmabuf_feedback,
+                RenderElementStates,
+            },
+            utils::{RendererSurfaceState, RendererSurfaceStateUserData},
+        },
+    },
+    delegate_compositor, delegate_data_control, delegate_data_device, delegate_fractional_scale,
+    delegate_input_method_manager, delegate_keyboard_shortcuts_inhibit, delegate_layer_shell,
+    delegate_output, delegate_pointer_constraints, delegate_pointer_gestures,
+    delegate_presentation, delegate_primary_selection, delegate_relative_pointer, delegate_seat,
+    delegate_security_context, delegate_shm, delegate_tablet_manager, delegate_text_input_manager,
+    delegate_viewporter, delegate_virtual_keyboard_manager, delegate_xdg_activation,
+    delegate_xdg_decoration, delegate_xdg_shell, delegate_xwayland_shell,
+    desktop::{
         space::SpaceElement,
         utils::{
-            surface_presentation_feedback_flags_from_states, surface_primary_scanout_output, update_surface_primary_scanout_output, with_surfaces_surface_tree, OutputPresentationFeedback
+            surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
+            update_surface_primary_scanout_output, with_surfaces_surface_tree,
+            OutputPresentationFeedback,
         },
         PopupKind, PopupManager, Space,
-    }, input::{
+    },
+    input::{
         keyboard::{Keysym, XkbConfig},
         pointer::{CursorImageStatus, PointerHandle},
         Seat, SeatHandler, SeatState,
-    }, output::Output, reexports::{
+    },
+    output::Output,
+    reexports::{
         calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
         wayland_protocols::xdg::decoration::{
-            self as xdg_decoration, 
+            self as xdg_decoration,
             zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
         },
         wayland_server::{
@@ -35,29 +56,75 @@ use smithay::{
             protocol::{wl_data_source::WlDataSource, wl_surface::WlSurface},
             Display, DisplayHandle, Resource,
         },
-    }, utils::{Clock, Monotonic, Rectangle}, wayland::{
-        compositor::{get_parent, with_states, CompositorClientState, CompositorState, SurfaceAttributes, SurfaceData, TraversalAction}, dmabuf::DmabufFeedback, fractional_scale::{with_fractional_scale, FractionalScaleHandler, FractionalScaleManagerState}, input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface}, keyboard_shortcuts_inhibit::{
-            KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState, KeyboardShortcutsInhibitor,
-        }, output::{OutputHandler, OutputManagerState}, pointer_constraints::{with_pointer_constraint, PointerConstraintsHandler, PointerConstraintsState}, pointer_gestures::PointerGesturesState, presentation::PresentationState, relative_pointer::RelativePointerManagerState, seat::WaylandFocus, security_context::{
-            SecurityContext, SecurityContextHandler, SecurityContextListenerSource, SecurityContextState,
-        }, selection::{data_device::{
-            set_data_device_focus, ClientDndGrabHandler, DataDeviceHandler, DataDeviceState,
-            ServerDndGrabHandler,
-        }, primary_selection::{set_primary_focus, PrimarySelectionHandler, PrimarySelectionState}, wlr_data_control::{DataControlHandler, DataControlState}, SelectionHandler}, shell::{
+    },
+    utils::{Clock, Monotonic, Rectangle},
+    wayland::{
+        compositor::{
+            get_parent, with_states, CompositorClientState, CompositorState, SurfaceAttributes,
+            SurfaceData, TraversalAction,
+        },
+        dmabuf::DmabufFeedback,
+        fractional_scale::{
+            with_fractional_scale, FractionalScaleHandler, FractionalScaleManagerState,
+        },
+        input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface},
+        keyboard_shortcuts_inhibit::{
+            KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState,
+            KeyboardShortcutsInhibitor,
+        },
+        output::{OutputHandler, OutputManagerState},
+        pointer_constraints::{
+            with_pointer_constraint, PointerConstraintsHandler, PointerConstraintsState,
+        },
+        pointer_gestures::PointerGesturesState,
+        presentation::PresentationState,
+        relative_pointer::RelativePointerManagerState,
+        seat::WaylandFocus,
+        security_context::{
+            SecurityContext, SecurityContextHandler, SecurityContextListenerSource,
+            SecurityContextState,
+        },
+        selection::{
+            data_device::{
+                set_data_device_focus, ClientDndGrabHandler, DataDeviceHandler, DataDeviceState,
+                ServerDndGrabHandler,
+            },
+            primary_selection::{
+                set_primary_focus, PrimarySelectionHandler, PrimarySelectionState,
+            },
+            wlr_data_control::{DataControlHandler, DataControlState},
+            SelectionHandler,
+        },
+        shell::{
             wlr_layer::WlrLayerShellState,
             xdg::{
-                decoration::{XdgDecorationHandler, XdgDecorationState}, SurfaceCachedState, ToplevelSurface, XdgShellState, XdgToplevelSurfaceData
+                decoration::{XdgDecorationHandler, XdgDecorationState},
+                SurfaceCachedState, ToplevelSurface, XdgShellState, XdgToplevelSurfaceData,
             },
-        }, shm::{ShmHandler, ShmState}, socket::ListeningSocketSource, tablet_manager::{TabletManagerState, TabletSeatHandler, TabletSeatTrait}, text_input::TextInputManagerState, viewporter::ViewporterState, virtual_keyboard::VirtualKeyboardManagerState, xdg_activation::{
+        },
+        shm::{ShmHandler, ShmState},
+        socket::ListeningSocketSource,
+        tablet_manager::{TabletManagerState, TabletSeatHandler},
+        text_input::TextInputManagerState,
+        viewporter::ViewporterState,
+        virtual_keyboard::VirtualKeyboardManagerState,
+        xdg_activation::{
             XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
-        }, xdg_foreign::{XdgForeignHandler, XdgForeignState}, xwayland_shell
-    }
+        },
+        xdg_foreign::{XdgForeignHandler, XdgForeignState},
+        xwayland_shell,
+    },
 };
-use x11rb::protocol::xproto::Screen;
 
 #[cfg(feature = "xwayland")]
 use crate::cursor::Cursor;
-use crate::{focus::{KeyboardFocusTarget, PointerFocusTarget}, render_elements::scene_element::SceneElement, shell::WindowElement, skia_renderer::SkiaTexture, workspace::{self, WindowView, WindowViewBaseModel, WindowViewSurface, Workspace}};
+use crate::{
+    focus::{KeyboardFocusTarget, PointerFocusTarget},
+    render_elements::scene_element::SceneElement,
+    shell::WindowElement,
+    skia_renderer::SkiaTexture,
+    workspace::{WindowView, WindowViewBaseModel, WindowViewSurface, Workspace},
+};
 #[cfg(feature = "xwayland")]
 use smithay::{
     delegate_xwayland_keyboard_grab,
@@ -156,7 +223,12 @@ impl<BackendData: Backend> DataDeviceHandler for ScreenComposer<BackendData> {
 }
 
 impl<BackendData: Backend> ClientDndGrabHandler for ScreenComposer<BackendData> {
-    fn started(&mut self, _source: Option<WlDataSource>, icon: Option<WlSurface>, _seat: Seat<Self>) {
+    fn started(
+        &mut self,
+        _source: Option<WlDataSource>,
+        icon: Option<WlSurface>,
+        _seat: Seat<Self>,
+    ) {
         self.dnd_icon = icon;
     }
     fn dropped(&mut self, _seat: Seat<Self>) {
@@ -178,7 +250,12 @@ impl<BackendData: Backend> SelectionHandler for ScreenComposer<BackendData> {
     type SelectionUserData = ();
 
     #[cfg(feature = "xwayland")]
-    fn new_selection(&mut self, ty: SelectionTarget, source: Option<SelectionSource>, _seat: Seat<Self>) {
+    fn new_selection(
+        &mut self,
+        ty: SelectionTarget,
+        source: Option<SelectionSource>,
+        _seat: Seat<Self>,
+    ) {
         if let Some(xwm) = self.xwm.as_mut() {
             if let Err(err) = xwm.new_selection(ty, source.map(|source| source.mime_types())) {
                 warn!(?err, ?ty, "Failed to set Xwayland selection");
@@ -234,7 +311,11 @@ impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
         &mut self.seat_state
     }
 
-    fn focus_changed(&mut self, seat: &Seat<Self>, target: Option<&KeyboardFocusTarget<BackendData>>) {
+    fn focus_changed(
+        &mut self,
+        seat: &Seat<Self>,
+        target: Option<&KeyboardFocusTarget<BackendData>>,
+    ) {
         let dh = &self.display_handle;
 
         let wl_surface = target.and_then(WaylandFocus::wl_surface);
@@ -243,12 +324,11 @@ impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
         set_data_device_focus(dh, seat, focus.clone());
         set_primary_focus(dh, seat, focus);
     }
-    
+
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
         // println!("change icon {:?}", image);
         // *self.cursor_status.lock().unwrap() = image;
     }
-    
 }
 delegate_seat!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
@@ -281,7 +361,9 @@ impl<BackendData: Backend> InputMethodHandler for ScreenComposer<BackendData> {
     fn parent_geometry(&self, parent: &WlSurface) -> Rectangle<i32, smithay::utils::Logical> {
         self.space
             .elements()
-            .find_map(|window| (window.wl_surface().as_deref() == Some(parent)).then(|| window.geometry()))
+            .find_map(|window| {
+                (window.wl_surface().as_deref() == Some(parent)).then(|| window.geometry())
+            })
             .unwrap_or_default()
     }
 }
@@ -453,8 +535,9 @@ impl<BackendData: Backend> FractionalScaleHandler for ScreenComposer<BackendData
                             })
                         })
                     } else {
-                        self.window_for_surface(&root)
-                            .and_then(|window| self.space.outputs_for_element(&window).first().cloned())
+                        self.window_for_surface(&root).and_then(|window| {
+                            self.space.outputs_for_element(&window).first().cloned()
+                        })
                     }
                 })
                 .or_else(|| self.space.outputs().next().cloned());
@@ -469,7 +552,11 @@ impl<BackendData: Backend> FractionalScaleHandler for ScreenComposer<BackendData
 delegate_fractional_scale!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
 impl<BackendData: Backend + 'static> SecurityContextHandler for ScreenComposer<BackendData> {
-    fn context_created(&mut self, source: SecurityContextListenerSource, security_context: SecurityContext) {
+    fn context_created(
+        &mut self,
+        source: SecurityContextListenerSource,
+        security_context: SecurityContext,
+    ) {
         self.handle
             .insert_source(source, move |client_stream, _, data| {
                 let client_state = ClientState {
@@ -490,7 +577,10 @@ delegate_security_context!(@<BackendData: Backend + 'static> ScreenComposer<Back
 
 #[cfg(feature = "xwayland")]
 impl<BackendData: Backend + 'static> XWaylandKeyboardGrabHandler for ScreenComposer<BackendData> {
-    fn keyboard_focus_for_xsurface(&self, surface: &WlSurface) -> Option<KeyboardFocusTarget<BackendData>> {
+    fn keyboard_focus_for_xsurface(
+        &self,
+        surface: &WlSurface,
+    ) -> Option<KeyboardFocusTarget<BackendData>> {
         let elem = self
             .space
             .elements()
@@ -504,14 +594,12 @@ delegate_xwayland_keyboard_grab!(@<BackendData: Backend + 'static> ScreenCompose
 #[cfg(feature = "xwayland")]
 delegate_xwayland_shell!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
-
 impl<BackendData: Backend> XdgForeignHandler for ScreenComposer<BackendData> {
     fn xdg_foreign_state(&mut self) -> &mut XdgForeignState {
         &mut self.xdg_foreign_state
     }
 }
 smithay::delegate_xdg_foreign!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
 
 impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     pub fn init(
@@ -608,7 +696,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
 
         #[cfg(feature = "xwayland")]
         XWaylandKeyboardGrabState::new::<Self>(&dh.clone());
-        
+
         let layers_engine = LayersEngine::new(500.0, 500.0);
         let root_layer = layers_engine.new_layer();
         root_layer.set_layout_style(taffy::Style {
@@ -714,37 +802,54 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 }
             });
         if let Err(e) = ret {
-            tracing::error!("Failed to insert the XWaylandSource into the event loop: {}", e);
+            tracing::error!(
+                "Failed to insert the XWaylandSource into the event loop: {}",
+                e
+            );
         }
     }
     pub fn update_workspace_applications(&mut self) {
-        let windows = self.xdg_shell_state.toplevel_surfaces().iter()
-            .map(|tl| {
-                let id = tl.wl_surface().id();
-                let wv = self.get_window_view(&id).unwrap();
-                let we = self.space.elements().find(|window| {
+        let windows = self.xdg_shell_state.toplevel_surfaces().iter().map(|tl| {
+            let id = tl.wl_surface().id();
+            let wv = self.get_window_view(&id).unwrap();
+            let we = self
+                .space
+                .elements()
+                .find(|window| {
                     if let Some(surface) = window.wl_surface().as_ref() {
                         surface.id() == tl.wl_surface().id()
                     } else {
                         false
                     }
-                }).unwrap().to_owned();
-                let state = wv.view_base.state.read().unwrap();
-                (we, wv.layer.clone(), state.clone())
-            });
+                })
+                .unwrap()
+                .to_owned();
+            let state = wv.view_base.state.read().unwrap();
+            (we, wv.layer.clone(), state.clone())
+        });
         self.workspace.update_with_window_elements(windows);
     }
     #[profiling::function]
-    fn window_view_for_surface(&self, surface: &WlSurface, states: &SurfaceData, location: &smithay::utils::Point<f64, smithay::utils::Physical>, scale: f64) -> Option<WindowViewSurface> {
+    fn window_view_for_surface(
+        &self,
+        surface: &WlSurface,
+        states: &SurfaceData,
+        location: &smithay::utils::Point<f64, smithay::utils::Physical>,
+        scale: f64,
+    ) -> Option<WindowViewSurface> {
         let id = surface.id();
         let mut cached_state = states.cached_state.get::<SurfaceCachedState>();
         let cached_state = cached_state.current();
-        let surface_geometry = cached_state.geometry.unwrap_or_default().to_f64().to_physical(scale);
+        let surface_geometry = cached_state
+            .geometry
+            .unwrap_or_default()
+            .to_f64()
+            .to_physical(scale);
         let mut surface_attributes = states.cached_state.get::<SurfaceAttributes>();
         let surface_attributes = surface_attributes.current();
         if let Some(render_surface) = states.data_map.get::<RendererSurfaceStateUserData>() {
             let render_surface = render_surface.lock().unwrap();
-            
+
             if let Some(view) = render_surface.view() {
                 let texture = self.backend_data.texture_for_surface(&render_surface);
                 let wvs = WindowViewSurface {
@@ -769,41 +874,53 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         let windows = self.space.elements();
         for window in windows {
             let output = self.space.outputs_for_element(window);
-            let scale_factor = output.first().map(|output| output.current_scale()).unwrap_or(smithay::output::Scale::Fractional(1.0)).fractional_scale();
+            let scale_factor = output
+                .first()
+                .map(|output| output.current_scale())
+                .unwrap_or(smithay::output::Scale::Fractional(1.0))
+                .fractional_scale();
             if let Some(window_surface) = window.wl_surface() {
                 let id = window_surface.id();
-                let location = self.space.element_location(window).unwrap_or((0,0).into()).to_f64().to_physical(scale_factor);
-                let window_geometry = self.space.element_geometry(window).unwrap_or_default().to_f64().to_physical(scale_factor);
+                let location = self
+                    .space
+                    .element_location(window)
+                    .unwrap_or((0, 0).into())
+                    .to_f64()
+                    .to_physical(scale_factor);
+                let window_geometry = self
+                    .space
+                    .element_geometry(window)
+                    .unwrap_or_default()
+                    .to_f64()
+                    .to_physical(scale_factor);
                 let mut title = "".to_string();
-                
-                smithay::wayland::compositor::with_states(
-                    &window_surface,
-                    |states| {
-                        if let Some(attributes) = states
-                            .data_map
-                            .get::<XdgToplevelSurfaceData>() {
-                                let attributes = attributes.lock().unwrap();
-                                title = attributes.title.as_ref().cloned().unwrap_or_default();
-                            }
-    
-                    });
-    
+
+                smithay::wayland::compositor::with_states(&window_surface, |states| {
+                    if let Some(attributes) = states.data_map.get::<XdgToplevelSurfaceData>() {
+                        let attributes = attributes.lock().unwrap();
+                        title = attributes.title.as_ref().cloned().unwrap_or_default();
+                    }
+                });
+
                 let mut render_elements = VecDeque::new();
-                PopupManager::popups_for_surface(&window_surface).for_each(|(popup, popup_offset)| {
-                    let offset: smithay::utils::Point<f64, smithay::utils::Physical> = (popup_offset - popup.geometry().loc)
-                        .to_physical_precise_round(scale_factor);
-                    let popup_surface = popup.wl_surface();
-                    with_surfaces_surface_tree(
-                        popup_surface,
-                        |surface, states| {
-                            if let Some(window_view) = self.window_view_for_surface(surface, states, &offset, scale_factor) {
+                PopupManager::popups_for_surface(&window_surface).for_each(
+                    |(popup, popup_offset)| {
+                        let offset: smithay::utils::Point<f64, smithay::utils::Physical> =
+                            (popup_offset - popup.geometry().loc)
+                                .to_physical_precise_round(scale_factor);
+                        let popup_surface = popup.wl_surface();
+                        with_surfaces_surface_tree(popup_surface, |surface, states| {
+                            if let Some(window_view) =
+                                self.window_view_for_surface(surface, states, &offset, scale_factor)
+                            {
                                 render_elements.push_front(window_view);
                             }
-                        }
-                    );
-                });
-                let initial_location:smithay::utils::Point<f64, smithay::utils::Physical> = (0.0, 0.0).into();
-    
+                        });
+                    },
+                );
+                let initial_location: smithay::utils::Point<f64, smithay::utils::Physical> =
+                    (0.0, 0.0).into();
+
                 smithay::wayland::compositor::with_surface_tree_downward(
                     &window_surface,
                     initial_location,
@@ -813,10 +930,10 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                         let mut cached_state = states.cached_state.get::<SurfaceCachedState>();
                         let cached_state = cached_state.current();
                         let surface_geometry = cached_state.geometry.unwrap_or_default();
-                
+
                         if let Some(data) = data {
                             let data = data.lock().unwrap();
-            
+
                             if let Some(view) = data.view() {
                                 location += view.offset.to_f64().to_physical(scale_factor);
                                 location -= surface_geometry.loc.to_f64().to_physical(scale_factor);
@@ -829,31 +946,31 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                         }
                     },
                     |surface, states, location| {
-                        if let Some(window_view) = self.window_view_for_surface(surface, states, location, scale_factor) {
+                        if let Some(window_view) =
+                            self.window_view_for_surface(surface, states, location, scale_factor)
+                        {
                             render_elements.push_front(window_view);
                         }
                     },
-                |_, _, _| {
-                    true
-                }, );
-    
-                
+                    |_, _, _| true,
+                );
+
                 if let Some(window_view) = self.get_window_view(&id) {
-                    let model =WindowViewBaseModel {
+                    let model = WindowViewBaseModel {
                         x: location.x as f32,
                         y: location.y as f32,
                         w: window_geometry.size.w as f32,
                         h: window_geometry.size.h as f32,
                         title,
                     };
-                    
+
                     self.workspace.update_window(&id, &model);
                     window_view.view_base.update_state(model);
-                    window_view.view_content.update_state(render_elements.into());
+                    window_view
+                        .view_content
+                        .update_state(render_elements.into());
                 }
             }
-
-            
         }
     }
 
@@ -867,16 +984,21 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         self.workspace.expose_show_desktop(delta, end_gesture);
     }
 
-    pub fn get_or_add_window_view(&mut self, object_id: &ObjectId, parent_layer_id: NodeRef, window: WindowElement) -> &WindowView {
-        self.window_views.entry(object_id.clone()).or_insert_with(|| {
-            let view = WindowView::new(self.layers_engine.clone(), parent_layer_id, window);
-            view
-        })
+    pub fn get_or_add_window_view(
+        &mut self,
+        object_id: &ObjectId,
+        parent_layer_id: NodeRef,
+        window: WindowElement,
+    ) -> &WindowView {
+        self.window_views
+            .entry(object_id.clone())
+            .or_insert_with(|| {
+                let view = WindowView::new(self.layers_engine.clone(), parent_layer_id, window);
+                view
+            })
     }
     pub fn remove_window_view(&mut self, object_id: &ObjectId) {
-        if let Some(view) = self.window_views.remove(object_id) {
-            
-        }
+        if let Some(view) = self.window_views.remove(object_id) {}
     }
     pub fn get_window_view(&self, id: &ObjectId) -> Option<&WindowView> {
         self.window_views.get(id)
@@ -921,12 +1043,9 @@ pub fn post_repaint(
                 });
             }
         });
-        window.send_frame(
-            output,
-            time,
-            Some(Duration::ZERO),
-            |_, _| Some(output.clone()),
-        )
+        window.send_frame(output, time, Some(Duration::ZERO), |_, _| {
+            Some(output.clone())
+        })
         // if space.outputs_for_element(window).contains(output) {
         //     window.send_frame(output, time, throttle, surface_primary_scanout_output);
         //     if let Some(dmabuf_feedback) = dmabuf_feedback {
@@ -961,14 +1080,18 @@ pub fn post_repaint(
 
         layer_surface.send_frame(output, time, throttle, surface_primary_scanout_output);
         if let Some(dmabuf_feedback) = dmabuf_feedback {
-            layer_surface.send_dmabuf_feedback(output, surface_primary_scanout_output, |surface, _| {
-                select_dmabuf_feedback(
-                    surface,
-                    render_element_states,
-                    dmabuf_feedback.render_feedback,
-                    dmabuf_feedback.scanout_feedback,
-                )
-            });
+            layer_surface.send_dmabuf_feedback(
+                output,
+                surface_primary_scanout_output,
+                |surface, _| {
+                    select_dmabuf_feedback(
+                        surface,
+                        render_element_states,
+                        dmabuf_feedback.render_feedback,
+                        dmabuf_feedback.scanout_feedback,
+                    )
+                },
+            );
         }
     }
 }
@@ -986,7 +1109,9 @@ pub fn take_presentation_feedback(
             window.take_presentation_feedback(
                 &mut output_presentation_feedback,
                 surface_primary_scanout_output,
-                |surface, _| surface_presentation_feedback_flags_from_states(surface, render_element_states),
+                |surface, _| {
+                    surface_presentation_feedback_flags_from_states(surface, render_element_states)
+                },
             );
         }
     });
@@ -995,7 +1120,9 @@ pub fn take_presentation_feedback(
         layer_surface.take_presentation_feedback(
             &mut output_presentation_feedback,
             surface_primary_scanout_output,
-            |surface, _| surface_presentation_feedback_flags_from_states(surface, render_element_states),
+            |surface, _| {
+                surface_presentation_feedback_flags_from_states(surface, render_element_states)
+            },
         );
     }
 
@@ -1009,5 +1136,5 @@ pub trait Backend {
     fn reset_buffers(&mut self, output: &Output);
     fn early_import(&mut self, surface: &WlSurface);
     fn texture_for_surface(&self, surface: &RendererSurfaceState) -> Option<SkiaTexture>;
-    fn set_cursor(&mut self, image: &CursorImageStatus);//, renderer: &mut SkiaRenderer);
+    fn set_cursor(&mut self, image: &CursorImageStatus); //, renderer: &mut SkiaRenderer);
 }

@@ -1,11 +1,7 @@
-
-
 use layers::{prelude::*, types::Size};
 use smithay::utils::Transform;
 
 use super::model::{WindowViewBaseModel, WindowViewSurface};
-
-
 
 // struct FontCache {
 //     font_collection: skia_safe::textlayout::FontCollection,
@@ -26,15 +22,16 @@ use super::model::{WindowViewBaseModel, WindowViewSurface};
 //     };
 // }
 
-
 #[profiling::function]
-pub fn view_base_window(state: &WindowViewBaseModel, _view: &View<WindowViewBaseModel>) -> ViewLayer {
+pub fn view_base_window(
+    state: &WindowViewBaseModel,
+    _view: &View<WindowViewBaseModel>,
+) -> ViewLayer {
     let w = state.w;
     let h = state.h;
-    
+
     const SAFE_AREA: f32 = 100.0;
     let draw_shadow = move |canvas: &skia_safe::Canvas, w: f32, h: f32| {
-
         // draw shadow
         // let window_corner_radius = 12.0;
         let rect = skia_safe::Rect::from_xywh(
@@ -50,14 +47,17 @@ pub fn view_base_window(state: &WindowViewBaseModel, _view: &View<WindowViewBase
         //     window_corner_radius,
         //     window_corner_radius,
         // );
-        
+
         let mut shadow_paint =
             skia_safe::Paint::new(skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.25), None);
-        shadow_paint.set_mask_filter(skia_safe::MaskFilter::blur(skia_safe::BlurStyle::Normal, 3.0, false));
+        shadow_paint.set_mask_filter(skia_safe::MaskFilter::blur(
+            skia_safe::BlurStyle::Normal,
+            3.0,
+            false,
+        ));
         canvas.draw_rect(rect, &shadow_paint);
 
-
-        let rect= skia_safe::Rect::from_xywh(
+        let rect = skia_safe::Rect::from_xywh(
             SAFE_AREA,
             SAFE_AREA + 36.0,
             w - SAFE_AREA * 2.0,
@@ -83,46 +83,46 @@ pub fn view_base_window(state: &WindowViewBaseModel, _view: &View<WindowViewBase
             },
             None,
         ))
-        .children(vec![
-            ViewLayerBuilder::default()
-                .key("window_view_shadow")
-                .layout_style(taffy::Style {
-                    position: taffy::Position::Absolute,
-                    ..Default::default()
-                })
-                .position((
-                    Point {
-                        x: -SAFE_AREA,
-                        y: -SAFE_AREA,
-                    },
-                    None,
-                ))
-                .size((
-                    Size {
-                        width: taffy::Dimension::Points(w + SAFE_AREA * 2.0),
-                        height: taffy::Dimension::Points(h + SAFE_AREA * 2.0),
-                    },
-                    None,
-                ))
-                .content(Some(draw_shadow))
-                .image_cache(true)
-                .build()
-                .unwrap()
-        ])
+        .children(vec![ViewLayerBuilder::default()
+            .key("window_view_shadow")
+            .layout_style(taffy::Style {
+                position: taffy::Position::Absolute,
+                ..Default::default()
+            })
+            .position((
+                Point {
+                    x: -SAFE_AREA,
+                    y: -SAFE_AREA,
+                },
+                None,
+            ))
+            .size((
+                Size {
+                    width: taffy::Dimension::Points(w + SAFE_AREA * 2.0),
+                    height: taffy::Dimension::Points(h + SAFE_AREA * 2.0),
+                },
+                None,
+            ))
+            .content(Some(draw_shadow))
+            .image_cache(true)
+            .build()
+            .unwrap()])
         .build()
         .unwrap()
 }
 
 #[allow(clippy::ptr_arg)]
 #[profiling::function]
-pub fn view_content_window(render_elements: &Vec<WindowViewSurface>, _view: &View<Vec<WindowViewSurface>>) -> ViewLayer {
+pub fn view_content_window(
+    render_elements: &Vec<WindowViewSurface>,
+    _view: &View<Vec<WindowViewSurface>>,
+) -> ViewLayer {
     // let w = state.w;
     // let h = state.h;
 
     // let render_elements = state.render_elements.clone();
     let resampler = skia_safe::CubicResampler::catmull_rom();
 
-    
     ViewLayerBuilder::default()
         .key("window_view_content")
         .size((
@@ -147,9 +147,9 @@ pub fn view_content_window(render_elements: &Vec<WindowViewSurface>, _view: &Vie
                     let mut font = skia_safe::Font::default();
                     let font_size = 26.0;
                     font.set_size(font_size);
-                    
+
                     let texture = wvs.texture.as_ref();
-                    let image =  texture.map(|t| t.image.clone());
+                    let image = texture.map(|t| t.image.clone());
                     // let image = image.as_ref();
                     let mut damage = skia_safe::Rect::default();
                     let buffer_damages = texture.and_then(|t| t.damage.clone()).unwrap_or_default();
@@ -157,10 +157,14 @@ pub fn view_content_window(render_elements: &Vec<WindowViewSurface>, _view: &Vie
                     //     let image_id = tex.image.unique_id();
                     //     // println!("render dmabuf {} {:?}", image_id, damage);
                     // }
-                    
 
                     buffer_damages.iter().for_each(|bd| {
-                        let r = skia_safe::Rect::from_xywh(bd.loc.x as f32, bd.loc.y as f32, bd.size.w as f32, bd.size.h as f32);
+                        let r = skia_safe::Rect::from_xywh(
+                            bd.loc.x as f32,
+                            bd.loc.y as f32,
+                            bd.size.w as f32,
+                            bd.size.h as f32,
+                        );
                         damage.join(r);
                     });
                     let draw_container = move |canvas: &skia_safe::Canvas, w, h| {
@@ -170,7 +174,7 @@ pub fn view_content_window(render_elements: &Vec<WindowViewSurface>, _view: &Vie
                         // let rect = skia_safe::Rect::from_xywh(0.0, 0.0, w, h);
 
                         if let Some(image) = image.as_ref() {
-                            let scale = 1.0;//wvs.h / image.height() as f32;
+                            let scale = 1.0; //wvs.h / image.height() as f32;
 
                             let mut matrix = skia_safe::Matrix::new_identity();
                             match wvs.transform {
@@ -208,16 +212,21 @@ pub fn view_content_window(render_elements: &Vec<WindowViewSurface>, _view: &Vie
                             // canvas.clip_rect(damage, None, None);
                             for i in 0..split {
                                 for j in 0..split {
-                                    let rect = skia_safe::Rect::from_xywh(i as f32 * rect_size_w, j as f32 * rect_size_h, rect_size_w, rect_size_h);
+                                    let rect = skia_safe::Rect::from_xywh(
+                                        i as f32 * rect_size_w,
+                                        j as f32 * rect_size_h,
+                                        rect_size_w,
+                                        rect_size_h,
+                                    );
                                     // if rect.intersect(damage) {
-                                        canvas.draw_rect(rect, &paint);
+                                    canvas.draw_rect(rect, &paint);
                                     // }
                                 }
                             }
                             // canvas.restore();
                             // canvas.draw_rect(rect, &paint);
                             // canvas.concat(&matrix);
-                            // canvas.draw_image(image, (0, 0), Some(&paint));                      
+                            // canvas.draw_image(image, (0, 0), Some(&paint));
                         }
 
                         // let mut paint = skia_safe::Paint::new(skia_safe::Color4f::new(1.0, 0.0, 0.0, 1.0), None);

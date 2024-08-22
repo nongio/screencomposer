@@ -1,4 +1,3 @@
-
 use smithay::{
     backend::renderer::{
         element::{Element, Id, RenderElement},
@@ -8,7 +7,7 @@ use smithay::{
     utils::{Buffer, Physical, Point, Rectangle, Scale},
 };
 
-use crate::{skia_renderer::{SkiaRenderer}, udev::UdevRenderer};
+use crate::{skia_renderer::SkiaRenderer, udev::UdevRenderer};
 
 #[derive(Debug, Clone)]
 pub struct SkiaElement {
@@ -58,17 +57,20 @@ impl Element for SkiaElement {
     fn damage_since(
         &self,
         scale: Scale<f64>,
-        _commit: Option<CommitCounter>) -> smithay::backend::renderer::utils::DamageSet<i32, Physical> {
-            DamageSet::from_slice(&[Rectangle::from_loc_and_size((0, 0), self.geometry(scale).size)])
+        _commit: Option<CommitCounter>,
+    ) -> smithay::backend::renderer::utils::DamageSet<i32, Physical> {
+        DamageSet::from_slice(&[Rectangle::from_loc_and_size(
+            (0, 0),
+            self.geometry(scale).size,
+        )])
     }
     fn alpha(&self) -> f32 {
         0.5
     }
-
 }
 
 impl RenderElement<SkiaRenderer> for SkiaElement {
-fn draw(
+    fn draw(
         &self,
         frame: &mut <SkiaRenderer as Renderer>::Frame<'_>,
         _src: Rectangle<f64, Buffer>,
@@ -76,7 +78,6 @@ fn draw(
         damage: &[Rectangle<i32, Physical>],
         _opaque_regions: &[Rectangle<i32, Physical>],
     ) -> Result<(), <SkiaRenderer as Renderer>::Error> {
-        
         let mut canvas = frame.skia_surface.clone();
         let canvas = canvas.canvas();
 
@@ -103,12 +104,16 @@ fn draw(
             })
             .collect::<Vec<skia_safe::Rect>>();
 
-            
         let scale = Scale::from(1.0);
         let location = self.location(scale);
         let geometry = self.geometry(scale).size;
-        let bounds = skia_safe::Rect::from_xywh(location.x as f32, location.y as f32, geometry.w as f32, geometry.h as f32);
-    
+        let bounds = skia_safe::Rect::from_xywh(
+            location.x as f32,
+            location.y as f32,
+            geometry.w as f32,
+            geometry.h as f32,
+        );
+
         let radius = 20.0;
         let rrect = skia_safe::RRect::new_rect_radii(
             bounds,
@@ -123,7 +128,7 @@ fn draw(
         let mut background_paint = skia_safe::Paint::new(background_color, None);
         background_paint.set_anti_alias(true);
         background_paint.set_style(skia_safe::PaintStyle::Fill);
-    
+
         let mut save_layer_rec = skia_safe::canvas::SaveLayerRec::default();
         let blur = skia_safe::image_filters::blur(
             (20.0, 20.0),
@@ -132,15 +137,14 @@ fn draw(
             Some(skia_safe::image_filters::CropRect::from(bounds)),
         )
         .unwrap();
-        
+
         let save_count = canvas.save();
-        
+
         save_layer_rec = save_layer_rec.backdrop(&blur).bounds(&bounds);
         canvas.save_layer(&save_layer_rec);
         background_paint.set_blend_mode(skia_safe::BlendMode::SrcOver);
         canvas.clip_rrect(rrect, None, Some(true));
         for rect in instances.iter() {
-
             canvas.save();
             canvas.clip_rect(rect, skia_safe::ClipOp::Intersect, Some(true));
             canvas.draw_color(background_color, skia_safe::BlendMode::SrcOver);
@@ -151,22 +155,16 @@ fn draw(
     }
 }
 
-
-impl<'renderer> RenderElement<UdevRenderer<'renderer>> for SkiaElement
-{
+impl<'renderer> RenderElement<UdevRenderer<'renderer>> for SkiaElement {
     fn draw(
         &self,
         frame: &mut <UdevRenderer<'renderer> as Renderer>::Frame<'_>,
         src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
-        opaque_regions: &[Rectangle<i32, Physical>]
-    ) -> Result<(), <UdevRenderer<'renderer> as Renderer>::Error>
-    
-    {
+        opaque_regions: &[Rectangle<i32, Physical>],
+    ) -> Result<(), <UdevRenderer<'renderer> as Renderer>::Error> {
         RenderElement::<SkiaRenderer>::draw(self, frame.as_mut(), src, dst, damage, opaque_regions)
-        .map_err(|e| {
-            e.into()
-        })
+            .map_err(|e| e.into())
     }
 }

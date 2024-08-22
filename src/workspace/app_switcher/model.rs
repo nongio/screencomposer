@@ -1,8 +1,9 @@
-
 use std::hash::{Hash, Hasher};
 
-use crate::{utils::Observer, workspace::{Application, Workspace}};
-
+use crate::{
+    utils::Observer,
+    workspace::{Application, Workspace},
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct AppSwitcherModel {
@@ -11,12 +12,10 @@ pub struct AppSwitcherModel {
     pub width: i32,
 }
 
-
-
 impl Hash for AppSwitcherModel {
     fn hash<H: Hasher>(&self, state: &mut H) {
         // let apps = self.apps.read().unwrap();
-        let apps:Vec<_> =  self.apps.iter().collect();
+        let apps: Vec<_> = self.apps.iter().collect();
         apps.hash(state);
         self.current_app.hash(state);
     }
@@ -30,7 +29,7 @@ impl AppSwitcherModel {
     //     // self.apps.read().unwrap()
     //     self.apps
     // }
-    
+
     // pub fn update_apps(&mut self, new_apps: &[(String, WindowElement)]) {
     //     // Remove apps that are not in new_apps
     //     {
@@ -53,7 +52,6 @@ impl AppSwitcherModel {
     //     }
     // }
 
-    
     // pub fn next_window(&mut self) {
     //     let apps = self.apps.read().unwrap();
     //     if let Some(current_app) = apps.get(self.current_app) {
@@ -64,8 +62,8 @@ impl AppSwitcherModel {
     // }
 }
 
-impl  Observer<Workspace> for AppSwitcherModel {
+impl Observer<Workspace> for AppSwitcherModel {
     fn notify(&self, _event: &Workspace) {
         // println!("AppSwitcherState received event");
     }
- }
+}

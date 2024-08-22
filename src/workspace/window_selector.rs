@@ -1,6 +1,9 @@
-use std::{cell::RefCell, hash::{Hash, Hasher}};
 use layers::prelude::*;
-use smithay::input::{pointer::{CursorIcon, CursorImageStatus}, SeatHandler};
+use smithay::input::pointer::{CursorIcon, CursorImageStatus};
+use std::{
+    cell::RefCell,
+    hash::{Hash, Hasher},
+};
 
 use crate::{interactive_view::ViewInteractions, utils::Observer};
 
@@ -46,12 +49,14 @@ pub struct WindowSelectorState {
 
 impl Hash for WindowSelectorState {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        let current = self.current_selection.as_ref().map(|x| self.rects.get(*x).unwrap());
+        let current = self
+            .current_selection
+            .as_ref()
+            .map(|x| self.rects.get(*x).unwrap());
         current.hash(state);
         self.rects.hash(state);
     }
 }
-
 
 impl Hash for WindowSelection {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -86,7 +91,10 @@ pub struct WindowSelectorView {
 }
 
 impl WindowSelectorView {
-    pub fn new(layers_engine: LayersEngine, cursor_handler: std::sync::Arc<std::sync::Mutex<CursorImageStatus>>) -> Self {
+    pub fn new(
+        layers_engine: LayersEngine,
+        cursor_handler: std::sync::Arc<std::sync::Mutex<CursorImageStatus>>,
+    ) -> Self {
         let layer = layers_engine.new_layer();
         layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
@@ -101,10 +109,7 @@ impl WindowSelectorView {
             current_selection: None,
         };
         let view = layers::prelude::View::new(layer.clone(), state, Box::new(view_window_selector));
-        Self {
-            view,
-            layer,
-        }
+        Self { view, layer }
     }
 }
 
@@ -119,8 +124,7 @@ pub fn get_paragraph_for_text(text: &str, font_size: f32) -> skia_safe::textlayo
     );
     text_style.set_font_style(font_style);
     text_style.set_letter_spacing(-1.0);
-    let foreground_paint =
-        skia_safe::Paint::new(skia_safe::Color4f::new(0.1, 0.1, 0.1, 0.9), None);
+    let foreground_paint = skia_safe::Paint::new(skia_safe::Color4f::new(0.1, 0.1, 0.1, 0.9), None);
     text_style.set_foreground_paint(&foreground_paint);
     text_style.set_font_families(&["Inter"]);
 
@@ -142,48 +146,65 @@ pub fn get_paragraph_for_text(text: &str, font_size: f32) -> skia_safe::textlayo
     paragraph
 }
 
-pub fn view_window_selector(state: &WindowSelectorState, _view: &View<WindowSelectorState>) -> ViewLayer {
-    const FONT_SIZE:f32 = 24.0;
-    let current = state.current_selection.map(|x| state.rects.get(x).unwrap().clone())
-    .map(|window_selection| {
-        let mut paragraph = get_paragraph_for_text(&window_selection.window_title, FONT_SIZE);
-        
-        paragraph.layout(1000.0);
-        let range: std::ops::Range<usize> = 0..window_selection.window_title.len();
-        let rects = paragraph.get_rects_for_range(range, skia_safe::textlayout::RectHeightStyle::Tight, skia_safe::textlayout::RectWidthStyle::Tight);
-        let text_bounding_box = rects.iter().fold(skia_safe::Rect::new_empty(), |acc, b| {
-            skia_safe::Rect::join2(acc, b.rect)
-        });
-        (window_selection, text_bounding_box)
-    });
+pub fn view_window_selector(
+    state: &WindowSelectorState,
+    _view: &View<WindowSelectorState>,
+) -> ViewLayer {
+    const FONT_SIZE: f32 = 24.0;
+    let current = state
+        .current_selection
+        .map(|x| state.rects.get(x).unwrap().clone())
+        .map(|window_selection| {
+            let mut paragraph = get_paragraph_for_text(&window_selection.window_title, FONT_SIZE);
 
-    let window_selection = current.as_ref().map(|(window_selection, _)| window_selection.clone()); 
+            paragraph.layout(1000.0);
+            let range: std::ops::Range<usize> = 0..window_selection.window_title.len();
+            let rects = paragraph.get_rects_for_range(
+                range,
+                skia_safe::textlayout::RectHeightStyle::Tight,
+                skia_safe::textlayout::RectWidthStyle::Tight,
+            );
+            let text_bounding_box = rects.iter().fold(skia_safe::Rect::new_empty(), |acc, b| {
+                skia_safe::Rect::join2(acc, b.rect)
+            });
+            (window_selection, text_bounding_box)
+        });
+
+    let window_selection = current
+        .as_ref()
+        .map(|(window_selection, _)| window_selection.clone());
 
     let draw_container = Some(move |canvas: &skia_safe::Canvas, w, h| {
         if window_selection.is_some() {
-            let window_selection = window_selection.as_ref().unwrap();      
-            let color = skia_safe::Color4f::new(85.0/255.0, 150.0/255.0, 244.0/255.0, 1.0);
+            let window_selection = window_selection.as_ref().unwrap();
+            let color = skia_safe::Color4f::new(85.0 / 255.0, 150.0 / 255.0, 244.0 / 255.0, 1.0);
             let mut paint = skia_safe::Paint::new(color, None);
             paint.set_stroke(true);
             paint.set_stroke_width(10.0);
-            let rrect =
-                skia_safe::RRect::new_rect_xy(skia_safe::Rect::from_xywh(
+            let rrect = skia_safe::RRect::new_rect_xy(
+                skia_safe::Rect::from_xywh(
                     window_selection.x,
                     window_selection.y,
                     window_selection.w,
-                    window_selection.h), 15.0, 15.0);
+                    window_selection.h,
+                ),
+                15.0,
+                15.0,
+            );
 
-            canvas.draw_rrect(rrect, &paint);            
+            canvas.draw_rrect(rrect, &paint);
         }
         skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
     });
-        
-        
+
     const TEXT_PADDING_X: f32 = 10.0;
     const TEXT_PADDING_Y: f32 = 5.0;
     let text_x = 0.0;
     let text_y = 0.0;
-    let (text_rect, text_bounding_box) = current.as_ref().map(|(rect, bb)| (rect.clone(), bb.clone())).unwrap_or((WindowSelection::default(), skia_safe::Rect::new_empty()));
+    let (text_rect, text_bounding_box) = current
+        .as_ref()
+        .map(|(rect, bb)| (rect.clone(), bb.clone()))
+        .unwrap_or((WindowSelection::default(), skia_safe::Rect::new_empty()));
     let text_layer_size = layers::types::Size::points(
         if text_bounding_box.width() == 0.0 {
             0.0
@@ -194,7 +215,7 @@ pub fn view_window_selector(state: &WindowSelectorState, _view: &View<WindowSele
             0.0
         } else {
             text_bounding_box.height() + TEXT_PADDING_Y * 2.0
-        }
+        },
     );
     ViewLayerBuilder::default()
         .key("window_selector_view")
@@ -202,47 +223,50 @@ pub fn view_window_selector(state: &WindowSelectorState, _view: &View<WindowSele
         .size((layers::types::Size::percent(1.0, 1.0), None))
         .border_width((10.0, None))
         .content(draw_container)
-        .children(vec![
-            ViewLayerBuilder::default()
-                .key("window_selector_label")
-                .layout_style(taffy::Style {
-                    position: taffy::Position::Absolute,
-                    ..Default::default()
-                })
-                .position(((
-                    text_rect.x + text_rect.w / 2.0 - text_bounding_box.width() / 2.0, 
-                    text_rect.y + text_rect.h / 2.0 - text_bounding_box.height() / 2.0).into(),
-                    None
-                ))
-                .size((text_layer_size, None))
-                .blend_mode(layers::prelude::BlendMode::BackgroundBlur)
-                .border_corner_radius((BorderRadius::new_single(10.0), None))
-                .background_color((PaintColor::Solid { color: Color::new_rgba(1.0, 1.0, 1.0, 0.4) }, None))
-                .shadow_color((Color::new_rgba(0.0, 0.0, 0.0, 0.2), None))
-                .shadow_offset(((0.0, 0.0).into(), None))
-                .shadow_radius((5.0, None))
-                // .shadow_spread((10.0, None))
-                .content(Some(move |canvas: &skia_safe::Canvas, w, h| {
+        .children(vec![ViewLayerBuilder::default()
+            .key("window_selector_label")
+            .layout_style(taffy::Style {
+                position: taffy::Position::Absolute,
+                ..Default::default()
+            })
+            .position((
+                (
+                    text_rect.x + text_rect.w / 2.0 - text_bounding_box.width() / 2.0,
+                    text_rect.y + text_rect.h / 2.0 - text_bounding_box.height() / 2.0,
+                )
+                    .into(),
+                None,
+            ))
+            .size((text_layer_size, None))
+            .blend_mode(layers::prelude::BlendMode::BackgroundBlur)
+            .border_corner_radius((BorderRadius::new_single(10.0), None))
+            .background_color((
+                PaintColor::Solid {
+                    color: Color::new_rgba(1.0, 1.0, 1.0, 0.4),
+                },
+                None,
+            ))
+            .shadow_color((Color::new_rgba(0.0, 0.0, 0.0, 0.2), None))
+            .shadow_offset(((0.0, 0.0).into(), None))
+            .shadow_radius((5.0, None))
+            // .shadow_spread((10.0, None))
+            .content(Some(move |canvas: &skia_safe::Canvas, w, h| {
+                let mut paragraph = get_paragraph_for_text(&text_rect.window_title, FONT_SIZE);
+                paragraph.layout(w);
+                // let text_x = TEXT_PADDING_X;
+                let text_y = TEXT_PADDING_Y;
 
-                    let mut paragraph = get_paragraph_for_text(&text_rect.window_title, FONT_SIZE);
-                    paragraph.layout(w);
-                    // let text_x = TEXT_PADDING_X;
-                    let text_y = TEXT_PADDING_Y;
-        
-                    paragraph.paint(canvas, (0.0, text_y));
-                    let safe = 200.0;
-                    skia_safe::Rect::from_xywh(-safe, -safe, w+safe*2.0, h+safe*2.0)
-                }))
-                .build()
-                .unwrap()
-        ])
+                paragraph.paint(canvas, (0.0, text_y));
+                let safe = 200.0;
+                skia_safe::Rect::from_xywh(-safe, -safe, w + safe * 2.0, h + safe * 2.0)
+            }))
+            .build()
+            .unwrap()])
         .build()
         .unwrap()
 }
-impl  Observer<Workspace> for WindowSelectorView {
-    fn notify(&self, _event: &Workspace) {
-        
-    }
+impl Observer<Workspace> for WindowSelectorView {
+    fn notify(&self, _event: &Workspace) {}
 }
 impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelectorView {
     fn id(&self) -> Option<usize> {
@@ -251,27 +275,33 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
     fn is_alive(&self) -> bool {
         !self.view.layer.hidden()
     }
-    fn on_motion(&self, 
-            seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-            data: &mut crate::ScreenComposer<Backend>, 
-            event: &smithay::input::pointer::MotionEvent) {
-
+    fn on_motion(
+        &self,
+        seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
+        data: &mut crate::ScreenComposer<Backend>,
+        event: &smithay::input::pointer::MotionEvent,
+    ) {
         let mut state = self.view.get_state().clone();
-        let rect = state.rects.iter().find(|rect| {
-            if  rect.x < event.location.x as f32 && 
-                rect.x + rect.w > event.location.x as f32 && 
-                rect.y < event.location.y as f32 && 
-                rect.y + rect.h > event.location.y as f32 {
-                state.current_selection = Some(rect.index);
-                let cursor = CursorImageStatus::Named(CursorIcon::Pointer);
-                data.set_cursor(&cursor);
-                true
-            } else {
-                let cursor = CursorImageStatus::Named(CursorIcon::default());
-                data.set_cursor(&cursor);
-                false
-            }
-        }).map(|x| x.index);
+        let rect = state
+            .rects
+            .iter()
+            .find(|rect| {
+                if rect.x < event.location.x as f32
+                    && rect.x + rect.w > event.location.x as f32
+                    && rect.y < event.location.y as f32
+                    && rect.y + rect.h > event.location.y as f32
+                {
+                    state.current_selection = Some(rect.index);
+                    let cursor = CursorImageStatus::Named(CursorIcon::Pointer);
+                    data.set_cursor(&cursor);
+                    true
+                } else {
+                    let cursor = CursorImageStatus::Named(CursorIcon::default());
+                    data.set_cursor(&cursor);
+                    false
+                }
+            })
+            .map(|x| x.index);
 
         self.view.update_state(WindowSelectorState {
             rects: state.rects,
@@ -279,17 +309,21 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
             ..self.view.get_state()
         });
     }
-    fn on_button(&self,
-            seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-            data: &mut crate::ScreenComposer<Backend>,
-            event: &smithay::input::pointer::ButtonEvent) {
-
+    fn on_button(
+        &self,
+        seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
+        data: &mut crate::ScreenComposer<Backend>,
+        event: &smithay::input::pointer::ButtonEvent,
+    ) {
         let state = self.view.get_state();
         if let Some(index) = state.current_selection {
-
             let window_selector_workspace_model = data.workspace.model.read();
             let window_selector_workspace_model = window_selector_workspace_model.unwrap();
-            let oid =  window_selector_workspace_model.windows.get(index).unwrap().clone();
+            let oid = window_selector_workspace_model
+                .windows
+                .get(index)
+                .unwrap()
+                .clone();
             drop(window_selector_workspace_model);
             if let Some(window_view) = data.window_views.get(&oid) {
                 window_view.raise();
@@ -300,8 +334,6 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
             }
             data.expose_show_all(-1.0, true);
             data.set_cursor(&CursorImageStatus::default_named());
-
         }
-        
     }
 }

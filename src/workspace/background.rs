@@ -20,7 +20,6 @@ impl Hash for BackgroundViewState {
     }
 }
 
-
 pub struct BackgroundView {
     // engine: layers::prelude::LayersEngine,
     pub view: layers::prelude::View<BackgroundViewState>,
@@ -58,13 +57,16 @@ impl BackgroundView {
 }
 
 // static mut COUNTER: f32 = 1.0;
-pub fn view_background(state: &BackgroundViewState, _view: &View<BackgroundViewState>) -> ViewLayer {
+pub fn view_background(
+    state: &BackgroundViewState,
+    _view: &View<BackgroundViewState>,
+) -> ViewLayer {
     let image = state.image.clone();
 
     // state.debug_string.clone();
-    
+
     let draw_container = move |canvas: &skia_safe::Canvas, w, h| {
-        let color =skia_safe::Color4f::new(1.0, 1.0, 1.0, 1.0);
+        let color = skia_safe::Color4f::new(1.0, 1.0, 1.0, 1.0);
         let mut paint = skia_safe::Paint::new(color, None);
 
         if let Some(image) = image.as_ref() {
@@ -75,7 +77,7 @@ pub fn view_background(state: &BackgroundViewState, _view: &View<BackgroundViewS
             paint.set_shader(image.to_shader(
                 (skia_safe::TileMode::Repeat, skia_safe::TileMode::Repeat),
                 skia_safe::SamplingOptions::default(),
-                &matrix
+                &matrix,
             ));
         }
 
@@ -85,7 +87,12 @@ pub fn view_background(state: &BackgroundViewState, _view: &View<BackgroundViewS
 
         for i in 0..split {
             for j in 0..split {
-                let rect = skia_safe::Rect::from_xywh(i as f32 * rect_size_w, j as f32 * rect_size_h, rect_size_w, rect_size_h);
+                let rect = skia_safe::Rect::from_xywh(
+                    i as f32 * rect_size_w,
+                    j as f32 * rect_size_h,
+                    rect_size_w,
+                    rect_size_h,
+                );
                 canvas.draw_rect(rect, &paint);
             }
         }
@@ -103,19 +110,20 @@ pub fn view_background(state: &BackgroundViewState, _view: &View<BackgroundViewS
 
     ViewLayerBuilder::default()
         .key("background_view")
-        .opacity((1.0, Some(Transition {
-            delay: 0.5,
-            duration: 1.0,
-            timing: TimingFunction::Easing(Easing::ease_out()),
-            // ..Default::default()
-        })))
+        .opacity((
+            1.0,
+            Some(Transition {
+                delay: 0.5,
+                duration: 1.0,
+                timing: TimingFunction::Easing(Easing::ease_out()),
+                // ..Default::default()
+            }),
+        ))
         .content(Some(draw_container))
         .build()
         .unwrap()
 }
 
-impl  Observer<Workspace> for BackgroundView {
-   fn notify(&self, _event: &Workspace) {
-       
-   }
+impl Observer<Workspace> for BackgroundView {
+    fn notify(&self, _event: &Workspace) {}
 }

@@ -1,15 +1,21 @@
-use layers::{prelude::{taffy, ViewLayer, ViewLayerBuilder, Color, View}, types::{BorderRadius, PaintColor, Size}};
+use layers::{
+    prelude::{taffy, Color, View, ViewLayer, ViewLayerBuilder},
+    types::{BorderRadius, PaintColor, Size},
+};
 
 use crate::workspace::Application;
 
 use super::model::AppSwitcherModel;
 
-
-
-pub fn render_app_view(index: usize, state: Application, view: View<AppSwitcherModel>, icon_width: f32) -> ViewLayer {
+pub fn render_app_view(
+    index: usize,
+    state: Application,
+    view: View<AppSwitcherModel>,
+    icon_width: f32,
+) -> ViewLayer {
     const PADDING: f32 = 20.0;
     // println!("Rendering app view: {:?}", state);
-    let draw_picture = move |canvas:  &skia_safe::Canvas, w: f32, h: f32| -> skia_safe::Rect {
+    let draw_picture = move |canvas: &skia_safe::Canvas, w: f32, h: f32| -> skia_safe::Rect {
         if let Some(image) = &state.icon {
             let mut paint =
                 skia_safe::Paint::new(skia_safe::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
@@ -72,7 +78,6 @@ pub fn render_app_view(index: usize, state: Application, view: View<AppSwitcherM
                 current_app: index,
                 ..view.get_state()
             });
-
         })
         .build()
         .unwrap()

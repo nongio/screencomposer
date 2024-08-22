@@ -2,26 +2,34 @@ use std::{cell::RefCell, os::unix::io::OwnedFd};
 
 use smithay::{
     desktop::{space::SpaceElement, Window, WindowSurface},
-    input::pointer::Focus, utils::{Logical, Rectangle, SERIAL_COUNTER}, wayland::{
+    input::pointer::Focus,
+    utils::{Logical, Rectangle, SERIAL_COUNTER},
+    wayland::{
         compositor::with_states,
-        selection::{data_device::{
-            clear_data_device_selection, current_data_device_selection_userdata,
-            request_data_device_client_selection, set_data_device_selection,
-        }, primary_selection::{
-            clear_primary_selection, current_primary_selection_userdata, request_primary_client_selection,
-            set_primary_selection,
-        }, SelectionTarget},
-    }, xwayland::{
+        selection::{
+            data_device::{
+                clear_data_device_selection, current_data_device_selection_userdata,
+                request_data_device_client_selection, set_data_device_selection,
+            },
+            primary_selection::{
+                clear_primary_selection, current_primary_selection_userdata,
+                request_primary_client_selection, set_primary_selection,
+            },
+            SelectionTarget,
+        },
+    },
+    xwayland::{
         xwm::{Reorder, ResizeEdge as X11ResizeEdge, XwmId},
         X11Surface, X11Wm, XwmHandler,
-    }
+    },
 };
 use tracing::{error, trace};
 
-use crate::{focus::{KeyboardFocusTarget, PointerFocusTarget}, state::Backend, CalloopData, ScreenComposer};
+use crate::{focus::KeyboardFocusTarget, state::Backend, ScreenComposer};
 
 use super::{
-    place_new_window, FullscreenSurface, PointerMoveSurfaceGrab, PointerResizeSurfaceGrab, ResizeData, ResizeState, SurfaceData, TouchMoveSurfaceGrab, WindowElement
+    place_new_window, FullscreenSurface, PointerMoveSurfaceGrab, PointerResizeSurfaceGrab,
+    ResizeData, ResizeState, SurfaceData, TouchMoveSurfaceGrab, WindowElement,
 };
 
 #[derive(Debug, Default)]
@@ -47,7 +55,12 @@ impl<BackendData: Backend> XwmHandler for ScreenComposer<BackendData> {
     fn map_window_request(&mut self, _xwm: XwmId, window: X11Surface) {
         window.set_mapped(true).unwrap();
         let window = WindowElement(Window::new_x11_window(window));
-        place_new_window(&mut self.space, self.pointer.current_location(), &window, true);
+        place_new_window(
+            &mut self.space,
+            self.pointer.current_location(),
+            &window,
+            true,
+        );
         let bbox = self.space.element_bbox(&window).unwrap();
         let Some(xsurface) = window.0.x11_surface() else {
             unreachable!()
@@ -162,7 +175,9 @@ impl<BackendData: Backend> XwmHandler for ScreenComposer<BackendData> {
             window.set_fullscreen(true).unwrap();
             // elem.set_ssd(false);
             window.configure(geometry).unwrap();
-            output.user_data().insert_if_missing(FullscreenSurface::default);
+            output
+                .user_data()
+                .insert_if_missing(FullscreenSurface::default);
             output
                 .user_data()
                 .get::<FullscreenSurface>()
@@ -188,14 +203,24 @@ impl<BackendData: Backend> XwmHandler for ScreenComposer<BackendData> {
                     .unwrap_or(false)
             }) {
                 trace!("Unfullscreening: {:?}", elem);
-                output.user_data().get::<FullscreenSurface>().unwrap().clear();
+                output
+                    .user_data()
+                    .get::<FullscreenSurface>()
+                    .unwrap()
+                    .clear();
                 window.configure(self.space.element_bbox(elem)).unwrap();
                 self.backend_data.reset_buffers(output);
             }
         }
     }
 
-    fn resize_request(&mut self, _xwm: XwmId, window: X11Surface, _button: u32, edges: X11ResizeEdge) {
+    fn resize_request(
+        &mut self,
+        _xwm: XwmId,
+        window: X11Surface,
+        _button: u32,
+        edges: X11ResizeEdge,
+    ) {
         // luckily anvil only supports one seat anyway...
         let start_data = self.pointer.grab_start_data().unwrap();
 
@@ -255,11 +280,20 @@ impl<BackendData: Backend> XwmHandler for ScreenComposer<BackendData> {
         false
     }
 
-    fn send_selection(&mut self, _xwm: XwmId, selection: SelectionTarget, mime_type: String, fd: OwnedFd) {
+    fn send_selection(
+        &mut self,
+        _xwm: XwmId,
+        selection: SelectionTarget,
+        mime_type: String,
+        fd: OwnedFd,
+    ) {
         match selection {
             SelectionTarget::Clipboard => {
                 if let Err(err) = request_data_device_client_selection(&self.seat, mime_type, fd) {
-                    error!(?err, "Failed to request current wayland clipboard for Xwayland",);
+                    error!(
+                        ?err,
+                        "Failed to request current wayland clipboard for Xwayland",
+                    );
                 }
             }
             SelectionTarget::Primary => {
@@ -326,7 +360,11 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         window.set_maximized(true).unwrap();
         window.configure(geometry).unwrap();
         window.user_data().insert_if_missing(OldGeometry::default);
-        window.user_data().get::<OldGeometry>().unwrap().save(old_geo);
+        window
+            .user_data()
+            .get::<OldGeometry>()
+            .unwrap()
+            .save(old_geo);
         self.space.map_element(elem, geometry.loc, false);
     }
 

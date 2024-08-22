@@ -1,11 +1,10 @@
+use crate::skia_renderer::SkiaTexture;
 use core::fmt;
-use std::hash::{Hash, Hasher};
 use smithay::{
-    backend::renderer::utils::CommitCounter,
-    reexports::wayland_server::backend::ObjectId,
+    backend::renderer::utils::CommitCounter, reexports::wayland_server::backend::ObjectId,
     utils::Transform,
 };
-use crate::skia_renderer::SkiaTexture;
+use std::hash::{Hash, Hasher};
 
 #[derive(Clone)]
 pub struct WindowViewSurface {
@@ -19,7 +18,6 @@ pub struct WindowViewSurface {
     pub(crate) texture: Option<SkiaTexture>,
     pub(crate) commit: CommitCounter,
     pub(crate) transform: Transform,
-
 }
 impl fmt::Debug for WindowViewSurface {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

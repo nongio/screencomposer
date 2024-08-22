@@ -7,15 +7,10 @@ use crate::utils::Observer;
 use super::Workspace;
 
 #[derive(Clone, Debug)]
-pub struct WorkspaceSelectorViewState {
-
-}
+pub struct WorkspaceSelectorViewState {}
 impl Hash for WorkspaceSelectorViewState {
-    fn hash<H: Hasher>(&self, _state: &mut H) {
-        
-    }
+    fn hash<H: Hasher>(&self, _state: &mut H) {}
 }
-
 
 pub struct WorkspaceSelectorView {
     // engine: layers::prelude::LayersEngine,
@@ -26,9 +21,7 @@ pub struct WorkspaceSelectorView {
 
 impl WorkspaceSelectorView {
     pub fn new(_layers_engine: LayersEngine, layer: Layer) -> Self {
-        let state = WorkspaceSelectorViewState {
-
-        };
+        let state = WorkspaceSelectorViewState {};
         let view = layers::prelude::View::new(layer.clone(), state, Box::new(view));
         layer.set_position((0.0, -200.0), None);
         Self {
@@ -41,29 +34,30 @@ impl WorkspaceSelectorView {
 }
 
 fn view(state: &WorkspaceSelectorViewState, _view: &View<WorkspaceSelectorViewState>) -> ViewLayer {
-    
     let draw_container = move |canvas: &skia_safe::Canvas, w, h| {
-        let rect = skia_safe::Rect::from_xywh(
-                    0.0,
-                    0.0,
-                    w,
-                    200.0);
-            let color = skia_safe::Color4f::new(0.8, 0.8, 0.8, 0.3);
-            let paint = skia_safe::Paint::new(color, None);
+        let rect = skia_safe::Rect::from_xywh(0.0, 0.0, w, 200.0);
+        let color = skia_safe::Color4f::new(0.8, 0.8, 0.8, 0.3);
+        let paint = skia_safe::Paint::new(color, None);
 
-            canvas.draw_rect(rect, &paint);            
+        canvas.draw_rect(rect, &paint);
         skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
     };
 
     ViewLayerBuilder::default()
         .key("workspace_selector_view")
-        .size((layers::types::Size {
-            width: layers::taffy::style::Dimension::Percent(1.0),
-            height: layers::taffy::style::Dimension::Points(200.0),
-        }, None))
-        .background_color((PaintColor::Solid {
-            color: Color::new_rgba(0.8, 0.8, 0.8, 0.6),
-        }, None))
+        .size((
+            layers::types::Size {
+                width: layers::taffy::style::Dimension::Percent(1.0),
+                height: layers::taffy::style::Dimension::Points(200.0),
+            },
+            None,
+        ))
+        .background_color((
+            PaintColor::Solid {
+                color: Color::new_rgba(0.8, 0.8, 0.8, 0.6),
+            },
+            None,
+        ))
         .blend_mode(BlendMode::BackgroundBlur)
         .shadow_color((Color::new_rgba(0.0, 0.0, 0.0, 0.2), None))
         .shadow_offset(((0.0, 0.0).into(), None))
@@ -73,8 +67,6 @@ fn view(state: &WorkspaceSelectorViewState, _view: &View<WorkspaceSelectorViewSt
         .unwrap()
 }
 
-impl  Observer<Workspace> for WorkspaceSelectorView {
-   fn notify(&self, _event: &Workspace) {
-       
-   }
+impl Observer<Workspace> for WorkspaceSelectorView {
+    fn notify(&self, _event: &Workspace) {}
 }

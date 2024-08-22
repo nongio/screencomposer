@@ -1,10 +1,7 @@
-#[cfg(feature = "xwayland")]
-use std::ffi::OsString;
 use std::{
     sync::{atomic::Ordering, Mutex},
     time::Duration,
 };
-
 
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;
@@ -13,7 +10,8 @@ use smithay::{
     backend::{allocator::Fourcc, renderer::ImportMem},
     reexports::winit::{
         dpi::Size,
-        raw_window_handle::{HasWindowHandle, RawWindowHandle}},
+        raw_window_handle::{HasWindowHandle, RawWindowHandle},
+    },
 };
 
 use smithay::{
@@ -21,7 +19,10 @@ use smithay::{
         allocator::dmabuf::Dmabuf,
         egl::{context::GlAttributes, EGLDevice},
         renderer::{
-            damage::{Error as OutputDamageTrackerError, OutputDamageTracker}, element::{texture::TextureBuffer, AsRenderElements}, utils::{import_surface, RendererSurfaceState}, ImportDma, ImportMemWl
+            damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
+            element::AsRenderElements,
+            utils::{import_surface, RendererSurfaceState},
+            ImportDma, ImportMemWl,
         },
         winit::{self, WinitEvent, WinitGraphicsBackend},
         SwapBuffersError,
@@ -35,18 +36,23 @@ use smithay::{
         wayland_server::{protocol::wl_surface, Display},
         winit::{dpi::LogicalSize, platform::pump_events::PumpStatus, window::WindowAttributes},
     },
-    utils::{Clock, IsAlive, Monotonic, Scale, Transform},
+    utils::{IsAlive, Scale, Transform},
     wayland::{
         compositor::{self, with_states},
         dmabuf::{
-            DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier,
+            DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState,
+            ImportNotifier,
         },
     },
 };
 use tracing::{error, info, warn};
 
 use crate::{
-    cursor, drawing::*, render::*, render_elements::custom_render_elements::CustomRenderElements, skia_renderer::{SkiaRenderer, SkiaTexture}, state::{post_repaint, take_presentation_feedback, Backend, CalloopData, ScreenComposer}
+    drawing::*,
+    render::*,
+    render_elements::custom_render_elements::CustomRenderElements,
+    skia_renderer::{SkiaRenderer, SkiaTexture},
+    state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
 };
 
 pub const OUTPUT_NAME: &str = "winit";
@@ -65,7 +71,12 @@ impl DmabufHandler for ScreenComposer<WinitData> {
         &mut self.backend_data.dmabuf_state.0
     }
 
-    fn dmabuf_imported(&mut self, _global: &DmabufGlobal, dmabuf: Dmabuf, notifier: ImportNotifier) {
+    fn dmabuf_imported(
+        &mut self,
+        _global: &DmabufGlobal,
+        dmabuf: Dmabuf,
+        notifier: ImportNotifier,
+    ) {
         if self
             .backend_data
             .backend
@@ -90,14 +101,13 @@ impl Backend for WinitData {
     }
     fn early_import(&mut self, surface: &wl_surface::WlSurface) {
         with_states(surface, |states| {
-           let _ = import_surface(self.backend.renderer(), states);
+            let _ = import_surface(self.backend.renderer(), states);
         });
     }
     fn texture_for_surface(&self, render_surface: &RendererSurfaceState) -> Option<SkiaTexture> {
         render_surface.texture::<SkiaRenderer>(99).cloned()
     }
-    fn set_cursor(&mut self, _image: &CursorImageStatus){
-    }
+    fn set_cursor(&mut self, _image: &CursorImageStatus) {}
 }
 
 pub fn run_winit() {
@@ -108,9 +118,9 @@ pub fn run_winit() {
     #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
     let (mut backend, mut winit) = match winit::init_from_attributes_with_gl_attr::<SkiaRenderer>(
         WindowAttributes::default()
-        .with_title("Screen Composer".to_string())
-        .with_inner_size(Size::new(LogicalSize::new(2256.0/2.0, 1504.0/2.0)))
-        .with_visible(true),
+            .with_title("Screen Composer".to_string())
+            .with_inner_size(Size::new(LogicalSize::new(2256.0 / 2.0, 1504.0 / 2.0)))
+            .with_visible(true),
         GlAttributes {
             version: (3, 0),
             profile: None,
@@ -140,14 +150,21 @@ pub fn run_winit() {
         },
     );
     let _global = output.create_global::<ScreenComposer<WinitData>>(&display.handle());
-    output.change_current_state(Some(mode), Some(Transform::Flipped180), Some(smithay::output::Scale::Fractional(1.0)), Some((0, 0).into()));
+    output.change_current_state(
+        Some(mode),
+        Some(Transform::Flipped180),
+        Some(smithay::output::Scale::Fractional(1.0)),
+        Some((0, 0).into()),
+    );
     output.set_preferred(mode);
 
     #[cfg(feature = "debug")]
-    let fps_image =
-        image::io::Reader::with_format(std::io::Cursor::new(FPS_NUMBERS_PNG), image::ImageFormat::Png)
-            .decode()
-            .unwrap();
+    let fps_image = image::io::Reader::with_format(
+        std::io::Cursor::new(FPS_NUMBERS_PNG),
+        image::ImageFormat::Png,
+    )
+    .decode()
+    .unwrap();
     #[cfg(feature = "debug")]
     let fps_texture = backend
         .renderer()
@@ -160,8 +177,6 @@ pub fn run_winit() {
         .expect("Unable to upload FPS texture");
     #[cfg(feature = "debug")]
     let mut fps_element = FpsElement::new(fps_texture);
-
-    
 
     let render_node = EGLDevice::device_for_display(backend.renderer().egl_context().display())
         .and_then(|device| device.try_get_render_node());
@@ -188,21 +203,26 @@ pub fn run_winit() {
     // Note: egl on Mesa requires either v4 or wl_drm (initialized with bind_wl_display)
     let dmabuf_state = if let Some(default_feedback) = dmabuf_default_feedback {
         let mut dmabuf_state = DmabufState::new();
-        let dmabuf_global = dmabuf_state.create_global_with_default_feedback::<ScreenComposer<WinitData>>(
-            &display.handle(),
-            &default_feedback,
-        );
+        let dmabuf_global = dmabuf_state
+            .create_global_with_default_feedback::<ScreenComposer<WinitData>>(
+                &display.handle(),
+                &default_feedback,
+            );
         (dmabuf_state, dmabuf_global, Some(default_feedback))
     } else {
         let dmabuf_formats = backend.renderer().dmabuf_formats();
         let mut dmabuf_state = DmabufState::new();
-        let dmabuf_global =
-            dmabuf_state.create_global::<ScreenComposer<WinitData>>(&display.handle(), dmabuf_formats);
+        let dmabuf_global = dmabuf_state
+            .create_global::<ScreenComposer<WinitData>>(&display.handle(), dmabuf_formats);
         (dmabuf_state, dmabuf_global, None)
     };
 
     #[cfg(feature = "egl")]
-    if backend.renderer().bind_wl_display(&display.handle()).is_ok() {
+    if backend
+        .renderer()
+        .bind_wl_display(&display.handle())
+        .is_ok()
+    {
         info!("EGL hardware-acceleration enabled");
     };
 
@@ -220,11 +240,15 @@ pub fn run_winit() {
     };
     let mut state = ScreenComposer::init(display, event_loop.handle(), data, true);
 
-
     let root = state.scene_element.root_layer().unwrap();
     let scene_size = size;
-    state.layers_engine.set_scene_size(scene_size.w as f32, scene_size.h as f32);
-    root.layer.set_size(layers::types::Size::points(scene_size.w as f32, scene_size.h as f32), None);
+    state
+        .layers_engine
+        .set_scene_size(scene_size.w as f32, scene_size.h as f32);
+    root.layer.set_size(
+        layers::types::Size::points(scene_size.w as f32, scene_size.h as f32),
+        None,
+    );
 
     state
         .shm_state
@@ -238,7 +262,7 @@ pub fn run_winit() {
     info!("Initialization completed, starting the main loop.");
 
     let mut pointer_element = PointerElement::<SkiaTexture>::default();
-    
+
     while state.running.load(Ordering::SeqCst) {
         #[cfg(feature = "profile-with-puffin")]
         profiling::puffin::GlobalProfiler::lock().new_frame();
@@ -256,7 +280,7 @@ pub fn run_winit() {
             profiling::puffin::profile_scope!("engine_update");
             state.scene_element.update();
         }
-        
+
         let status = winit.dispatch_new_events(|event| match event {
             WinitEvent::Resized { size, .. } => {
                 // We only have one output
@@ -270,7 +294,10 @@ pub fn run_winit() {
                 output.set_preferred(mode);
                 crate::shell::fixup_positions(&mut state.space, state.pointer.current_location());
                 state.scene_element.set_size(size.w as f32, size.h as f32);
-                root.layer.set_size(layers::types::Size::points(size.w as f32, size.h as f32), None);
+                root.layer.set_size(
+                    layers::types::Size::points(size.w as f32, size.h as f32),
+                    None,
+                );
             }
             WinitEvent::Input(event) => state.process_input_event_windowed(event, OUTPUT_NAME),
             _ => (),
@@ -304,7 +331,6 @@ pub fn run_winit() {
                 backend.window().set_cursor_icon(cursor);
             }
             pointer_element.set_status(cursor_guard.clone());
-
 
             #[cfg(feature = "debug")]
             let fps = state.backend_data.fps.avg().round() as u32;
@@ -365,7 +391,12 @@ pub fn run_winit() {
 
                 let mut elements = Vec::<CustomRenderElements<_>>::new();
 
-                elements.extend(pointer_element.render_elements(renderer, cursor_pos_scaled, scale, 1.0));
+                elements.extend(pointer_element.render_elements(
+                    renderer,
+                    cursor_pos_scaled,
+                    scale,
+                    1.0,
+                ));
 
                 // draw the dnd icon if any
                 if let Some(surface) = dnd_icon {
@@ -389,18 +420,12 @@ pub fn run_winit() {
                 #[cfg(feature = "profile-with-puffin")]
                 profiling::puffin::profile_scope!("render_output");
 
-                render_output(
-                    &output,
-                    space,
-                    elements,
-                    renderer,
-                    damage_tracker,
-                    age,
+                render_output(&output, space, elements, renderer, damage_tracker, age).map_err(
+                    |err| match err {
+                        OutputDamageTrackerError::Rendering(err) => err.into(),
+                        _ => unreachable!(),
+                    },
                 )
-                .map_err(|err| match err {
-                    OutputDamageTrackerError::Rendering(err) => err.into(),
-                    _ => unreachable!(),
-                })
             });
 
             match render_res {
@@ -434,11 +459,20 @@ pub fn run_winit() {
 
                     // Send frame events so that client start drawing their next frame
                     let time = state.clock.now();
-                    post_repaint(&output, &render_output_result.states, &state.space, None, time);
+                    post_repaint(
+                        &output,
+                        &render_output_result.states,
+                        &state.space,
+                        None,
+                        time,
+                    );
 
                     if has_rendered {
-                        let mut output_presentation_feedback =
-                            take_presentation_feedback(&output, &state.space, &render_output_result.states);
+                        let mut output_presentation_feedback = take_presentation_feedback(
+                            &output,
+                            &state.space,
+                            &render_output_result.states,
+                        );
                         output_presentation_feedback.presented(
                             time,
                             output
@@ -484,7 +518,5 @@ pub fn run_winit() {
             state.popups.cleanup();
             display_handle.flush_clients().unwrap();
         }
-
-
     }
 }

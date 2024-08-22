@@ -5,7 +5,6 @@
     allow(dead_code, unused_imports)
 )]
 
-
 #[cfg(any(feature = "udev", feature = "xwayland"))]
 pub mod cursor;
 pub mod drawing;
@@ -13,8 +12,8 @@ pub mod focus;
 pub mod input_handler;
 pub mod interactive_view;
 pub mod render;
-pub mod shell;
 pub mod render_elements;
+pub mod shell;
 pub mod skia_renderer;
 pub mod state;
 #[cfg(feature = "udev")]
@@ -24,7 +23,7 @@ pub mod winit;
 #[cfg(feature = "x11")]
 pub mod x11;
 
-pub use state::{ScreenComposer, CalloopData, ClientState};
+pub use state::{CalloopData, ClientState, ScreenComposer};
 mod workspace;
 
 mod utils;

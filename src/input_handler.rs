@@ -50,16 +50,17 @@ use crate::state::Backend;
 use smithay::{
     backend::{
         input::{
-            Device, DeviceCapability, GestureBeginEvent, GestureEndEvent, GesturePinchUpdateEvent as _,
-            GestureSwipeUpdateEvent as _, PointerMotionEvent, ProximityState, TabletToolButtonEvent,
-            TabletToolEvent, TabletToolProximityEvent, TabletToolTipEvent, TabletToolTipState,
+            Device, DeviceCapability, GestureBeginEvent, GestureEndEvent,
+            GesturePinchUpdateEvent as _, GestureSwipeUpdateEvent as _, PointerMotionEvent,
+            ProximityState, TabletToolButtonEvent, TabletToolEvent, TabletToolProximityEvent,
+            TabletToolTipEvent, TabletToolTipState,
         },
         session::Session,
     },
     input::pointer::{
         GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent,
-        GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent,
-        RelativeMotionEvent,
+        GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent,
+        GestureSwipeUpdateEvent, RelativeMotionEvent,
     },
     wayland::{
         pointer_constraints::{with_pointer_constraint, PointerConstraint},
@@ -107,12 +108,13 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                         let toplevel = window.toplevel().unwrap();
                         let mode_changed = toplevel.with_pending_state(|state| {
                             if let Some(current_mode) = state.decoration_mode {
-                                let new_mode =
-                                    if current_mode == zxdg_toplevel_decoration_v1::Mode::ClientSide {
-                                        zxdg_toplevel_decoration_v1::Mode::ServerSide
-                                    } else {
-                                        zxdg_toplevel_decoration_v1::Mode::ClientSide
-                                    };
+                                let new_mode = if current_mode
+                                    == zxdg_toplevel_decoration_v1::Mode::ClientSide
+                                {
+                                    zxdg_toplevel_decoration_v1::Mode::ServerSide
+                                } else {
+                                    zxdg_toplevel_decoration_v1::Mode::ClientSide
+                                };
                                 state.decoration_mode = Some(new_mode);
                                 true
                             } else {
@@ -153,7 +155,10 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
         for layer in self.layer_shell_state.layer_surfaces().rev() {
             let data = with_states(layer.wl_surface(), |states| {
-                *states.cached_state.get::<LayerSurfaceCachedState>().current()
+                *states
+                    .cached_state
+                    .get::<LayerSurfaceCachedState>()
+                    .current()
             });
             if data.keyboard_interactivity == KeyboardInteractivity::Exclusive
                 && (data.layer == WlrLayer::Top || data.layer == WlrLayer::Overlay)
@@ -184,48 +189,55 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             .unwrap_or(false);
 
         let action = keyboard
-            .input(self, keycode, state, serial, time, |_, modifiers, handle| {
-                let keysym = handle.modified_sym();
+            .input(
+                self,
+                keycode,
+                state,
+                serial,
+                time,
+                |_, modifiers, handle| {
+                    let keysym = handle.modified_sym();
 
-                debug!(
-                    ?state,
-                    mods = ?modifiers,
-                    keysym = ::xkbcommon::xkb::keysym_get_name(keysym),
-                    "keysym"
-                );
+                    debug!(
+                        ?state,
+                        mods = ?modifiers,
+                        keysym = ::xkbcommon::xkb::keysym_get_name(keysym),
+                        "keysym"
+                    );
 
-                // If the key is pressed and triggered a action
-                // we will not forward the key to the client.
-                // Additionally add the key to the suppressed keys
-                // so that we can decide on a release if the key
-                // should be forwarded to the client or not.
-                if let KeyState::Pressed = state {
-                    if !inhibited {
-                        let action = process_keyboard_shortcut(*modifiers, keysym);
+                    // If the key is pressed and triggered a action
+                    // we will not forward the key to the client.
+                    // Additionally add the key to the suppressed keys
+                    // so that we can decide on a release if the key
+                    // should be forwarded to the client or not.
+                    if let KeyState::Pressed = state {
+                        if !inhibited {
+                            let action = process_keyboard_shortcut(*modifiers, keysym);
 
-                        if action.is_some() {
-                            suppressed_keys.push(keysym);
+                            if action.is_some() {
+                                suppressed_keys.push(keysym);
+                            }
+
+                            action
+                                .map(FilterResult::Intercept)
+                                .unwrap_or(FilterResult::Forward)
+                        } else {
+                            FilterResult::Forward
                         }
-
-                        action
-                            .map(FilterResult::Intercept)
-                            .unwrap_or(FilterResult::Forward)
                     } else {
-                        FilterResult::Forward
+                        let suppressed = suppressed_keys.contains(&keysym);
+                        if suppressed {
+                            suppressed_keys.retain(|k| *k != keysym);
+                            FilterResult::Intercept(KeyAction::None)
+                        } else {
+                            FilterResult::Forward
+                        }
                     }
-                } else {
-                    let suppressed = suppressed_keys.contains(&keysym);
-                    if suppressed {
-                        suppressed_keys.retain(|k| *k != keysym);
-                        FilterResult::Intercept(KeyAction::None)
-                    } else {
-                        FilterResult::Forward
-                    }
-                }
-            })
+                },
+            )
             .unwrap_or(KeyAction::None);
 
-        if KeyState::Released == state  && keycode == 56 {
+        if KeyState::Released == state && keycode == 56 {
             self.workspace.app_switcher.hide();
             for win in self.workspace.app_switcher.get_current_app_windows() {
                 if let Some(we) = win.window_element.as_ref() {
@@ -238,7 +250,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                 }
             }
         }
-         
+
         self.suppressed_keys = suppressed_keys;
         action
     }
@@ -253,17 +265,17 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             self.update_keyboard_focus(serial);
         };
         // if !self.workspace.get_show_all() {
-            let pointer = self.pointer.clone();
-            pointer.button(
-                self,
-                &ButtonEvent {
-                    button,
-                    state: state.try_into().unwrap(),
-                    serial,
-                    time: evt.time_msec(),
-                },
-            );
-            pointer.frame(self);
+        let pointer = self.pointer.clone();
+        pointer.button(
+            self,
+            &ButtonEvent {
+                button,
+                state: state.try_into().unwrap(),
+                serial,
+                time: evt.time_msec(),
+            },
+        );
+        pointer.frame(self);
         // }
     }
 
@@ -279,7 +291,8 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         // subsurface menus (for example firefox-wayland).
         // see here for a discussion about that issue:
         // https://gitlab.freedesktop.org/wayland/wayland/-/issues/294
-        if !self.pointer.is_grabbed() && (!keyboard.is_grabbed() || input_method.keyboard_grabbed()) {
+        if !self.pointer.is_grabbed() && (!keyboard.is_grabbed() || input_method.keyboard_grabbed())
+        {
             let output = self
                 .space
                 .output_under(self.pointer.current_location())
@@ -328,8 +341,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                 .element_under(self.pointer.current_location())
                 .map(|(w, p)| (w.clone(), p));
 
-            if let Some((window, _)) = window_under
-            {
+            if let Some((window, _)) = window_under {
                 self.space.raise_element(&window, true);
                 let id = window.wl_surface().unwrap().id();
                 {
@@ -351,7 +363,9 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                 let layers = layer_map_for_output(output);
                 if let Some(layer) = layers
                     .layer_under(WlrLayer::Bottom, self.pointer.current_location())
-                    .or_else(|| layers.layer_under(WlrLayer::Background, self.pointer.current_location()))
+                    .or_else(|| {
+                        layers.layer_under(WlrLayer::Background, self.pointer.current_location())
+                    })
                 {
                     if layer.can_receive_keyboard_focus() {
                         if let Some((_, _)) = layer.surface_under(
@@ -368,9 +382,11 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         }
     }
 
-    pub fn surface_under(&self, pos: Point<f64, Logical>) 
-        -> Option<(PointerFocusTarget, Point<f64, Logical>)> {
-    let output = self.space.outputs().find(|o| {
+    pub fn surface_under(
+        &self,
+        pos: Point<f64, Logical>,
+    ) -> Option<(PointerFocusTarget, Point<f64, Logical>)> {
+        let output = self.space.outputs().find(|o| {
             let geometry = self.space.output_geometry(o).unwrap();
             geometry.contains(pos.to_i32_round())
         })?;
@@ -378,7 +394,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         let layers = layer_map_for_output(output);
 
         let mut under = None;
-        
+
         // if self.app_switcher.alive() {
         //     let focus = self.app_switcher.as_ref().clone().into();
         //     // let position = self.app_switcher.view_layer.render_position();
@@ -417,9 +433,9 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
     }
 
     fn on_pointer_axis<B: InputBackend>(&mut self, evt: B::PointerAxisEvent) {
-        let horizontal_amount = evt
-            .amount(input::Axis::Horizontal)
-            .unwrap_or_else(|| evt.amount_v120(input::Axis::Horizontal).unwrap_or(0.0) * 15.0 / 120.);
+        let horizontal_amount = evt.amount(input::Axis::Horizontal).unwrap_or_else(|| {
+            evt.amount_v120(input::Axis::Horizontal).unwrap_or(0.0) * 15.0 / 120.
+        });
         let vertical_amount = evt
             .amount(input::Axis::Vertical)
             .unwrap_or_else(|| evt.amount_v120(input::Axis::Vertical).unwrap_or(0.0) * 15.0 / 120.);
@@ -429,14 +445,16 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         {
             let mut frame = AxisFrame::new(evt.time_msec()).source(evt.source());
             if horizontal_amount != 0.0 {
-                frame = frame.relative_direction(Axis::Horizontal, evt.relative_direction(Axis::Horizontal));
+                frame = frame
+                    .relative_direction(Axis::Horizontal, evt.relative_direction(Axis::Horizontal));
                 frame = frame.value(Axis::Horizontal, horizontal_amount);
                 if let Some(discrete) = horizontal_amount_discrete {
                     frame = frame.v120(Axis::Horizontal, discrete as i32);
                 }
             }
             if vertical_amount != 0.0 {
-                frame = frame.relative_direction(Axis::Vertical, evt.relative_direction(Axis::Vertical));
+                frame = frame
+                    .relative_direction(Axis::Vertical, evt.relative_direction(Axis::Vertical));
                 frame = frame.value(Axis::Vertical, vertical_amount);
                 if let Some(discrete) = vertical_amount_discrete {
                     frame = frame.v120(Axis::Vertical, discrete as i32);
@@ -459,7 +477,11 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
 #[cfg(any(feature = "winit", feature = "x11"))]
 impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
-    pub fn process_input_event_windowed<B: InputBackend>(&mut self, event: InputEvent<B>, output_name: &str) {
+    pub fn process_input_event_windowed<B: InputBackend>(
+        &mut self,
+        event: InputEvent<B>,
+        output_name: &str,
+    ) {
         match event {
             InputEvent::Keyboard { event } => match self.keyboard_key_to_action::<B>(event) {
                 KeyAction::ScaleUp => {
@@ -472,7 +494,12 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
 
                     let current_scale = output.current_scale().fractional_scale();
                     let new_scale = current_scale + 0.25;
-                    output.change_current_state(None, None, Some(Scale::Fractional(new_scale)), None);
+                    output.change_current_state(
+                        None,
+                        None,
+                        Some(Scale::Fractional(new_scale)),
+                        None,
+                    );
 
                     crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
                     self.backend_data.reset_buffers(&output);
@@ -488,7 +515,12 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
 
                     let current_scale = output.current_scale().fractional_scale();
                     let new_scale = f64::max(1.0, current_scale - 0.25);
-                    output.change_current_state(None, None, Some(Scale::Fractional(new_scale)), None);
+                    output.change_current_state(
+                        None,
+                        None,
+                        Some(Scale::Fractional(new_scale)),
+                        None,
+                    );
 
                     crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
                     self.backend_data.reset_buffers(&output);
@@ -533,7 +565,6 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     //         view.raise();
                     //     }
                     // }
-                    
                 }
                 KeyAction::ExposeShowDesktop => {
                     if self.workspace.get_show_desktop() {
@@ -592,7 +623,7 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
         let mut under = None;
         let pointer = self.pointer.clone();
         // if !self.workspace.get_show_all() {
-            under = self.surface_under(pos);
+        under = self.surface_under(pos);
         // }
         // println!("Pointer move absolute: {:?}", pos);
         pointer.motion(
@@ -624,7 +655,11 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
 
 #[cfg(feature = "udev")]
 impl ScreenComposer<UdevData> {
-    pub fn process_input_event<B: InputBackend>(&mut self, dh: &DisplayHandle, event: InputEvent<B>) {
+    pub fn process_input_event<B: InputBackend>(
+        &mut self,
+        dh: &DisplayHandle,
+        event: InputEvent<B>,
+    ) {
         match event {
             InputEvent::Keyboard { event, .. } => match self.keyboard_key_to_action::<B>(event) {
                 #[cfg(feature = "udev")]
@@ -673,11 +708,17 @@ impl ScreenComposer<UdevData> {
                             output.current_scale().fractional_scale(),
                         );
                         let new_scale = scale + 0.25;
-                        output.change_current_state(None, None, Some(Scale::Fractional(new_scale)), None);
+                        output.change_current_state(
+                            None,
+                            None,
+                            Some(Scale::Fractional(new_scale)),
+                            None,
+                        );
 
                         let rescale = scale / new_scale;
                         let output_location = output_location.to_f64();
-                        let mut pointer_output_location = self.pointer.current_location() - output_location;
+                        let mut pointer_output_location =
+                            self.pointer.current_location() - output_location;
                         pointer_output_location.x *= rescale;
                         pointer_output_location.y *= rescale;
                         let pointer_location = output_location + pointer_output_location;
@@ -712,11 +753,17 @@ impl ScreenComposer<UdevData> {
                             output.current_scale().fractional_scale(),
                         );
                         let new_scale = f64::max(1.0, scale - 0.25);
-                        output.change_current_state(None, None, Some(Scale::Fractional(new_scale)), None);
+                        output.change_current_state(
+                            None,
+                            None,
+                            Some(Scale::Fractional(new_scale)),
+                            None,
+                        );
 
                         let rescale = scale / new_scale;
                         let output_location = output_location.to_f64();
-                        let mut pointer_output_location = self.pointer.current_location() - output_location;
+                        let mut pointer_output_location =
+                            self.pointer.current_location() - output_location;
                         pointer_output_location.x *= rescale;
                         pointer_output_location.y *= rescale;
                         let pointer_location = output_location + pointer_output_location;
@@ -755,7 +802,10 @@ impl ScreenComposer<UdevData> {
                             _ => Transform::Normal,
                         };
                         output.change_current_state(None, Some(new_transform), None, None);
-                        crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
+                        crate::shell::fixup_positions(
+                            &mut self.space,
+                            self.pointer.current_location(),
+                        );
                         self.backend_data.reset_buffers(&output);
                     }
                 }
@@ -802,18 +852,26 @@ impl ScreenComposer<UdevData> {
                 },
             },
             InputEvent::PointerMotion { event, .. } => self.on_pointer_move::<B>(dh, event),
-            InputEvent::PointerMotionAbsolute { event, .. } => self.on_pointer_move_absolute::<B>(dh, event),
+            InputEvent::PointerMotionAbsolute { event, .. } => {
+                self.on_pointer_move_absolute::<B>(dh, event)
+            }
             InputEvent::PointerButton { event, .. } => self.on_pointer_button::<B>(event),
             InputEvent::PointerAxis { event, .. } => self.on_pointer_axis::<B>(event),
             InputEvent::TabletToolAxis { event, .. } => self.on_tablet_tool_axis::<B>(event),
-            InputEvent::TabletToolProximity { event, .. } => self.on_tablet_tool_proximity::<B>(dh, event),
+            InputEvent::TabletToolProximity { event, .. } => {
+                self.on_tablet_tool_proximity::<B>(dh, event)
+            }
             InputEvent::TabletToolTip { event, .. } => self.on_tablet_tool_tip::<B>(event),
             InputEvent::TabletToolButton { event, .. } => self.on_tablet_button::<B>(event),
             InputEvent::GestureSwipeBegin { event, .. } => self.on_gesture_swipe_begin::<B>(event),
-            InputEvent::GestureSwipeUpdate { event, .. } => self.on_gesture_swipe_update::<B>(event),
+            InputEvent::GestureSwipeUpdate { event, .. } => {
+                self.on_gesture_swipe_update::<B>(event)
+            }
             InputEvent::GestureSwipeEnd { event, .. } => self.on_gesture_swipe_end::<B>(event),
             InputEvent::GesturePinchBegin { event, .. } => self.on_gesture_pinch_begin::<B>(event),
-            InputEvent::GesturePinchUpdate { event, .. } => self.on_gesture_pinch_update::<B>(event),
+            InputEvent::GesturePinchUpdate { event, .. } => {
+                self.on_gesture_pinch_update::<B>(event)
+            }
             InputEvent::GesturePinchEnd { event, .. } => self.on_gesture_pinch_end::<B>(event),
             InputEvent::GestureHoldBegin { event, .. } => self.on_gesture_hold_begin::<B>(event),
             InputEvent::GestureHoldEnd { event, .. } => self.on_gesture_hold_end::<B>(event),
@@ -842,7 +900,11 @@ impl ScreenComposer<UdevData> {
         }
     }
 
-    fn on_pointer_move<B: InputBackend>(&mut self, _dh: &DisplayHandle, evt: B::PointerMotionEvent) {
+    fn on_pointer_move<B: InputBackend>(
+        &mut self,
+        _dh: &DisplayHandle,
+        evt: B::PointerMotionEvent,
+    ) {
         let mut pointer_location = self.pointer.current_location();
         let serial = SCOUNTER.next_serial();
 
@@ -905,7 +967,9 @@ impl ScreenComposer<UdevData> {
         // If confined, don't move pointer if it would go outside surface or region
         if pointer_confined {
             if let Some((surface, surface_loc)) = &under {
-                if new_under.as_ref().and_then(|(under, _)| under.wl_surface()) != surface.wl_surface() {
+                if new_under.as_ref().and_then(|(under, _)| under.wl_surface())
+                    != surface.wl_surface()
+                {
                     pointer.frame(self);
                     return;
                 }
@@ -937,7 +1001,10 @@ impl ScreenComposer<UdevData> {
             with_pointer_constraint(&under, &pointer, |constraint| match constraint {
                 Some(constraint) if !constraint.is_active() => {
                     let point = (pointer_location - surface_location).to_i32_round();
-                    if constraint.region().map_or(true, |region| region.contains(point)) {
+                    if constraint
+                        .region()
+                        .map_or(true, |region| region.contains(point))
+                    {
                         constraint.activate();
                     }
                 }
@@ -952,11 +1019,12 @@ impl ScreenComposer<UdevData> {
         evt: B::PointerMotionAbsoluteEvent,
     ) {
         let serial = SCOUNTER.next_serial();
-        let max_x = self.space
-            .outputs()
-            .fold(0, |acc, o| acc + self.space.output_geometry(o).unwrap().size.w);
+        let max_x = self.space.outputs().fold(0, |acc, o| {
+            acc + self.space.output_geometry(o).unwrap().size.w
+        });
 
-        let max_h_output = self.space
+        let max_h_output = self
+            .space
             .outputs()
             .max_by_key(|o| self.space.output_geometry(o).unwrap().size.h)
             .unwrap()
@@ -987,7 +1055,8 @@ impl ScreenComposer<UdevData> {
     fn on_tablet_tool_axis<B: InputBackend>(&mut self, evt: B::TabletToolAxisEvent) {
         let tablet_seat = self.seat.tablet_seat();
 
-        let output_geometry = self.space
+        let output_geometry = self
+            .space
             .outputs()
             .next()
             .map(|o| self.space.output_geometry(o).unwrap());
@@ -1030,7 +1099,6 @@ impl ScreenComposer<UdevData> {
                     tool.wheel(evt.wheel_delta(), evt.wheel_delta_discrete());
                 }
 
-
                 tool.motion(
                     pointer_location,
                     under.and_then(|(f, loc)| f.wl_surface().map(|s| (s.into_owned(), loc))),
@@ -1051,7 +1119,8 @@ impl ScreenComposer<UdevData> {
     ) {
         let tablet_seat = self.seat.tablet_seat();
 
-        let output_geometry = self.space
+        let output_geometry = self
+            .space
             .outputs()
             .next()
             .map(|o| self.space.output_geometry(o).unwrap());
@@ -1137,7 +1206,7 @@ impl ScreenComposer<UdevData> {
             self.is_swiping = true;
         }
         // self.background_view.set_debug_text(format!("on_gesture_swipe_begin: {:?}", self.swipe_gesture));
-        
+
         pointer.gesture_swipe_begin(
             self,
             &GestureSwipeBeginEvent {
@@ -1152,7 +1221,7 @@ impl ScreenComposer<UdevData> {
         let pointer = self.pointer.clone();
         let multiplier = 800.0;
         let delta = evt.delta_y() as f32 / multiplier;
-        
+
         if self.is_swiping {
             self.expose_show_all(-delta, false);
         }
@@ -1168,11 +1237,10 @@ impl ScreenComposer<UdevData> {
     fn on_gesture_swipe_end<B: InputBackend>(&mut self, evt: B::GestureSwipeEndEvent) {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
-        
+
         if self.is_swiping {
             self.expose_show_all(0.0, true);
             self.is_swiping = false;
-
         }
         pointer.gesture_swipe_end(
             self,
@@ -1205,8 +1273,8 @@ impl ScreenComposer<UdevData> {
     fn on_gesture_pinch_update<B: InputBackend>(&mut self, evt: B::GesturePinchUpdateEvent) {
         let pointer = self.pointer.clone();
         let multiplier = 1.1;
-        let mut delta = evt.scale()as f32 * multiplier;
-        
+        let delta = evt.scale() as f32 * multiplier;
+
         // if !self.show_desktop {
         //     delta -= 1.0;
         // }
@@ -1215,7 +1283,7 @@ impl ScreenComposer<UdevData> {
         //     x: delta,//(self.pinch_gesture.x - delta),
         //     y: delta,//(self.pinch_gesture.y - delta),
         // };
-        if self.is_pinching {    
+        if self.is_pinching {
             // self.background_view.set_debug_text(format!("on_gesture_pinch_update: {:?}", delta));
             self.expose_show_desktop(delta, false);
         }
@@ -1233,7 +1301,7 @@ impl ScreenComposer<UdevData> {
     fn on_gesture_pinch_end<B: InputBackend>(&mut self, evt: B::GesturePinchEndEvent) {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
-        
+
         // self.background_view.set_debug_text(format!("on_gesture_pinch_end"));
         if self.is_pinching {
             self.expose_show_desktop(0.0, true);
@@ -1280,10 +1348,9 @@ impl ScreenComposer<UdevData> {
         }
 
         let (pos_x, pos_y) = pos.into();
-        let max_x = self
-            .space
-            .outputs()
-            .fold(0, |acc, o| acc + self.space.output_geometry(o).unwrap().size.w);
+        let max_x = self.space.outputs().fold(0, |acc, o| {
+            acc + self.space.output_geometry(o).unwrap().size.w
+        });
         let clamped_x = pos_x.clamp(0.0, max_x as f64);
         let max_y = self
             .space
@@ -1331,7 +1398,8 @@ enum KeyAction {
 }
 
 fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Option<KeyAction> {
-    if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace || modifiers.logo && keysym == Keysym::q
+    if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace
+        || modifiers.logo && keysym == Keysym::q
     {
         // ctrl+alt+backspace = quit
         // logo + q = quit
@@ -1360,15 +1428,15 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::ToggleDecorations)
     } else if modifiers.alt && keysym == Keysym::Tab {
         Some(KeyAction::ApplicationSwitchNext)
-    }  else if modifiers.alt && modifiers.shift && keysym == Keysym::Tab {
+    } else if modifiers.alt && modifiers.shift && keysym == Keysym::Tab {
         Some(KeyAction::ApplicationSwitchPrev)
-    }  else if modifiers.alt && keysym == Keysym::r {
+    } else if modifiers.alt && keysym == Keysym::r {
         Some(KeyAction::ApplicationSwitchNextWindow)
-    }  else if modifiers.alt && keysym == Keysym::w {
+    } else if modifiers.alt && keysym == Keysym::w {
         Some(KeyAction::ApplicationSwitchQuit)
-    }  else if modifiers.alt && keysym == Keysym::d {
+    } else if modifiers.alt && keysym == Keysym::d {
         Some(KeyAction::ExposeShowDesktop)
-    }  else if modifiers.alt && keysym == Keysym::f {
+    } else if modifiers.alt && keysym == Keysym::f {
         Some(KeyAction::ExposeShowAll)
     } else {
         None

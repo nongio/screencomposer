@@ -42,7 +42,11 @@ impl Cursor {
         let mut icons = HashMap::new();
         icons.insert("default".to_string(), default_cursor);
 
-        Cursor { size, icons, current: "default".to_string() }
+        Cursor {
+            size,
+            icons,
+            current: "default".to_string(),
+        }
     }
     pub fn load_icon(&mut self, name: &str) {
         self.current = name.to_string();
@@ -70,7 +74,11 @@ impl Cursor {
     }
     pub fn get_image(&self, scale: u32, time: Duration) -> Image {
         let size = self.size * scale;
-        frame(time.as_millis() as u32, size, self.icons.get(&self.current).unwrap())
+        frame(
+            time.as_millis() as u32,
+            size,
+            self.icons.get(&self.current).unwrap(),
+        )
     }
 }
 
@@ -81,9 +89,9 @@ fn nearest_images(size: u32, images: &[Image]) -> impl Iterator<Item = &Image> {
         .min_by_key(|image| (size as i32 - image.size as i32).abs())
         .unwrap();
 
-    images
-        .iter()
-        .filter(move |image| image.width == nearest_image.width && image.height == nearest_image.height)
+    images.iter().filter(move |image| {
+        image.width == nearest_image.width && image.height == nearest_image.height
+    })
 }
 
 fn frame(mut millis: u32, size: u32, images: &[Image]) -> Image {

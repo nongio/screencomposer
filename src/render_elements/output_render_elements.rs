@@ -1,12 +1,23 @@
-use smithay::{backend::renderer::{ImportAll, ImportMem, element::{Wrap, utils::{CropRenderElement, RelocateRenderElement, RescaleRenderElement}, RenderElement}}, desktop::space::SpaceRenderElements};
+use smithay::{
+    backend::renderer::{
+        element::{
+            utils::{CropRenderElement, RelocateRenderElement, RescaleRenderElement},
+            RenderElement, Wrap,
+        },
+        ImportAll, ImportMem,
+    },
+    desktop::space::SpaceRenderElements,
+};
 
 use crate::{shell::WindowRenderElement, skia_renderer::SkiaFrame};
 
-use super::{custom_render_elements::CustomRenderElements, skia_element::SkiaElement, scene_element::SceneElement};
-
+use super::{
+    custom_render_elements::CustomRenderElements, scene_element::SceneElement,
+    skia_element::SkiaElement,
+};
 
 smithay::backend::renderer::element::render_elements! {
-    pub OutputRenderElements<'frame, R, E> where 
+    pub OutputRenderElements<'frame, R, E> where
     R: ImportAll + ImportMem + 'frame,
     SkiaElement: (RenderElement<R>),
     SceneElement: (RenderElement<R>),

@@ -10,16 +10,19 @@ use smithay::{
         },
         ImportAll, ImportMem, Renderer,
     },
-    desktop::space::{
-        constrain_space_element, ConstrainBehavior, ConstrainReference, Space,
-    },
+    desktop::space::{constrain_space_element, ConstrainBehavior, ConstrainReference, Space},
     output::Output,
     utils::{Point, Rectangle, Size},
 };
 
 use crate::{
     drawing::{CLEAR_COLOR, CLEAR_COLOR_FULLSCREEN},
-    shell::{FullscreenSurface, WindowElement, WindowRenderElement}, render_elements::{output_render_elements::OutputRenderElements, skia_element::SkiaElement, scene_element::SceneElement}, skia_renderer::SkiaFrame,
+    render_elements::{
+        output_render_elements::OutputRenderElements, scene_element::SceneElement,
+        skia_element::SkiaElement,
+    },
+    shell::{FullscreenSurface, WindowElement, WindowRenderElement},
+    skia_renderer::SkiaFrame,
 };
 
 pub fn space_preview_elements<'a, R, C>(
@@ -30,7 +33,8 @@ pub fn space_preview_elements<'a, R, C>(
 where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + 'static,
-    C: From<CropRenderElement<RelocateRenderElement<RescaleRenderElement<WindowRenderElement<R>>>>> + 'a,
+    C: From<CropRenderElement<RelocateRenderElement<RescaleRenderElement<WindowRenderElement<R>>>>>
+        + 'a,
 {
     let constrain_behavior = ConstrainBehavior {
         reference: ConstrainReference::BoundingBox,
@@ -89,9 +93,14 @@ where
 pub fn output_elements<'frame, R>(
     output: &Output,
     space: &Space<WindowElement>,
-    custom_elements: impl IntoIterator<Item = impl Into<OutputRenderElements<'frame, R, WindowRenderElement<R>>>>,
+    custom_elements: impl IntoIterator<
+        Item = impl Into<OutputRenderElements<'frame, R, WindowRenderElement<R>>>,
+    >,
     renderer: &mut R,
-) -> (Vec<OutputRenderElements<'frame, R, WindowRenderElement<R>>>, [f32; 4])
+) -> (
+    Vec<OutputRenderElements<'frame, R, WindowRenderElement<R>>>,
+    [f32; 4],
+)
 where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + 'static,
@@ -121,14 +130,14 @@ where
             .map(|e| e.into())
             .collect::<Vec<_>>();
 
-
-        let _space_elements = smithay::desktop::space::space_render_elements::<_, WindowElement, _>(
-            renderer,
-            [space],
-            output,
-            1.0,
-        )
-        .expect("Failed to render space elements");
+        let _space_elements =
+            smithay::desktop::space::space_render_elements::<_, WindowElement, _>(
+                renderer,
+                [space],
+                output,
+                1.0,
+            )
+            .expect("Failed to render space elements");
 
         // output_render_elements.extend(space_elements.into_iter().map(OutputRenderElements::Space));
 
@@ -140,7 +149,9 @@ where
 pub fn render_output<'frame, R>(
     output: &Output,
     space: &Space<WindowElement>,
-    custom_elements: impl IntoIterator<Item = impl Into<OutputRenderElements<'frame, R, WindowRenderElement<R>>>>,
+    custom_elements: impl IntoIterator<
+        Item = impl Into<OutputRenderElements<'frame, R, WindowRenderElement<R>>>,
+    >,
     renderer: &mut R,
     damage_tracker: &'frame mut OutputDamageTracker,
     age: usize,
@@ -153,15 +164,15 @@ where
 
     <R as smithay::backend::renderer::Renderer>::Frame<'frame>: Clone,
     <R as smithay::backend::renderer::Renderer>::Frame<'frame>: (AsMut<SkiaFrame>),
-    <R as smithay::backend::renderer::Renderer>::Error: (From<smithay::backend::renderer::gles::GlesError>),
+    <R as smithay::backend::renderer::Renderer>::Error:
+        (From<smithay::backend::renderer::gles::GlesError>),
 {
-    let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer);
-    
+    let (elements, clear_color) = output_elements(output, space, custom_elements, renderer);
+
     // let clear_color: [f32; 4] = [0.8, 0.8, 0.9, 1.0];
     // let elements: Vec<OutputRenderElements<'frame, R, WindowRenderElement<R>>> = custom_elements
     // .into_iter()
-    // .map(|el| el.into()).collect::<Vec<_>>();    
+    // .map(|el| el.into()).collect::<Vec<_>>();
 
     damage_tracker.render_output(renderer, age, &elements, clear_color)
 }

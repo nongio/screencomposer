@@ -1,9 +1,14 @@
-
-use layers::{engine::{LayersEngine, NodeRef}, prelude::taffy};
+use layers::{
+    engine::{LayersEngine, NodeRef},
+    prelude::taffy,
+};
 
 use crate::shell::WindowElement;
 
-use super::{model::{WindowViewBaseModel, WindowViewSurface}, render::{view_base_window, view_content_window}};
+use super::{
+    model::{WindowViewBaseModel, WindowViewSurface},
+    render::{view_base_window, view_content_window},
+};
 
 #[derive(Clone)]
 pub struct WindowView {
@@ -19,7 +24,11 @@ pub struct WindowView {
 }
 
 impl WindowView {
-    pub fn new(layers_engine: LayersEngine, parent_layer_noderef: NodeRef, window: WindowElement) -> Self {
+    pub fn new(
+        layers_engine: LayersEngine,
+        parent_layer_noderef: NodeRef,
+        window: WindowElement,
+    ) -> Self {
         let layer = layers_engine.new_layer();
         layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
@@ -30,7 +39,7 @@ impl WindowView {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
-        
+
         let base_layer = layers_engine.new_layer();
         base_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
@@ -52,9 +61,14 @@ impl WindowView {
             h: 0.0,
             title: "".to_string(),
         };
-        let view_base = layers::prelude::View::new(base_layer.clone(), base_rect, Box::new(view_base_window));
-        let view_content = layers::prelude::View::new(content_layer.clone(), render_elements, Box::new(view_content_window));
-        
+        let view_base =
+            layers::prelude::View::new(base_layer.clone(), base_rect, Box::new(view_base_window));
+        let view_content = layers::prelude::View::new(
+            content_layer.clone(),
+            render_elements,
+            Box::new(view_content_window),
+        );
+
         // view_base.render(&state.base_rect);
         // view_content.render(&state.render_elements);
         Self {
@@ -76,6 +90,7 @@ impl WindowView {
     // }
 
     pub fn raise(&self) {
-        self.engine.scene_add_layer_to(self.layer.clone(), Some(self.parent_layer_noderef));
+        self.engine
+            .scene_add_layer_to(self.layer.clone(), Some(self.parent_layer_noderef));
     }
 }
