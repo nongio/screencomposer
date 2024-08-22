@@ -325,7 +325,7 @@ impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
         set_primary_focus(dh, seat, focus);
     }
 
-    fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
+    fn cursor_image(&mut self, _seat: &Seat<Self>, _image: CursorImageStatus) {
         // println!("change icon {:?}", image);
         // *self.cursor_status.lock().unwrap() = image;
     }
@@ -992,13 +992,10 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     ) -> &WindowView {
         self.window_views
             .entry(object_id.clone())
-            .or_insert_with(|| {
-                let view = WindowView::new(self.layers_engine.clone(), parent_layer_id, window);
-                view
-            })
+            .or_insert_with(|| WindowView::new(self.layers_engine.clone(), parent_layer_id, window))
     }
     pub fn remove_window_view(&mut self, object_id: &ObjectId) {
-        if let Some(view) = self.window_views.remove(object_id) {}
+        if let Some(_view) = self.window_views.remove(object_id) {}
     }
     pub fn get_window_view(&self, id: &ObjectId) -> Option<&WindowView> {
         self.window_views.get(id)

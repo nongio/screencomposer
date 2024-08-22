@@ -270,7 +270,7 @@ impl Workspace {
         }
 
         windows
-            .filter(|(w, l, state)| w.wl_surface().is_some()) // do we need this?
+            .filter(|(w, _l, _state)| w.wl_surface().is_some()) // do we need this?
             .for_each(|(w, l, state)| {
                 let surface = w.wl_surface().map(|s| (s.as_ref()).clone()).unwrap();
                 smithay::wayland::compositor::with_states(&surface, |states| {
@@ -460,7 +460,6 @@ impl Workspace {
         let mut state = WindowSelectorState {
             rects: vec![],
             current_selection: None,
-            ..self.window_selector_view.view.get_state()
         };
 
         let mut delta = delta.max(0.0);
@@ -547,11 +546,11 @@ impl Workspace {
         let mut new_gesture = gesture + (delta * MULTIPLIER) as i32;
         let show_desktop = self.get_show_desktop();
 
-        let size = self.workspace_layer.render_size();
-        let padding_top = 10.0;
-        let padding_bottom = 10.0;
-        let screen_size_w = size.x;
-        let screen_size_h = size.y - padding_top - padding_bottom;
+        // let size = self.workspace_layer.render_size();
+        // let padding_top = 10.0;
+        // let padding_bottom = 10.0;
+        // let screen_size_w = size.x;
+        // let screen_size_h = size.y - padding_top - padding_bottom;
         let model = self.model.read().unwrap();
         let map = self.windows_map.read().unwrap();
 
@@ -574,10 +573,8 @@ impl Workspace {
                     self.set_show_desktop(false);
                 }
             }
-        } else {
-            if !show_desktop {
-                new_gesture -= MULTIPLIER as i32;
-            }
+        } else if !show_desktop {
+            new_gesture -= MULTIPLIER as i32;
         }
 
         let delta = new_gesture as f32 / 1000.0;

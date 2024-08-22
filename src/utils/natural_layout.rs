@@ -86,6 +86,7 @@ impl LayoutRect {
     }
 }
 
+#[allow(clippy::mutable_key_type)]
 pub fn natural_layout(
     windows: &Vec<Window>,
     area: &LayoutRect,

@@ -620,10 +620,10 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
         let pos = evt.position_transformed(output_geo.size) + output_geo.loc.to_f64();
         let serial = SCOUNTER.next_serial();
 
-        let mut under = None;
+        // let mut under = None;
         let pointer = self.pointer.clone();
         // if !self.workspace.get_show_all() {
-        under = self.surface_under(pos);
+        let under = self.surface_under(pos);
         // }
         // println!("Pointer move absolute: {:?}", pos);
         pointer.motion(

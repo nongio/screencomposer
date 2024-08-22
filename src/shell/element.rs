@@ -160,18 +160,16 @@ impl WaylandFocus for SSD {
 
 impl SpaceElement for WindowElement {
     fn geometry(&self) -> Rectangle<i32, Logical> {
-        let geo = SpaceElement::geometry(&self.0);
         // if self.decoration_state().is_ssd {
         //     geo.size.h += HEADER_BAR_HEIGHT;
         // }
-        geo
+        SpaceElement::geometry(&self.0)
     }
     fn bbox(&self) -> Rectangle<i32, Logical> {
-        let bbox = SpaceElement::bbox(&self.0);
         // if self.decoration_state().is_ssd {
         //     bbox.size.h += HEADER_BAR_HEIGHT;
         // }
-        bbox
+        SpaceElement::bbox(&self.0)
     }
     fn is_in_input_region(&self, point: &Point<f64, Logical>) -> bool {
         // if self.decoration_state().is_ssd {
@@ -233,7 +231,7 @@ where
         scale: Scale<f64>,
         alpha: f32,
     ) -> Vec<C> {
-        let window_bbox = SpaceElement::bbox(&self.0);
+        let _window_bbox = SpaceElement::bbox(&self.0);
 
         // if self.decoration_state().is_ssd && !window_bbox.is_empty() {
         //     let window_geo = SpaceElement::geometry(&self.0);

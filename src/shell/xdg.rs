@@ -300,16 +300,16 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 }
             }
 
-            let surface_clone = surface.clone();
+            let _surface_clone = surface.clone();
             use std::borrow::Cow;
 
             let window = self
                 .space
                 .elements()
-                .find(|element| element.wl_surface().map(|s| s) == Some(Cow::Borrowed(&surface)));
-            if let Some(window) = window {
+                .find(|element| element.wl_surface() == Some(Cow::Borrowed(&surface)));
+            if let Some(_window) = window {
                 use xdg_decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
-                let is_ssd = configure
+                let _is_ssd = configure
                     .state
                     .decoration_mode
                     .map(|mode| mode == Mode::ServerSide)
@@ -435,7 +435,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             self.space.map_element(window, geometry.loc, true);
 
             let id = surface.wl_surface().id();
-            if let Some(window_layer_id) = self.workspace.windows_layer.id() {
+            if let Some(_window_layer_id) = self.workspace.windows_layer.id() {
                 if let Some(view) = self.get_window_view(&id) {
                     view.layer.set_position(
                         layers::types::Point {
@@ -470,7 +470,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         let id = surface.wl_surface().id();
         let window = self.window_for_surface(surface.wl_surface()).unwrap();
 
-        if let Some(window_layer_id) = self.workspace.windows_layer.id() {
+        if let Some(_window_layer_id) = self.workspace.windows_layer.id() {
             let scale = self
                 .space
                 .outputs_for_element(&window)

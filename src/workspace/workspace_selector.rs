@@ -33,8 +33,11 @@ impl WorkspaceSelectorView {
     }
 }
 
-fn view(state: &WorkspaceSelectorViewState, _view: &View<WorkspaceSelectorViewState>) -> ViewLayer {
-    let draw_container = move |canvas: &skia_safe::Canvas, w, h| {
+fn view(
+    _state: &WorkspaceSelectorViewState,
+    _view: &View<WorkspaceSelectorViewState>,
+) -> ViewLayer {
+    let _draw_container = move |canvas: &skia_safe::Canvas, w, h| {
         let rect = skia_safe::Rect::from_xywh(0.0, 0.0, w, 200.0);
         let color = skia_safe::Color4f::new(0.8, 0.8, 0.8, 0.3);
         let paint = skia_safe::Paint::new(color, None);

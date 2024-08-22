@@ -11,7 +11,7 @@ use smithay::{
     },
     input::pointer::CursorImageStatus,
     render_elements,
-    utils::{Clock, Monotonic, Physical, Point, Scale},
+    utils::{Physical, Point, Scale},
 };
 #[cfg(feature = "debug")]
 use smithay::{
@@ -32,7 +32,6 @@ pub struct PointerElement<T: Texture> {
     texture: Option<TextureBuffer<T>>,
     status: CursorImageStatus,
     cursor_manager: Cursor,
-    clock: Clock<Monotonic>,
 }
 
 impl<T: Texture> Default for PointerElement<T> {
@@ -41,7 +40,6 @@ impl<T: Texture> Default for PointerElement<T> {
             texture: Default::default(),
             status: CursorImageStatus::default_named(),
             cursor_manager: Cursor::load(),
-            clock: Clock::new(),
         }
     }
 }
@@ -207,10 +205,10 @@ where
     fn draw(
         &self,
         frame: &mut <R as Renderer>::Frame<'_>,
-        src: Rectangle<f64, Buffer>,
+        _src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
-        opaque_regions: &[Rectangle<i32, Physical>],
+        _opaque_regions: &[Rectangle<i32, Physical>],
     ) -> Result<(), R::Error> {
         // FIXME: respect the src for cropping
         let scale = dst.size.to_f64() / self.src().size;

@@ -69,7 +69,7 @@ fn fullscreen_output_geometry(
                         .unwrap_or(false)
                 })
                 .cloned();
-            w.and_then(|w| space.outputs_for_element(&w).get(0).cloned())
+            w.and_then(|w| space.outputs_for_element(&w).first().cloned())
         })
         .and_then(|o| space.output_geometry(&o))
 }

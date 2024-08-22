@@ -569,7 +569,7 @@ impl<BackendData: Backend> WaylandFocus for KeyboardFocusTarget<BackendData> {
             KeyboardFocusTarget::Window(w) => w.wl_surface(),
             KeyboardFocusTarget::LayerSurface(l) => Some(Cow::Borrowed(l.wl_surface())),
             KeyboardFocusTarget::Popup(p) => Some(Cow::Borrowed(p.wl_surface())),
-            KeyboardFocusTarget::View(d) => None,
+            KeyboardFocusTarget::View(_) => None,
         }
     }
 }

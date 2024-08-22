@@ -52,13 +52,15 @@ use smithay::{
 };
 use tracing::{error, info, trace, warn};
 
+#[allow(dead_code)]
 #[derive(Debug, Default)]
 struct OldGeometry(RefCell<Option<Rectangle<i32, Logical>>>);
 impl OldGeometry {
+    #[allow(dead_code)]
     pub fn save(&self, geo: Rectangle<i32, Logical>) {
         *self.0.borrow_mut() = Some(geo);
     }
-
+    #[allow(dead_code)]
     pub fn restore(&self) -> Option<Rectangle<i32, Logical>> {
         self.0.borrow_mut().take()
     }

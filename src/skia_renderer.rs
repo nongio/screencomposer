@@ -29,7 +29,7 @@ use smithay::{
                 format::{fourcc_to_gl_formats, gl_internal_format_to_fourcc},
                 Capability, GlesError, GlesRenderbuffer, GlesRenderer, GlesTexture,
             },
-            sync::{Fence, SyncPoint},
+            sync::SyncPoint,
             Bind, Color32F, DebugFlags, ExportMem, Frame, ImportDma, ImportDmaWl, ImportEgl,
             ImportMem, ImportMemWl, Offscreen, Renderer, Texture, TextureFilter, TextureMapping,
             Unbind,
@@ -64,7 +64,7 @@ impl SkiaSurface {
     ) -> Self {
         let fb_info = {
             skia::gpu::gl::FramebufferInfo {
-                fboid: fboid.try_into().unwrap(),
+                fboid: fboid.into(),
                 format: skia::gpu::gl::Format::RGBA8.into(),
                 ..Default::default()
             }
@@ -257,6 +257,7 @@ impl std::hash::Hash for EGLSurfaceWrapper {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SkiaTarget {
     // EGLSurface(smithay::backend::egl::ffi::egl::types::EGLSurface),
+    #[allow(private_interfaces)]
     EGLSurface(EGLSurfaceWrapper),
     Texture(ffi::types::GLuint),
     Renderbuffer(*const GlesRenderbuffer),
@@ -280,7 +281,7 @@ impl std::fmt::Debug for SkiaRenderer {
 fn save_image(image: &skia::Image, name: &str) {
     use std::fs::File;
     use std::io::Write;
-
+    #[allow(deprecated)]
     let data = image.encode_to_data(skia::EncodedImageFormat::PNG).unwrap();
     let bytes = data.as_bytes();
     let filename = format!("{}.png", name);
@@ -627,7 +628,7 @@ impl Texture for SkiaTexture {
     }
 }
 
-impl<'a> Frame for SkiaFrame {
+impl Frame for SkiaFrame {
     type Error = GlesError;
     type TextureId = SkiaTexture;
 
@@ -703,7 +704,7 @@ impl<'a> Frame for SkiaFrame {
         src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
-        opaque_regions: &[Rectangle<i32, Physical>],
+        _opaque_regions: &[Rectangle<i32, Physical>],
         src_transform: Transform,
         alpha: f32,
     ) -> Result<(), Self::Error> {
@@ -805,7 +806,7 @@ impl<'a> Frame for SkiaFrame {
         };
 
         // Transmute flushinfo2 into flushinfo
-        let info = unsafe {
+        let _info = unsafe {
             let native = &*(&info as *const FlushInfo2 as *const sb::GrFlushInfo);
             &*(native as *const sb::GrFlushInfo as *const skia_safe::gpu::FlushInfo)
         };
@@ -836,7 +837,8 @@ impl<'a> Frame for SkiaFrame {
         &mut self,
         sync: &smithay::backend::renderer::sync::SyncPoint,
     ) -> Result<(), Self::Error> {
-        sync.wait();
+        sync.wait()
+            .map_err(|_| GlesError::FramebufferBindingError)?;
         Ok(())
     }
 }
@@ -1212,7 +1214,7 @@ impl ImportDmaWl for SkiaRenderer {
     ) -> Result<<Self as Renderer>::TextureId, <Self as Renderer>::Error> {
         let dmabuf = smithay::wayland::dmabuf::get_dmabuf(buffer)
             .expect("import_dma_buffer without checking buffer type?");
-        self.import_dmabuf(&dmabuf, Some(damage))
+        self.import_dmabuf(dmabuf, Some(damage))
     }
 }
 
@@ -1448,6 +1450,7 @@ impl Bind<Dmabuf> for SkiaRenderer {
         let target = SkiaTarget::Dmabuf(dmabuf.clone());
         self.current_target = Some(target);
         let egl_display = self.egl_context().display().clone();
+        #[allow(clippy::mutable_key_type)]
         let buffers = self.buffers.borrow_mut();
         buffers
             .entry(SkiaTarget::Dmabuf(dmabuf.clone()))

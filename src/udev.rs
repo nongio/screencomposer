@@ -1,6 +1,5 @@
 use std::{
     collections::hash_map::HashMap,
-    convert::TryInto,
     io,
     path::Path,
     sync::{atomic::Ordering, Mutex},
@@ -358,7 +357,7 @@ pub fn run_udev() {
                     .iter_mut()
                     .map(|(handle, backend)| (*handle, backend))
                 {
-                    backend.drm.activate(false);
+                    let _ = backend.drm.activate(false);
                     if let Some(lease_global) = backend.leasing_global.as_mut() {
                         lease_global.resume::<ScreenComposer<UdevData>>();
                     }
@@ -395,14 +394,14 @@ pub fn run_udev() {
             .shm_formats(),
     );
 
-    let skip_vulkan = std::env::var("ANVIL_NO_VULKAN")
-        .map(|x| {
-            x == "1"
-                || x.to_lowercase() == "true"
-                || x.to_lowercase() == "yes"
-                || x.to_lowercase() == "y"
-        })
-        .unwrap_or(false);
+    // let skip_vulkan = std::env::var("ANVIL_NO_VULKAN")
+    //     .map(|x| {
+    //         x == "1"
+    //             || x.to_lowercase() == "true"
+    //             || x.to_lowercase() == "yes"
+    //             || x.to_lowercase() == "y"
+    //     })
+    //     .unwrap_or(false);
 
     if state.backend_data.allocator.is_none() {
         info!("No vulkan allocator found, using GBM.");
@@ -1511,7 +1510,7 @@ impl ScreenComposer<UdevData> {
         };
     }
 
-    fn render_surface<'a, 'b>(&mut self, node: DrmNode, crtc: crtc::Handle) {
+    fn render_surface(&mut self, node: DrmNode, crtc: crtc::Handle) {
         profiling::scope!("render_surface", &format!("{crtc:?}"));
 
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
@@ -1544,7 +1543,7 @@ impl ScreenComposer<UdevData> {
         let cursor_frame = self
             .backend_data
             .cursor_manager
-            .get_image(1, self.clock.now().try_into().unwrap());
+            .get_image(1, self.clock.now().into());
 
         let pointer_images = &mut self.backend_data.pointer_images;
         let pointer_image = pointer_images

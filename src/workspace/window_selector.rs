@@ -93,7 +93,7 @@ pub struct WindowSelectorView {
 impl WindowSelectorView {
     pub fn new(
         layers_engine: LayersEngine,
-        cursor_handler: std::sync::Arc<std::sync::Mutex<CursorImageStatus>>,
+        _cursor_handler: std::sync::Arc<std::sync::Mutex<CursorImageStatus>>,
     ) -> Self {
         let layer = layers_engine.new_layer();
         layer.set_layout_style(taffy::Style {
@@ -199,11 +199,11 @@ pub fn view_window_selector(
 
     const TEXT_PADDING_X: f32 = 10.0;
     const TEXT_PADDING_Y: f32 = 5.0;
-    let text_x = 0.0;
-    let text_y = 0.0;
+    // let text_x = 0.0;
+    // let text_y = 0.0;
     let (text_rect, text_bounding_box) = current
         .as_ref()
-        .map(|(rect, bb)| (rect.clone(), bb.clone()))
+        .map(|(rect, bb)| (rect.clone(), *bb))
         .unwrap_or((WindowSelection::default(), skia_safe::Rect::new_empty()));
     let text_layer_size = layers::types::Size::points(
         if text_bounding_box.width() == 0.0 {
@@ -277,7 +277,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
     }
     fn on_motion(
         &self,
-        seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
+        _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
         data: &mut crate::ScreenComposer<Backend>,
         event: &smithay::input::pointer::MotionEvent,
     ) {
@@ -306,12 +306,11 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
         self.view.update_state(WindowSelectorState {
             rects: state.rects,
             current_selection: rect,
-            ..self.view.get_state()
         });
     }
     fn on_button(
         &self,
-        seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
+        _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
         data: &mut crate::ScreenComposer<Backend>,
         event: &smithay::input::pointer::ButtonEvent,
     ) {
