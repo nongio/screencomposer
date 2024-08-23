@@ -19,7 +19,7 @@ smithay::backend::renderer::element::render_elements! {
         R: ImportAll + ImportMem + 'a,
         SkiaElement: (RenderElement<R>),
         SceneElement: (RenderElement<R>),
-        <R as smithay::backend::renderer::Renderer>::Frame<'a>: (AsMut<SkiaFrame>),
+        <R as smithay::backend::renderer::Renderer>::Frame<'a>: (AsMut<SkiaFrame<'a>>),
         <R as smithay::backend::renderer::Renderer>::Error: (From<smithay::backend::renderer::gles::GlesError>);
     Pointer=PointerRenderElement<R>,
     Surface=WaylandSurfaceRenderElement<R>,

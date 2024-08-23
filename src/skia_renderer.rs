@@ -3,10 +3,9 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     ffi::{c_char, CStr},
-    rc::Rc,
+    rc::Rc, time::Duration,
 };
 
-use sb::GrSyncCpu;
 use skia_safe as skia;
 
 use smithay::{
@@ -17,8 +16,7 @@ use smithay::{
             Buffer as DmaBuffer, Fourcc,
         },
         egl::{
-            self, display::EGLBufferReader, fence::EGLFence, ffi::egl::types::EGLImage, EGLContext,
-            EGLSurface,
+            self, display::{EGLBufferReader, EGLDisplayHandle}, fence::EGLFence, ffi::egl::{types::{EGLImage, EGLSync}, CreateSync, SYNC_FENCE}, wrap_egl_call, wrap_egl_call_ptr, EGLContext, EGLDisplay, EGLSurface
         },
         renderer::{
             gles::{
@@ -29,7 +27,7 @@ use smithay::{
                 format::{fourcc_to_gl_formats, gl_internal_format_to_fourcc},
                 Capability, GlesError, GlesRenderbuffer, GlesRenderer, GlesTexture,
             },
-            sync::SyncPoint,
+            sync::{Fence, Interrupted, SyncPoint},
             Bind, Color32F, DebugFlags, ExportMem, Frame, ImportDma, ImportDmaWl, ImportEgl,
             ImportMem, ImportMemWl, Offscreen, Renderer, Texture, TextureFilter, TextureMapping,
             Unbind,
@@ -222,10 +220,10 @@ pub struct SkiaTexture {
 
 unsafe impl Send for SkiaTexture {}
 
-#[derive(Clone)]
-pub struct SkiaFrame {
+pub struct SkiaFrame<'frame> {
     size: Size<i32, Physical>,
     pub skia_surface: SkiaSurface,
+    renderer: &'frame mut SkiaRenderer,
     id: usize,
 }
 
@@ -628,7 +626,7 @@ impl Texture for SkiaTexture {
     }
 }
 
-impl Frame for SkiaFrame {
+impl<'frame> Frame for SkiaFrame<'frame> {
     type Error = GlesError;
     type TextureId = SkiaTexture;
 
@@ -806,31 +804,32 @@ impl Frame for SkiaFrame {
         };
 
         // Transmute flushinfo2 into flushinfo
-        let _info = unsafe {
+        let info = unsafe {
             let native = &*(&info as *const FlushInfo2 as *const sb::GrFlushInfo);
             &*(native as *const sb::GrFlushInfo as *const skia_safe::gpu::FlushInfo)
         };
 
         FINISHED_PROC_STATE.store(false, Ordering::SeqCst);
 
-        // let semaphores = surface.gr_context.flush(info);
-        // let syncpoint = if semaphores == skia::gpu::SemaphoresSubmitted::Yes {
-        //     profiling::scope!("FINISHED_PROC_STATE");
-        //     let skia_sync = SkiaSync {};
-        //     SyncPoint::from(skia_sync)
-        // } else {
-        //     SyncPoint::signaled()
-        // };
+        let semaphores = surface.gr_context.flush(info);
+        let syncpoint = if semaphores == skia::gpu::SemaphoresSubmitted::Yes {
+            profiling::scope!("FINISHED_PROC_STATE");
+            let skia_sync = SkiaSync::create(
+                self.renderer.egl_context().display()
+            ).map_err(|_err| GlesError::FramebufferBindingError)?;
+            SyncPoint::from(skia_sync)
+        } else {
+            SyncPoint::signaled()
+        };
         {
             profiling::scope!("context_submit");
-            // surface.gr_context.submit(None);
-            surface
-                .gr_context
-                .flush_and_submit_surface(&mut surface.surface, GrSyncCpu::Yes);
+            surface.gr_context.submit(None);
+            // surface
+            //     .gr_context
+            //     .flush_and_submit_surface(&mut surface.surface, GrSyncCpu::Yes);
         }
 
-        // Ok(syncpoint)
-        Ok(SyncPoint::signaled())
+        Ok(syncpoint)
     }
 
     fn wait(
@@ -867,53 +866,77 @@ unsafe extern "C" fn finished_proc(_: *mut ::core::ffi::c_void) {
     FINISHED_PROC_STATE.store(true, Ordering::SeqCst);
 }
 
-// #[derive(Debug, Clone)]
-// struct SkiaSync {}
+#[derive(Debug, Clone)]
+struct InnerSkiaFence {
+    display_handle: std::sync::Arc<EGLDisplayHandle>,
+    handle: EGLSync,
+    // native: bool,
+}
 
-// impl Fence for SkiaSync {
-//     fn export(&self) -> Option<std::os::unix::prelude::OwnedFd> {
-//         None
-//     }
-//     fn is_exportable(&self) -> bool {
-//         false
-//     }
-//     fn is_signaled(&self) -> bool {
-//         FINISHED_PROC_STATE.load(Ordering::SeqCst)
-//     }
-//     fn wait(&self) -> Result<(), Interrupted> {
-//         use smithay::backend::egl::ffi;
+unsafe impl Send for InnerSkiaFence {}
+unsafe impl Sync for InnerSkiaFence {}
 
-//         let start = Instant::now();
-//         let timeout = Some(Duration::from_millis(2))
-//             .map(|t| t.as_nanos() as ffi::egl::types::EGLuint64KHR)
-//             .unwrap_or(ffi::egl::FOREVER);
-//         let flush = false;
-//         let flags = if flush {
-//             ffi::egl::SYNC_FLUSH_COMMANDS_BIT as ffi::egl::types::EGLint
-//         } else {
-//             0
-//         };
-//         let status = wrap_egl_call(
-//             || unsafe { ffi::egl::ClientWaitSync(**self.0.display_handle, self.0.handle, flags, timeout) },
-//             ffi::egl::FALSE as ffi::egl::types::EGLint,
-//         ).map_err(|err| {
-//             tracing::warn!(?err, "Waiting for fence was interrupted");
-//             Interrupted
-//         })?;
+#[derive(Debug, Clone)]
+struct SkiaSync(std::sync::Arc<InnerSkiaFence>);
 
-//         Ok(())
-//         // while !self.is_signaled() {
-//         //     if start.elapsed() >=  {
-//         //         break;
-//         //     }
-//         // }
-//         // while !self.is_signaled() {}
-//     }
-// }
+impl SkiaSync {
+    pub fn create(display: &EGLDisplay) -> Result<Self, egl::Error> {
+        let display_handle = display.get_display_handle();
+        let handle =
+            wrap_egl_call_ptr(|| unsafe { CreateSync(**display_handle, SYNC_FENCE, std::ptr::null()) })
+                .map_err(egl::Error::CreationFailed)?;
+
+        Ok(Self(std::sync::Arc::new(InnerSkiaFence {
+            display_handle,
+            handle,
+            // native: false,
+        })))
+    }
+}
+impl Fence for SkiaSync {
+    fn export(&self) -> Option<std::os::unix::prelude::OwnedFd> {
+        None
+    }
+    fn is_exportable(&self) -> bool {
+        false
+    }
+    fn is_signaled(&self) -> bool {
+        FINISHED_PROC_STATE.load(Ordering::SeqCst)
+    }
+    fn wait(&self) -> Result<(), Interrupted> {
+        use smithay::backend::egl::ffi;
+
+        // let start = Instant::now();
+        let timeout = Some(Duration::from_millis(2))
+            .map(|t| t.as_nanos() as ffi::egl::types::EGLuint64KHR)
+            .unwrap_or(ffi::egl::FOREVER);
+        let flush = false;
+        let flags = if flush {
+            ffi::egl::SYNC_FLUSH_COMMANDS_BIT as ffi::egl::types::EGLint
+        } else {
+            0
+        };
+        let _status = wrap_egl_call(
+            || unsafe { ffi::egl::ClientWaitSync(**self.0.display_handle, self.0.handle, flags, timeout) },
+            ffi::egl::FALSE as ffi::egl::types::EGLint,
+        ).map_err(|err| {
+            tracing::warn!(?err, "Waiting for fence was interrupted");
+            Interrupted
+        })?;
+
+        Ok(())
+        // while !self.is_signaled() {
+        //     if start.elapsed() >=  {
+        //         break;
+        //     }
+        // }
+        // while !self.is_signaled() {}
+    }
+}
 impl Renderer for SkiaRenderer {
     type Error = GlesError;
     type TextureId = SkiaTexture;
-    type Frame<'a> = SkiaFrame;
+    type Frame<'a> = SkiaFrame<'a>;
 
     fn id(&self) -> usize {
         99
@@ -995,6 +1018,7 @@ impl Renderer for SkiaRenderer {
         Ok(SkiaFrame {
             skia_surface: surface.clone(),
             size: output_size,
+            renderer: self,
             id,
         })
     }
@@ -1486,13 +1510,7 @@ impl Bind<Dmabuf> for SkiaRenderer {
                         ffi::RENDERBUFFER,
                         rbo,
                     );
-                    // self.gl.FramebufferTexture2D(
-                    //     ffi::FRAMEBUFFER,
-                    //     ffi::COLOR_ATTACHMENT0,
-                    //     ffi::TEXTURE_2D,
-                    //     texture,
-                    //     0,
-                    // );
+
                     let status = self.gl.CheckFramebufferStatus(ffi::FRAMEBUFFER);
                     self.gl.BindFramebuffer(ffi::FRAMEBUFFER, 0);
 
@@ -1533,14 +1551,14 @@ impl Offscreen<SkiaGLesFbo> for SkiaRenderer {
     }
 }
 
-impl AsRef<SkiaFrame> for SkiaFrame {
-    fn as_ref(&self) -> &SkiaFrame {
+impl<'a> AsRef<SkiaFrame<'a>> for SkiaFrame<'a> {
+    fn as_ref(&self) -> &SkiaFrame<'a> {
         self
     }
 }
 
-impl AsMut<SkiaFrame> for SkiaFrame {
-    fn as_mut(&mut self) -> &mut SkiaFrame {
+impl<'a> AsMut<SkiaFrame<'a>> for SkiaFrame<'a> {
+    fn as_mut(&mut self) -> &mut SkiaFrame<'a> {
         self
     }
 }

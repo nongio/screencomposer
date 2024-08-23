@@ -21,7 +21,7 @@ smithay::backend::renderer::element::render_elements! {
     R: ImportAll + ImportMem + 'frame,
     SkiaElement: (RenderElement<R>),
     SceneElement: (RenderElement<R>),
-    <R as smithay::backend::renderer::Renderer>::Frame<'frame>: (AsMut<SkiaFrame>),
+    <R as smithay::backend::renderer::Renderer>::Frame<'frame>: (AsMut<SkiaFrame<'frame>>),
     <R as smithay::backend::renderer::Renderer>::Error: (From<smithay::backend::renderer::gles::GlesError>);
     Space=SpaceRenderElements<R, E>,
     Window=Wrap<E>,

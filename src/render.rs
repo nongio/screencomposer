@@ -162,8 +162,7 @@ where
     SkiaElement: smithay::backend::renderer::element::RenderElement<R>,
     SceneElement: smithay::backend::renderer::element::RenderElement<R>,
 
-    <R as smithay::backend::renderer::Renderer>::Frame<'frame>: Clone,
-    <R as smithay::backend::renderer::Renderer>::Frame<'frame>: (AsMut<SkiaFrame>),
+    <R as smithay::backend::renderer::Renderer>::Frame<'frame>: (AsMut<SkiaFrame<'frame>>),
     <R as smithay::backend::renderer::Renderer>::Error:
         (From<smithay::backend::renderer::gles::GlesError>),
 {
