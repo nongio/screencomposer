@@ -1126,7 +1126,7 @@ pub fn take_presentation_feedback(
     output_presentation_feedback
 }
 
-pub trait Backend: Debug + Clone + PartialEq {
+pub trait Backend {
     const HAS_RELATIVE_MOTION: bool = false;
     const HAS_GESTURES: bool = false;
     fn seat_name(&self) -> String;

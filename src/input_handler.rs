@@ -26,7 +26,7 @@ use smithay::{
         wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1,
         wayland_server::{protocol::wl_pointer, DisplayHandle, Resource},
     },
-    utils::{Logical, Point, Serial, Transform, SERIAL_COUNTER as SCOUNTER},
+    utils::{IsAlive, Logical, Point, Serial, Transform, SERIAL_COUNTER as SCOUNTER},
     wayland::{
         compositor::with_states,
         input_method::InputMethodSeat,
@@ -395,19 +395,18 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
         let mut under = None;
 
-        // if self.app_switcher.alive() {
-        //     let focus = self.app_switcher.as_ref().clone().into();
-        //     // let position = self.app_switcher.view_layer.render_position();
-        //     // return Some((focus, (position.x as i32,position.y as i32).into()));
-        //     return Some((focus, (0, 0).into()));
-        // }
-        // if self.workspace.get_show_all() {
+        if self.workspace.app_switcher.alive() {
+            let focus = self.workspace.app_switcher.as_ref().clone().into();
+            let position = self.workspace.app_switcher.view_layer.render_position();
+            return Some((focus, (position.x as f64, position.y as f64).into()));
+            // return Some((focus, (0, 0).into()));
+        }
+        if self.workspace.get_show_all() {
+            let focus = self.workspace.window_selector_view.as_ref().clone().into();
+            let position = self.workspace.window_selector_view.layer.render_position();
 
-        //     let focus = self.workspace.window_selector_view.as_ref().clone().into();
-        //     let position = self.workspace.window_selector_view.layer.render_position();
-
-        //     return Some((focus,  (position.x as f64, position.y  as f64).into()));
-        // }
+            return Some((focus, (position.x as f64, position.y as f64).into()));
+        }
         if let Some(window) = output
             .user_data()
             .get::<FullscreenSurface>()
@@ -620,10 +619,10 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
         let pos = evt.position_transformed(output_geo.size) + output_geo.loc.to_f64();
         let serial = SCOUNTER.next_serial();
 
-        // let mut under = None;
+        let under = self.surface_under(pos);
         let pointer = self.pointer.clone();
         // if !self.workspace.get_show_all() {
-        let under = self.surface_under(pos);
+
         // }
         // println!("Pointer move absolute: {:?}", pos);
         pointer.motion(

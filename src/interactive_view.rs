@@ -4,7 +4,11 @@ use std::{
 };
 
 use smithay::{
-    input::{keyboard::KeyboardTarget, pointer::PointerTarget, touch::TouchTarget},
+    input::{
+        keyboard::KeyboardTarget,
+        pointer::{MotionEvent, PointerTarget},
+        touch::TouchTarget,
+    },
     utils::IsAlive,
 };
 
@@ -327,7 +331,15 @@ impl<B: Backend> TouchTarget<ScreenComposer<B>> for InteractiveView<B> {
         event: &smithay::input::touch::MotionEvent,
         seq: smithay::utils::Serial,
     ) {
-        // self.view.on_motion(seat, data, event, seq);
+        self.view.on_motion(
+            seat,
+            data,
+            &MotionEvent {
+                location: event.location,
+                serial: seq,
+                time: event.time,
+            },
+        );
     }
     fn frame(
         &self,

@@ -29,11 +29,11 @@ use crate::{focus::PointerFocusTarget, state::Backend};
 pub struct WindowElement(pub Window);
 
 impl WindowElement {
-    pub fn surface_under<BackendData: Backend>(
+    pub fn surface_under<B: Backend>(
         &self,
         location: Point<f64, Logical>,
         window_type: WindowSurfaceType,
-    ) -> Option<(PointerFocusTarget, Point<i32, Logical>)> {
+    ) -> Option<(PointerFocusTarget<B>, Point<i32, Logical>)> {
         // let state = self.decoration_state();
 
         // let offset = if state.is_ssd {
@@ -138,23 +138,6 @@ impl IsAlive for WindowElement {
     #[inline]
     fn alive(&self) -> bool {
         self.0.alive()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct SSD(WindowElement);
-
-impl IsAlive for SSD {
-    #[inline]
-    fn alive(&self) -> bool {
-        self.0.alive()
-    }
-}
-
-impl WaylandFocus for SSD {
-    #[inline]
-    fn wl_surface(&self) -> Option<Cow<'_, WlSurface>> {
-        self.0.wl_surface()
     }
 }
 

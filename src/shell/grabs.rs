@@ -25,8 +25,8 @@ use crate::{
     state::{Backend, ScreenComposer},
 };
 
-pub struct PointerResizeSurfaceGrab<BackendData: Backend + 'static> {
-    pub start_data: PointerGrabStartData<ScreenComposer<BackendData>>,
+pub struct PointerResizeSurfaceGrab<B: Backend + 'static> {
+    pub start_data: PointerGrabStartData<ScreenComposer<B>>,
     pub window: WindowElement,
     pub edges: ResizeEdge,
     pub initial_window_location: Point<i32, Logical>,
@@ -34,20 +34,18 @@ pub struct PointerResizeSurfaceGrab<BackendData: Backend + 'static> {
     pub last_window_size: Size<i32, Logical>,
 }
 
-pub struct PointerMoveSurfaceGrab<BackendData: Backend + 'static> {
-    pub start_data: PointerGrabStartData<ScreenComposer<BackendData>>,
+pub struct PointerMoveSurfaceGrab<B: Backend + 'static> {
+    pub start_data: PointerGrabStartData<ScreenComposer<B>>,
     pub window: WindowElement,
     pub initial_window_location: Point<i32, Logical>,
 }
 
-impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
-    for PointerMoveSurfaceGrab<BackendData>
-{
+impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
     fn motion(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
-        _focus: Option<(PointerFocusTarget, Point<f64, Logical>)>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        _focus: Option<(PointerFocusTarget<B>, Point<f64, Logical>)>,
         event: &MotionEvent,
     ) {
         // While the grab is active, no client has pointer focus
@@ -82,9 +80,9 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn relative_motion(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
-        focus: Option<(PointerFocusTarget, Point<f64, Logical>)>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        focus: Option<(PointerFocusTarget<B>, Point<f64, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
         handle.relative_motion(data, focus, event);
@@ -92,8 +90,8 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn button(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &ButtonEvent,
     ) {
         handle.button(data, event);
@@ -105,8 +103,8 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn axis(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         details: AxisFrame,
     ) {
         handle.axis(data, details)
@@ -114,16 +112,16 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn frame(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
     ) {
         handle.frame(data);
     }
 
     fn gesture_swipe_begin(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &GestureSwipeBeginEvent,
     ) {
         handle.gesture_swipe_begin(data, event);
@@ -131,8 +129,8 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn gesture_swipe_update(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &GestureSwipeUpdateEvent,
     ) {
         handle.gesture_swipe_update(data, event);
@@ -140,8 +138,8 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn gesture_swipe_end(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &GestureSwipeEndEvent,
     ) {
         handle.gesture_swipe_end(data, event);
@@ -149,8 +147,8 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn gesture_pinch_begin(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &GesturePinchBeginEvent,
     ) {
         handle.gesture_pinch_begin(data, event);
@@ -158,8 +156,8 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn gesture_pinch_update(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &GesturePinchUpdateEvent,
     ) {
         handle.gesture_pinch_update(data, event);
@@ -167,8 +165,8 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn gesture_pinch_end(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &GesturePinchEndEvent,
     ) {
         handle.gesture_pinch_end(data, event);
@@ -176,8 +174,8 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn gesture_hold_begin(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &GestureHoldBeginEvent,
     ) {
         handle.gesture_hold_begin(data, event);
@@ -185,17 +183,17 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn gesture_hold_end(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &GestureHoldEndEvent,
     ) {
         handle.gesture_hold_end(data, event);
     }
 
-    fn start_data(&self) -> &PointerGrabStartData<ScreenComposer<BackendData>> {
+    fn start_data(&self) -> &PointerGrabStartData<ScreenComposer<B>> {
         &self.start_data
     }
-    fn unset(&mut self, _data: &mut ScreenComposer<BackendData>) {}
+    fn unset(&mut self, _data: &mut ScreenComposer<B>) {}
 }
 
 pub struct TouchMoveSurfaceGrab<BackendData: Backend + 'static> {
@@ -371,14 +369,12 @@ pub enum ResizeState {
     WaitingForCommit(ResizeData),
 }
 
-impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
-    for PointerResizeSurfaceGrab<BackendData>
-{
+impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> {
     fn motion(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
-        _focus: Option<(PointerFocusTarget, Point<f64, Logical>)>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        _focus: Option<(PointerFocusTarget<B>, Point<f64, Logical>)>,
         event: &MotionEvent,
     ) {
         // While the grab is active, no client has pointer focus
@@ -464,9 +460,9 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn relative_motion(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
-        focus: Option<(PointerFocusTarget, Point<f64, Logical>)>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        focus: Option<(PointerFocusTarget<B>, Point<f64, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
         handle.relative_motion(data, focus, event);
@@ -474,8 +470,8 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn button(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &ButtonEvent,
     ) {
         handle.button(data, event);
@@ -571,8 +567,8 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn axis(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         details: AxisFrame,
     ) {
         handle.axis(data, details)
@@ -580,16 +576,16 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn frame(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
     ) {
         handle.frame(data);
     }
 
     fn gesture_swipe_begin(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &GestureSwipeBeginEvent,
     ) {
         handle.gesture_swipe_begin(data, event);
@@ -597,8 +593,8 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn gesture_swipe_update(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &GestureSwipeUpdateEvent,
     ) {
         handle.gesture_swipe_update(data, event);
@@ -606,8 +602,8 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn gesture_swipe_end(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &GestureSwipeEndEvent,
     ) {
         handle.gesture_swipe_end(data, event);
@@ -615,8 +611,8 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn gesture_pinch_begin(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &GesturePinchBeginEvent,
     ) {
         handle.gesture_pinch_begin(data, event);
@@ -624,8 +620,8 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn gesture_pinch_update(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &GesturePinchUpdateEvent,
     ) {
         handle.gesture_pinch_update(data, event);
@@ -633,8 +629,8 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn gesture_pinch_end(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &GesturePinchEndEvent,
     ) {
         handle.gesture_pinch_end(data, event);
@@ -642,8 +638,8 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn gesture_hold_begin(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &GestureHoldBeginEvent,
     ) {
         handle.gesture_hold_begin(data, event);
@@ -651,18 +647,18 @@ impl<BackendData: Backend> PointerGrab<ScreenComposer<BackendData>>
 
     fn gesture_hold_end(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut ScreenComposer<B>,
+        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &GestureHoldEndEvent,
     ) {
         handle.gesture_hold_end(data, event);
     }
 
-    fn start_data(&self) -> &PointerGrabStartData<ScreenComposer<BackendData>> {
+    fn start_data(&self) -> &PointerGrabStartData<ScreenComposer<B>> {
         &self.start_data
     }
 
-    fn unset(&mut self, _data: &mut ScreenComposer<BackendData>) {}
+    fn unset(&mut self, _data: &mut ScreenComposer<B>) {}
 }
 
 pub struct TouchResizeSurfaceGrab<BackendData: Backend + 'static> {

@@ -88,12 +88,47 @@ impl<B: Backend> IsAlive for KeyboardFocusTarget<B> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
 pub enum PointerFocusTarget<B: Backend> {
     WlSurface(WlSurface),
     #[cfg(feature = "xwayland")]
     X11Surface(X11Surface),
     View(InteractiveView<B>),
+}
+
+impl<B: Backend> Debug for PointerFocusTarget<B> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PointerFocusTarget::WlSurface(w) => write!(f, "PointerFocusTarget::WlSurface({:?})", w),
+            #[cfg(feature = "xwayland")]
+            PointerFocusTarget::X11Surface(w) => {
+                write!(f, "PointerFocusTarget::X11Surface({:?})", w)
+            }
+            PointerFocusTarget::View(d) => write!(f, "PointerFocusTarget::View({:?})", d),
+        }
+    }
+}
+
+impl<B: Backend> PartialEq for PointerFocusTarget<B> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (PointerFocusTarget::WlSurface(w1), PointerFocusTarget::WlSurface(w2)) => w1 == w2,
+            #[cfg(feature = "xwayland")]
+            (PointerFocusTarget::X11Surface(w1), PointerFocusTarget::X11Surface(w2)) => w1 == w2,
+            (PointerFocusTarget::View(d1), PointerFocusTarget::View(d2)) => d1 == d2,
+            _ => false,
+        }
+    }
+}
+
+impl<B: Backend> Clone for PointerFocusTarget<B> {
+    fn clone(&self) -> Self {
+        match self {
+            PointerFocusTarget::WlSurface(w) => PointerFocusTarget::WlSurface(w.clone()),
+            #[cfg(feature = "xwayland")]
+            PointerFocusTarget::X11Surface(w) => PointerFocusTarget::X11Surface(w.clone()),
+            PointerFocusTarget::View(d) => PointerFocusTarget::View(d.clone()),
+        }
+    }
 }
 
 impl<B: Backend> IsAlive for PointerFocusTarget<B> {
