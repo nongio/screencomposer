@@ -4,27 +4,27 @@ use std::{
 };
 
 use smithay::{
-    input::{keyboard::KeyboardTarget, pointer::PointerTarget},
+    input::{keyboard::KeyboardTarget, pointer::PointerTarget, touch::TouchTarget},
     utils::IsAlive,
 };
 
-use crate::ScreenComposer;
+use crate::{state::Backend, ScreenComposer};
 
-pub trait ViewInteractions<Backend: crate::state::Backend>: Sync + Send {
+pub trait ViewInteractions<B: Backend>: Sync + Send {
     fn id(&self) -> Option<usize>;
     fn is_alive(&self) -> bool;
     fn on_motion(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         _event: &smithay::input::pointer::MotionEvent,
     ) {
     }
     fn on_relative_motion(&self, _event: &smithay::input::pointer::RelativeMotionEvent) {}
     fn on_button(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         _event: &smithay::input::pointer::ButtonEvent,
     ) {
     }
@@ -42,25 +42,66 @@ pub trait ViewInteractions<Backend: crate::state::Backend>: Sync + Send {
     fn on_gesture_swipe_update(&self, _event: &smithay::input::pointer::GestureSwipeUpdateEvent) {}
     fn on_key(&self, _event: &smithay::input::keyboard::KeysymHandle<'_>) {}
     fn on_modifiers(&self, _modifiers: smithay::input::keyboard::ModifiersState) {}
+
+    fn on_up(
+        &self,
+        seat: &smithay::input::Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
+        event: &smithay::input::touch::UpEvent,
+        seq: smithay::utils::Serial,
+    ) {
+    }
+    fn on_down(
+        &self,
+        seat: &smithay::input::Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
+        event: &smithay::input::touch::DownEvent,
+        seq: smithay::utils::Serial,
+    ) {
+    }
+
+    fn on_orientation(
+        &self,
+        seat: &smithay::input::Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
+        event: &smithay::input::touch::OrientationEvent,
+        seq: smithay::utils::Serial,
+    ) {
+    }
+    fn on_shape(
+        &self,
+        seat: &smithay::input::Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
+        event: &smithay::input::touch::ShapeEvent,
+        seq: smithay::utils::Serial,
+    ) {
+    }
+    fn on_cancel(
+        &self,
+        seat: &smithay::input::Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
+        seq: smithay::utils::Serial,
+    ) {
+    }
 }
-pub trait CloneBoxInteractions<Backend: crate::state::Backend>: ViewInteractions<Backend> {
-    fn clone_box(&self) -> Box<dyn CloneBoxInteractions<Backend>>;
+pub trait CloneBoxInteractions<B: Backend>: ViewInteractions<B> {
+    fn clone_box(&self) -> Box<dyn CloneBoxInteractions<B>>;
 }
 
-impl<T, Backend: crate::state::Backend> CloneBoxInteractions<Backend> for T
+impl<T, B: Backend> CloneBoxInteractions<B> for T
 where
-    T: 'static + ViewInteractions<Backend> + Clone,
+    T: 'static + ViewInteractions<B> + Clone,
 {
-    fn clone_box(&self) -> Box<dyn CloneBoxInteractions<Backend>> {
+    fn clone_box(&self) -> Box<dyn CloneBoxInteractions<B>> {
         Box::new(self.clone())
     }
 }
 
-pub struct InteractiveView<Backend: crate::state::Backend> {
-    pub view: Box<dyn CloneBoxInteractions<Backend>>,
+pub struct InteractiveView<B: Backend> {
+    pub view: Box<dyn CloneBoxInteractions<B>>,
 }
 
-impl<Backend: crate::state::Backend> Clone for InteractiveView<Backend> {
+impl<B: Backend> Clone for InteractiveView<B> {
     fn clone(&self) -> Self {
         InteractiveView {
             view: self.view.clone_box(),
@@ -68,7 +109,7 @@ impl<Backend: crate::state::Backend> Clone for InteractiveView<Backend> {
     }
 }
 
-impl<Backend: crate::state::Backend> std::fmt::Debug for InteractiveView<Backend> {
+impl<B: Backend> std::fmt::Debug for InteractiveView<B> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("InteractiveView")
             .field("id", &self.view.id())
@@ -76,13 +117,12 @@ impl<Backend: crate::state::Backend> std::fmt::Debug for InteractiveView<Backend
     }
 }
 
-impl<Backend: crate::state::Backend> PartialEq for InteractiveView<Backend> {
+impl<B: Backend> PartialEq for InteractiveView<B> {
     fn eq(&self, other: &Self) -> bool {
         self.view.id() == other.view.id()
     }
 }
-impl<S: Hash + Clone + 'static, Backend: crate::state::Backend> ViewInteractions<Backend>
-    for layers::prelude::View<S>
+impl<S: Hash + Clone + 'static, B: Backend> ViewInteractions<B> for layers::prelude::View<S>
 where
     Arc<RwLock<S>>: Send + Sync,
 {
@@ -94,114 +134,112 @@ where
     }
 }
 
-impl<Backend: crate::state::Backend> IsAlive for InteractiveView<Backend> {
+impl<B: Backend> IsAlive for InteractiveView<B> {
     fn alive(&self) -> bool {
         self.view.is_alive()
     }
 }
 
-impl<Backend: crate::state::Backend> PointerTarget<ScreenComposer<Backend>>
-    for InteractiveView<Backend>
-{
+impl<B: Backend> PointerTarget<ScreenComposer<B>> for InteractiveView<B> {
     fn axis(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         frame: smithay::input::pointer::AxisFrame,
     ) {
         self.view.on_axis(&frame);
     }
     fn button(
         &self,
-        seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        data: &mut ScreenComposer<Backend>,
+        seat: &smithay::input::Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &smithay::input::pointer::ButtonEvent,
     ) {
         self.view.on_button(seat, data, event);
     }
     fn enter(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         event: &smithay::input::pointer::MotionEvent,
     ) {
         self.view.on_enter(event);
     }
     fn frame(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
     ) {
         self.view.on_frame();
     }
     fn gesture_hold_begin(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         event: &smithay::input::pointer::GestureHoldBeginEvent,
     ) {
         self.view.on_gesture_hold_begin(event);
     }
     fn gesture_hold_end(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         event: &smithay::input::pointer::GestureHoldEndEvent,
     ) {
         self.view.on_gesture_hold_end(event);
     }
     fn gesture_pinch_begin(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         event: &smithay::input::pointer::GesturePinchBeginEvent,
     ) {
         self.view.on_gesture_pinch_begin(event);
     }
     fn gesture_pinch_end(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         event: &smithay::input::pointer::GesturePinchEndEvent,
     ) {
         self.view.on_gesture_pinch_end(event);
     }
     fn gesture_pinch_update(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         event: &smithay::input::pointer::GesturePinchUpdateEvent,
     ) {
         self.view.on_gesture_pinch_update(event);
     }
     fn gesture_swipe_begin(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         event: &smithay::input::pointer::GestureSwipeBeginEvent,
     ) {
         self.view.on_gesture_swipe_begin(event);
     }
     fn gesture_swipe_end(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         event: &smithay::input::pointer::GestureSwipeEndEvent,
     ) {
         self.view.on_gesture_swipe_end(event);
     }
     fn gesture_swipe_update(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         event: &smithay::input::pointer::GestureSwipeUpdateEvent,
     ) {
         self.view.on_gesture_swipe_update(event);
     }
     fn leave(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         serial: smithay::utils::Serial,
         time: u32,
     ) {
@@ -209,37 +247,35 @@ impl<Backend: crate::state::Backend> PointerTarget<ScreenComposer<Backend>>
     }
     fn motion(
         &self,
-        seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        data: &mut ScreenComposer<Backend>,
+        seat: &smithay::input::Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &smithay::input::pointer::MotionEvent,
     ) {
         self.view.on_motion(seat, data, event);
     }
     fn relative_motion(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         event: &smithay::input::pointer::RelativeMotionEvent,
     ) {
         self.view.on_relative_motion(event);
     }
 }
 
-impl<Backend: crate::state::Backend> KeyboardTarget<ScreenComposer<Backend>>
-    for InteractiveView<Backend>
-{
+impl<B: Backend> KeyboardTarget<ScreenComposer<B>> for InteractiveView<B> {
     fn enter(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         _keys: Vec<smithay::input::keyboard::KeysymHandle<'_>>,
         _serial: smithay::utils::Serial,
     ) {
     }
     fn key(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         key: smithay::input::keyboard::KeysymHandle<'_>,
         _state: smithay::backend::input::KeyState,
         _serial: smithay::utils::Serial,
@@ -249,18 +285,82 @@ impl<Backend: crate::state::Backend> KeyboardTarget<ScreenComposer<Backend>>
     }
     fn leave(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         _serial: smithay::utils::Serial,
     ) {
     }
     fn modifiers(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<Backend>>,
-        _data: &mut ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
         modifiers: smithay::input::keyboard::ModifiersState,
         _serial: smithay::utils::Serial,
     ) {
         self.view.on_modifiers(modifiers);
+    }
+}
+
+impl<B: Backend> TouchTarget<ScreenComposer<B>> for InteractiveView<B> {
+    fn up(
+        &self,
+        seat: &smithay::input::Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
+        event: &smithay::input::touch::UpEvent,
+        seq: smithay::utils::Serial,
+    ) {
+        self.view.on_up(seat, data, event, seq);
+    }
+    fn down(
+        &self,
+        seat: &smithay::input::Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
+        event: &smithay::input::touch::DownEvent,
+        seq: smithay::utils::Serial,
+    ) {
+        self.view.on_down(seat, data, event, seq);
+    }
+    fn motion(
+        &self,
+        seat: &smithay::input::Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
+        event: &smithay::input::touch::MotionEvent,
+        seq: smithay::utils::Serial,
+    ) {
+        // self.view.on_motion(seat, data, event, seq);
+    }
+    fn frame(
+        &self,
+        seat: &smithay::input::Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
+        seq: smithay::utils::Serial,
+    ) {
+        // self.view.on_frame(seat, data, seq);
+    }
+    fn orientation(
+        &self,
+        seat: &smithay::input::Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
+        event: &smithay::input::touch::OrientationEvent,
+        seq: smithay::utils::Serial,
+    ) {
+        self.view.on_orientation(seat, data, event, seq);
+    }
+    fn shape(
+        &self,
+        seat: &smithay::input::Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
+        event: &smithay::input::touch::ShapeEvent,
+        seq: smithay::utils::Serial,
+    ) {
+        self.view.on_shape(seat, data, event, seq);
+    }
+    fn cancel(
+        &self,
+        seat: &smithay::input::Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
+        seq: smithay::utils::Serial,
+    ) {
+        self.view.on_cancel(seat, data, seq);
     }
 }

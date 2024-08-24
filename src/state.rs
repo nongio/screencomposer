@@ -304,8 +304,8 @@ delegate_shm!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
 impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
     type KeyboardFocus = KeyboardFocusTarget<BackendData>;
-    type PointerFocus = PointerFocusTarget;
-    type TouchFocus = PointerFocusTarget;
+    type PointerFocus = PointerFocusTarget<BackendData>;
+    type TouchFocus = PointerFocusTarget<BackendData>;
 
     fn seat_state(&mut self) -> &mut SeatState<ScreenComposer<BackendData>> {
         &mut self.seat_state
@@ -1126,7 +1126,7 @@ pub fn take_presentation_feedback(
     output_presentation_feedback
 }
 
-pub trait Backend {
+pub trait Backend: Debug + Clone + PartialEq {
     const HAS_RELATIVE_MOTION: bool = false;
     const HAS_GESTURES: bool = false;
     fn seat_name(&self) -> String;

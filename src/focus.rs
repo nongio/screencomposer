@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Debug};
+use std::{borrow::Cow, fmt::Debug, hash::Hash, sync::RwLock};
 
 pub use smithay::{
     backend::input::KeyState,
@@ -30,16 +30,17 @@ use crate::{
     interactive_view::InteractiveView,
     shell::WindowElement,
     state::{Backend, ScreenComposer},
+    workspace::{AppSwitcherView, WindowSelectorView},
 };
 
-pub enum KeyboardFocusTarget<Backend: crate::state::Backend> {
+pub enum KeyboardFocusTarget<B: Backend> {
     Window(WindowElement),
     LayerSurface(LayerSurface),
     Popup(PopupKind),
-    View(InteractiveView<Backend>),
+    View(InteractiveView<B>),
 }
 
-impl<Backend: crate::state::Backend> PartialEq for KeyboardFocusTarget<Backend> {
+impl<B: Backend> PartialEq for KeyboardFocusTarget<B> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (KeyboardFocusTarget::Window(w1), KeyboardFocusTarget::Window(w2)) => w1 == w2,
@@ -52,7 +53,7 @@ impl<Backend: crate::state::Backend> PartialEq for KeyboardFocusTarget<Backend> 
         }
     }
 }
-impl<Backend: crate::state::Backend> Clone for KeyboardFocusTarget<Backend> {
+impl<B: Backend> Clone for KeyboardFocusTarget<B> {
     fn clone(&self) -> Self {
         match self {
             KeyboardFocusTarget::Window(w) => KeyboardFocusTarget::Window(w.clone()),
@@ -63,7 +64,7 @@ impl<Backend: crate::state::Backend> Clone for KeyboardFocusTarget<Backend> {
     }
 }
 
-impl<Backend: crate::state::Backend> Debug for KeyboardFocusTarget<Backend> {
+impl<B: Backend> Debug for KeyboardFocusTarget<B> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             KeyboardFocusTarget::Window(w) => write!(f, "KeyboardFocusTarget::Window({:?})", w),
@@ -75,7 +76,7 @@ impl<Backend: crate::state::Backend> Debug for KeyboardFocusTarget<Backend> {
         }
     }
 }
-impl<Backend: crate::state::Backend> IsAlive for KeyboardFocusTarget<Backend> {
+impl<B: Backend> IsAlive for KeyboardFocusTarget<B> {
     #[inline]
     fn alive(&self) -> bool {
         match self {
@@ -88,61 +89,63 @@ impl<Backend: crate::state::Backend> IsAlive for KeyboardFocusTarget<Backend> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum PointerFocusTarget {
+pub enum PointerFocusTarget<B: Backend> {
     WlSurface(WlSurface),
-    // View(InteractiveView<Backend>),
     #[cfg(feature = "xwayland")]
     X11Surface(X11Surface),
-    // SSD(SSD),
+    View(InteractiveView<B>),
 }
 
-impl IsAlive for PointerFocusTarget {
+impl<B: Backend> IsAlive for PointerFocusTarget<B> {
     #[inline]
     fn alive(&self) -> bool {
         match self {
             PointerFocusTarget::WlSurface(w) => w.alive(),
             #[cfg(feature = "xwayland")]
             PointerFocusTarget::X11Surface(w) => w.alive(),
+            PointerFocusTarget::View(w) => w.alive(),
         }
     }
 }
 
-impl From<PointerFocusTarget> for WlSurface {
+impl<B: Backend> From<PointerFocusTarget<B>> for WlSurface {
     #[inline]
-    fn from(target: PointerFocusTarget) -> Self {
+    fn from(target: PointerFocusTarget<B>) -> Self {
         target.wl_surface().unwrap().into_owned()
     }
 }
 
-impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for PointerFocusTarget {
+impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
     fn enter(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &MotionEvent,
     ) {
         match self {
             PointerFocusTarget::WlSurface(w) => PointerTarget::enter(w, seat, data, event),
             #[cfg(feature = "xwayland")]
             PointerFocusTarget::X11Surface(w) => PointerTarget::enter(w, seat, data, event),
+            PointerFocusTarget::View(w) => PointerTarget::enter(w, seat, data, event),
         }
     }
     fn motion(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &MotionEvent,
     ) {
         match self {
             PointerFocusTarget::WlSurface(w) => PointerTarget::motion(w, seat, data, event),
             #[cfg(feature = "xwayland")]
             PointerFocusTarget::X11Surface(w) => PointerTarget::motion(w, seat, data, event),
+            PointerFocusTarget::View(w) => PointerTarget::motion(w, seat, data, event),
         }
     }
     fn relative_motion(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &RelativeMotionEvent,
     ) {
         match self {
@@ -153,47 +156,42 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for Pointe
             PointerFocusTarget::X11Surface(w) => {
                 PointerTarget::relative_motion(w, seat, data, event)
             }
+            PointerFocusTarget::View(w) => PointerTarget::relative_motion(w, seat, data, event),
         }
     }
     fn button(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &ButtonEvent,
     ) {
         match self {
             PointerFocusTarget::WlSurface(w) => PointerTarget::button(w, seat, data, event),
             #[cfg(feature = "xwayland")]
             PointerFocusTarget::X11Surface(w) => PointerTarget::button(w, seat, data, event),
+            PointerFocusTarget::View(w) => PointerTarget::button(w, seat, data, event),
         }
     }
-    fn axis(
-        &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
-        frame: AxisFrame,
-    ) {
+    fn axis(&self, seat: &Seat<ScreenComposer<B>>, data: &mut ScreenComposer<B>, frame: AxisFrame) {
         match self {
             PointerFocusTarget::WlSurface(w) => PointerTarget::axis(w, seat, data, frame),
             #[cfg(feature = "xwayland")]
             PointerFocusTarget::X11Surface(w) => PointerTarget::axis(w, seat, data, frame),
+            PointerFocusTarget::View(w) => PointerTarget::axis(w, seat, data, frame),
         }
     }
-    fn frame(
-        &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
-    ) {
+    fn frame(&self, seat: &Seat<ScreenComposer<B>>, data: &mut ScreenComposer<B>) {
         match self {
             PointerFocusTarget::WlSurface(w) => PointerTarget::frame(w, seat, data),
             #[cfg(feature = "xwayland")]
             PointerFocusTarget::X11Surface(w) => PointerTarget::frame(w, seat, data),
+            PointerFocusTarget::View(w) => PointerTarget::frame(w, seat, data),
         }
     }
     fn leave(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         serial: Serial,
         time: u32,
     ) {
@@ -201,12 +199,13 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for Pointe
             PointerFocusTarget::WlSurface(w) => PointerTarget::leave(w, seat, data, serial, time),
             #[cfg(feature = "xwayland")]
             PointerFocusTarget::X11Surface(w) => PointerTarget::leave(w, seat, data, serial, time),
+            PointerFocusTarget::View(w) => PointerTarget::leave(w, seat, data, serial, time),
         }
     }
     fn gesture_swipe_begin(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &GestureSwipeBeginEvent,
     ) {
         match self {
@@ -217,12 +216,13 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for Pointe
             PointerFocusTarget::X11Surface(w) => {
                 PointerTarget::gesture_swipe_begin(w, seat, data, event)
             }
+            PointerFocusTarget::View(w) => PointerTarget::gesture_swipe_begin(w, seat, data, event),
         }
     }
     fn gesture_swipe_update(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &GestureSwipeUpdateEvent,
     ) {
         match self {
@@ -233,12 +233,15 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for Pointe
             PointerFocusTarget::X11Surface(w) => {
                 PointerTarget::gesture_swipe_update(w, seat, data, event)
             }
+            PointerFocusTarget::View(w) => {
+                PointerTarget::gesture_swipe_update(w, seat, data, event)
+            }
         }
     }
     fn gesture_swipe_end(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &GestureSwipeEndEvent,
     ) {
         match self {
@@ -249,12 +252,13 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for Pointe
             PointerFocusTarget::X11Surface(w) => {
                 PointerTarget::gesture_swipe_end(w, seat, data, event)
             }
+            PointerFocusTarget::View(w) => PointerTarget::gesture_swipe_end(w, seat, data, event),
         }
     }
     fn gesture_pinch_begin(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &GesturePinchBeginEvent,
     ) {
         match self {
@@ -265,12 +269,13 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for Pointe
             PointerFocusTarget::X11Surface(w) => {
                 PointerTarget::gesture_pinch_begin(w, seat, data, event)
             }
+            PointerFocusTarget::View(w) => PointerTarget::gesture_pinch_begin(w, seat, data, event),
         }
     }
     fn gesture_pinch_update(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &GesturePinchUpdateEvent,
     ) {
         match self {
@@ -281,12 +286,15 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for Pointe
             PointerFocusTarget::X11Surface(w) => {
                 PointerTarget::gesture_pinch_update(w, seat, data, event)
             }
+            PointerFocusTarget::View(w) => {
+                PointerTarget::gesture_pinch_update(w, seat, data, event)
+            }
         }
     }
     fn gesture_pinch_end(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &GesturePinchEndEvent,
     ) {
         match self {
@@ -297,12 +305,13 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for Pointe
             PointerFocusTarget::X11Surface(w) => {
                 PointerTarget::gesture_pinch_end(w, seat, data, event)
             }
+            PointerFocusTarget::View(w) => PointerTarget::gesture_pinch_end(w, seat, data, event),
         }
     }
     fn gesture_hold_begin(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &GestureHoldBeginEvent,
     ) {
         match self {
@@ -313,12 +322,13 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for Pointe
             PointerFocusTarget::X11Surface(w) => {
                 PointerTarget::gesture_hold_begin(w, seat, data, event)
             }
+            PointerFocusTarget::View(w) => PointerTarget::gesture_hold_begin(w, seat, data, event),
         }
     }
     fn gesture_hold_end(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &GestureHoldEndEvent,
     ) {
         match self {
@@ -329,17 +339,16 @@ impl<BackendData: Backend> PointerTarget<ScreenComposer<BackendData>> for Pointe
             PointerFocusTarget::X11Surface(w) => {
                 PointerTarget::gesture_hold_end(w, seat, data, event)
             }
+            PointerFocusTarget::View(w) => PointerTarget::gesture_hold_end(w, seat, data, event),
         }
     }
 }
 
-impl<BackendData: Backend> KeyboardTarget<ScreenComposer<BackendData>>
-    for KeyboardFocusTarget<BackendData>
-{
+impl<B: Backend> KeyboardTarget<ScreenComposer<B>> for KeyboardFocusTarget<B> {
     fn enter(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         keys: Vec<KeysymHandle<'_>>,
         serial: Serial,
     ) {
@@ -360,12 +369,7 @@ impl<BackendData: Backend> KeyboardTarget<ScreenComposer<BackendData>>
             KeyboardFocusTarget::View(d) => KeyboardTarget::enter(d, seat, data, keys, serial),
         }
     }
-    fn leave(
-        &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
-        serial: Serial,
-    ) {
+    fn leave(&self, seat: &Seat<ScreenComposer<B>>, data: &mut ScreenComposer<B>, serial: Serial) {
         match self {
             KeyboardFocusTarget::Window(w) => match w.underlying_surface() {
                 WindowSurface::Wayland(w) => {
@@ -385,8 +389,8 @@ impl<BackendData: Backend> KeyboardTarget<ScreenComposer<BackendData>>
     }
     fn key(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         key: KeysymHandle<'_>,
         state: KeyState,
         serial: Serial,
@@ -415,8 +419,8 @@ impl<BackendData: Backend> KeyboardTarget<ScreenComposer<BackendData>>
     }
     fn modifiers(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         modifiers: ModifiersState,
         serial: Serial,
     ) {
@@ -443,11 +447,11 @@ impl<BackendData: Backend> KeyboardTarget<ScreenComposer<BackendData>>
     }
 }
 
-impl<BackendData: Backend> TouchTarget<ScreenComposer<BackendData>> for PointerFocusTarget {
+impl<B: Backend> TouchTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
     fn down(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &smithay::input::touch::DownEvent,
         seq: Serial,
     ) {
@@ -455,13 +459,14 @@ impl<BackendData: Backend> TouchTarget<ScreenComposer<BackendData>> for PointerF
             PointerFocusTarget::WlSurface(w) => TouchTarget::down(w, seat, data, event, seq),
             #[cfg(feature = "xwayland")]
             PointerFocusTarget::X11Surface(w) => TouchTarget::down(w, seat, data, event, seq),
+            PointerFocusTarget::View(w) => TouchTarget::down(w, seat, data, event, seq),
         }
     }
 
     fn up(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &smithay::input::touch::UpEvent,
         seq: Serial,
     ) {
@@ -469,13 +474,14 @@ impl<BackendData: Backend> TouchTarget<ScreenComposer<BackendData>> for PointerF
             PointerFocusTarget::WlSurface(w) => TouchTarget::up(w, seat, data, event, seq),
             #[cfg(feature = "xwayland")]
             PointerFocusTarget::X11Surface(w) => TouchTarget::up(w, seat, data, event, seq),
+            PointerFocusTarget::View(w) => TouchTarget::up(w, seat, data, event, seq),
         }
     }
 
     fn motion(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &smithay::input::touch::MotionEvent,
         seq: Serial,
     ) {
@@ -483,39 +489,32 @@ impl<BackendData: Backend> TouchTarget<ScreenComposer<BackendData>> for PointerF
             PointerFocusTarget::WlSurface(w) => TouchTarget::motion(w, seat, data, event, seq),
             #[cfg(feature = "xwayland")]
             PointerFocusTarget::X11Surface(w) => TouchTarget::motion(w, seat, data, event, seq),
+            PointerFocusTarget::View(w) => TouchTarget::motion(w, seat, data, event, seq),
         }
     }
 
-    fn frame(
-        &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
-        seq: Serial,
-    ) {
+    fn frame(&self, seat: &Seat<ScreenComposer<B>>, data: &mut ScreenComposer<B>, seq: Serial) {
         match self {
             PointerFocusTarget::WlSurface(w) => TouchTarget::frame(w, seat, data, seq),
             #[cfg(feature = "xwayland")]
             PointerFocusTarget::X11Surface(w) => TouchTarget::frame(w, seat, data, seq),
+            PointerFocusTarget::View(w) => TouchTarget::frame(w, seat, data, seq),
         }
     }
 
-    fn cancel(
-        &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
-        seq: Serial,
-    ) {
+    fn cancel(&self, seat: &Seat<ScreenComposer<B>>, data: &mut ScreenComposer<B>, seq: Serial) {
         match self {
             PointerFocusTarget::WlSurface(w) => TouchTarget::cancel(w, seat, data, seq),
             #[cfg(feature = "xwayland")]
             PointerFocusTarget::X11Surface(w) => TouchTarget::cancel(w, seat, data, seq),
+            PointerFocusTarget::View(w) => TouchTarget::cancel(w, seat, data, seq),
         }
     }
 
     fn shape(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &smithay::input::touch::ShapeEvent,
         seq: Serial,
     ) {
@@ -523,13 +522,14 @@ impl<BackendData: Backend> TouchTarget<ScreenComposer<BackendData>> for PointerF
             PointerFocusTarget::WlSurface(w) => TouchTarget::shape(w, seat, data, event, seq),
             #[cfg(feature = "xwayland")]
             PointerFocusTarget::X11Surface(w) => TouchTarget::shape(w, seat, data, event, seq),
+            PointerFocusTarget::View(w) => TouchTarget::shape(w, seat, data, event, seq),
         }
     }
 
     fn orientation(
         &self,
-        seat: &Seat<ScreenComposer<BackendData>>,
-        data: &mut ScreenComposer<BackendData>,
+        seat: &Seat<ScreenComposer<B>>,
+        data: &mut ScreenComposer<B>,
         event: &smithay::input::touch::OrientationEvent,
         seq: Serial,
     ) {
@@ -539,17 +539,19 @@ impl<BackendData: Backend> TouchTarget<ScreenComposer<BackendData>> for PointerF
             PointerFocusTarget::X11Surface(w) => {
                 TouchTarget::orientation(w, seat, data, event, seq)
             }
+            PointerFocusTarget::View(w) => TouchTarget::orientation(w, seat, data, event, seq),
         }
     }
 }
 
-impl WaylandFocus for PointerFocusTarget {
+impl<B: Backend> WaylandFocus for PointerFocusTarget<B> {
     #[inline]
     fn wl_surface(&self) -> Option<Cow<'_, WlSurface>> {
         match self {
             PointerFocusTarget::WlSurface(w) => w.wl_surface(),
             #[cfg(feature = "xwayland")]
             PointerFocusTarget::X11Surface(w) => w.wl_surface().map(Cow::Owned),
+            PointerFocusTarget::View(_) => None,
         }
     }
     #[inline]
@@ -558,11 +560,12 @@ impl WaylandFocus for PointerFocusTarget {
             PointerFocusTarget::WlSurface(w) => w.same_client_as(object_id),
             #[cfg(feature = "xwayland")]
             PointerFocusTarget::X11Surface(w) => w.same_client_as(object_id),
+            PointerFocusTarget::View(_) => false,
         }
     }
 }
 
-impl<BackendData: Backend> WaylandFocus for KeyboardFocusTarget<BackendData> {
+impl<B: Backend> WaylandFocus for KeyboardFocusTarget<B> {
     #[inline]
     fn wl_surface(&self) -> Option<Cow<'_, WlSurface>> {
         match self {
@@ -574,7 +577,7 @@ impl<BackendData: Backend> WaylandFocus for KeyboardFocusTarget<BackendData> {
     }
 }
 
-impl From<WindowElement> for PointerFocusTarget {
+impl<B: Backend> From<WindowElement> for PointerFocusTarget<B> {
     fn from(w: WindowElement) -> Self {
         match w.underlying_surface() {
             WindowSurface::Wayland(w) => PointerFocusTarget::from(w.wl_surface()),
@@ -584,73 +587,81 @@ impl From<WindowElement> for PointerFocusTarget {
     }
 }
 
-impl<BackendData: Backend> From<WindowElement> for KeyboardFocusTarget<BackendData> {
+impl<B: Backend> From<WindowElement> for KeyboardFocusTarget<B> {
     fn from(w: WindowElement) -> Self {
         KeyboardFocusTarget::Window(w)
     }
 }
 
-impl From<WlSurface> for PointerFocusTarget {
+impl<B: Backend> From<WlSurface> for PointerFocusTarget<B> {
     #[inline]
     fn from(value: WlSurface) -> Self {
         PointerFocusTarget::WlSurface(value)
     }
 }
 
-impl From<&WlSurface> for PointerFocusTarget {
+impl<B: Backend> From<&WlSurface> for PointerFocusTarget<B> {
     #[inline]
     fn from(value: &WlSurface) -> Self {
         PointerFocusTarget::from(value.clone())
     }
 }
-impl From<LayerSurface> for PointerFocusTarget {
+impl<B: Backend> From<LayerSurface> for PointerFocusTarget<B> {
     fn from(l: LayerSurface) -> Self {
         PointerFocusTarget::from(l.wl_surface())
     }
 }
 
-impl<BackendData: Backend> From<LayerSurface> for KeyboardFocusTarget<BackendData> {
+impl<B: Backend> From<LayerSurface> for KeyboardFocusTarget<B> {
     fn from(w: LayerSurface) -> Self {
         KeyboardFocusTarget::LayerSurface(w)
     }
 }
-impl From<PopupKind> for PointerFocusTarget {
+impl<B: Backend> From<PopupKind> for PointerFocusTarget<B> {
     fn from(p: PopupKind) -> Self {
         PointerFocusTarget::from(p.wl_surface())
     }
 }
-impl<BackendData: Backend> From<PopupKind> for KeyboardFocusTarget<BackendData> {
+impl<B: Backend> From<PopupKind> for KeyboardFocusTarget<B> {
     fn from(p: PopupKind) -> Self {
         KeyboardFocusTarget::Popup(p)
     }
 }
 
-impl<BackendData: Backend> From<KeyboardFocusTarget<BackendData>> for PointerFocusTarget {
-    fn from(k: KeyboardFocusTarget<BackendData>) -> Self {
+impl<B: Backend> From<KeyboardFocusTarget<B>> for PointerFocusTarget<B> {
+    fn from(k: KeyboardFocusTarget<B>) -> Self {
         PointerFocusTarget::from(&*k.wl_surface().unwrap())
     }
 }
-// impl<S:Hash + Clone + 'static> From<layers::prelude::View<S>> for PointerFocusTarget
-// where Arc<RwLock<S>>: Send + Sync {
-//     fn from(value: layers::prelude::View<S>) -> Self {
-//         let view = value.clone();
-//         let d = InteractiveView { view: Box::new(view) };
-//         PointerFocusTarget::View(d)
-//     }
-// }
+impl<S: Hash + Clone + 'static, B: Backend> From<layers::prelude::View<S>> for PointerFocusTarget<B>
+where
+    std::sync::Arc<RwLock<S>>: Send + Sync,
+{
+    fn from(value: layers::prelude::View<S>) -> Self {
+        let view = value.clone();
+        let d = InteractiveView {
+            view: Box::new(view),
+        };
+        PointerFocusTarget::View(d)
+    }
+}
 
-// impl From<WindowSelectorView> for PointerFocusTarget {
-//     fn from(value: WindowSelectorView) -> Self {
-//         let view = value.clone();
-//         let d = InteractiveView { view: Box::new(view) };
-//         PointerFocusTarget::View(d)
-//     }
-// }
+impl<B: Backend> From<WindowSelectorView> for PointerFocusTarget<B> {
+    fn from(value: WindowSelectorView) -> Self {
+        let view = value.clone();
+        let d = InteractiveView {
+            view: Box::new(view),
+        };
+        PointerFocusTarget::View(d)
+    }
+}
 
-// impl From<AppSwitcherView> for PointerFocusTarget {
-//     fn from(value: AppSwitcherView) -> Self {
-//         let view = value.clone();
-//         let d = InteractiveView { view: Box::new(view) };
-//         PointerFocusTarget::View(d)
-//     }
-// }
+impl<B: Backend> From<AppSwitcherView> for PointerFocusTarget<B> {
+    fn from(value: AppSwitcherView) -> Self {
+        let view = value.clone();
+        let d = InteractiveView {
+            view: Box::new(view),
+        };
+        PointerFocusTarget::View(d)
+    }
+}

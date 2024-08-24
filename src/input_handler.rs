@@ -385,7 +385,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
     pub fn surface_under(
         &self,
         pos: Point<f64, Logical>,
-    ) -> Option<(PointerFocusTarget, Point<f64, Logical>)> {
+    ) -> Option<(PointerFocusTarget<BackendData>, Point<f64, Logical>)> {
         let output = self.space.outputs().find(|o| {
             let geometry = self.space.output_geometry(o).unwrap();
             geometry.contains(pos.to_i32_round())
