@@ -49,42 +49,42 @@ pub trait ViewInteractions<B: Backend>: Sync + Send {
 
     fn on_up(
         &self,
-        seat: &smithay::input::Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
-        event: &smithay::input::touch::UpEvent,
-        seq: smithay::utils::Serial,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
+        _event: &smithay::input::touch::UpEvent,
+        _seq: smithay::utils::Serial,
     ) {
     }
     fn on_down(
         &self,
-        seat: &smithay::input::Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
-        event: &smithay::input::touch::DownEvent,
-        seq: smithay::utils::Serial,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
+        _event: &smithay::input::touch::DownEvent,
+        _seq: smithay::utils::Serial,
     ) {
     }
 
     fn on_orientation(
         &self,
-        seat: &smithay::input::Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
-        event: &smithay::input::touch::OrientationEvent,
-        seq: smithay::utils::Serial,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
+        _event: &smithay::input::touch::OrientationEvent,
+        _seq: smithay::utils::Serial,
     ) {
     }
     fn on_shape(
         &self,
-        seat: &smithay::input::Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
-        event: &smithay::input::touch::ShapeEvent,
-        seq: smithay::utils::Serial,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
+        _event: &smithay::input::touch::ShapeEvent,
+        _seq: smithay::utils::Serial,
     ) {
     }
     fn on_cancel(
         &self,
-        seat: &smithay::input::Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
-        seq: smithay::utils::Serial,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
+        _seq: smithay::utils::Serial,
     ) {
     }
 }
