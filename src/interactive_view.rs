@@ -343,11 +343,11 @@ impl<B: Backend> TouchTarget<ScreenComposer<B>> for InteractiveView<B> {
     }
     fn frame(
         &self,
-        seat: &smithay::input::Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
-        seq: smithay::utils::Serial,
+        _seat: &smithay::input::Seat<ScreenComposer<B>>,
+        _data: &mut ScreenComposer<B>,
+        _seq: smithay::utils::Serial,
     ) {
-        // self.view.on_frame(seat, data, seq);
+        self.view.on_frame();
     }
     fn orientation(
         &self,
