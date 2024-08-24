@@ -3,7 +3,8 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     ffi::{c_char, CStr},
-    rc::Rc, time::Duration,
+    rc::Rc,
+    time::Duration,
 };
 
 use skia_safe as skia;
@@ -16,7 +17,14 @@ use smithay::{
             Buffer as DmaBuffer, Fourcc,
         },
         egl::{
-            self, display::{EGLBufferReader, EGLDisplayHandle}, fence::EGLFence, ffi::egl::{types::{EGLImage, EGLSync}, CreateSync, SYNC_FENCE}, wrap_egl_call, wrap_egl_call_ptr, EGLContext, EGLDisplay, EGLSurface
+            self,
+            display::{EGLBufferReader, EGLDisplayHandle},
+            fence::EGLFence,
+            ffi::egl::{
+                types::{EGLImage, EGLSync},
+                CreateSync, SYNC_FENCE,
+            },
+            wrap_egl_call, wrap_egl_call_ptr, EGLContext, EGLDisplay, EGLSurface,
         },
         renderer::{
             gles::{
@@ -812,15 +820,16 @@ impl<'frame> Frame for SkiaFrame<'frame> {
         FINISHED_PROC_STATE.store(false, Ordering::SeqCst);
 
         let semaphores = surface.gr_context.flush(info);
+
         let syncpoint = if semaphores == skia::gpu::SemaphoresSubmitted::Yes {
             profiling::scope!("FINISHED_PROC_STATE");
-            let skia_sync = SkiaSync::create(
-                self.renderer.egl_context().display()
-            ).map_err(|_err| GlesError::FramebufferBindingError)?;
+            let skia_sync = SkiaSync::create(self.renderer.egl_context().display())
+                .map_err(|_err| GlesError::FramebufferBindingError)?;
             SyncPoint::from(skia_sync)
         } else {
             SyncPoint::signaled()
         };
+
         {
             profiling::scope!("context_submit");
             surface.gr_context.submit(None);
@@ -882,9 +891,10 @@ struct SkiaSync(std::sync::Arc<InnerSkiaFence>);
 impl SkiaSync {
     pub fn create(display: &EGLDisplay) -> Result<Self, egl::Error> {
         let display_handle = display.get_display_handle();
-        let handle =
-            wrap_egl_call_ptr(|| unsafe { CreateSync(**display_handle, SYNC_FENCE, std::ptr::null()) })
-                .map_err(egl::Error::CreationFailed)?;
+        let handle = wrap_egl_call_ptr(|| unsafe {
+            CreateSync(**display_handle, SYNC_FENCE, std::ptr::null())
+        })
+        .map_err(egl::Error::CreationFailed)?;
 
         Ok(Self(std::sync::Arc::new(InnerSkiaFence {
             display_handle,
@@ -906,10 +916,10 @@ impl Fence for SkiaSync {
     fn wait(&self) -> Result<(), Interrupted> {
         use smithay::backend::egl::ffi;
 
-        // let start = Instant::now();
         let timeout = Some(Duration::from_millis(2))
             .map(|t| t.as_nanos() as ffi::egl::types::EGLuint64KHR)
             .unwrap_or(ffi::egl::FOREVER);
+
         let flush = false;
         let flags = if flush {
             ffi::egl::SYNC_FLUSH_COMMANDS_BIT as ffi::egl::types::EGLint
@@ -917,9 +927,12 @@ impl Fence for SkiaSync {
             0
         };
         let _status = wrap_egl_call(
-            || unsafe { ffi::egl::ClientWaitSync(**self.0.display_handle, self.0.handle, flags, timeout) },
+            || unsafe {
+                ffi::egl::ClientWaitSync(**self.0.display_handle, self.0.handle, flags, timeout)
+            },
             ffi::egl::FALSE as ffi::egl::types::EGLint,
-        ).map_err(|err| {
+        )
+        .map_err(|err| {
             tracing::warn!(?err, "Waiting for fence was interrupted");
             Interrupted
         })?;

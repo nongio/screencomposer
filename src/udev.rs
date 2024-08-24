@@ -30,10 +30,10 @@ use smithay::backend::renderer::ImportMem;
 use smithay::{
     backend::{
         allocator::{
-            dmabuf::{AnyError, Dmabuf, DmabufAllocator},
+            dmabuf::Dmabuf,
             format::FormatSet,
             gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
-            Allocator, Fourcc,
+            Fourcc,
         },
         drm::{
             compositor::DrmCompositor, CreateDrmNodeError, DrmAccessError, DrmDevice, DrmDeviceFd,
@@ -138,7 +138,6 @@ pub struct UdevData {
     dh: DisplayHandle,
     dmabuf_state: Option<(DmabufState, DmabufGlobal)>,
     primary_gpu: DrmNode,
-    allocator: Option<Box<dyn Allocator<Buffer = Dmabuf, Error = AnyError>>>,
     gpus: GpuManager<GbmGlesBackend<SkiaRenderer, DrmDeviceFd>>,
     backends: HashMap<DrmNode, BackendData>,
     pointer_images: Vec<(xcursor::parser::Image, TextureBuffer<MultiTexture>)>,
@@ -287,7 +286,6 @@ pub fn run_udev() {
         session,
         primary_gpu,
         gpus,
-        allocator: None,
         backends: HashMap::new(),
         pointer_images: Vec::new(),
         pointer_element: PointerElement::default(),
@@ -393,33 +391,6 @@ pub fn run_udev() {
             .unwrap()
             .shm_formats(),
     );
-
-    // let skip_vulkan = std::env::var("ANVIL_NO_VULKAN")
-    //     .map(|x| {
-    //         x == "1"
-    //             || x.to_lowercase() == "true"
-    //             || x.to_lowercase() == "yes"
-    //             || x.to_lowercase() == "y"
-    //     })
-    //     .unwrap_or(false);
-
-    if state.backend_data.allocator.is_none() {
-        info!("No vulkan allocator found, using GBM.");
-        let gbm = state
-            .backend_data
-            .backends
-            .get(&primary_gpu)
-            // If the primary_gpu failed to initialize, we likely have a kmsro device
-            .or_else(|| state.backend_data.backends.values().next())
-            // Don't fail, if there is no allocator. There is a chance, that this a single gpu system and we don't need one.
-            .map(|backend| backend.gbm.clone());
-        state.backend_data.allocator = gbm.map(|gbm| {
-            Box::new(DmabufAllocator(GbmAllocator::new(
-                gbm,
-                GbmBufferFlags::RENDERING,
-            ))) as Box<_>
-        });
-    }
 
     #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
     let mut renderer = state
@@ -1465,7 +1436,7 @@ impl ScreenComposer<UdevData> {
             let repaint_delay =
                 Duration::from_millis(((1_000_000f32 / output_refresh as f32) * 0.6f32) as u64);
 
-                let timer = if self.backend_data.primary_gpu != surface.render_node {
+            let timer = if self.backend_data.primary_gpu != surface.render_node {
                 // However, if we need to do a copy, that might not be enough.
                 // (And without actual comparision to previous frames we cannot really know.)
                 // So lets ignore that in those cases to avoid thrashing performance.
