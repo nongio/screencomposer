@@ -21,14 +21,14 @@ use smithay::{
         renderer::{
             damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
             element::AsRenderElements,
-            utils::{import_surface, RendererSurfaceState},
+            utils::{import_surface, RendererSurfaceState, RendererSurfaceStateUserData},
             ImportDma, ImportMemWl,
         },
         winit::{self, WinitEvent, WinitGraphicsBackend},
         SwapBuffersError,
     },
     delegate_dmabuf,
-    input::pointer::{CursorImageAttributes, CursorImageStatus},
+    input::pointer::{CursorIcon, CursorImageAttributes, CursorImageStatus},
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::{
         calloop::EventLoop,
@@ -36,9 +36,9 @@ use smithay::{
         wayland_server::{protocol::wl_surface, Display},
         winit::{dpi::LogicalSize, platform::pump_events::PumpStatus, window::WindowAttributes},
     },
-    utils::{IsAlive, Scale, Transform},
+    utils::{IsAlive, Logical, Scale, Transform},
     wayland::{
-        compositor::{self, with_states},
+        compositor::{self, with_states, SurfaceData},
         dmabuf::{
             DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState,
             ImportNotifier,
@@ -48,11 +48,7 @@ use smithay::{
 use tracing::{error, info, warn};
 
 use crate::{
-    drawing::*,
-    render::*,
-    render_elements::custom_render_elements::CustomRenderElements,
-    skia_renderer::{SkiaRenderer, SkiaTexture},
-    state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
+    config::Config, drawing::*, render::*, render_elements::workspace_render_elements::WorkspaceRenderElements, skia_renderer::{SkiaRenderer, SkiaTexture}, state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer}
 };
 
 pub const OUTPUT_NAME: &str = "winit";
@@ -107,7 +103,9 @@ impl Backend for WinitData {
     fn texture_for_surface(&self, render_surface: &RendererSurfaceState) -> Option<SkiaTexture> {
         render_surface.texture::<SkiaRenderer>(99).cloned()
     }
-    fn set_cursor(&mut self, _image: &CursorImageStatus) {}
+    fn set_cursor(&mut self, _image: &CursorImageStatus) {
+        
+    }
 }
 
 pub fn run_winit() {
@@ -119,7 +117,7 @@ pub fn run_winit() {
     let (mut backend, mut winit) = match winit::init_from_attributes_with_gl_attr::<SkiaRenderer>(
         WindowAttributes::default()
             .with_title("Screen Composer".to_string())
-            .with_inner_size(Size::new(LogicalSize::new(2256.0 / 2.0, 1504.0 / 2.0)))
+            .with_inner_size(Size::new(LogicalSize::new(1280.0, 800.0)))
             .with_visible(true),
         GlAttributes {
             version: (3, 0),
@@ -145,15 +143,16 @@ pub fn run_winit() {
         PhysicalProperties {
             size: (0, 0).into(),
             subpixel: Subpixel::Unknown,
-            make: "Smithay".into(),
+            make: "ScreenComposer".into(),
             model: "Winit".into(),
         },
     );
     let _global = output.create_global::<ScreenComposer<WinitData>>(&display.handle());
+    let config_screen_scale = Config::with(|c| c.screen_scale);
     output.change_current_state(
         Some(mode),
         Some(Transform::Flipped180),
-        Some(smithay::output::Scale::Fractional(1.0)),
+        Some(smithay::output::Scale::Fractional(config_screen_scale)),
         Some((0, 0).into()),
     );
     output.set_preferred(mode);
@@ -290,7 +289,8 @@ pub fn run_winit() {
                     size,
                     refresh: 60_000,
                 };
-                output.change_current_state(Some(mode), None, None, None);
+                let config_screen_scale = Config::with(|c| c.screen_scale);
+                output.change_current_state(Some(mode), None, Some(smithay::output::Scale::Fractional(config_screen_scale)), None);
                 output.set_preferred(mode);
                 crate::shell::fixup_positions(&mut state.space, state.pointer.current_location());
                 state.scene_element.set_size(size.w as f32, size.h as f32);
@@ -330,6 +330,7 @@ pub fn run_winit() {
             if let CursorImageStatus::Named(cursor) = *cursor_guard {
                 backend.window().set_cursor(cursor);
             }
+
             pointer_element.set_status(cursor_guard.clone());
 
             #[cfg(feature = "debug")]
@@ -342,24 +343,42 @@ pub fn run_winit() {
             let space = &mut state.space;
             let damage_tracker = &mut state.backend_data.damage_tracker;
 
-            let dnd_icon = state.dnd_icon.as_ref();
-
             let scale = Scale::from(output.current_scale().fractional_scale());
-            let cursor_hotspot = if let CursorImageStatus::Surface(ref surface) = *cursor_guard {
-                compositor::with_states(surface, |states| {
-                    states
-                        .data_map
-                        .get::<Mutex<CursorImageAttributes>>()
-                        .unwrap()
-                        .lock()
-                        .unwrap()
-                        .hotspot
-                })
-            } else {
-                (0, 0).into()
+            let cursor_logical_size = Config::with(|c| c.cursor_size);
+            let (cursor_size, cursor_hotspot) = match *cursor_guard {
+                CursorImageStatus::Surface(ref surface) => {
+                    compositor::with_states(surface, |states| {
+                        let data = states.data_map.get::<RendererSurfaceStateUserData>();
+                        let size = data.map(|data| {
+                            let data = data.lock().unwrap();
+                            data.surface_size().unwrap_or_default()
+                        }).unwrap_or_else(|| {
+                            (cursor_logical_size as i32, cursor_logical_size as i32).into()
+                        });
+                        (size, 
+                        states
+                            .data_map
+                            .get::<Mutex<CursorImageAttributes>>()
+                            .unwrap()
+                            .lock()
+                            .unwrap()
+                            .hotspot)
+                    })
+                }
+                // CursorImageStatus::Named(_) => {
+                //     let cursor_image = pointer_element.cursor_manager.get_image(, state.clock.now());
+                //     ((cursor_image.width as i32, cursor_image.height as i32).into(), (cursor_image.xhot as i32, cursor_image.yhot as i32).into())
+                // },
+                _ => ((cursor_logical_size as i32, cursor_logical_size as i32).into(), (0, 0).into())
             };
-            let cursor_pos = state.pointer.current_location() - cursor_hotspot.to_f64();
-            let cursor_pos_scaled = cursor_pos.to_physical(scale).to_i32_round();
+            
+            let cursor_scale = (cursor_logical_size as f64 / cursor_size.to_f64().w).into();
+            let cursor_hotspot: smithay::utils::Point<f64, Logical> = (cursor_hotspot.to_f64().x, cursor_hotspot.to_f64().y).into();
+            let cursor_hotspot = cursor_hotspot.to_physical(cursor_scale);
+            let cursor_pos = state.pointer.current_location();
+            let cursor_pos_scaled = cursor_pos.to_physical(scale).to_i32_round() -  cursor_hotspot.to_i32_round();
+            // let cursor_pos = state.pointer.current_location() - cursor_hotspot.to_f64();
+            // let cursor_pos_scaled = cursor_pos.to_physical(scale).to_i32_round();
 
             #[cfg(feature = "debug")]
             let mut renderdoc = state.renderdoc.as_mut();
@@ -389,33 +408,20 @@ pub fn run_winit() {
 
                 let renderer = backend.renderer();
 
-                let mut elements = Vec::<CustomRenderElements<_>>::new();
+                let mut elements = Vec::<WorkspaceRenderElements<_>>::new();
 
                 elements.extend(pointer_element.render_elements(
                     renderer,
                     cursor_pos_scaled,
-                    scale,
+                    cursor_scale,
                     1.0,
                 ));
-
-                // draw the dnd icon if any
-                if let Some(surface) = dnd_icon {
-                    if surface.alive() {
-                        elements.extend(AsRenderElements::<SkiaRenderer>::render_elements(
-                            &smithay::desktop::space::SurfaceTree::from_surface(surface),
-                            renderer,
-                            cursor_pos_scaled,
-                            scale,
-                            1.0,
-                        ));
-                    }
-                }
-
+                println!("cursor_scale: {:?}", cursor_scale);
                 #[cfg(feature = "debug")]
-                elements.push(CustomRenderElements::Fps(fps_element.clone()));
+                elements.push(WorkspaceRenderElements::Fps(fps_element.clone()));
 
                 let scene_element = state.scene_element.clone();
-                elements.push(CustomRenderElements::Scene(scene_element));
+                elements.push(WorkspaceRenderElements::Scene(scene_element));
 
                 #[cfg(feature = "profile-with-puffin")]
                 profiling::puffin::profile_scope!("render_output");
