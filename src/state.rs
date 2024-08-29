@@ -458,7 +458,7 @@ impl<BackendData: Backend> XdgDecorationHandler for ScreenComposer<BackendData> 
 
         toplevel.with_pending_state(|state| {
             state.decoration_mode = Some(match mode {
-                DecorationMode::ServerSide => Mode::ServerSide,
+                DecorationMode::ServerSide => Mode::ClientSide,
                 _ => Mode::ClientSide,
             });
         });
