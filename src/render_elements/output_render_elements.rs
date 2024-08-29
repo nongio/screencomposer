@@ -12,7 +12,7 @@ use smithay::{
 use crate::{shell::WindowRenderElement, skia_renderer::SkiaFrame};
 
 use super::{
-    custom_render_elements::CustomRenderElements, scene_element::SceneElement,
+    workspace_render_elements::WorkspaceRenderElements, scene_element::SceneElement,
     skia_element::SkiaElement,
 };
 
@@ -25,6 +25,6 @@ smithay::backend::renderer::element::render_elements! {
     <R as smithay::backend::renderer::Renderer>::Error: (From<smithay::backend::renderer::gles::GlesError>);
     Space=SpaceRenderElements<R, E>,
     Window=Wrap<E>,
-    Custom=CustomRenderElements<'frame, R>,
+    Custom=WorkspaceRenderElements<'frame, R>,
     Preview=CropRenderElement<RelocateRenderElement<RescaleRenderElement<WindowRenderElement<R>>>>,
 }

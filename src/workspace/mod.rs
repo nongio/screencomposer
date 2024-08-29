@@ -1,9 +1,10 @@
 mod app_switcher;
 mod background;
+mod dnd_view;
+mod utils;
 mod window_selector;
 mod window_view;
 mod workspace_selector;
-
 use crate::{
     shell::WindowElement,
     utils::{
@@ -39,6 +40,7 @@ pub use window_selector::{WindowSelection, WindowSelectorState, WindowSelectorVi
 pub use window_view::{WindowView, WindowViewBaseModel, WindowViewSurface};
 
 pub use app_switcher::AppSwitcherView;
+pub use dnd_view::DndView;
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
@@ -254,6 +256,7 @@ impl Workspace {
             window.w = model.w;
             window.h = model.h;
             window.title = model.title.clone();
+            window.is_fullscreen = model.fullscreen;
         }
     }
     pub(crate) fn update_with_window_elements<I>(&self, windows: I)

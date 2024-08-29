@@ -15,16 +15,14 @@ use crate::{
 use super::{scene_element::SceneElement, skia_element::SkiaElement};
 
 smithay::backend::renderer::element::render_elements! {
-    pub CustomRenderElements<'a, R> where
+    pub WorkspaceRenderElements<'a, R> where
         R: ImportAll + ImportMem + 'a,
         SkiaElement: (RenderElement<R>),
         SceneElement: (RenderElement<R>),
         <R as smithay::backend::renderer::Renderer>::Frame<'a>: (AsMut<SkiaFrame<'a>>),
         <R as smithay::backend::renderer::Renderer>::Error: (From<smithay::backend::renderer::gles::GlesError>);
     Pointer=PointerRenderElement<R>,
-    Surface=WaylandSurfaceRenderElement<R>,
     Fps=FpsElement<<R as smithay::backend::renderer::Renderer>::TextureId>,
-    Skia=SkiaElement,
     Scene=SceneElement,
     // this is needed to make the macro work with a lifetime specifier in the where clauses
     PhantomElement=PhantomElement<'a>,

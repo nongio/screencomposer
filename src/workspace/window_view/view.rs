@@ -3,11 +3,11 @@ use layers::{
     prelude::taffy,
 };
 
-use crate::shell::WindowElement;
+use crate::{shell::WindowElement, workspace::utils::view_render_elements};
 
 use super::{
     model::{WindowViewBaseModel, WindowViewSurface},
-    render::{view_base_window, view_content_window},
+    render::view_base_window,
 };
 
 #[derive(Clone)]
@@ -60,13 +60,14 @@ impl WindowView {
             w: 0.0,
             h: 0.0,
             title: "".to_string(),
+            fullscreen: false,
         };
         let view_base =
             layers::prelude::View::new(base_layer.clone(), base_rect, Box::new(view_base_window));
         let view_content = layers::prelude::View::new(
             content_layer.clone(),
             render_elements,
-            Box::new(view_content_window),
+            Box::new(view_render_elements),
         );
 
         // view_base.render(&state.base_rect);

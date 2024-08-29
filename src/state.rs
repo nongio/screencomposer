@@ -704,11 +704,11 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             ..Default::default()
         });
         layers_engine.scene_add_layer(root_layer.clone());
-
         let scene_element = SceneElement::with_engine(layers_engine.clone());
         let space = Space::default();
         let workspace = Workspace::new(layers_engine.clone(), cursor_status.clone());
 
+        let dnd_view = DndView::new(layers_engine.clone(), root_layer.id().unwrap());
         ScreenComposer {
             backend_data,
             display_handle: dh,
@@ -754,6 +754,8 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             layers_engine,
             scene_element,
             window_views: HashMap::new(),
+            dnd_view,
+
             show_desktop: false,
             // support variables for gestures
             is_swiping: false,
@@ -848,21 +850,28 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         let mut surface_attributes = states.cached_state.get::<SurfaceAttributes>();
         let surface_attributes = surface_attributes.current();
         if let Some(render_surface) = states.data_map.get::<RendererSurfaceStateUserData>() {
-            let render_surface = render_surface.lock().unwrap();
+            let render_surface: std::sync::MutexGuard<RendererSurfaceState> = render_surface.lock().unwrap();
 
             if let Some(view) = render_surface.view() {
                 let texture = self.backend_data.texture_for_surface(&render_surface);
                 let wvs = WindowViewSurface {
                     id: id.clone(),
-                    offset_x: view.offset.x as f32 * scale as f32,
-                    offset_y: view.offset.y as f32 * scale as f32,
-                    x: location.x as f32 - surface_geometry.loc.x as f32,
-                    y: location.y as f32 - surface_geometry.loc.y as f32,
-                    w: view.dst.w as f32 * scale as f32,
-                    h: view.dst.h as f32 * scale as f32,
+                    log_offset_x: location.x as f32,
+                    log_offset_y: location.y as f32,
+
+                    phy_src_x: view.src.loc.x as f32 * surface_attributes.buffer_scale as f32,
+                    phy_src_y: view.src.loc.y as f32 * surface_attributes.buffer_scale as f32,
+                    phy_src_w: view.src.size.w as f32 * surface_attributes.buffer_scale as f32,
+                    phy_src_h: view.src.size.h as f32 * surface_attributes.buffer_scale as f32,
+
+                    phy_dst_x: view.offset.x as f32 * scale as f32 - surface_geometry.loc.x as f32,
+                    phy_dst_y: view.offset.y as f32 * scale as f32 - surface_geometry.loc.y as f32,
+                    phy_dst_w: view.dst.w as f32 * scale as f32,
+                    phy_dst_h: view.dst.h as f32 * scale as f32,
                     texture,
                     commit: render_surface.current_commit(),
                     transform: surface_attributes.buffer_transform.into(),
+                    texture_scale: surface_attributes.buffer_scale.into(),
                 };
                 return Some(wvs);
             }
@@ -971,6 +980,16 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                         .update_state(render_elements.into());
                 }
             }
+        }
+
+        if let Some(dnd_surface) = self.dnd_icon.as_ref() {
+            let render_elements = self.get_render_elements(dnd_surface);
+            self.dnd_view
+                .view_content
+                .update_state(render_elements.into());
+
+            let cursor_position = self.get_cursor_position();
+            self.dnd_view.layer.set_position(cursor_position, None);
         }
     }
 
