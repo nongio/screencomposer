@@ -1,6 +1,6 @@
 use smithay::{
     backend::renderer::{
-        element::{surface::WaylandSurfaceRenderElement, Element, Id, RenderElement},
+        element::{Element, Id, RenderElement},
         utils::{CommitCounter, DamageSet},
         ImportAll, ImportMem,
     },

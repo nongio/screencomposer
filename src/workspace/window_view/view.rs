@@ -21,6 +21,7 @@ pub struct WindowView {
     pub content_layer: layers::prelude::Layer,
     parent_layer_noderef: NodeRef,
     pub window: WindowElement,
+    pub unmaximized_rect: layers::prelude::Rectangle,
 }
 
 impl WindowView {
@@ -82,6 +83,12 @@ impl WindowView {
             base_layer,
             parent_layer_noderef,
             window,
+            unmaximized_rect: layers::prelude::Rectangle {
+                x: 0.0,
+                y: 0.0,
+                width: 0.0,
+                height: 0.0,
+            },
         }
     }
     // #[profiling::function]

@@ -11,7 +11,6 @@ pub use smithay::{
     reexports::wayland_server::{backend::ObjectId, Resource},
     utils::{IsAlive, Serial},
     wayland::seat::WaylandFocus,
-    xwayland::X11Surface,
 };
 use smithay::{
     desktop::WindowSurface,

@@ -40,17 +40,17 @@ async fn main() {
     match arg.as_ref().map(|s| &s[..]) {
         #[cfg(feature = "winit")]
         Some("--winit") => {
-            tracing::info!("Starting anvil with winit backend");
+            tracing::info!("Starting screen-composer with winit backend");
             screen_composer::winit::run_winit();
         }
         #[cfg(feature = "udev")]
         Some("--tty-udev") => {
-            tracing::info!("Starting anvil on a tty using udev");
+            tracing::info!("Starting screen-composer on a tty using udev");
             screen_composer::udev::run_udev();
         }
         #[cfg(feature = "x11")]
         Some("--x11") => {
-            tracing::info!("Starting anvil with x11 backend");
+            tracing::info!("Starting screen-composer with x11 backend");
             screen_composer::x11::run_x11();
         }
         Some(other) => {
@@ -59,7 +59,7 @@ async fn main() {
         None => {
             #[allow(clippy::disallowed_macros)]
             {
-                println!("USAGE: anvil --backend");
+                println!("USAGE: screen-composer --backend");
                 println!();
                 println!("Possible backends are:");
                 for b in POSSIBLE_BACKENDS {

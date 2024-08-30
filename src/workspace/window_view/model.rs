@@ -22,7 +22,6 @@ pub struct WindowViewSurface {
     pub(crate) texture: Option<SkiaTexture>,
     pub(crate) commit: CommitCounter,
     pub(crate) transform: Transform,
-    pub(crate) texture_scale: f64,
 }
 impl fmt::Debug for WindowViewSurface {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

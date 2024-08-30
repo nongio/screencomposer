@@ -7,7 +7,7 @@ use std::{
 use crate::{
     drawing::*,
     render::*,
-    render_elements::custom_render_elements::CustomRenderElements,
+    render_elements::workspace_render_elements::WorkspaceRenderElements,
     skia_renderer::{SkiaRenderer, SkiaTexture},
     state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
 };
@@ -47,7 +47,6 @@ use smithay::{
             DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState,
             ImportNotifier,
         },
-        xwayland_shell::{XWaylandShellHandler, XWaylandShellState},
     },
 };
 use tracing::{error, info, trace, warn};
@@ -65,7 +64,7 @@ impl OldGeometry {
         self.0.borrow_mut().take()
     }
 }
-
+#[cfg(feature = "xwayland")]
 impl<BackendData: Backend> XWaylandShellHandler for ScreenComposer<BackendData> {
     fn xwayland_shell_state(&mut self) -> &mut XWaylandShellState {
         &mut self.xwayland_shell_state
@@ -371,7 +370,7 @@ pub fn run_x11() {
             }
 
             let mut cursor_guard = cursor_status.lock().unwrap();
-            let mut elements: Vec<CustomRenderElements<'_, SkiaRenderer>> = Vec::new();
+            let mut elements: Vec<WorkspaceRenderElements<'_, SkiaRenderer>> = Vec::new();
 
             // draw the cursor as relevant
             // reset the cursor if the surface is no longer alive
@@ -410,20 +409,20 @@ pub fn run_x11() {
             ));
 
             // draw the dnd icon if any
-            if let Some(surface) = state.dnd_icon.as_ref() {
-                if surface.alive() {
-                    elements.extend(AsRenderElements::<SkiaRenderer>::render_elements(
-                        &smithay::desktop::space::SurfaceTree::from_surface(surface),
-                        &mut backend_data.renderer,
-                        cursor_pos_scaled,
-                        scale,
-                        1.0,
-                    ));
-                }
-            }
+            // if let Some(surface) = state.dnd_icon.as_ref() {
+            //     if surface.alive() {
+            //         elements.extend(AsRenderElements::<SkiaRenderer>::render_elements(
+            //             &smithay::desktop::space::SurfaceTree::from_surface(surface),
+            //             &mut backend_data.renderer,
+            //             cursor_pos_scaled,
+            //             scale,
+            //             1.0,
+            //         ));
+            //     }
+            // }
 
             #[cfg(feature = "debug")]
-            elements.push(CustomRenderElements::Fps(fps_element.clone()));
+            elements.push(WorkspaceRenderElements::Fps(fps_element.clone()));
 
             let render_res = render_output(
                 &output,

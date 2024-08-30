@@ -63,7 +63,7 @@ pub fn view_background(
 ) -> ViewLayer {
     let image = state.image.clone();
 
-    // state.debug_string.clone();
+    // let debug_text = state.debug_string.clone();
 
     let draw_container = move |canvas: &skia_safe::Canvas, w, h| {
         let color = skia_safe::Color4f::new(1.0, 1.0, 1.0, 1.0);

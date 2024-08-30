@@ -8,7 +8,8 @@ use std::{
 
 use layers::{
     engine::{LayersEngine, NodeRef},
-    prelude::taffy,
+    prelude::{taffy, Transition},
+    types::Point,
 };
 use tracing::{info, warn};
 
@@ -29,7 +30,7 @@ use smithay::{
     delegate_presentation, delegate_primary_selection, delegate_relative_pointer, delegate_seat,
     delegate_security_context, delegate_shm, delegate_tablet_manager, delegate_text_input_manager,
     delegate_viewporter, delegate_virtual_keyboard_manager, delegate_xdg_activation,
-    delegate_xdg_decoration, delegate_xdg_shell, delegate_xwayland_shell,
+    delegate_xdg_decoration, delegate_xdg_shell,
     desktop::{
         space::SpaceElement,
         utils::{
@@ -41,7 +42,7 @@ use smithay::{
     },
     input::{
         keyboard::{Keysym, XkbConfig},
-        pointer::{CursorImageStatus, PointerHandle},
+        pointer::{CursorImageAttributes, CursorImageStatus, PointerHandle},
         Seat, SeatHandler, SeatState,
     },
     output::Output,
@@ -60,8 +61,8 @@ use smithay::{
     utils::{Clock, Monotonic, Rectangle},
     wayland::{
         compositor::{
-            get_parent, with_states, CompositorClientState, CompositorState, SurfaceAttributes,
-            SurfaceData, TraversalAction,
+            self, get_parent, with_states, CompositorClientState, CompositorState,
+            SurfaceAttributes, SurfaceData, TraversalAction,
         },
         dmabuf::DmabufFeedback,
         fractional_scale::{
@@ -112,18 +113,13 @@ use smithay::{
             XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
         },
         xdg_foreign::{XdgForeignHandler, XdgForeignState},
-        xwayland_shell,
     },
 };
 
 #[cfg(feature = "xwayland")]
 use crate::cursor::Cursor;
 use crate::{
-    focus::{KeyboardFocusTarget, PointerFocusTarget},
-    render_elements::scene_element::SceneElement,
-    shell::WindowElement,
-    skia_renderer::SkiaTexture,
-    workspace::{WindowView, WindowViewBaseModel, WindowViewSurface, Workspace},
+    focus::{KeyboardFocusTarget, PointerFocusTarget}, render_elements::scene_element::SceneElement, shell::WindowElement, skia_renderer::SkiaTexture, workspace::{DndView, WindowView, WindowViewBaseModel, WindowViewSurface, Workspace}
 };
 #[cfg(feature = "xwayland")]
 use smithay::{
@@ -206,6 +202,7 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub workspace: Arc<Workspace>,
     // views
     pub window_views: HashMap<ObjectId, WindowView>,
+    pub dnd_view: DndView,
     // layers
     pub layers_engine: LayersEngine,
 
@@ -230,9 +227,23 @@ impl<BackendData: Backend> ClientDndGrabHandler for ScreenComposer<BackendData> 
         _seat: Seat<Self>,
     ) {
         self.dnd_icon = icon;
+        self.dnd_view
+            .set_initial_position(self.get_cursor_position());
+        self.dnd_view.layer.set_scale((1.0, 1.0), None);
+
+        self.dnd_view
+            .layer
+            .set_opacity(0.8, Some(Transition::default()));
     }
     fn dropped(&mut self, _seat: Seat<Self>) {
         self.dnd_icon = None;
+        self.dnd_view
+            .layer
+            .set_opacity(0.0, Some(Transition::default()));
+        self.dnd_view
+            .layer
+            .set_scale((1.2, 1.2), Some(Transition::default()));
+        // self.dnd_view.layer.set_position(self.dnd_view.initial_position, Some(Transition::default()));
     }
 }
 impl<BackendData: Backend> ServerDndGrabHandler for ScreenComposer<BackendData> {
@@ -325,9 +336,8 @@ impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
         set_primary_focus(dh, seat, focus);
     }
 
-    fn cursor_image(&mut self, _seat: &Seat<Self>, _image: CursorImageStatus) {
-        // println!("change icon {:?}", image);
-        // *self.cursor_status.lock().unwrap() = image;
+    fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
+        *self.cursor_status.lock().unwrap() = image;
     }
 }
 delegate_seat!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
@@ -871,7 +881,6 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                     texture,
                     commit: render_surface.current_commit(),
                     transform: surface_attributes.buffer_transform.into(),
-                    texture_scale: surface_attributes.buffer_scale.into(),
                 };
                 return Some(wvs);
             }
@@ -903,11 +912,12 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                     .to_f64()
                     .to_physical(scale_factor);
                 let mut title = "".to_string();
-
+                let mut fullscreen = false;
                 smithay::wayland::compositor::with_states(&window_surface, |states| {
                     if let Some(attributes) = states.data_map.get::<XdgToplevelSurfaceData>() {
                         let attributes = attributes.lock().unwrap();
                         title = attributes.title.as_ref().cloned().unwrap_or_default();
+                        fullscreen = attributes.current.fullscreen_output.is_some();
                     }
                 });
 
@@ -971,6 +981,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                         w: window_geometry.size.w as f32,
                         h: window_geometry.size.h as f32,
                         title,
+                        fullscreen,
                     };
 
                     self.workspace.update_window(&id, &model);
@@ -1019,10 +1030,78 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     pub fn get_window_view(&self, id: &ObjectId) -> Option<&WindowView> {
         self.window_views.get(id)
     }
-
+    pub fn mut_window_view(&mut self, id: &ObjectId) -> Option<&mut WindowView> {
+        self.window_views.get_mut(id)
+    }
     pub fn set_cursor(&mut self, image: &CursorImageStatus) {
         *self.cursor_status.lock().unwrap() = image.clone();
         self.backend_data.set_cursor(image);
+    }
+
+    pub fn get_cursor_position(&self) -> Point {
+        let cursor_guard: std::sync::MutexGuard<CursorImageStatus> =
+            self.cursor_status.lock().unwrap();
+        let cursor_hotspot = if let CursorImageStatus::Surface(ref surface) = *cursor_guard {
+            compositor::with_states(surface, |states| {
+                states
+                    .data_map
+                    .get::<Mutex<CursorImageAttributes>>()
+                    .unwrap()
+                    .lock()
+                    .unwrap()
+                    .hotspot
+            })
+        } else {
+            (0, 0).into()
+        };
+
+        let cursor_pos = self.pointer.current_location() - cursor_hotspot.to_f64();
+        let output = self.space.output_under(cursor_pos).next().cloned().unwrap();
+        let scale = output.current_scale().fractional_scale();
+        let cursor_pos_scaled = cursor_pos.to_physical(scale).to_f64();
+        Point::from((cursor_pos_scaled.x as f32, cursor_pos_scaled.y as f32))
+    }
+
+    pub fn get_render_elements(&self, surface: &WlSurface) -> VecDeque<WindowViewSurface> {
+        let initial_location: smithay::utils::Point<f64, smithay::utils::Physical> =
+            (0.0, 0.0).into();
+        let scale_factor = 1.0;
+        let mut render_elements = VecDeque::new();
+
+        smithay::wayland::compositor::with_surface_tree_downward(
+            surface,
+            initial_location,
+            |_, states, location| {
+                let mut location = *location;
+                let data = states.data_map.get::<RendererSurfaceStateUserData>();
+                let mut cached_state = states.cached_state.get::<SurfaceCachedState>();
+                let cached_state = cached_state.current();
+                let surface_geometry = cached_state.geometry.unwrap_or_default();
+
+                if let Some(data) = data {
+                    let data = data.lock().unwrap();
+
+                    if let Some(view) = data.view() {
+                        location += view.offset.to_f64().to_physical(scale_factor);
+                        location -= surface_geometry.loc.to_f64().to_physical(scale_factor);
+                        TraversalAction::DoChildren(location)
+                    } else {
+                        TraversalAction::SkipChildren
+                    }
+                } else {
+                    TraversalAction::SkipChildren
+                }
+            },
+            |surface, states, location| {
+                if let Some(window_view) =
+                    self.window_view_for_surface(surface, states, location, scale_factor)
+                {
+                    render_elements.push_front(window_view);
+                }
+            },
+            |_, _, _| true,
+        );
+        render_elements
     }
 }
 

@@ -1,6 +1,6 @@
 use layers::{
     prelude::{taffy, View, ViewLayer, ViewLayerBuilder},
-    types::{Color, PaintColor, Point, Size},
+    types::{Point, Size},
 };
 use smithay::utils::Transform;
 

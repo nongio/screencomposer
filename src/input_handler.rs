@@ -1,22 +1,18 @@
 use std::{convert::TryInto, process::Command, sync::atomic::Ordering};
 
 use crate::{
-    focus::PointerFocusTarget,
-    shell::{FullscreenSurface, WindowElement},
-    ScreenComposer,
+    config::{Config}, focus::PointerFocusTarget, shell::{FullscreenSurface, WindowElement}, ScreenComposer
 };
 
 #[cfg(feature = "udev")]
 use crate::udev::UdevData;
-#[cfg(feature = "udev")]
-use smithay::backend::renderer::DebugFlags;
 
 use smithay::{
     backend::input::{
         self, Axis, AxisSource, Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent,
         PointerAxisEvent, PointerButtonEvent,
     },
-    desktop::{layer_map_for_output, WindowSurface, WindowSurfaceType},
+    desktop::{layer_map_for_output, WindowSurfaceType},
     input::{
         keyboard::{keysyms as xkb, FilterResult, Keysym, ModifiersState},
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
@@ -395,18 +391,21 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
         let mut under = None;
 
+        // App switcher check
         if self.workspace.app_switcher.alive() {
             let focus = self.workspace.app_switcher.as_ref().clone().into();
             let position = self.workspace.app_switcher.view_layer.render_position();
             return Some((focus, (position.x as f64, position.y as f64).into()));
             // return Some((focus, (0, 0).into()));
         }
+        // Window selector check
         if self.workspace.get_show_all() {
             let focus = self.workspace.window_selector_view.as_ref().clone().into();
             let position = self.workspace.window_selector_view.layer.render_position();
 
             return Some((focus, (position.x as f64, position.y as f64).into()));
         }
+        // Fullscreen window check
         if let Some(window) = output
             .user_data()
             .get::<FullscreenSurface>()
@@ -419,8 +418,14 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         {
             let layer_loc = layers.layer_geometry(layer).unwrap().loc;
             under = Some((layer.clone().into(), output_geo.loc + layer_loc))
-        } else if let Some((window, location)) = self.space.element_under(pos) {
-            under = Some((window.clone().into(), location));
+        } else if let Some((focus, location)) =
+            self.space.element_under(pos).and_then(|(window, loc)| {
+                window
+                    .surface_under(pos - loc.to_f64(), WindowSurfaceType::ALL)
+                    .map(|(surface, surf_loc)| (surface, surf_loc + loc))
+            })
+        {
+            under = Some((focus, location));
         } else if let Some(layer) = layers
             .layer_under(WlrLayer::Bottom, pos)
             .or_else(|| layers.layer_under(WlrLayer::Background, pos))
@@ -583,7 +588,6 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     KeyAction::None
                     | KeyAction::Quit
                     | KeyAction::Run(_)
-                    | KeyAction::TogglePreview
                     | KeyAction::ToggleDecorations => self.process_common_key_action(action),
 
                     _ => tracing::warn!(
@@ -621,10 +625,7 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
 
         let under = self.surface_under(pos);
         let pointer = self.pointer.clone();
-        // if !self.workspace.get_show_all() {
 
-        // }
-        // println!("Pointer move absolute: {:?}", pos);
         pointer.motion(
             self,
             under,
@@ -808,11 +809,6 @@ impl ScreenComposer<UdevData> {
                         self.backend_data.reset_buffers(&output);
                     }
                 }
-                KeyAction::ToggleTint => {
-                    let mut debug_flags = self.backend_data.debug_flags();
-                    debug_flags.toggle(DebugFlags::TINT);
-                    self.backend_data.set_debug_flags(debug_flags);
-                }
                 KeyAction::ApplicationSwitchNext => {
                     self.workspace.app_switcher.next();
                 }
@@ -844,7 +840,6 @@ impl ScreenComposer<UdevData> {
                     KeyAction::None
                     | KeyAction::Quit
                     | KeyAction::Run(_)
-                    | KeyAction::TogglePreview
                     | KeyAction::ToggleDecorations => self.process_common_key_action(action),
 
                     _ => unreachable!(),
@@ -1382,9 +1377,7 @@ enum KeyAction {
     Screen(usize),
     ScaleUp,
     ScaleDown,
-    TogglePreview,
     RotateOutput,
-    ToggleTint,
     ToggleDecorations,
     ApplicationSwitchNext,
     ApplicationSwitchPrev,
@@ -1397,6 +1390,7 @@ enum KeyAction {
 }
 
 fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Option<KeyAction> {
+
     if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace
         || modifiers.logo && keysym == Keysym::q
     {
@@ -1410,19 +1404,17 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         ))
     } else if modifiers.logo && keysym == Keysym::Return {
         // run terminal
-        Some(KeyAction::Run("weston-terminal".into()))
+        Config::with(|config| {
+            Some(KeyAction::Run(config.terminal_bin.clone()))
+        })
     } else if modifiers.logo && (xkb::KEY_1..=xkb::KEY_9).contains(&keysym.raw()) {
         Some(KeyAction::Screen((keysym.raw() - xkb::KEY_1) as usize))
     } else if modifiers.logo && modifiers.shift && keysym == Keysym::M {
         Some(KeyAction::ScaleDown)
     } else if modifiers.logo && modifiers.shift && keysym == Keysym::P {
         Some(KeyAction::ScaleUp)
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::W {
-        Some(KeyAction::TogglePreview)
     } else if modifiers.logo && modifiers.shift && keysym == Keysym::R {
         Some(KeyAction::RotateOutput)
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::T {
-        Some(KeyAction::ToggleTint)
     } else if modifiers.logo && modifiers.shift && keysym == Keysym::D {
         Some(KeyAction::ToggleDecorations)
     } else if modifiers.alt && keysym == Keysym::Tab {

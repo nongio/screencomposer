@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 
+use layers::prelude::{Easing, TimingFunction, Transition};
 use smithay::{
     desktop::{
         find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
@@ -314,7 +315,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     .decoration_mode
                     .map(|mode| mode == Mode::ServerSide)
                     .unwrap_or(false);
-                // window.set_ssd(is_ssd);
+                // window.set_ssd(false);
                 self.update_workspace_applications();
             }
         }
@@ -372,6 +373,20 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     .unwrap()
                     .set(window.clone());
                 trace!("Fullscreening: {:?}", window);
+
+                let id = surface.wl_surface().id();
+                if let Some(_window_layer_id) = self.workspace.windows_layer.id() {
+                    if let Some(view) = self.get_window_view(&id) {
+                        view.layer.set_position(
+                            layers::types::Point { x: 0.0, y: 0.0 },
+                            Some(Transition {
+                                delay: 0.0,
+                                duration: 0.4,
+                                timing: TimingFunction::Easing(Easing::ease_out()),
+                            }),
+                        );
+                    }
+                }
             }
         }
 
@@ -400,6 +415,24 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 trace!("Unfullscreening: {:?}", fullscreen.get());
                 fullscreen.clear();
                 self.backend_data.reset_buffers(&output);
+
+                let id = surface.wl_surface().id();
+                if let Some(_window_layer_id) = self.workspace.windows_layer.id() {
+                    if let Some(view) = self.get_window_view(&id) {
+                        let state = view.view_base.get_state();
+                        view.layer.set_position(
+                            layers::types::Point {
+                                x: state.x,
+                                y: state.y,
+                            },
+                            Some(Transition {
+                                delay: 0.0,
+                                duration: 0.4,
+                                timing: TimingFunction::Easing(Easing::ease_out()),
+                            }),
+                        );
+                    }
+                }
             }
         }
 
@@ -415,6 +448,18 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             .contains(xdg_toplevel::WmCapabilities::Maximize)
         {
             let window = self.window_for_surface(surface.wl_surface()).unwrap();
+
+
+            let current_element_geometry = self.space.element_geometry(&window).unwrap();
+            let id = surface.wl_surface().id();
+            if let Some(view) = self.mut_window_view(&id) {
+                view.unmaximized_rect = layers::prelude::Rectangle {
+                    x: current_element_geometry.loc.x as f32,
+                    y: current_element_geometry.loc.y as f32,
+                    width: current_element_geometry.size.w as f32,
+                    height: current_element_geometry.size.h as f32,
+                };
+            }
             let outputs_for_window = self.space.outputs_for_element(&window);
             let output = outputs_for_window
                 .first()
@@ -422,27 +467,28 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 .or_else(|| self.space.outputs().next())
                 // Assumes that at least one output exists
                 .expect("No outputs found");
-            let geometry = self.space.output_geometry(output).unwrap();
+            let new_geometry = self.space.output_geometry(output).unwrap();
 
             surface.with_pending_state(|state| {
                 state.states.set(xdg_toplevel::State::Maximized);
-                state.size = Some(geometry.size);
+                state.size = Some(new_geometry.size);
             });
-            let location = geometry
+            
+
+            let new_location = new_geometry
                 .loc
                 .to_f64()
                 .to_physical(output.current_scale().fractional_scale());
-            self.space.map_element(window, geometry.loc, true);
-
-            let id = surface.wl_surface().id();
+            self.space.map_element(window, new_geometry.loc, true);
+            
             if let Some(_window_layer_id) = self.workspace.windows_layer.id() {
                 if let Some(view) = self.get_window_view(&id) {
                     view.layer.set_position(
                         layers::types::Point {
-                            x: location.x as f32,
-                            y: location.y as f32,
+                            x: new_location.x as f32,
+                            y: new_location.y as f32,
                         },
-                        None,
+                        Some(Transition::default()),
                     );
                 }
             }
@@ -462,40 +508,35 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             return;
         }
 
-        surface.with_pending_state(|state| {
-            state.states.unset(xdg_toplevel::State::Maximized);
-            state.size = None;
-        });
-
         let id = surface.wl_surface().id();
         let window = self.window_for_surface(surface.wl_surface()).unwrap();
+        if let Some(view) = self.get_window_view(&id) {
+            surface.with_pending_state(|state| {
+                state.states.unset(xdg_toplevel::State::Maximized);
+                state.size = Some((view.unmaximized_rect.width as i32, view.unmaximized_rect.height as i32).into());
+            });
+            if let Some(_window_layer_id) = self.workspace.windows_layer.id() {
+                let scale = self
+                    .space
+                    .outputs_for_element(&window)
+                    .first()
+                    .unwrap()
+                    .current_scale()
+                    .fractional_scale();
 
-        if let Some(_window_layer_id) = self.workspace.windows_layer.id() {
-            let scale = self
-                .space
-                .outputs_for_element(&window)
-                .first()
-                .unwrap()
-                .current_scale()
-                .fractional_scale();
+                    self.space.map_element(window, (view.unmaximized_rect.x as i32, view.unmaximized_rect.y as i32), true);
 
-            let location = self
-                .space
-                .element_location(&window)
-                .unwrap_or_default()
-                .to_f64()
-                .to_physical(scale);
-            if let Some(view) = self.get_window_view(&id) {
-                view.layer.set_position(
-                    layers::types::Point {
-                        x: location.x as f32,
-                        y: location.y as f32,
-                    },
-                    None,
-                );
+                if let Some(view) = self.get_window_view(&id) {
+                    view.layer.set_position(
+                        layers::types::Point {
+                            x: view.unmaximized_rect.x * scale as f32,
+                            y: view.unmaximized_rect.y * scale as f32,
+                        },
+                        Some(Transition::default()),
+                    );
+                }
             }
         }
-
         surface.send_pending_configure();
     }
 
