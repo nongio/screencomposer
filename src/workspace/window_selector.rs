@@ -5,7 +5,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use crate::{interactive_view::ViewInteractions, utils::Observer};
+use crate::{config::Config, interactive_view::ViewInteractions, utils::Observer};
 
 use super::Workspace;
 
@@ -150,14 +150,16 @@ pub fn view_window_selector(
     state: &WindowSelectorState,
     _view: &View<WindowSelectorState>,
 ) -> ViewLayer {
-    const FONT_SIZE: f32 = 24.0;
+    let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
+
+    let font_size: f32 = 24.0 * draw_scale;
     let current = state
         .current_selection
         .map(|x| state.rects.get(x).unwrap().clone())
         .map(|window_selection| {
-            let mut paragraph = get_paragraph_for_text(&window_selection.window_title, FONT_SIZE);
+            let mut paragraph = get_paragraph_for_text(&window_selection.window_title, font_size);
 
-            paragraph.layout(1000.0);
+            paragraph.layout(1000.0 * draw_scale);
             let range: std::ops::Range<usize> = 0..window_selection.window_title.len();
             let rects = paragraph.get_rects_for_range(
                 range,
@@ -180,7 +182,7 @@ pub fn view_window_selector(
             let color = skia_safe::Color4f::new(85.0 / 255.0, 150.0 / 255.0, 244.0 / 255.0, 1.0);
             let mut paint = skia_safe::Paint::new(color, None);
             paint.set_stroke(true);
-            paint.set_stroke_width(10.0);
+            paint.set_stroke_width(10.0 * draw_scale);
             let rrect = skia_safe::RRect::new_rect_xy(
                 skia_safe::Rect::from_xywh(
                     window_selection.x,
@@ -188,8 +190,8 @@ pub fn view_window_selector(
                     window_selection.w,
                     window_selection.h,
                 ),
-                15.0,
-                15.0,
+                15.0 * draw_scale,
+                15.0 * draw_scale,
             );
 
             canvas.draw_rrect(rrect, &paint);
@@ -197,8 +199,8 @@ pub fn view_window_selector(
         skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
     });
 
-    const TEXT_PADDING_X: f32 = 10.0;
-    const TEXT_PADDING_Y: f32 = 5.0;
+    let text_padding_x: f32 = 10.0 * draw_scale;
+    let text_padding_y: f32 = 5.0 * draw_scale;
     // let text_x = 0.0;
     // let text_y = 0.0;
     let (text_rect, text_bounding_box) = current
@@ -209,19 +211,19 @@ pub fn view_window_selector(
         if text_bounding_box.width() == 0.0 {
             0.0
         } else {
-            text_bounding_box.width() + TEXT_PADDING_X * 2.0
+            text_bounding_box.width() + text_padding_x * 2.0
         },
         if text_bounding_box.height() == 0.0 {
             0.0
         } else {
-            text_bounding_box.height() + TEXT_PADDING_Y * 2.0
+            text_bounding_box.height() + text_padding_y * 2.0
         },
     );
     ViewLayerBuilder::default()
         .key("window_selector_view")
         .position(((0.0, 0.0).into(), None))
         .size((layers::types::Size::percent(1.0, 1.0), None))
-        .border_width((10.0, None))
+        .border_width((10.0 * draw_scale, None))
         .content(draw_container)
         .children(vec![ViewLayerBuilder::default()
             .key("window_selector_label")
@@ -239,7 +241,7 @@ pub fn view_window_selector(
             ))
             .size((text_layer_size, None))
             .blend_mode(layers::prelude::BlendMode::BackgroundBlur)
-            .border_corner_radius((BorderRadius::new_single(10.0), None))
+            .border_corner_radius((BorderRadius::new_single(10.0 * draw_scale), None))
             .background_color((
                 PaintColor::Solid {
                     color: Color::new_rgba(1.0, 1.0, 1.0, 0.4),
@@ -251,13 +253,13 @@ pub fn view_window_selector(
             .shadow_radius((5.0, None))
             // .shadow_spread((10.0, None))
             .content(Some(move |canvas: &skia_safe::Canvas, w, h| {
-                let mut paragraph = get_paragraph_for_text(&text_rect.window_title, FONT_SIZE);
+                let mut paragraph = get_paragraph_for_text(&text_rect.window_title, font_size);
                 paragraph.layout(w);
                 // let text_x = TEXT_PADDING_X;
-                let text_y = TEXT_PADDING_Y;
+                let text_y = text_padding_y;
 
                 paragraph.paint(canvas, (0.0, text_y));
-                let safe = 200.0;
+                let safe = 200.0 * draw_scale;
                 skia_safe::Rect::from_xywh(-safe, -safe, w + safe * 2.0, h + safe * 2.0)
             }))
             .build()
@@ -282,14 +284,16 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
         event: &smithay::input::pointer::MotionEvent,
     ) {
         let mut state = self.view.get_state().clone();
+        let screen_scale = Config::with(|config| config.screen_scale);
+        let location = event.location.to_physical(screen_scale);
         let rect = state
             .rects
             .iter()
             .find(|rect| {
-                if rect.x < event.location.x as f32
-                    && rect.x + rect.w > event.location.x as f32
-                    && rect.y < event.location.y as f32
-                    && rect.y + rect.h > event.location.y as f32
+                if rect.x < location.x as f32
+                    && rect.x + rect.w > location.x as f32
+                    && rect.y < location.y as f32
+                    && rect.y + rect.h > location.y as f32
                 {
                     state.current_selection = Some(rect.index);
                     let cursor = CursorImageStatus::Named(CursorIcon::Pointer);
