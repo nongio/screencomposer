@@ -377,6 +377,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
         _focus: Option<(PointerFocusTarget<B>, Point<f64, Logical>)>,
         event: &MotionEvent,
     ) {
+        data.is_resizing = true;
         // While the grab is active, no client has pointer focus
         handle.motion(data, None, event);
 
@@ -476,6 +477,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
     ) {
         handle.button(data, event);
         if handle.current_pressed().is_empty() {
+            data.is_resizing = false;
             // No more buttons are pressed, release the grab.
             handle.unset_grab(self, data, event.serial, event.time, true);
 
@@ -812,6 +814,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
         let left_right = ResizeEdge::LEFT | ResizeEdge::RIGHT;
         let top_bottom = ResizeEdge::TOP | ResizeEdge::BOTTOM;
 
+        // println!("new_window_width: {}, new_window_height: {}", new_window_width, new_window_height);
         if self.edges.intersects(left_right) {
             if self.edges.intersects(ResizeEdge::LEFT) {
                 dx = -dx;

@@ -209,6 +209,7 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub show_desktop: bool,
     pub is_swiping: bool,
     pub is_pinching: bool,
+    pub is_resizing: bool,
 }
 
 delegate_compositor!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
@@ -770,6 +771,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             // support variables for gestures
             is_swiping: false,
             is_pinching: false,
+            is_resizing: false,
         }
     }
 
@@ -839,7 +841,9 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             let state = wv.view_base.state.read().unwrap();
             (we, wv.layer.clone(), state.clone())
         });
-        self.workspace.update_with_window_elements(windows);
+        if !self.is_resizing {
+            self.workspace.update_with_window_elements(windows);
+        }
     }
     #[profiling::function]
     fn window_view_for_surface(
