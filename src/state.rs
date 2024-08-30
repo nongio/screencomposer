@@ -9,7 +9,6 @@ use std::{
 use layers::{
     engine::{LayersEngine, NodeRef},
     prelude::{taffy, Transition},
-    types::Point,
 };
 use tracing::{info, warn};
 
@@ -42,7 +41,7 @@ use smithay::{
     },
     input::{
         keyboard::{Keysym, XkbConfig},
-        pointer::{CursorImageAttributes, CursorImageStatus, PointerHandle},
+        pointer::{CursorIcon, CursorImageAttributes, CursorImageStatus, PointerHandle},
         Seat, SeatHandler, SeatState,
     },
     output::Output,
@@ -54,11 +53,14 @@ use smithay::{
         },
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason, ObjectId},
-            protocol::{wl_data_source::WlDataSource, wl_surface::WlSurface},
+            protocol::{
+                wl_data_device_manager::DndAction, wl_data_source::WlDataSource,
+                wl_surface::WlSurface,
+            },
             Display, DisplayHandle, Resource,
         },
     },
-    utils::{Clock, Monotonic, Rectangle},
+    utils::{self, Clock, Monotonic, Rectangle},
     wayland::{
         compositor::{
             self, get_parent, with_states, CompositorClientState, CompositorState,
@@ -119,6 +121,7 @@ use smithay::{
 #[cfg(feature = "xwayland")]
 use crate::cursor::Cursor;
 use crate::{
+    config::Config,
     focus::{KeyboardFocusTarget, PointerFocusTarget},
     render_elements::scene_element::SceneElement,
     shell::WindowElement,
@@ -222,6 +225,34 @@ impl<BackendData: Backend> DataDeviceHandler for ScreenComposer<BackendData> {
     fn data_device_state(&self) -> &DataDeviceState {
         &self.data_device_state
     }
+    fn action_choice(
+        &mut self,
+        available: smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction,
+        preferred: smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction,
+    ) -> smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction {
+        // println!("available {:?} preferred {:?}", available, preferred);
+        // if the preferred action is valid (a single action) and in the available actions, use it
+        // otherwise, follow a fallback stategy
+
+        if [DndAction::Move, DndAction::Copy, DndAction::Ask].contains(&preferred)
+            && available.contains(preferred)
+        {
+            self.load_cursor_for_action(preferred);
+            preferred
+        } else if available.contains(DndAction::Ask) {
+            self.load_cursor_for_action(DndAction::Ask);
+            DndAction::Ask
+        } else if available.contains(DndAction::Copy) {
+            self.load_cursor_for_action(DndAction::Copy);
+            DndAction::Copy
+        } else if available.contains(DndAction::Move) {
+            self.load_cursor_for_action(DndAction::Move);
+            DndAction::Move
+        } else {
+            self.load_cursor_for_action(DndAction::None);
+            DndAction::empty()
+        }
+    }
 }
 
 impl<BackendData: Backend> ClientDndGrabHandler for ScreenComposer<BackendData> {
@@ -232,8 +263,9 @@ impl<BackendData: Backend> ClientDndGrabHandler for ScreenComposer<BackendData> 
         _seat: Seat<Self>,
     ) {
         self.dnd_icon = icon;
-        self.dnd_view
-            .set_initial_position(self.get_cursor_position());
+        let p = self.get_cursor_position();
+        let p = (p.x as f32, p.y as f32).into();
+        self.dnd_view.set_initial_position(p);
         self.dnd_view.layer.set_scale((1.0, 1.0), None);
 
         self.dnd_view
@@ -294,6 +326,24 @@ impl<BackendData: Backend> SelectionHandler for ScreenComposer<BackendData> {
             }
         }
     }
+    fn new_selection(
+        &mut self,
+        ty: smithay::wayland::selection::SelectionTarget,
+        source: Option<smithay::wayland::selection::SelectionSource>,
+        _seat: Seat<Self>,
+    ) {
+        println!("new_selection {:?} {:?}", ty, source);
+    }
+    fn send_selection(
+        &mut self,
+        ty: smithay::wayland::selection::SelectionTarget,
+        mime_type: String,
+        fd: OwnedFd,
+        _seat: Seat<Self>,
+        _user_data: &Self::SelectionUserData,
+    ) {
+        println!("send_selection {:?} {:?} {:?}", ty, mime_type, fd);
+    }
 }
 
 impl<BackendData: Backend> PrimarySelectionHandler for ScreenComposer<BackendData> {
@@ -343,6 +393,13 @@ impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
         *self.cursor_status.lock().unwrap() = image;
+    }
+    fn led_state_changed(
+        &mut self,
+        _seat: &Seat<Self>,
+        _led_state: smithay::input::keyboard::LedState,
+    ) {
+        println!("keyboard led_state_changed {:?}", _led_state);
     }
 }
 delegate_seat!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
@@ -1003,13 +1060,17 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         }
 
         if let Some(dnd_surface) = self.dnd_icon.as_ref() {
-            let render_elements = self.get_render_elements(dnd_surface);
+            let cursor_position = self.get_cursor_position();
+
+            let scale = Config::with(|c| c.screen_scale);
+            let render_elements = self.get_render_elements(dnd_surface, scale);
             self.dnd_view
                 .view_content
                 .update_state(render_elements.into());
 
-            let cursor_position = self.get_cursor_position();
-            self.dnd_view.layer.set_position(cursor_position, None);
+            self.dnd_view
+                .layer
+                .set_position((cursor_position.x as f32, cursor_position.y as f32), None);
         }
     }
 
@@ -1047,7 +1108,23 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         self.backend_data.set_cursor(image);
     }
 
-    pub fn get_cursor_position(&self) -> Point {
+    pub fn load_cursor_for_action(
+        &mut self,
+        action: smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction,
+    ) {
+        let cursor = if action == DndAction::Copy {
+            CursorImageStatus::Named(CursorIcon::Copy)
+        } else if action == DndAction::Move {
+            CursorImageStatus::Named(CursorIcon::Move)
+        } else if action == DndAction::Ask {
+            CursorImageStatus::Named(CursorIcon::Help)
+        } else {
+            CursorImageStatus::Hidden
+        };
+        self.set_cursor(&cursor);
+    }
+
+    pub fn get_cursor_position(&self) -> utils::Point<f64, utils::Physical> {
         let cursor_guard: std::sync::MutexGuard<CursorImageStatus> =
             self.cursor_status.lock().unwrap();
         let cursor_hotspot = if let CursorImageStatus::Surface(ref surface) = *cursor_guard {
@@ -1067,14 +1144,17 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         let cursor_pos = self.pointer.current_location() - cursor_hotspot.to_f64();
         let output = self.space.output_under(cursor_pos).next().cloned().unwrap();
         let scale = output.current_scale().fractional_scale();
-        let cursor_pos_scaled = cursor_pos.to_physical(scale).to_f64();
-        Point::from((cursor_pos_scaled.x as f32, cursor_pos_scaled.y as f32))
+
+        cursor_pos.to_physical(scale).to_f64()
     }
 
-    pub fn get_render_elements(&self, surface: &WlSurface) -> VecDeque<WindowViewSurface> {
+    pub fn get_render_elements(
+        &self,
+        surface: &WlSurface,
+        scale_factor: f64,
+    ) -> VecDeque<WindowViewSurface> {
         let initial_location: smithay::utils::Point<f64, smithay::utils::Physical> =
             (0.0, 0.0).into();
-        let scale_factor = 1.0;
         let mut render_elements = VecDeque::new();
 
         smithay::wayland::compositor::with_surface_tree_downward(

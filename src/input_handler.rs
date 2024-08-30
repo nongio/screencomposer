@@ -78,10 +78,11 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                 self.running.store(false, Ordering::SeqCst);
             }
 
-            KeyAction::Run(cmd) => {
+            KeyAction::Run((cmd, args)) => {
                 info!(cmd, "Starting program");
 
                 if let Err(e) = Command::new(&cmd)
+                    .args(args)
                     .envs(
                         self.socket_name
                             .clone()
@@ -1375,7 +1376,7 @@ enum KeyAction {
     /// Trigger a vt-switch
     VtSwitch(i32),
     /// run a command
-    Run(String),
+    Run((String, Vec<String>)),
     /// Switch the current screen
     Screen(usize),
     ScaleUp,
@@ -1393,6 +1394,7 @@ enum KeyAction {
 }
 
 fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Option<KeyAction> {
+    let config = Config::with(|c| c.clone());
     if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace
         || modifiers.logo && keysym == Keysym::q
     {
@@ -1404,9 +1406,18 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::VtSwitch(
             (keysym.raw() - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
         ))
-    } else if modifiers.logo && keysym == Keysym::Return {
+    } else if modifiers.logo && modifiers.shift && keysym == Keysym::Return {
         // run terminal
-        Config::with(|config| Some(KeyAction::Run(config.terminal_bin.clone())))
+        let terminal_bin = config.terminal_bin.clone();
+        Some(KeyAction::Run((terminal_bin, vec![])))
+    } else if modifiers.logo && modifiers.shift && keysym == Keysym::space {
+        let file_manager_bin = config.file_manager_bin.clone();
+        Some(KeyAction::Run((file_manager_bin, vec![])))
+        // run terminal
+    } else if modifiers.logo && modifiers.shift && keysym == Keysym::B {
+        let browser_bin = config.browser_bin.clone();
+        let browser_args = config.browser_args.clone();
+        Some(KeyAction::Run((browser_bin, browser_args)))
     } else if modifiers.logo && (xkb::KEY_1..=xkb::KEY_9).contains(&keysym.raw()) {
         Some(KeyAction::Screen((keysym.raw() - xkb::KEY_1) as usize))
     } else if modifiers.logo && modifiers.shift && keysym == Keysym::M {

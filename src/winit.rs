@@ -460,12 +460,19 @@ pub fn run_winit() {
                 #[cfg(feature = "profile-with-puffin")]
                 profiling::puffin::profile_scope!("render_output");
 
-                render_output(&output, space, elements, renderer, damage_tracker, age).map_err(
-                    |err| match err {
-                        OutputDamageTrackerError::Rendering(err) => err.into(),
-                        _ => unreachable!(),
-                    },
+                render_output(
+                    &output,
+                    space,
+                    elements,
+                    state.dnd_icon.as_ref(),
+                    renderer,
+                    damage_tracker,
+                    age,
                 )
+                .map_err(|err| match err {
+                    OutputDamageTrackerError::Rendering(err) => err.into(),
+                    _ => unreachable!(),
+                })
             });
 
             match render_res {

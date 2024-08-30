@@ -1524,12 +1524,11 @@ impl ScreenComposer<UdevData> {
             return;
         };
 
-        let output_scale = output.current_scale().fractional_scale();
-        let integer_scale = output_scale.round() as u32;
+        // let output_scale = output.current_scale().fractional_scale();
+        // let integer_scale = output_scale.round() as u32;
         let config_scale = Config::with(|c| c.screen_scale);
 
         // TODO get scale from the rendersurface when supporting HiDPI
-        println!("getting cursor image: {}", integer_scale);
         let cursor_frame = self
             .backend_data
             .cursor_manager
@@ -1576,7 +1575,7 @@ impl ScreenComposer<UdevData> {
             // &pointer_image,
             &mut self.backend_data.pointer_element,
             pointer_scale,
-            &self.dnd_icon,
+            self.dnd_icon.as_ref(),
             &mut self.cursor_status.lock().unwrap(),
             &self.clock,
             self.scene_element.clone(),
@@ -1686,7 +1685,7 @@ fn render_surface<'a, 'b>(
     pointer_location: Point<f64, Logical>,
     pointer_element: &mut PointerElement<MultiTexture>,
     _pointer_scale: f64,
-    _dnd_icon: &Option<wl_surface::WlSurface>,
+    dnd_icon: Option<&wl_surface::WlSurface>,
     cursor_status: &mut CursorImageStatus,
     clock: &Clock<Monotonic>,
     scene_element: SceneElement,
@@ -1820,7 +1819,7 @@ fn render_surface<'a, 'b>(
         .into_iter()
         .map(OutputRenderElements::from)
         .collect::<Vec<_>>();
-    let (elements, clear_color) = output_elements(output, space, elements, renderer);
+    let (elements, clear_color) = output_elements(output, space, elements, dnd_icon, renderer);
 
     let SurfaceCompositorRenderResult {
         rendered,

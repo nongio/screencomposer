@@ -2,6 +2,8 @@ use smithay::{
     backend::renderer::{
         damage::{Error as OutputDamageTrackerError, OutputDamageTracker, RenderOutputResult},
         element::{
+            self,
+            surface::render_elements_from_surface_tree,
             utils::{
                 ConstrainAlign, ConstrainScaleBehavior, CropRenderElement, RelocateRenderElement,
                 RescaleRenderElement,
@@ -12,11 +14,12 @@ use smithay::{
     },
     desktop::space::{constrain_space_element, ConstrainBehavior, ConstrainReference, Space},
     output::Output,
-    utils::{Point, Rectangle, Size},
+    reexports::wayland_server::protocol::wl_surface,
+    utils::{self, Point, Rectangle, Size},
 };
 
 use crate::{
-    drawing::{CLEAR_COLOR, CLEAR_COLOR_FULLSCREEN},
+    drawing::{PointerRenderElement, CLEAR_COLOR, CLEAR_COLOR_FULLSCREEN},
     render_elements::{
         output_render_elements::OutputRenderElements, scene_element::SceneElement,
         skia_element::SkiaElement,
@@ -96,6 +99,7 @@ pub fn output_elements<'frame, R>(
     custom_elements: impl IntoIterator<
         Item = impl Into<OutputRenderElements<'frame, R, WindowRenderElement<R>>>,
     >,
+    dnd: Option<&wl_surface::WlSurface>,
     renderer: &mut R,
 ) -> (
     Vec<OutputRenderElements<'frame, R, WindowRenderElement<R>>>,
@@ -129,7 +133,17 @@ where
             .into_iter()
             .map(|e| e.into())
             .collect::<Vec<_>>();
-
+        let _dnd_element = dnd.map(|dnd| {
+            let location: utils::Point<i32, utils::Physical> = (0_i32, 0_i32).into();
+            let _pointer_element = render_elements_from_surface_tree::<R, PointerRenderElement<R>>(
+                renderer,
+                dnd,
+                location,
+                1.0,
+                1.0,
+                element::Kind::Unspecified,
+            );
+        });
         let _space_elements =
             smithay::desktop::space::space_render_elements::<_, WindowElement, _>(
                 renderer,
@@ -152,6 +166,7 @@ pub fn render_output<'frame, R>(
     custom_elements: impl IntoIterator<
         Item = impl Into<OutputRenderElements<'frame, R, WindowRenderElement<R>>>,
     >,
+    dnd: Option<&wl_surface::WlSurface>,
     renderer: &mut R,
     damage_tracker: &'frame mut OutputDamageTracker,
     age: usize,
@@ -166,7 +181,7 @@ where
     <R as smithay::backend::renderer::Renderer>::Error:
         (From<smithay::backend::renderer::gles::GlesError>),
 {
-    let (elements, clear_color) = output_elements(output, space, custom_elements, renderer);
+    let (elements, clear_color) = output_elements(output, space, custom_elements, dnd, renderer);
 
     // let clear_color: [f32; 4] = [0.8, 0.8, 0.9, 1.0];
     // let elements: Vec<OutputRenderElements<'frame, R, WindowRenderElement<R>>> = custom_elements
