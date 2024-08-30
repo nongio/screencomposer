@@ -67,7 +67,7 @@ version = "0.12.0"
 
 
 [features]
-default = ["egl", "winit", "x11", "udev", "debug", "profile-with-puffin", "xwayland"]
+default = ["egl", "winit", "x11", "udev", "debug", "profile-with-puffin"]
 debug = ["fps_ticker", "image/png", "renderdoc"]
 egl = ["smithay/use_system_lib", "smithay/backend_egl"]
 test_all_features = ["default", "debug"]
