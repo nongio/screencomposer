@@ -1,7 +1,10 @@
 use std::{convert::TryInto, process::Command, sync::atomic::Ordering};
 
 use crate::{
-    config::{Config}, focus::PointerFocusTarget, shell::{FullscreenSurface, WindowElement}, ScreenComposer
+    config::Config,
+    focus::PointerFocusTarget,
+    shell::{FullscreenSurface, WindowElement},
+    ScreenComposer,
 };
 
 #[cfg(feature = "udev")]
@@ -1390,7 +1393,6 @@ enum KeyAction {
 }
 
 fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Option<KeyAction> {
-
     if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace
         || modifiers.logo && keysym == Keysym::q
     {
@@ -1404,9 +1406,7 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         ))
     } else if modifiers.logo && keysym == Keysym::Return {
         // run terminal
-        Config::with(|config| {
-            Some(KeyAction::Run(config.terminal_bin.clone()))
-        })
+        Config::with(|config| Some(KeyAction::Run(config.terminal_bin.clone())))
     } else if modifiers.logo && (xkb::KEY_1..=xkb::KEY_9).contains(&keysym.raw()) {
         Some(KeyAction::Screen((keysym.raw() - xkb::KEY_1) as usize))
     } else if modifiers.logo && modifiers.shift && keysym == Keysym::M {

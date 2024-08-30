@@ -19,12 +19,8 @@ pub struct Cursor {
 
 impl Cursor {
     pub fn load() -> Cursor {
-        let cursor_theme_name = Config::with(|config| {
-            config.cursor_theme.clone()
-        });
-        let size = Config::with(|config| {
-            config.cursor_size
-        });
+        let cursor_theme_name = Config::with(|config| config.cursor_theme.clone());
+        let size = Config::with(|config| config.cursor_size);
 
         let theme = CursorTheme::load(&cursor_theme_name);
         let default_cursor = load_icon(&theme, "default")

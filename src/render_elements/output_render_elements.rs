@@ -12,8 +12,8 @@ use smithay::{
 use crate::{shell::WindowRenderElement, skia_renderer::SkiaFrame};
 
 use super::{
-    workspace_render_elements::WorkspaceRenderElements, scene_element::SceneElement,
-    skia_element::SkiaElement,
+    scene_element::SceneElement, skia_element::SkiaElement,
+    workspace_render_elements::WorkspaceRenderElements,
 };
 
 smithay::backend::renderer::element::render_elements! {

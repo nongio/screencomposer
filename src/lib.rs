@@ -26,5 +26,5 @@ pub mod x11;
 pub use state::{CalloopData, ClientState, ScreenComposer};
 mod workspace;
 
-mod utils;
 mod config;
+mod utils;

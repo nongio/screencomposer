@@ -449,7 +449,6 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         {
             let window = self.window_for_surface(surface.wl_surface()).unwrap();
 
-
             let current_element_geometry = self.space.element_geometry(&window).unwrap();
             let id = surface.wl_surface().id();
             if let Some(view) = self.mut_window_view(&id) {
@@ -473,14 +472,13 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 state.states.set(xdg_toplevel::State::Maximized);
                 state.size = Some(new_geometry.size);
             });
-            
 
             let new_location = new_geometry
                 .loc
                 .to_f64()
                 .to_physical(output.current_scale().fractional_scale());
             self.space.map_element(window, new_geometry.loc, true);
-            
+
             if let Some(_window_layer_id) = self.workspace.windows_layer.id() {
                 if let Some(view) = self.get_window_view(&id) {
                     view.layer.set_position(
@@ -513,7 +511,13 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         if let Some(view) = self.get_window_view(&id) {
             surface.with_pending_state(|state| {
                 state.states.unset(xdg_toplevel::State::Maximized);
-                state.size = Some((view.unmaximized_rect.width as i32, view.unmaximized_rect.height as i32).into());
+                state.size = Some(
+                    (
+                        view.unmaximized_rect.width as i32,
+                        view.unmaximized_rect.height as i32,
+                    )
+                        .into(),
+                );
             });
             if let Some(_window_layer_id) = self.workspace.windows_layer.id() {
                 let scale = self
@@ -524,7 +528,14 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     .current_scale()
                     .fractional_scale();
 
-                    self.space.map_element(window, (view.unmaximized_rect.x as i32, view.unmaximized_rect.y as i32), true);
+                self.space.map_element(
+                    window,
+                    (
+                        view.unmaximized_rect.x as i32,
+                        view.unmaximized_rect.y as i32,
+                    ),
+                    true,
+                );
 
                 if let Some(view) = self.get_window_view(&id) {
                     view.layer.set_position(

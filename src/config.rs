@@ -1,4 +1,3 @@
-
 #[derive(Debug)]
 pub struct Config {
     pub screen_scale: f64,
@@ -10,7 +9,7 @@ thread_local! {
     static CONFIG: Config = Config::init();
 }
 impl Config {
-    pub fn with<R>(f: impl FnOnce(&Config)->R) -> R {
+    pub fn with<R>(f: impl FnOnce(&Config) -> R) -> R {
         CONFIG.with(f)
     }
     fn init() -> Self {
@@ -27,5 +26,3 @@ impl Config {
         config
     }
 }
-
-

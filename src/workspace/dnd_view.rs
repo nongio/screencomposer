@@ -9,12 +9,12 @@ use crate::workspace::WindowViewSurface;
 
 #[derive(Clone)]
 pub struct DndView {
-    engine: layers::prelude::LayersEngine,
+    _engine: layers::prelude::LayersEngine,
     pub view_content: layers::prelude::View<Vec<WindowViewSurface>>,
 
     pub layer: layers::prelude::Layer,
     pub content_layer: layers::prelude::Layer,
-    parent_layer_noderef: NodeRef,
+    _parent_layer_noderef: NodeRef,
     pub initial_position: Point,
 }
 
@@ -45,10 +45,10 @@ impl DndView {
 
         Self {
             view_content,
-            engine: layers_engine,
+            _engine: layers_engine,
             layer,
             content_layer,
-            parent_layer_noderef,
+            _parent_layer_noderef: parent_layer_noderef,
             initial_position: Point::default(),
         }
     }

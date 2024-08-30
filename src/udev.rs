@@ -7,7 +7,12 @@ use std::{
 };
 
 use crate::{
-    config::Config, cursor::Cursor, render_elements::{output_render_elements::OutputRenderElements, scene_element::SceneElement}, shell::WindowRenderElement, skia_renderer::SkiaTexture, state::SurfaceDmabufFeedback
+    config::Config,
+    cursor::Cursor,
+    render_elements::{output_render_elements::OutputRenderElements, scene_element::SceneElement},
+    shell::WindowRenderElement,
+    skia_renderer::SkiaTexture,
+    state::SurfaceDmabufFeedback,
 };
 use crate::{
     drawing::*,
@@ -39,9 +44,14 @@ use smithay::{
         egl::{self, context::ContextPriority, EGLDevice, EGLDisplay},
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{
-            damage::{Error as OutputDamageTrackerError, OutputDamageTracker}, element::{
+            damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
+            element::{
                 texture::TextureBuffer, AsRenderElements, RenderElement, RenderElementStates,
-            }, multigpu::{gbm::GbmGlesBackend, GpuManager, MultiRenderer, MultiTexture}, sync::SyncPoint, utils::RendererSurfaceStateUserData, Bind, DebugFlags, ExportMem, ImportDma, ImportMemWl, Offscreen, Renderer
+            },
+            multigpu::{gbm::GbmGlesBackend, GpuManager, MultiRenderer, MultiTexture},
+            sync::SyncPoint,
+            utils::RendererSurfaceStateUserData,
+            Bind, DebugFlags, ExportMem, ImportDma, ImportMemWl, Offscreen, Renderer,
         },
         session::{
             libseat::{self, LibSeatSession},
@@ -51,10 +61,7 @@ use smithay::{
         SwapBuffersError,
     },
     delegate_dmabuf, delegate_drm_lease,
-    desktop::{
-        space::Space,
-        utils::OutputPresentationFeedback,
-    },
+    desktop::{space::Space, utils::OutputPresentationFeedback},
     input::pointer::{CursorImageAttributes, CursorImageStatus},
     output::{Mode as WlMode, Output, PhysicalProperties, Subpixel},
     reexports::{
@@ -1519,8 +1526,8 @@ impl ScreenComposer<UdevData> {
 
         let output_scale = output.current_scale().fractional_scale();
         let integer_scale = output_scale.round() as u32;
-        let config_scale = Config::with(|c|c.screen_scale);
-        
+        let config_scale = Config::with(|c| c.screen_scale);
+
         // TODO get scale from the rendersurface when supporting HiDPI
         println!("getting cursor image: {}", integer_scale);
         let cursor_frame = self
@@ -1529,7 +1536,6 @@ impl ScreenComposer<UdevData> {
             .get_image(config_scale as f32, self.clock.now().into());
 
         let pointer_width = cursor_frame.width as i32;
-
 
         let pointer_images = &mut self.backend_data.pointer_images;
         let pointer_image = pointer_images
@@ -1557,7 +1563,9 @@ impl ScreenComposer<UdevData> {
                 texture
             });
         // set cursor
-        self.backend_data.pointer_element.set_texture(pointer_image.clone());
+        self.backend_data
+            .pointer_element
+            .set_texture(pointer_image.clone());
         let pointer_scale = pointer_width as f64 / self.backend_data.cursor_manager.size as f64;
         let result = render_surface(
             surface,
@@ -1698,32 +1706,62 @@ fn render_surface<'a, 'b>(
             CursorImageStatus::Surface(ref surface) => {
                 compositor::with_states(surface, |states| {
                     let data = states.data_map.get::<RendererSurfaceStateUserData>();
-                    let (size, cursor_scale) = data.map(|data| {
-                        let data = data.lock().unwrap();
-                        if let Some(view) = data.view().as_ref() {
-                            let surface_scale = data.buffer_scale() as f64;
-                            // println!("surface_scale: {}", surface_scale);
-                            let src_view = view.src.to_physical(surface_scale);
-                            (src_view.size, surface_scale)
-                        } else {
-                            ((cursor_config_size as f64, cursor_config_size as f64).into(), 1.0)
-                        }
-                    }).unwrap_or_else(|| ((cursor_config_size as f64 * output_scale, cursor_config_size as f64 * output_scale).into(), 1.0));
-                    (size, 
-                    states
-                        .data_map
-                        .get::<Mutex<CursorImageAttributes>>()
-                        .unwrap()
-                        .lock()
-                        .unwrap()
-                        .hotspot.to_f64().to_physical(cursor_scale))
+                    let (size, cursor_scale) = data
+                        .map(|data| {
+                            let data = data.lock().unwrap();
+                            if let Some(view) = data.view().as_ref() {
+                                let surface_scale = data.buffer_scale() as f64;
+                                // println!("surface_scale: {}", surface_scale);
+                                let src_view = view.src.to_physical(surface_scale);
+                                (src_view.size, surface_scale)
+                            } else {
+                                (
+                                    (cursor_config_size as f64, cursor_config_size as f64).into(),
+                                    1.0,
+                                )
+                            }
+                        })
+                        .unwrap_or_else(|| {
+                            (
+                                (
+                                    cursor_config_size as f64 * output_scale,
+                                    cursor_config_size as f64 * output_scale,
+                                )
+                                    .into(),
+                                1.0,
+                            )
+                        });
+                    (
+                        size,
+                        states
+                            .data_map
+                            .get::<Mutex<CursorImageAttributes>>()
+                            .unwrap()
+                            .lock()
+                            .unwrap()
+                            .hotspot
+                            .to_f64()
+                            .to_physical(cursor_scale),
+                    )
                 })
             }
             CursorImageStatus::Named(_) => {
-                let cursor_image = pointer_element.cursor_manager.get_image(output_scale as f32, clock.now().into());
-                ((cursor_image.width as f64, cursor_image.height as f64).into(), (cursor_image.xhot as f64, cursor_image.yhot as f64).into())
+                let cursor_image = pointer_element
+                    .cursor_manager
+                    .get_image(output_scale as f32, clock.now().into());
+                (
+                    (cursor_image.width as f64, cursor_image.height as f64).into(),
+                    (cursor_image.xhot as f64, cursor_image.yhot as f64).into(),
+                )
             }
-            _ => ((cursor_config_size as f64 * output_scale, cursor_config_size as f64 * output_scale).into(), (0.0, 0.0).into())
+            _ => (
+                (
+                    cursor_config_size as f64 * output_scale,
+                    cursor_config_size as f64 * output_scale,
+                )
+                    .into(),
+                (0.0, 0.0).into(),
+            ),
         };
         let cursor_pos = pointer_location - output_geometry.loc.to_f64();
         let cursor_pos_scaled = (cursor_pos.to_physical(scale) - cursor_hotspot).to_i32_round();

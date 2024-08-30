@@ -48,7 +48,12 @@ use smithay::{
 use tracing::{error, info, warn};
 
 use crate::{
-    config::Config, drawing::*, render::*, render_elements::workspace_render_elements::WorkspaceRenderElements, skia_renderer::{SkiaRenderer, SkiaTexture}, state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer}
+    config::Config,
+    drawing::*,
+    render::*,
+    render_elements::workspace_render_elements::WorkspaceRenderElements,
+    skia_renderer::{SkiaRenderer, SkiaTexture},
+    state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
 };
 
 pub const OUTPUT_NAME: &str = "winit";
@@ -103,9 +108,7 @@ impl Backend for WinitData {
     fn texture_for_surface(&self, render_surface: &RendererSurfaceState) -> Option<SkiaTexture> {
         render_surface.texture::<SkiaRenderer>(99).cloned()
     }
-    fn set_cursor(&mut self, _image: &CursorImageStatus) {
-        
-    }
+    fn set_cursor(&mut self, _image: &CursorImageStatus) {}
 }
 
 pub fn run_winit() {
@@ -290,7 +293,12 @@ pub fn run_winit() {
                     refresh: 60_000,
                 };
                 let config_screen_scale = Config::with(|c| c.screen_scale);
-                output.change_current_state(Some(mode), None, Some(smithay::output::Scale::Fractional(config_screen_scale)), None);
+                output.change_current_state(
+                    Some(mode),
+                    None,
+                    Some(smithay::output::Scale::Fractional(config_screen_scale)),
+                    None,
+                );
                 output.set_preferred(mode);
                 crate::shell::fixup_positions(&mut state.space, state.pointer.current_location());
                 state.scene_element.set_size(size.w as f32, size.h as f32);
@@ -345,39 +353,66 @@ pub fn run_winit() {
 
             let output_scale = output.current_scale().fractional_scale();
             let cursor_config_size = Config::with(|c| c.cursor_size);
-            let cursor_config_physical_size = cursor_config_size as f64 * output_scale;
-            let (cursor_phy_size, cursor_hotspot) = match *cursor_guard {
+            // let cursor_config_physical_size = cursor_config_size as f64 * output_scale;
+            let (_cursor_phy_size, cursor_hotspot) = match *cursor_guard {
                 CursorImageStatus::Surface(ref surface) => {
                     compositor::with_states(surface, |states| {
                         let data = states.data_map.get::<RendererSurfaceStateUserData>();
-                        let (size, cursor_scale) = data.map(|data| {
-                            let data = data.lock().unwrap();
-                            if let Some(view) = data.view().as_ref() {
-                                let surface_scale = data.buffer_scale() as f64;
-                                // println!("surface_scale: {}", surface_scale);
-                                let src_view = view.src.to_physical(surface_scale);
-                                (src_view.size, surface_scale)
-                            } else {
-                                ((cursor_config_size as f64, cursor_config_size as f64).into(), 1.0)
-                            }
-                        }).unwrap_or_else(|| ((cursor_config_size as f64 * output_scale, cursor_config_size as f64 * output_scale).into(), 1.0));
-                        (size, 
-                        states
-                            .data_map
-                            .get::<Mutex<CursorImageAttributes>>()
-                            .unwrap()
-                            .lock()
-                            .unwrap()
-                            .hotspot.to_f64().to_physical(cursor_scale))
+                        let (size, cursor_scale) = data
+                            .map(|data| {
+                                let data = data.lock().unwrap();
+                                if let Some(view) = data.view().as_ref() {
+                                    let surface_scale = data.buffer_scale() as f64;
+                                    // println!("surface_scale: {}", surface_scale);
+                                    let src_view = view.src.to_physical(surface_scale);
+                                    (src_view.size, surface_scale)
+                                } else {
+                                    (
+                                        (cursor_config_size as f64, cursor_config_size as f64)
+                                            .into(),
+                                        1.0,
+                                    )
+                                }
+                            })
+                            .unwrap_or_else(|| {
+                                (
+                                    (
+                                        cursor_config_size as f64 * output_scale,
+                                        cursor_config_size as f64 * output_scale,
+                                    )
+                                        .into(),
+                                    1.0,
+                                )
+                            });
+                        (
+                            size,
+                            states
+                                .data_map
+                                .get::<Mutex<CursorImageAttributes>>()
+                                .unwrap()
+                                .lock()
+                                .unwrap()
+                                .hotspot
+                                .to_f64()
+                                .to_physical(cursor_scale),
+                        )
                     })
                 }
-                _ => ((cursor_config_size as f64 * output_scale, cursor_config_size as f64 * output_scale).into(), (0.0, 0.0).into())
+                _ => (
+                    (
+                        cursor_config_size as f64 * output_scale,
+                        cursor_config_size as f64 * output_scale,
+                    )
+                        .into(),
+                    (0.0, 0.0).into(),
+                ),
             };
-            
-            let cursor_rescale = 1.0;//cursor_config_physical_size / cursor_phy_size.w;
+
+            let cursor_rescale = 1.0; //cursor_config_physical_size / cursor_phy_size.w;
 
             let cursor_pos = state.pointer.current_location();
-            let cursor_pos_scaled = (cursor_pos.to_physical(output_scale) -  cursor_hotspot).to_i32_round();
+            let cursor_pos_scaled =
+                (cursor_pos.to_physical(output_scale) - cursor_hotspot).to_i32_round();
 
             // println!("cursor phy size: {:?}, config_phy {:?} should_scale: {}", cursor_phy_size, cursor_config_physical_size, cursor_rescale);
             #[cfg(feature = "debug")]

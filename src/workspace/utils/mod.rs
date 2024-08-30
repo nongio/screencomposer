@@ -27,7 +27,9 @@ pub fn view_render_elements(
             render_elements
                 .iter()
                 .enumerate()
-                .filter(|(_, render_element)| render_element.phy_dst_w > 0.0 && render_element.phy_dst_h > 0.0)
+                .filter(|(_, render_element)| {
+                    render_element.phy_dst_w > 0.0 && render_element.phy_dst_h > 0.0
+                })
                 .map(|(index, render_element)| {
                     let wvs = render_element.clone();
                     let mut font = skia_safe::Font::default();
@@ -58,30 +60,30 @@ pub fn view_render_elements(
                         if let Some(image) = image.as_ref() {
                             // let image_h = image.height() as f32;
                             // let image_w = image.width() as f32;
-                            let src_h  = wvs.phy_src_h - wvs.phy_src_y;
-                            let src_w  = wvs.phy_src_w - wvs.phy_src_x;
+                            let src_h = wvs.phy_src_h - wvs.phy_src_y;
+                            let src_w = wvs.phy_src_w - wvs.phy_src_x;
                             let scale_y = wvs.phy_dst_h / src_h;
                             let scale_x = wvs.phy_dst_w / src_w;
                             let mut matrix = skia_safe::Matrix::new_identity();
                             // if scale_x != 1.0 || scale_y != 1.0 {
-                                match wvs.transform {
-                                    Transform::Normal => {
-                                        // println!("Normal");
-                                        matrix.pre_translate((-wvs.phy_src_x, -wvs.phy_src_y));
-                                        matrix.pre_scale((scale_x, scale_y), None);
-                                    }
-                                    Transform::Flipped180 => {
-                                        // println!("Flipped180");
-                                        matrix.pre_translate((wvs.phy_src_x, wvs.phy_src_y));
-                                        matrix.pre_scale((scale_x, -scale_y), None);
-                                    }
-                                    Transform::_90 => {}
-                                    Transform::_180 => {}
-                                    Transform::_270 => {}
-                                    Transform::Flipped => {}
-                                    Transform::Flipped90 => {}
-                                    Transform::Flipped270 => {}
+                            match wvs.transform {
+                                Transform::Normal => {
+                                    // println!("Normal");
+                                    matrix.pre_translate((-wvs.phy_src_x, -wvs.phy_src_y));
+                                    matrix.pre_scale((scale_x, scale_y), None);
                                 }
+                                Transform::Flipped180 => {
+                                    // println!("Flipped180");
+                                    matrix.pre_translate((wvs.phy_src_x, wvs.phy_src_y));
+                                    matrix.pre_scale((scale_x, -scale_y), None);
+                                }
+                                Transform::_90 => {}
+                                Transform::_180 => {}
+                                Transform::_270 => {}
+                                Transform::Flipped => {}
+                                Transform::Flipped90 => {}
+                                Transform::Flipped270 => {}
+                            }
                             // }
                             // println!("texture size ({}x{}) scale: {} from:[{}, {} - {}x{}] to:[{}, {} - {}x{}] -> scale: {}x{}", image.width(), image.height(), wvs.scale, wvs.src_x, wvs.src_y, wvs.src_w, wvs.src_h, wvs.offset_x, wvs.offset_x, wvs.dst_w, wvs.dst_h, scale_x, scale_y);
                             // println!("Matrix {:?}", matrix);

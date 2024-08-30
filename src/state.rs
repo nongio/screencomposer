@@ -119,7 +119,11 @@ use smithay::{
 #[cfg(feature = "xwayland")]
 use crate::cursor::Cursor;
 use crate::{
-    focus::{KeyboardFocusTarget, PointerFocusTarget}, render_elements::scene_element::SceneElement, shell::WindowElement, skia_renderer::SkiaTexture, workspace::{DndView, WindowView, WindowViewBaseModel, WindowViewSurface, Workspace}
+    focus::{KeyboardFocusTarget, PointerFocusTarget},
+    render_elements::scene_element::SceneElement,
+    shell::WindowElement,
+    skia_renderer::SkiaTexture,
+    workspace::{DndView, WindowView, WindowViewBaseModel, WindowViewSurface, Workspace},
 };
 #[cfg(feature = "xwayland")]
 use smithay::{
@@ -864,7 +868,8 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         let mut surface_attributes = states.cached_state.get::<SurfaceAttributes>();
         let surface_attributes = surface_attributes.current();
         if let Some(render_surface) = states.data_map.get::<RendererSurfaceStateUserData>() {
-            let render_surface: std::sync::MutexGuard<RendererSurfaceState> = render_surface.lock().unwrap();
+            let render_surface: std::sync::MutexGuard<RendererSurfaceState> =
+                render_surface.lock().unwrap();
 
             if let Some(view) = render_surface.view() {
                 let texture = self.backend_data.texture_for_surface(&render_surface);

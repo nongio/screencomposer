@@ -6,8 +6,12 @@ use smithay::{
             surface::WaylandSurfaceRenderElement,
             texture::{TextureBuffer, TextureRenderElement},
             AsRenderElements, Kind,
-        }, utils::RendererSurfaceStateUserData, ImportAll, ImportMem, Renderer, Texture
-    }, input::pointer::{CursorIcon, CursorImageStatus}, reexports::wayland_server::protocol::wl_surface, render_elements, utils::{Physical, Point, Scale}, wayland::compositor::{self, TraversalAction}
+        },
+        ImportAll, ImportMem, Renderer, Texture,
+    },
+    input::pointer::{CursorIcon, CursorImageStatus},
+    render_elements,
+    utils::{Physical, Point, Scale},
 };
 #[cfg(feature = "debug")]
 use smithay::{
@@ -88,7 +92,7 @@ where
     where
         E: From<PointerRenderElement<R>>,
     {
-        match &self.status {    
+        match &self.status {
             CursorImageStatus::Hidden => vec![],
             // Always render `Default` for a named shape.
             CursorImageStatus::Named(_) => {
@@ -118,7 +122,7 @@ where
                         alpha,
                         Kind::Cursor,
                     );
-                    
+
                 elements.into_iter().map(E::from).collect()
             }
         }
