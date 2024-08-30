@@ -7,16 +7,12 @@ use std::{
 };
 
 use crate::{
-    cursor::Cursor,
-    render_elements::{output_render_elements::OutputRenderElements, scene_element::SceneElement},
-    shell::WindowRenderElement,
-    skia_renderer::SkiaTexture,
-    state::SurfaceDmabufFeedback,
+    config::Config, cursor::Cursor, render_elements::{output_render_elements::OutputRenderElements, scene_element::SceneElement}, shell::WindowRenderElement, skia_renderer::SkiaTexture, state::SurfaceDmabufFeedback
 };
 use crate::{
     drawing::*,
     render::*,
-    render_elements::custom_render_elements::CustomRenderElements,
+    render_elements::workspace_render_elements::WorkspaceRenderElements,
     shell::WindowElement,
     skia_renderer::{SkiaGLesFbo, SkiaRenderer},
     state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
@@ -43,13 +39,9 @@ use smithay::{
         egl::{self, context::ContextPriority, EGLDevice, EGLDisplay},
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{
-            damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
-            element::{
+            damage::{Error as OutputDamageTrackerError, OutputDamageTracker}, element::{
                 texture::TextureBuffer, AsRenderElements, RenderElement, RenderElementStates,
-            },
-            multigpu::{gbm::GbmGlesBackend, GpuManager, MultiRenderer, MultiTexture},
-            sync::SyncPoint,
-            Bind, DebugFlags, ExportMem, ImportDma, ImportMemWl, Offscreen, Renderer,
+            }, multigpu::{gbm::GbmGlesBackend, GpuManager, MultiRenderer, MultiTexture}, sync::SyncPoint, utils::RendererSurfaceStateUserData, Bind, DebugFlags, ExportMem, ImportDma, ImportMemWl, Offscreen, Renderer
         },
         session::{
             libseat::{self, LibSeatSession},
@@ -60,7 +52,7 @@ use smithay::{
     },
     delegate_dmabuf, delegate_drm_lease,
     desktop::{
-        space::{Space, SurfaceTree},
+        space::Space,
         utils::OutputPresentationFeedback,
     },
     input::pointer::{CursorImageAttributes, CursorImageStatus},
@@ -1063,10 +1055,11 @@ impl ScreenComposer<UdevData> {
             });
             let position = (x, 0).into();
             output.set_preferred(wl_mode);
+            let screen_scale = Config::with(|c| c.screen_scale);
             output.change_current_state(
                 Some(wl_mode),
                 None,
-                Some(smithay::output::Scale::Fractional(1.0)),
+                Some(smithay::output::Scale::Fractional(screen_scale)),
                 Some(position),
             );
             self.space.map_output(&output, position);
@@ -1133,7 +1126,7 @@ impl ScreenComposer<UdevData> {
                 {
                     planes.overlay = vec![];
                 }
-
+                println!("Max cursor size: {:?}", device.drm.cursor_size());
                 let mut compositor = match DrmCompositor::new(
                     &output,
                     surface,
@@ -1510,11 +1503,33 @@ impl ScreenComposer<UdevData> {
                 .renderer(&primary_gpu, &render_node, format)
         }
         .unwrap();
+
+        let output = if let Some(output) = self.space.outputs().find(|o| {
+            o.user_data().get::<UdevOutputId>()
+                == Some(&UdevOutputId {
+                    device_id: surface.device_id,
+                    crtc,
+                })
+        }) {
+            output.clone()
+        } else {
+            // somehow we got called with an invalid output
+            return;
+        };
+
+        let output_scale = output.current_scale().fractional_scale();
+        let integer_scale = output_scale.round() as u32;
+        let config_scale = Config::with(|c|c.screen_scale);
+        
         // TODO get scale from the rendersurface when supporting HiDPI
+        println!("getting cursor image: {}", integer_scale);
         let cursor_frame = self
             .backend_data
             .cursor_manager
-            .get_image(1, self.clock.now().into());
+            .get_image(config_scale as f32, self.clock.now().into());
+
+        let pointer_width = cursor_frame.width as i32;
+
 
         let pointer_images = &mut self.backend_data.pointer_images;
         let pointer_image = pointer_images
@@ -1533,7 +1548,7 @@ impl ScreenComposer<UdevData> {
                     Fourcc::Abgr8888,
                     (cursor_frame.width as i32, cursor_frame.height as i32),
                     false,
-                    1,
+                    2,
                     Transform::Normal,
                     None,
                 )
@@ -1541,28 +1556,18 @@ impl ScreenComposer<UdevData> {
                 pointer_images.push((cursor_frame, texture.clone()));
                 texture
             });
-
-        let output = if let Some(output) = self.space.outputs().find(|o| {
-            o.user_data().get::<UdevOutputId>()
-                == Some(&UdevOutputId {
-                    device_id: surface.device_id,
-                    crtc,
-                })
-        }) {
-            output.clone()
-        } else {
-            // somehow we got called with an invalid output
-            return;
-        };
-
+        // set cursor
+        self.backend_data.pointer_element.set_texture(pointer_image.clone());
+        let pointer_scale = pointer_width as f64 / self.backend_data.cursor_manager.size as f64;
         let result = render_surface(
             surface,
             &mut renderer,
             &self.space,
             &output,
             self.pointer.current_location(),
-            &pointer_image,
+            // &pointer_image,
             &mut self.backend_data.pointer_element,
+            pointer_scale,
             &self.dnd_icon,
             &mut self.cursor_status.lock().unwrap(),
             &self.clock,
@@ -1671,9 +1676,9 @@ fn render_surface<'a, 'b>(
     space: &Space<WindowElement>,
     output: &Output,
     pointer_location: Point<f64, Logical>,
-    pointer_image: &TextureBuffer<MultiTexture>,
     pointer_element: &mut PointerElement<MultiTexture>,
-    dnd_icon: &Option<wl_surface::WlSurface>,
+    _pointer_scale: f64,
+    _dnd_icon: &Option<wl_surface::WlSurface>,
     cursor_status: &mut CursorImageStatus,
     clock: &Clock<Monotonic>,
     scene_element: SceneElement,
@@ -1681,29 +1686,55 @@ fn render_surface<'a, 'b>(
     let output_geometry = space.output_geometry(output).unwrap();
     let scale = Scale::from(output.current_scale().fractional_scale());
 
-    let mut custom_elements: Vec<CustomRenderElements<_>> = Vec::new();
+    let mut custom_elements: Vec<WorkspaceRenderElements<_>> = Vec::new();
+
+    let output_scale = output.current_scale().fractional_scale();
+
+    let cursor_config_size = Config::with(|c| c.cursor_size);
+    let cursor_config_physical_size = cursor_config_size as f64 * output_scale;
 
     if output_geometry.to_f64().contains(pointer_location) {
-        let cursor_hotspot = if let CursorImageStatus::Surface(ref surface) = cursor_status {
-            compositor::with_states(surface, |states| {
-                states
-                    .data_map
-                    .get::<Mutex<CursorImageAttributes>>()
-                    .unwrap()
-                    .lock()
-                    .unwrap()
-                    .hotspot
-            })
-        } else {
-            (0, 0).into()
+        let (cursor_phy_size, cursor_hotspot) = match cursor_status {
+            CursorImageStatus::Surface(ref surface) => {
+                compositor::with_states(surface, |states| {
+                    let data = states.data_map.get::<RendererSurfaceStateUserData>();
+                    let (size, cursor_scale) = data.map(|data| {
+                        let data = data.lock().unwrap();
+                        if let Some(view) = data.view().as_ref() {
+                            let surface_scale = data.buffer_scale() as f64;
+                            // println!("surface_scale: {}", surface_scale);
+                            let src_view = view.src.to_physical(surface_scale);
+                            (src_view.size, surface_scale)
+                        } else {
+                            ((cursor_config_size as f64, cursor_config_size as f64).into(), 1.0)
+                        }
+                    }).unwrap_or_else(|| ((cursor_config_size as f64 * output_scale, cursor_config_size as f64 * output_scale).into(), 1.0));
+                    (size, 
+                    states
+                        .data_map
+                        .get::<Mutex<CursorImageAttributes>>()
+                        .unwrap()
+                        .lock()
+                        .unwrap()
+                        .hotspot.to_f64().to_physical(cursor_scale))
+                })
+            }
+            CursorImageStatus::Named(_) => {
+                let cursor_image = pointer_element.cursor_manager.get_image(output_scale as f32, clock.now().into());
+                ((cursor_image.width as f64, cursor_image.height as f64).into(), (cursor_image.xhot as f64, cursor_image.yhot as f64).into())
+            }
+            _ => ((cursor_config_size as f64 * output_scale, cursor_config_size as f64 * output_scale).into(), (0.0, 0.0).into())
         };
-        let cursor_pos = pointer_location - output_geometry.loc.to_f64() - cursor_hotspot.to_f64();
-        let cursor_pos_scaled = cursor_pos.to_physical(scale).to_i32_round();
+        let cursor_pos = pointer_location - output_geometry.loc.to_f64();
+        let cursor_pos_scaled = (cursor_pos.to_physical(scale) - cursor_hotspot).to_i32_round();
 
-        // set cursor
-        pointer_element.set_texture(pointer_image.clone());
-
+        let cursor_rescale = cursor_config_physical_size / cursor_phy_size.w;
+        // // set cursor
+        // pointer_element.set_texture(pointer_image.clone());
+        // println!("rendering cursor: {:?}", rescale_cursor);
         // draw the cursor as relevant
+        // println!("cursor phy size: {:?}, config_phy {:?} should_scale: {}", cursor_phy_size, cursor_config_physical_size, cursor_scale);
+
         {
             // reset the cursor if the surface is no longer alive
             let mut reset = false;
@@ -1716,37 +1747,36 @@ fn render_surface<'a, 'b>(
 
             pointer_element.set_status(cursor_status.clone());
         }
-
         custom_elements.extend(pointer_element.render_elements(
             renderer,
             cursor_pos_scaled,
-            scale,
+            cursor_rescale.into(),
             1.0,
         ));
 
         // draw the dnd icon if applicable
-        {
-            if let Some(wl_surface) = dnd_icon.as_ref() {
-                if wl_surface.alive() {
-                    custom_elements.extend(AsRenderElements::<UdevRenderer<'a>>::render_elements(
-                        &SurfaceTree::from_surface(wl_surface),
-                        renderer,
-                        cursor_pos_scaled,
-                        scale,
-                        1.0,
-                    ));
-                }
-            }
-        }
+        // {
+        //     if let Some(wl_surface) = dnd_icon.as_ref() {
+        //         if wl_surface.alive() {
+        //             custom_elements.extend(AsRenderElements::<UdevRenderer<'a>>::render_elements(
+        //                 &SurfaceTree::from_surface(wl_surface),
+        //                 renderer,
+        //                 cursor_pos_scaled,
+        //                 scale,
+        //                 1.0,
+        //             ));
+        //         }
+        //     }
+        // }
     }
 
     #[cfg(feature = "debug")]
     if let Some(element) = surface.fps_element.as_mut() {
         element.update_fps(surface.fps.avg().round() as u32);
         surface.fps.tick();
-        custom_elements.push(CustomRenderElements::Fps(element.clone()));
+        custom_elements.push(WorkspaceRenderElements::Fps(element.clone()));
     }
-    custom_elements.push(CustomRenderElements::Scene(scene_element));
+    custom_elements.push(WorkspaceRenderElements::Scene(scene_element));
 
     let elements: Vec<OutputRenderElements<'a, _, WindowRenderElement<_>>> = custom_elements
         .into_iter()
@@ -1795,7 +1825,7 @@ fn initial_render(
 ) -> Result<(), SwapBuffersError> {
     surface
         .compositor
-        .render_frame::<_, CustomRenderElements<_>, SkiaGLesFbo>(renderer, &[], CLEAR_COLOR)?;
+        .render_frame::<_, WorkspaceRenderElements<_>, SkiaGLesFbo>(renderer, &[], CLEAR_COLOR)?;
     surface.compositor.queue_frame(None, None, None)?;
     surface.compositor.reset_buffers();
 

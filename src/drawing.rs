@@ -6,12 +6,8 @@ use smithay::{
             surface::WaylandSurfaceRenderElement,
             texture::{TextureBuffer, TextureRenderElement},
             AsRenderElements, Kind,
-        },
-        ImportAll, ImportMem, Renderer, Texture,
-    },
-    input::pointer::CursorImageStatus,
-    render_elements,
-    utils::{Physical, Point, Scale},
+        }, utils::RendererSurfaceStateUserData, ImportAll, ImportMem, Renderer, Texture
+    }, input::pointer::{CursorIcon, CursorImageStatus}, reexports::wayland_server::protocol::wl_surface, render_elements, utils::{Physical, Point, Scale}, wayland::compositor::{self, TraversalAction}
 };
 #[cfg(feature = "debug")]
 use smithay::{
@@ -31,7 +27,7 @@ pub static CLEAR_COLOR_FULLSCREEN: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
 pub struct PointerElement<T: Texture> {
     texture: Option<TextureBuffer<T>>,
     status: CursorImageStatus,
-    cursor_manager: Cursor,
+    pub cursor_manager: Cursor,
 }
 
 impl<T: Texture> Default for PointerElement<T> {
@@ -48,6 +44,9 @@ impl<T: Texture> PointerElement<T> {
     pub fn set_status(&mut self, status: CursorImageStatus) {
         if let CursorImageStatus::Named(cursor_name) = status {
             self.cursor_manager.load_icon(cursor_name.name());
+            if cursor_name != CursorIcon::Default {
+                // println!("Loading name: {:?}", status);
+            }
         }
         self.status = status;
     }
@@ -89,7 +88,7 @@ where
     where
         E: From<PointerRenderElement<R>>,
     {
-        match &self.status {
+        match &self.status {    
             CursorImageStatus::Hidden => vec![],
             // Always render `Default` for a named shape.
             CursorImageStatus::Named(_) => {
@@ -119,6 +118,7 @@ where
                         alpha,
                         Kind::Cursor,
                     );
+                    
                 elements.into_iter().map(E::from).collect()
             }
         }
@@ -180,7 +180,7 @@ where
         Rectangle::from_loc_and_size((0, 0), (24 * digits, 35)).to_f64()
     }
 
-    fn geometry(&self, scale: Scale<f64>) -> Rectangle<i32, Physical> {
+    fn geometry(&self, _scale: Scale<f64>) -> Rectangle<i32, Physical> {
         let digits = if self.value < 10 {
             1
         } else if self.value < 100 {
@@ -188,7 +188,7 @@ where
         } else {
             3
         };
-        Rectangle::from_loc_and_size((0, 0), (24 * digits, 35)).to_physical_precise_round(scale)
+        Rectangle::from_loc_and_size((0, 0), (24 * digits, 35)).to_physical_precise_round(1.0)
     }
 
     fn current_commit(&self) -> CommitCounter {

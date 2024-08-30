@@ -6,25 +6,27 @@ use xcursor::{
     CursorTheme,
 };
 
+use crate::config::Config;
+
 static FALLBACK_CURSOR_DATA: &[u8] = include_bytes!("../resources/cursor.rgba");
 
 pub struct Cursor {
-    size: u32,
+    pub size: u32,
     icons: HashMap<String, Vec<Image>>,
     current: String,
+    theme: String,
 }
 
 impl Cursor {
     pub fn load() -> Cursor {
-        let name = std::env::var("XCURSOR_THEME")
-            .ok()
-            .unwrap_or_else(|| "default".into());
-        let size = std::env::var("XCURSOR_SIZE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(24);
+        let cursor_theme_name = Config::with(|config| {
+            config.cursor_theme.clone()
+        });
+        let size = Config::with(|config| {
+            config.cursor_size
+        });
 
-        let theme = CursorTheme::load(&name);
+        let theme = CursorTheme::load(&cursor_theme_name);
         let default_cursor = load_icon(&theme, "default")
             .map_err(|err| warn!("Unable to load xcursor: {}, using fallback cursor", err))
             .unwrap_or_else(|_| {
@@ -45,6 +47,7 @@ impl Cursor {
         Cursor {
             size,
             icons,
+            theme: cursor_theme_name,
             current: "default".to_string(),
         }
     }
@@ -54,7 +57,7 @@ impl Cursor {
             return;
         }
 
-        let theme = CursorTheme::load("default");
+        let theme = CursorTheme::load(&self.theme);
         let cursor = load_icon(&theme, name)
             .map_err(|err| warn!("Unable to load xcursor: {}, using fallback cursor", err))
             .unwrap_or_else(|_| {
@@ -72,8 +75,8 @@ impl Cursor {
 
         self.icons.insert(name.to_string(), cursor);
     }
-    pub fn get_image(&self, scale: u32, time: Duration) -> Image {
-        let size = self.size * scale;
+    pub fn get_image(&self, scale: f32, time: Duration) -> Image {
+        let size = (self.size as f32 * scale).round() as u32;
         frame(
             time.as_millis() as u32,
             size,
