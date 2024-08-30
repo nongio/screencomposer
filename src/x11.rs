@@ -428,6 +428,7 @@ pub fn run_x11() {
                 &output,
                 &state.space,
                 elements,
+                state.dnd_icon.as_ref(),
                 &mut backend_data.renderer,
                 &mut backend_data.damage_tracker,
                 age.into(),
