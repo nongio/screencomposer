@@ -26,10 +26,7 @@ use smithay::{
 };
 
 use crate::{
-    interactive_view::InteractiveView,
-    shell::WindowElement,
-    state::{Backend, ScreenComposer},
-    workspace::{AppSwitcherView, WindowSelectorView},
+    config::Config, interactive_view::InteractiveView, shell::WindowElement, state::{Backend, ScreenComposer}, workspace::{AppSwitcherView, WindowSelectorView}
 };
 
 pub enum KeyboardFocusTarget<B: Backend> {
@@ -207,6 +204,13 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
         }
     }
     fn axis(&self, seat: &Seat<ScreenComposer<B>>, data: &mut ScreenComposer<B>, frame: AxisFrame) {
+        let mut frame = frame.clone();
+        let scroll_mul = if Config::with(|c| c.natural_scroll) {
+            -1.0
+        } else {
+            1.0
+        };
+        frame.axis = (frame.axis.0, frame.axis.1 * scroll_mul);
         match self {
             PointerFocusTarget::WlSurface(w) => PointerTarget::axis(w, seat, data, frame),
             #[cfg(feature = "xwayland")]

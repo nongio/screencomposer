@@ -4,6 +4,7 @@ pub struct Config {
     pub cursor_theme: String,
     pub cursor_size: u32,
     pub terminal_bin: String,
+    pub natural_scroll: bool,
 }
 thread_local! {
     static CONFIG: Config = Config::init();
@@ -18,6 +19,7 @@ impl Config {
             cursor_theme: "Notwaita-Black".to_string(),
             cursor_size: 32,
             terminal_bin: "kitty".to_string(),
+            natural_scroll: true,
         };
         let scaled_cursor_size = (config.cursor_size as f64) as u32;
         std::env::set_var("XCURSOR_SIZE", (scaled_cursor_size).to_string());
