@@ -1529,7 +1529,6 @@ impl ScreenComposer<UdevData> {
         let config_scale = Config::with(|c| c.screen_scale);
 
         // TODO get scale from the rendersurface when supporting HiDPI
-        println!("getting cursor image: {}", integer_scale);
         let cursor_frame = self
             .backend_data
             .cursor_manager
@@ -1576,7 +1575,6 @@ impl ScreenComposer<UdevData> {
             // &pointer_image,
             &mut self.backend_data.pointer_element,
             pointer_scale,
-            &self.dnd_icon,
             &mut self.cursor_status.lock().unwrap(),
             &self.clock,
             self.scene_element.clone(),
@@ -1686,7 +1684,6 @@ fn render_surface<'a, 'b>(
     pointer_location: Point<f64, Logical>,
     pointer_element: &mut PointerElement<MultiTexture>,
     _pointer_scale: f64,
-    _dnd_icon: &Option<wl_surface::WlSurface>,
     cursor_status: &mut CursorImageStatus,
     clock: &Clock<Monotonic>,
     scene_element: SceneElement,
