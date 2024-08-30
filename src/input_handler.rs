@@ -1410,11 +1410,11 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         // run terminal
         let terminal_bin = config.terminal_bin.clone();
         Some(KeyAction::Run((terminal_bin, vec![])))
-    }  else if modifiers.logo && modifiers.shift && keysym == Keysym::space {
+    } else if modifiers.logo && modifiers.shift && keysym == Keysym::space {
         let file_manager_bin = config.file_manager_bin.clone();
         Some(KeyAction::Run((file_manager_bin, vec![])))
         // run terminal
-    }  else if modifiers.logo && modifiers.shift && keysym == Keysym::B {
+    } else if modifiers.logo && modifiers.shift && keysym == Keysym::B {
         let browser_bin = config.browser_bin.clone();
         let browser_args = config.browser_args.clone();
         Some(KeyAction::Run((browser_bin, browser_args)))
