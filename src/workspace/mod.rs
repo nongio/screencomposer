@@ -114,7 +114,7 @@ pub struct Workspace {
     pub show_desktop_gesture: AtomicI32,
 }
 
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct WorkspaceModel {
     pub applications_cache: HashMap<String, Application>,
 
@@ -409,7 +409,6 @@ impl Workspace {
                         app.desktop_name = desktop_entry.name(None).map(|name| name.to_string());
                         app.icon_path = icon_path;
                         app.icon = icon.clone();
-                        println!("[{}]: {:?}", app_id, app);
                         model_mut.applications_cache.insert(app_id, app.clone());
                         model_mut.notify_observers(&model_mut.clone());
                     }
@@ -633,19 +632,12 @@ impl Workspace {
         model.applications_cache.get(&app_id).cloned()
     }
     pub fn get_current_app_windows(&self) -> Vec<Window> {
-        if let Some(app) = self.get_current_app() {
-            let model = self.model.read().unwrap();
-            model
-                .app_windows_map
-                .get(&app.identifier)
-                .cloned()
-                .unwrap_or_default()
-        } else {
-            vec![]
-        }
+        self.get_current_app()
+            .map(|app| self.get_app_windows(&app.identifier))
+            .unwrap_or_default()
     }
-    pub fn quit_current_app(&self) {
-        for window in self.get_current_app_windows() {
+    pub fn quit_app(&self, app_id: &str) {
+        for window in self.get_app_windows(app_id) {
             if let Some(we) = window.window_element.as_ref() {
                 match we.underlying_surface() {
                     WindowSurface::Wayland(t) => t.send_close(),
@@ -655,6 +647,21 @@ impl Workspace {
                     }
                 }
             }
+        }
+    }
+
+    pub fn quit_current_app(&self) {
+        let current_app = self.get_current_app();
+        if let Some(app) = current_app {
+            self.quit_app(&app.identifier);
+        }
+    }
+
+    pub fn quit_appswitcher_app(&self) {
+        let appswitcher_app = self.app_switcher.get_current_app();
+
+        if let Some(app) = appswitcher_app {
+            self.quit_app(&app.identifier);
         }
     }
 

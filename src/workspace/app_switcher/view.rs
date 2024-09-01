@@ -14,6 +14,7 @@ use layers::{
     types::Size,
 };
 use smithay::utils::IsAlive;
+use tokio::sync::mpsc;
 
 use crate::{
     interactive_view::ViewInteractions,
@@ -32,6 +33,8 @@ pub struct AppSwitcherView {
     pub view_layer: layers::prelude::Layer,
     pub view: layers::prelude::View<AppSwitcherModel>,
     active: Arc<AtomicBool>,
+    notify_tx: tokio::sync::mpsc::Sender<WorkspaceModel>,
+    latest_event: Arc<tokio::sync::RwLock<Option<WorkspaceModel>>>,
 }
 impl PartialEq for AppSwitcherView {
     fn eq(&self, other: &Self) -> bool {
@@ -67,13 +70,18 @@ impl AppSwitcherView {
             initial_state,
             Box::new(render_appswitcher_view),
         );
-        Self {
+        let (notify_tx, notify_rx) = mpsc::channel(5);
+        let app_switcher = Self {
             // app_switcher: Arc::new(RwLock::new(AppSwitcherModel::new())),
             wrap_layer: wrap.clone(),
             view_layer: layer.clone(),
             view,
             active: Arc::new(AtomicBool::new(false)),
-        }
+            notify_tx,
+            latest_event: Arc::new(tokio::sync::RwLock::new(None)),
+        };
+        app_switcher.init_notification_handler(notify_rx);
+        app_switcher
     }
     // pub fn set_width(&self, width: i32) {
     //     self.view.update_state(AppSwitcherModel {
@@ -162,7 +170,7 @@ impl AppSwitcherView {
         self.wrap_layer.set_opacity(
             0.0,
             Some(Transition {
-                duration: 0.3,
+                duration: 0.4,
                 delay: 0.0,
                 timing: TimingFunction::default(),
             }),
@@ -173,44 +181,66 @@ impl AppSwitcherView {
         let state = self.view.get_state();
         state.apps.get(state.current_app).cloned()
     }
+
+    fn init_notification_handler(&self, mut rx: tokio::sync::mpsc::Receiver<WorkspaceModel>) {
+        let view = self.view.clone();
+        let latest_event = self.latest_event.clone();
+        // Task to receive events
+        tokio::spawn(async move {
+            while let Some(event) = rx.recv().await {
+                // Store the latest event
+                *latest_event.write().await = Some(event.clone());
+            }
+        });
+        let latest_event = self.latest_event.clone();
+        tokio::spawn(async move {
+            loop {
+                // app switcher updates don't need to be instantanious
+                tokio::time::sleep(Duration::from_secs_f32(0.4)).await;
+
+                let event = {
+                    let mut latest_event_lock = latest_event.write().await;
+                    latest_event_lock.take()
+                };
+
+                if let Some(workspace) = event {
+                    let mut app_set = HashSet::new();
+                    let apps: Vec<Application> = workspace
+                        .application_list
+                        .iter()
+                        .rev()
+                        .filter_map(|app_id| {
+                            let app = workspace.applications_cache.get(app_id).unwrap().to_owned();
+
+                            if app_set.insert(app.identifier.clone()) {
+                                Some(app)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+
+                    let switcher_state = view.get_state();
+                    let mut current_app = switcher_state.current_app;
+                    if apps.is_empty() {
+                        current_app = 0;
+                    } else if (current_app + 1) > apps.len() {
+                        current_app = apps.len() - 1;
+                    }
+                    view.update_state(AppSwitcherModel {
+                        current_app,
+                        apps,
+                        ..switcher_state
+                    });
+                }
+            }
+        });
+    }
 }
 
 impl Observer<WorkspaceModel> for AppSwitcherView {
     fn notify(&self, event: &WorkspaceModel) {
-        let workspace = event.clone();
-        let view = self.view.clone();
-        tokio::spawn(async move {
-            // app switcher updates don't need to be instantanious
-            tokio::time::sleep(Duration::from_secs_f32(0.3)).await;
-            let mut app_set = HashSet::new();
-            let apps: Vec<Application> = workspace
-                .application_list
-                .iter()
-                .rev()
-                .filter_map(|app_id| {
-                    let app = workspace.applications_cache.get(app_id).unwrap().to_owned();
-
-                    if app_set.insert(app.identifier.clone()) {
-                        Some(app)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            let switcher_state = view.get_state();
-            let mut current_app = switcher_state.current_app;
-            if apps.is_empty() {
-                current_app = 0;
-            } else if (current_app + 1) > apps.len() {
-                current_app = apps.len() - 1;
-            }
-            view.update_state(AppSwitcherModel {
-                current_app,
-                apps,
-                ..switcher_state
-            });
-        });
+        let _ = self.notify_tx.try_send(event.clone());
     }
 }
 

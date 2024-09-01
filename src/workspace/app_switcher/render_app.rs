@@ -12,9 +12,8 @@ pub fn render_app_view(
     state: Application,
     view: View<AppSwitcherModel>,
     icon_width: f32,
+    padding: f32,
 ) -> ViewLayer {
-    const PADDING: f32 = 20.0;
-    // println!("Rendering app view: {:?}", state);
     let draw_picture = move |canvas: &skia_safe::Canvas, w: f32, h: f32| -> skia_safe::Rect {
         if let Some(image) = &state.icon {
             let mut paint =
@@ -37,18 +36,18 @@ pub fn render_app_view(
                 skia_safe::image_filters::CropRect::default(),
             );
             shadow_paint.set_image_filter(shadow_filter);
-            let icon_size = (w - PADDING * 2.0).max(0.0);
+            let icon_size = (w - padding * 2.0).max(0.0);
             canvas.draw_image_rect(
                 image,
                 None,
-                skia_safe::Rect::from_xywh(PADDING, PADDING, icon_size, icon_size),
+                skia_safe::Rect::from_xywh(padding, padding, icon_size, icon_size),
                 &shadow_paint,
             );
             let resampler = skia_safe::CubicResampler::catmull_rom();
             canvas.draw_image_rect_with_sampling_options(
                 image,
                 None,
-                skia_safe::Rect::from_xywh(PADDING, PADDING, icon_size, icon_size),
+                skia_safe::Rect::from_xywh(padding, padding, icon_size, icon_size),
                 skia_safe::SamplingOptions::from(resampler),
                 &paint,
             );
@@ -59,8 +58,8 @@ pub fn render_app_view(
         .key(format!("app_{}", state.identifier))
         .size((
             Size {
-                width: taffy::Dimension::Points(icon_width + PADDING * 2.0),
-                height: taffy::Dimension::Points(icon_width + PADDING * 2.0),
+                width: taffy::Dimension::Points(icon_width + padding * 2.0),
+                height: taffy::Dimension::Points(icon_width + padding * 2.0),
             },
             None,
         ))

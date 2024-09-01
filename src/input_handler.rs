@@ -550,7 +550,7 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     self.workspace.app_switcher.previous();
                 }
                 KeyAction::ApplicationSwitchQuit => {
-                    self.workspace.quit_current_app();
+                    self.workspace.quit_appswitcher_app();
                 }
                 KeyAction::ApplicationSwitchNextWindow => {
                     self.next_window(Some(SCOUNTER.next_serial()));
@@ -804,7 +804,7 @@ impl ScreenComposer<UdevData> {
                     self.next_window(Some(SCOUNTER.next_serial()));
                 }
                 KeyAction::ApplicationSwitchQuit => {
-                    self.workspace.quit_current_app();
+                    self.workspace.quit_appswitcher_app();
                 }
                 KeyAction::ExposeShowDesktop => {
                     if self.workspace.get_show_desktop() {
