@@ -1,6 +1,9 @@
 use std::cell::RefCell;
 
 use layers::{prelude::*, types::Size};
+use taffy::FromPoints;
+
+use crate::config::Config;
 
 use super::render_app::render_app_view;
 
@@ -26,16 +29,20 @@ thread_local! {
     };
 }
 
+#[allow(non_snake_case)]
 pub fn render_appswitcher_view(
     state: &AppSwitcherModel,
     view: &View<AppSwitcherModel>,
 ) -> ViewLayer {
-    const COMPONENT_PADDING_H: f32 = 30.0;
-    const COMPONENT_PADDING_V: f32 = 50.0;
-    const ICON_PADDING: f32 = 25.0;
-    const GAP: f32 = 0.0;
-    const ICON_SIZE: f32 = 200.0;
-    const FONT_SIZE: f32 = 24.0;
+    let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
+
+    // those are constant like values
+    let COMPONENT_PADDING_H: f32 = 30.0 * draw_scale;
+    let COMPONENT_PADDING_V: f32 = 50.0 * draw_scale;
+    let ICON_PADDING: f32 = 25.0 * draw_scale;
+    let GAP: f32 = ICON_PADDING / 2.0;
+    let ICON_SIZE: f32 = 200.0 * draw_scale;
+    let FONT_SIZE: f32 = 24.0 * draw_scale;
 
     let available_width = state.width as f32;
     let apps_len = state.apps.len() as f32;
@@ -64,9 +71,9 @@ pub fn render_appswitcher_view(
         let icon_size = ICON_SIZE.min(available_icon_size);
         let selection_width = icon_size + ICON_PADDING * 2.0;
         let selection_height = selection_width;
-        let selection_x = COMPONENT_PADDING_H
-            + current_app * (icon_size + ICON_PADDING * 2.0)
-            + GAP * current_app;
+        let total_gaps = (apps_len - 1.0) * GAP; // gaps between items
+        let selection_x = COMPONENT_PADDING_H + total_gaps - GAP * current_app
+            + current_app * (icon_size + ICON_PADDING * 2.0);
         let selection_y = h / 2.0 - selection_height / 2.0;
         let rrect = skia_safe::RRect::new_rect_xy(
             skia_safe::Rect::from_xywh(selection_x, selection_y, selection_width, selection_height),
@@ -159,6 +166,7 @@ pub fn render_appswitcher_view(
                 justify_content: Some(taffy::JustifyContent::Center),
                 justify_items: Some(taffy::JustifyItems::Center),
                 align_items: Some(taffy::AlignItems::Baseline),
+                gap: taffy::Size::<taffy::LengthPercentage>::from_points(GAP),
                 ..Default::default()
             })
             .children(
