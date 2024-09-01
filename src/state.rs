@@ -1,5 +1,10 @@
 use std::{
-    cmp::max, collections::{HashMap, VecDeque}, fmt::Debug, os::unix::io::OwnedFd, sync::{atomic::AtomicBool, Arc, Mutex}, time::Duration
+    cmp::max,
+    collections::{HashMap, VecDeque},
+    fmt::Debug,
+    os::unix::io::OwnedFd,
+    sync::{atomic::AtomicBool, Arc, Mutex},
+    time::Duration,
 };
 
 use layers::{

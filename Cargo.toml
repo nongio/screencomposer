@@ -9,8 +9,6 @@ rust-version = "1.80.0"
 [dependencies]
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 bitflags = "2.2.1"
-# this is the local version of Layers Rendering https://git.sr.ht/~nongio/layers
-layers = { git = "https://github.com/nongio/layers", features = ["export-taffy"] }
 gl-rs = { package = "gl", version = "0.14.0" }
 wayland-server = "0.30.0"
 wayland-scanner = "0.30.0"
@@ -37,6 +35,11 @@ usvg = "0.37.0"
 skia-bindings = {version = "0.70", default-features = true }
 tokio = { version = "1", features = ["full"] }
 skia-safe = "0.70"
+
+[dependencies.layers]
+# path = "../layers"
+git = "https://github.com/nongio/layers"
+features = ["export-taffy"]
 
 [dependencies.smithay-drm-extras]
 # path = "../smithay/smithay-drm-extras"
