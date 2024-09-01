@@ -895,7 +895,12 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             }
         });
         if !self.is_resizing {
-            self.workspace.update_with_window_elements(windows);
+            let cursor_pos = self.pointer.current_location();
+            let output = self.space.output_under(cursor_pos).next().cloned().unwrap();
+
+            let output_width = output.current_mode().unwrap().size.w as f64;
+            self.workspace
+                .update_with_window_elements(windows, output_width);
         }
     }
     #[profiling::function]

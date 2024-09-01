@@ -90,22 +90,6 @@ impl AppSwitcherView {
     //     });
     // }
 
-    pub fn update(&self) {
-        self.view.update_state(AppSwitcherModel {
-            width: 1000,
-            ..self.view.get_state()
-        });
-        // let state = self.app_switcher.read().unwrap();
-        // let view = self.view;//.read().unwrap();
-        // if self.view.render(&state) {
-        //     // if let Some(layer) = view.get_layer_by_id("app_org.freedesktop.weston.wayland-terminal") {
-        //     //     layer.on_pointer_move(|x,y| {
-        //     //         println!("pointer move {}, {}", x, y);
-        //     //     });
-        //     // }
-        // }
-    }
-
     pub fn next(&self) {
         let app_switcher = self.view.get_state();
         let mut current_app = app_switcher.current_app;
@@ -230,7 +214,7 @@ impl AppSwitcherView {
                     view.update_state(AppSwitcherModel {
                         current_app,
                         apps,
-                        ..switcher_state
+                        width: workspace.output_width as i32,
                     });
                 }
             }

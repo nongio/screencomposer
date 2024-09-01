@@ -122,6 +122,7 @@ pub struct WorkspaceModel {
     pub application_list: Vec<String>,
     pub windows_list: Vec<ObjectId>,
     pub current_application: usize,
+    pub output_width: f64,
     observers: Vec<Weak<dyn Observer<WorkspaceModel>>>,
 }
 
@@ -261,7 +262,7 @@ impl Workspace {
             map.insert(id.clone(), window.clone());
         }
     }
-    pub(crate) fn update_with_window_elements<I>(&self, windows: I)
+    pub(crate) fn update_with_window_elements<I>(&self, windows: I, output_width: f64)
     where
         I: Iterator<Item = (WindowElement, layers::prelude::Layer, WindowViewBaseModel)>,
     {
@@ -270,6 +271,7 @@ impl Workspace {
                 model_mut.application_list = Vec::new();
                 model_mut.windows_list = Vec::new();
                 model_mut.app_windows_map = HashMap::new();
+                model_mut.output_width = output_width;
                 let mut map = self.wl_windows_map.write().unwrap();
                 map.clear();
             } else {

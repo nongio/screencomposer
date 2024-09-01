@@ -37,23 +37,30 @@ pub fn render_appswitcher_view(
     let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
 
     // those are constant like values
-    let available_width = state.width as f32;
-    let ICON_SIZE: f32 = 185.0 * draw_scale;
+    let available_width = state.width as f32 - 20.0 * draw_scale;
+    let ICON_SIZE: f32 = 170.0 * draw_scale;
     let ICON_PADDING: f32 = available_width * 0.01 * draw_scale;
     let GAP: f32 = ICON_PADDING / 2.0;
     let apps_len = state.apps.len() as f32;
     let total_gaps = (apps_len - 1.0) * GAP; // gaps between items
-    
+
     let total_padding = apps_len * ICON_PADDING * 2.0 + total_gaps; // padding on both sides
     let container_available_width = available_width - total_padding;
-    let COMPONENT_PADDING_H: f32 = container_available_width * 0.03 * draw_scale;
-    let COMPONENT_PADDING_V: f32 = container_available_width * 0.05 * draw_scale;
+    let mut COMPONENT_PADDING_H: f32 = container_available_width * 0.03 * draw_scale;
+    if COMPONENT_PADDING_H > 15.0 * draw_scale {
+        COMPONENT_PADDING_H = 15.0 * draw_scale;
+    }
+    let mut COMPONENT_PADDING_V: f32 = container_available_width * 0.05 * draw_scale;
+    if COMPONENT_PADDING_V > 50.0 * draw_scale {
+        COMPONENT_PADDING_V = 50.0 * draw_scale;
+    }
     let available_icon_size =
-    (available_width - total_padding - COMPONENT_PADDING_H * 2.0) / state.apps.len() as f32;
+        (available_width - total_padding - COMPONENT_PADDING_H * 2.0) / state.apps.len() as f32;
     let available_icon_size = ICON_SIZE.min(available_icon_size);
-    
+
     let FONT_SIZE: f32 = available_icon_size / 6.0;
-    let component_width = apps_len * available_icon_size + total_padding + COMPONENT_PADDING_H * 2.0;
+    let component_width =
+        apps_len * available_icon_size + total_padding + COMPONENT_PADDING_H * 2.0;
     let component_height = available_icon_size + ICON_PADDING * 2.0 + COMPONENT_PADDING_V * 2.0;
     let background_color = Color::new_rgba255(236, 220, 195, 80);
     let current_app = state.current_app as f32;
@@ -77,7 +84,7 @@ pub fn render_appswitcher_view(
         let selection_y = h / 2.0 - selection_height / 2.0;
         let rrect: skia_safe::RRect = skia_safe::RRect::new_rect_xy(
             skia_safe::Rect::from_xywh(selection_x, selection_y, selection_width, selection_height),
-            selection_width/ 10.0,
+            selection_width / 10.0,
             selection_width / 10.0,
         );
         if apps_len > 0.0 {
@@ -175,7 +182,13 @@ pub fn render_appswitcher_view(
                     .iter()
                     .enumerate()
                     .map(|(index, app)| {
-                        render_app_view(index, app.clone(), view.clone(), available_icon_size, ICON_PADDING / 2.0)
+                        render_app_view(
+                            index,
+                            app.clone(),
+                            view.clone(),
+                            available_icon_size,
+                            ICON_PADDING / 2.0,
+                        )
                     })
                     .collect::<Vec<ViewLayer>>(),
             )
