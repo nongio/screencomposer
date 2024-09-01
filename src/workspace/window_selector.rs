@@ -323,17 +323,13 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
             let window_selector_workspace_model = data.workspace.model.read();
             let window_selector_workspace_model = window_selector_workspace_model.unwrap();
             let oid = window_selector_workspace_model
-                .windows
+                .windows_list
                 .get(index)
                 .unwrap()
                 .clone();
             drop(window_selector_workspace_model);
-            if let Some(window_view) = data.window_views.get(&oid) {
-                window_view.raise();
-                data.space.raise_element(&window_view.window, true);
-                if let Some(keyboard) = data.seat.get_keyboard() {
-                    keyboard.set_focus(data, Some(window_view.window.clone().into()), event.serial);
-                }
+            if let Some(window_view) = data.window_views.get(&oid).cloned() {
+                data.raise_element(&window_view.window, true, Some(event.serial), true);
             }
             data.expose_show_all(-1.0, true);
             data.set_cursor(&CursorImageStatus::default_named());

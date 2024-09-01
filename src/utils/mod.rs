@@ -1,3 +1,5 @@
+use std::{thread, time::Duration};
+
 use usvg::TreeParsing;
 
 pub mod natural_layout;
@@ -43,4 +45,18 @@ pub trait Observable<T> {
 
 pub trait Observer<T>: Sync + Send {
     fn notify(&self, event: &T);
+}
+
+pub fn acquire_write_lock_with_retry<T>(
+    lock: &std::sync::RwLock<T>,
+) -> Option<std::sync::RwLockWriteGuard<T>> {
+    const MAX_RETRIES: usize = 5;
+    const RETRY_DELAY_MS: u64 = 100;
+    for _ in 0..MAX_RETRIES {
+        if let Ok(guard) = lock.write() {
+            return Some(guard);
+        }
+        thread::sleep(Duration::from_millis(RETRY_DELAY_MS));
+    }
+    None
 }

@@ -23,7 +23,7 @@ use smithay::{
     output::Scale,
     reexports::{
         wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1,
-        wayland_server::{protocol::wl_pointer, DisplayHandle, Resource},
+        wayland_server::{protocol::wl_pointer, DisplayHandle},
     },
     utils::{IsAlive, Logical, Point, Serial, Transform, SERIAL_COUNTER as SCOUNTER},
     wayland::{
@@ -238,15 +238,11 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             .unwrap_or(KeyAction::None);
 
         if KeyState::Released == state && keycode == 56 {
-            self.workspace.app_switcher.hide();
-            for win in self.workspace.app_switcher.get_current_app_windows() {
-                if let Some(we) = win.window_element.as_ref() {
-                    let id = we.wl_surface().unwrap().id();
-                    self.space.raise_element(we, true);
-                    keyboard.set_focus(self, Some(we.clone().into()), serial);
-                    if let Some(view) = self.window_views.get_mut(&id) {
-                        view.raise();
-                    }
+            // App switcher
+            if self.workspace.app_switcher.alive() {
+                self.workspace.app_switcher.hide();
+                if let Some(app) = self.workspace.app_switcher.get_current_app() {
+                    self.raise_app_elements(&app.identifier, true, Some(serial));
                 }
             }
         }
@@ -342,15 +338,8 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                 .map(|(w, p)| (w.clone(), p));
 
             if let Some((window, _)) = window_under {
-                self.space.raise_element(&window, true);
-                let id = window.wl_surface().unwrap().id();
-                {
-                    // let window_views = self.workspace.window_views.read().unwrap();
-                    if let Some(view) = self.get_window_view(&id) {
-                        view.raise();
-                    }
-                }
-                keyboard.set_focus(self, Some(window.clone().into()), serial);
+                self.raise_app_element(&window, true, Some(serial));
+
                 #[cfg(feature = "xwayland")]
                 if let WindowSurface::X11(surf) = &window.underlying_surface() {
                     self.xwm.as_mut().unwrap().raise_window(surf).unwrap();
@@ -561,18 +550,10 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     self.workspace.app_switcher.previous();
                 }
                 KeyAction::ApplicationSwitchQuit => {
-                    self.workspace.app_switcher.quit_current_app();
+                    self.workspace.quit_current_app();
                 }
                 KeyAction::ApplicationSwitchNextWindow => {
-                    self.workspace.app_switcher.next_window();
-                    // for we in self.app_switcher.app_switcher.current_window_elements() {
-                    //     let id = we.wl_surface().unwrap().id();
-                    //     self.space.raise_element(&we, true);
-                    //     // keyboard.set_focus(self, Some(we.clone().into()), serial);
-                    //     if let Some(view) = self.window_views.get_mut(&id) {
-                    //         view.raise();
-                    //     }
-                    // }
+                    self.next_window(Some(SCOUNTER.next_serial()));
                 }
                 KeyAction::ExposeShowDesktop => {
                     if self.workspace.get_show_desktop() {
@@ -820,10 +801,10 @@ impl ScreenComposer<UdevData> {
                     self.workspace.app_switcher.previous();
                 }
                 KeyAction::ApplicationSwitchNextWindow => {
-                    self.workspace.app_switcher.next_window();
+                    self.next_window(Some(SCOUNTER.next_serial()));
                 }
                 KeyAction::ApplicationSwitchQuit => {
-                    self.workspace.app_switcher.quit_current_app();
+                    self.workspace.quit_current_app();
                 }
                 KeyAction::ExposeShowDesktop => {
                     if self.workspace.get_show_desktop() {

@@ -1,9 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
-    fmt::Debug,
-    os::unix::io::OwnedFd,
-    sync::{atomic::AtomicBool, Arc, Mutex},
-    time::Duration,
+    cmp::max, collections::{HashMap, VecDeque}, fmt::Debug, os::unix::io::OwnedFd, sync::{atomic::AtomicBool, Arc, Mutex}, time::Duration
 };
 
 use layers::{
@@ -60,7 +56,7 @@ use smithay::{
             Display, DisplayHandle, Resource,
         },
     },
-    utils::{self, Clock, Monotonic, Rectangle},
+    utils::{self, Clock, Monotonic, Rectangle, Serial, SERIAL_COUNTER},
     wayland::{
         compositor::{
             self, get_parent, with_states, CompositorClientState, CompositorState,
@@ -510,7 +506,7 @@ impl<BackendData: Backend> XdgActivationHandler for ScreenComposer<BackendData> 
                 .find(|window| window.wl_surface().map(|s| *s == surface).unwrap_or(false))
                 .cloned();
             if let Some(window) = w {
-                self.space.raise_element(&window, true);
+                self.raise_element(&window, true, Some(SERIAL_COUNTER.next_serial()), true);
             }
         }
     }
@@ -884,23 +880,14 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         }
     }
     pub fn update_workspace_applications(&mut self) {
-        let windows = self.xdg_shell_state.toplevel_surfaces().iter().map(|tl| {
-            let id = tl.wl_surface().id();
-            let wv = self.get_window_view(&id).unwrap();
-            let we = self
-                .space
-                .elements()
-                .find(|window| {
-                    if let Some(surface) = window.wl_surface().as_ref() {
-                        surface.id() == tl.wl_surface().id()
-                    } else {
-                        false
-                    }
-                })
-                .unwrap()
-                .to_owned();
-            let state = wv.view_base.state.read().unwrap();
-            (we, wv.layer.clone(), state.clone())
+        let windows = self.space.elements().filter_map(|we| {
+            let id = we.wl_surface().unwrap().id();
+            if let Some(wv) = self.get_window_view(&id) {
+                let state = wv.view_base.state.read().unwrap();
+                Some((we.clone(), wv.layer.clone(), state.clone()))
+            } else {
+                None
+            }
         });
         if !self.is_resizing {
             self.workspace.update_with_window_elements(windows);
@@ -1191,6 +1178,89 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             |_, _, _| true,
         );
         render_elements
+    }
+    pub fn next_window(&mut self, serial: Option<Serial>) {
+        let windows = self.workspace.get_current_app_windows();
+
+        if !windows.is_empty() {
+            for (i, window) in windows.iter().enumerate() {
+                if i == 0 {
+                    if let Some(we) = window.window_element.as_ref() {
+                        self.raise_element(we, true, serial, true);
+                    }
+                }
+            }
+        }
+    }
+    pub fn prev_window(&mut self, serial: Option<Serial>) {
+        let windows = self.workspace.get_current_app_windows();
+
+        if !windows.is_empty() {
+            let current_window = (windows.len() as i32) - 1;
+            let current_window = max(current_window, 0) as usize;
+            for (i, window) in windows.iter().enumerate() {
+                if i == current_window {
+                    if let Some(we) = window.window_element.as_ref() {
+                        self.raise_element(we, true, serial, true);
+                    }
+                }
+            }
+        }
+    }
+    pub fn raise_element(
+        &mut self,
+        window: &WindowElement,
+        activate: bool,
+        serial: Option<Serial>,
+        update: bool,
+    ) {
+        self.space.raise_element(window, activate);
+        let id = window.wl_surface().unwrap().id();
+        {
+            if let Some(view) = self.get_window_view(&id) {
+                view.raise();
+            }
+        }
+        if let Some(serial) = serial {
+            let keyboard = self.seat.get_keyboard().unwrap();
+            keyboard.set_focus(self, Some(window.clone().into()), serial);
+        }
+        if update {
+            self.update_workspace_applications();
+        }
+    }
+    pub fn raise_app_element(
+        &mut self,
+        we: &WindowElement,
+        activate: bool,
+        serial: Option<Serial>,
+    ) {
+        let id = we.wl_surface().unwrap().id();
+        let window = {
+            let window_wl = self.workspace.wl_windows_map.read().unwrap();
+            window_wl.get(&id).unwrap().clone()
+        };
+
+        let windows = self.workspace.get_app_windows(&window.app_id);
+        for window in windows.iter() {
+            if let Some(we) = window.window_element.as_ref() {
+                self.raise_element(we, false, None, false);
+            }
+        }
+        self.raise_element(we, activate, serial, true);
+    }
+    pub fn raise_app_elements(&mut self, app_id: &str, activate: bool, serial: Option<Serial>) {
+        let windows = self.workspace.get_app_windows(app_id);
+        for (i, window) in windows.iter().rev().enumerate() {
+            if let Some(we) = window.window_element.as_ref() {
+                if i == 0 {
+                    self.raise_element(we, activate, serial, false);
+                } else {
+                    self.raise_element(we, false, None, false);
+                }
+            }
+        }
+        self.update_workspace_applications();
     }
 }
 

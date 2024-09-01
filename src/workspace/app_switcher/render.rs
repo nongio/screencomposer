@@ -30,8 +30,6 @@ pub fn render_appswitcher_view(
     state: &AppSwitcherModel,
     view: &View<AppSwitcherModel>,
 ) -> ViewLayer {
-    // println!("Rendering app switcher view: {:?}", state);
-
     const COMPONENT_PADDING_H: f32 = 30.0;
     const COMPONENT_PADDING_V: f32 = 50.0;
     const ICON_PADDING: f32 = 25.0;

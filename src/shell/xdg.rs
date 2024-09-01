@@ -86,7 +86,6 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 );
             }
         }
-        self.update_workspace_applications();
     }
 
     fn toplevel_destroyed(&mut self, toplevel: ToplevelSurface) {

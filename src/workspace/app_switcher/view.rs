@@ -1,6 +1,7 @@
 use std::{
     collections::HashSet,
     sync::{atomic::AtomicBool, Arc},
+    time::Duration,
 };
 
 use layers::{
@@ -17,7 +18,7 @@ use smithay::utils::IsAlive;
 use crate::{
     interactive_view::ViewInteractions,
     utils::Observer,
-    workspace::{Application, Window, WorkspaceModel},
+    workspace::{Application, WorkspaceModel},
 };
 
 use super::render::render_appswitcher_view;
@@ -100,6 +101,13 @@ impl AppSwitcherView {
     pub fn next(&self) {
         let app_switcher = self.view.get_state();
         let mut current_app = app_switcher.current_app;
+
+        // reset current_app on first load
+        // the current app is on the first place
+        if !self.active.load(std::sync::atomic::Ordering::Relaxed) {
+            current_app = 0;
+        }
+
         if !app_switcher.apps.is_empty() {
             current_app = (current_app + 1) % app_switcher.apps.len();
         } else {
@@ -161,96 +169,47 @@ impl AppSwitcherView {
         );
     }
 
-    pub fn quit_current_app(&self) {
-        // if self.active.load(std::sync::atomic::Ordering::Relaxed) {
-        //     let state = self.view.get_state();
-        //     if let Some(app) = state.apps.get(state.current_app) {
-        //         for window in app.windows.iter() {
-        //             match window.window_element.as_ref().unwrap() {
-        //                 WindowElement::Wayland(w) => w.toplevel().send_close(),
-        //                 #[cfg(feature = "xwayland")]
-        //                 WindowElement::X11(w) => {
-        //                     let _ = w.close();
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
-    }
-
-    pub fn next_window(&self) {
-        let state = self.view.get_state();
-        if let Some(app) = state.apps.get(state.current_app) {
-            let windows = app.windows.iter().collect::<Vec<_>>();
-            if !windows.is_empty() {
-                // let mut current_window = windows.iter().position(|w| w.is_focused).unwrap();
-                // current_window = (current_window + 1) % windows.len();
-                // for (i, window) in windows.iter().enumerate() {
-                //     if i == current_window {
-                //         match window.window_element.as_ref().unwrap() {
-                //             WindowElement::Wayland(w) => w.toplevel().send_activate(),
-                //             #[cfg(feature = "xwayland")]
-                //             WindowElement::X11(w) => {
-                //                 let _ = w.activate();
-                //             }
-                //         }
-                //     }
-                // }
-            }
-        }
-    }
-    pub fn prev_window(&self) {
-        let state = self.view.get_state();
-        if let Some(app) = state.apps.get(state.current_app) {
-            let windows = app.windows.iter().collect::<Vec<_>>();
-            if !windows.is_empty() {
-                // let mut current_window = windows.iter().position(|w| w.is_focused).unwrap();
-                // current_window = (current_window + 1) % windows.len();
-                // for (i, window) in windows.iter().enumerate() {
-                //     if i == current_window {
-                //         match window.window_element.as_ref().unwrap() {
-                //             WindowElement::Wayland(w) => w.toplevel().send_activate(),
-                //             #[cfg(feature = "xwayland")]
-                //             WindowElement::X11(w) => {
-                //                 let _ = w.activate();
-                //             }
-                //         }
-                //     }
-                // }
-            }
-        }
-    }
-
     pub fn get_current_app(&self) -> Option<Application> {
         let state = self.view.get_state();
         state.apps.get(state.current_app).cloned()
-    }
-    pub fn get_current_app_windows(&self) -> Vec<Window> {
-        self.get_current_app()
-            .map_or(vec![], |app| app.windows.clone())
     }
 }
 
 impl Observer<WorkspaceModel> for AppSwitcherView {
     fn notify(&self, event: &WorkspaceModel) {
-        let workspace = event;
-        let mut app_set = HashSet::new();
-        let apps = workspace
-            .application_list
-            .iter()
-            .filter_map(|app_id| {
-                let app = workspace.applications.get(app_id).unwrap().to_owned();
-                if app_set.insert(app.identifier.clone()) {
-                    Some(app)
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let workspace = event.clone();
+        let view = self.view.clone();
+        tokio::spawn(async move {
+            // app switcher updates don't need to be instantanious
+            tokio::time::sleep(Duration::from_secs_f32(0.3)).await;
+            let mut app_set = HashSet::new();
+            let apps: Vec<Application> = workspace
+                .application_list
+                .iter()
+                .rev()
+                .filter_map(|app_id| {
+                    let app = workspace.applications_cache.get(app_id).unwrap().to_owned();
 
-        self.view.update_state(AppSwitcherModel {
-            apps,
-            ..self.view.get_state()
+                    if app_set.insert(app.identifier.clone()) {
+                        Some(app)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            let switcher_state = view.get_state();
+            let mut current_app = switcher_state.current_app;
+            if apps.is_empty() {
+                current_app = 0;
+            } else if (current_app + 1) > apps.len() {
+                current_app = apps.len() - 1;
+            }
+            view.update_state(AppSwitcherModel {
+                current_app,
+                apps,
+                ..switcher_state
+            });
         });
     }
 }
