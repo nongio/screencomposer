@@ -37,24 +37,25 @@ pub fn render_appswitcher_view(
     let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
 
     // those are constant like values
-    let COMPONENT_PADDING_H: f32 = 30.0 * draw_scale;
-    let COMPONENT_PADDING_V: f32 = 50.0 * draw_scale;
-    let ICON_PADDING: f32 = 25.0 * draw_scale;
-    let GAP: f32 = ICON_PADDING / 2.0;
-    let ICON_SIZE: f32 = 200.0 * draw_scale;
-    let FONT_SIZE: f32 = 24.0 * draw_scale;
-
     let available_width = state.width as f32;
+    let ICON_SIZE: f32 = 185.0 * draw_scale;
+    let ICON_PADDING: f32 = available_width * 0.01 * draw_scale;
+    let GAP: f32 = ICON_PADDING / 2.0;
     let apps_len = state.apps.len() as f32;
     let total_gaps = (apps_len - 1.0) * GAP; // gaps between items
-
-    let total_padding = 2.0 * COMPONENT_PADDING_H + apps_len * ICON_PADDING * 2.0; // padding on both sides
+    
+    let total_padding = apps_len * ICON_PADDING * 2.0 + total_gaps; // padding on both sides
+    let container_available_width = available_width - total_padding;
+    let COMPONENT_PADDING_H: f32 = container_available_width * 0.03 * draw_scale;
+    let COMPONENT_PADDING_V: f32 = container_available_width * 0.05 * draw_scale;
     let available_icon_size =
-        (available_width - total_padding - total_gaps) / state.apps.len() as f32;
-    let icon_size = ICON_SIZE.min(available_icon_size);
-    let component_width = apps_len * icon_size + total_gaps + total_padding;
-    let component_height = icon_size + ICON_PADDING * 2.0 + COMPONENT_PADDING_V * 2.0;
-    let background_color = Color::new_rgba(1.0, 1.0, 1.0, 0.4);
+    (available_width - total_padding - COMPONENT_PADDING_H * 2.0) / state.apps.len() as f32;
+    let available_icon_size = ICON_SIZE.min(available_icon_size);
+    
+    let FONT_SIZE: f32 = available_icon_size / 6.0;
+    let component_width = apps_len * available_icon_size + total_padding + COMPONENT_PADDING_H * 2.0;
+    let component_height = available_icon_size + ICON_PADDING * 2.0 + COMPONENT_PADDING_V * 2.0;
+    let background_color = Color::new_rgba255(236, 220, 195, 80);
     let current_app = state.current_app as f32;
     let mut app_name = "".to_string();
     if !state.apps.is_empty() && state.current_app < state.apps.len() {
@@ -64,21 +65,20 @@ pub fn render_appswitcher_view(
             .unwrap_or("".to_string());
     }
     let draw_container = move |canvas: &skia_safe::Canvas, w, h| {
-        let color = skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.2);
+        let color = skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.15);
         let paint = skia_safe::Paint::new(color, None);
-
-        let available_icon_size = h - COMPONENT_PADDING_V * 2.0 - ICON_PADDING * 2.0;
-        let icon_size = ICON_SIZE.min(available_icon_size);
-        let selection_width = icon_size + ICON_PADDING * 2.0;
+        // let available_icon_size = h - COMPONENT_PADDING_V * 2.0 - ICON_PADDING * 2.0;
+        // let icon_size = ICON_SIZE.min(available_icon_size);
+        let selection_width = available_icon_size + ICON_PADDING * 2.0;
         let selection_height = selection_width;
         let total_gaps = (apps_len - 1.0) * GAP; // gaps between items
         let selection_x = COMPONENT_PADDING_H + total_gaps - GAP * current_app
-            + current_app * (icon_size + ICON_PADDING * 2.0);
+            + current_app * (available_icon_size + ICON_PADDING * 2.0);
         let selection_y = h / 2.0 - selection_height / 2.0;
-        let rrect = skia_safe::RRect::new_rect_xy(
+        let rrect: skia_safe::RRect = skia_safe::RRect::new_rect_xy(
             skia_safe::Rect::from_xywh(selection_x, selection_y, selection_width, selection_height),
-            20.0,
-            20.0,
+            selection_width/ 10.0,
+            selection_width / 10.0,
         );
         if apps_len > 0.0 {
             canvas.draw_rrect(rrect, &paint);
@@ -139,7 +139,7 @@ pub fn render_appswitcher_view(
             None,
         ))
         .content(Some(draw_container))
-        .border_corner_radius((BorderRadius::new_single(50.0), None))
+        .border_corner_radius((BorderRadius::new_single(component_height / 10.0), None))
         .layout_style(taffy::Style {
             position: taffy::Position::Relative,
             display: taffy::Display::Flex,
@@ -175,7 +175,7 @@ pub fn render_appswitcher_view(
                     .iter()
                     .enumerate()
                     .map(|(index, app)| {
-                        render_app_view(index, app.clone(), view.clone(), icon_size)
+                        render_app_view(index, app.clone(), view.clone(), available_icon_size, ICON_PADDING / 2.0)
                     })
                     .collect::<Vec<ViewLayer>>(),
             )

@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    sync::{atomic::AtomicBool, Arc, RwLock},
+    sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
 
@@ -14,11 +14,11 @@ use layers::{
     types::Size,
 };
 use smithay::utils::IsAlive;
-use tokio::{net::unix::pipe::Receiver, sync::mpsc};
+use tokio::sync::mpsc;
 
 use crate::{
     interactive_view::ViewInteractions,
-    utils::{acquire_write_lock_with_retry, Observer},
+    utils::Observer,
     workspace::{Application, WorkspaceModel},
 };
 
@@ -70,7 +70,7 @@ impl AppSwitcherView {
             initial_state,
             Box::new(render_appswitcher_view),
         );
-        let (notify_tx, mut notify_rx) = mpsc::channel(5);
+        let (notify_tx, notify_rx) = mpsc::channel(5);
         let app_switcher = Self {
             // app_switcher: Arc::new(RwLock::new(AppSwitcherModel::new())),
             wrap_layer: wrap.clone(),
@@ -170,7 +170,7 @@ impl AppSwitcherView {
         self.wrap_layer.set_opacity(
             0.0,
             Some(Transition {
-                duration: 0.3,
+                duration: 0.4,
                 delay: 0.0,
                 timing: TimingFunction::default(),
             }),
@@ -196,7 +196,7 @@ impl AppSwitcherView {
         tokio::spawn(async move {
             loop {
                 // app switcher updates don't need to be instantanious
-                tokio::time::sleep(Duration::from_secs_f32(0.3)).await;
+                tokio::time::sleep(Duration::from_secs_f32(0.4)).await;
 
                 let event = {
                     let mut latest_event_lock = latest_event.write().await;
