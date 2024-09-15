@@ -1,6 +1,7 @@
 mod app_switcher;
 mod background;
 mod dnd_view;
+mod dock;
 mod utils;
 mod window_selector;
 mod window_view;
@@ -26,7 +27,7 @@ use smithay::{
     wayland::shell::xdg::XdgToplevelSurfaceData,
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     fmt::Debug,
     hash::{Hash, Hasher},
     sync::{
@@ -42,6 +43,7 @@ pub use window_view::{WindowView, WindowViewBaseModel, WindowViewSurface};
 
 pub use app_switcher::AppSwitcherView;
 pub use dnd_view::DndView;
+pub use dock::DockView;
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
@@ -66,7 +68,22 @@ pub struct Application {
     pub icon_path: Option<String>,
     pub icon: Option<skia_safe::Image>,
 }
-
+impl PartialEq for Window {
+    fn eq(&self, other: &Self) -> bool {
+        self.wl_surface == other.wl_surface
+    }
+}
+impl Eq for Window {}
+impl Hash for Window {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.wl_surface.hash(state);
+    }
+}
+impl Window {
+    pub fn id(&self) -> Option<ObjectId> {
+        self.wl_surface.as_ref().map(|s| s.id())
+    }
+}
 impl fmt::Debug for Application {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Application")
@@ -93,20 +110,24 @@ impl PartialEq for Application {
 impl Eq for Application {}
 
 pub struct Workspace {
-    pub model: Arc<RwLock<WorkspaceModel>>,
+    model: Arc<RwLock<WorkspaceModel>>,
 
     pub wl_windows_map: Arc<RwLock<HashMap<ObjectId, Window>>>,
 
+    // views
     pub app_switcher: Arc<AppSwitcherView>,
     pub window_selector_view: Arc<WindowSelectorView>,
     pub background_view: Arc<BackgroundView>,
     pub workspace_selector_view: WorkspaceSelectorView,
+    pub dock: Arc<DockView>,
 
+    // scene
     pub layers_engine: LayersEngine,
     pub workspace_layer: Layer,
     pub windows_layer: Layer,
-
     pub overlay_layer: Layer,
+
+    // gestures
     pub show_all: AtomicBool,
     pub show_desktop: AtomicBool,
     pub expose_bin: Arc<RwLock<HashMap<ObjectId, LayoutRect>>>,
@@ -118,11 +139,13 @@ pub struct Workspace {
 pub struct WorkspaceModel {
     pub applications_cache: HashMap<String, Application>,
 
-    pub app_windows_map: HashMap<String, Vec<Window>>,
-    pub application_list: Vec<String>,
+    pub app_windows_map: HashMap<String, Vec<ObjectId>>,
+    pub zindex_application_list: Vec<String>,
+    pub application_list: VecDeque<String>,
+
     pub windows_list: Vec<ObjectId>,
     pub current_application: usize,
-    pub output_width: f64,
+
     observers: Vec<Weak<dyn Observer<WorkspaceModel>>>,
 }
 
@@ -198,6 +221,12 @@ impl Workspace {
         let app_switcher = Arc::new(app_switcher);
 
         model.add_listener(app_switcher.clone());
+
+        let dock = DockView::new(layers_engine.clone());
+        let dock = Arc::new(dock);
+        model.add_listener(dock.clone());
+        dock.view_layer.set_position((0.0, -20.0), None);
+
         let background_view = BackgroundView::new(layers_engine.clone(), background_layer.clone());
         if let Some(background_image) = image_from_path("./resources/background.jpg") {
             background_view.set_image(background_image);
@@ -219,6 +248,7 @@ impl Workspace {
             window_selector_view: window_selector_view.clone(),
             background_view,
             workspace_selector_view,
+            dock,
             layers_engine,
             windows_layer,
             overlay_layer,
@@ -230,7 +260,14 @@ impl Workspace {
             show_desktop_gesture: AtomicI32::new(0),
         })
     }
-
+    pub fn with_model<T>(&self, f: impl FnOnce(&WorkspaceModel) -> T) -> T {
+        let model = self.model.read().unwrap();
+        f(&model)
+    }
+    pub fn with_model_mut<T>(&self, f: impl FnOnce(&mut WorkspaceModel) -> T) -> T {
+        let mut model = self.model.write().unwrap();
+        f(&mut model)
+    }
     pub fn get_show_all(&self) -> bool {
         self.show_all.load(std::sync::atomic::Ordering::Relaxed)
     }
@@ -262,16 +299,16 @@ impl Workspace {
             map.insert(id.clone(), window.clone());
         }
     }
-    pub(crate) fn update_with_window_elements<I>(&self, windows: I, output_width: f64)
+    pub(crate) fn update_with_window_elements<I>(&self, windows: I)
     where
         I: Iterator<Item = (WindowElement, layers::prelude::Layer, WindowViewBaseModel)>,
     {
         {
             if let Ok(mut model_mut) = self.model.write() {
-                model_mut.application_list = Vec::new();
+                model_mut.zindex_application_list = Vec::new();
                 model_mut.windows_list = Vec::new();
                 model_mut.app_windows_map = HashMap::new();
-                model_mut.output_width = output_width;
+
                 let mut map = self.wl_windows_map.write().unwrap();
                 map.clear();
             } else {
@@ -318,13 +355,17 @@ impl Workspace {
                         // don't allow duplicates in app switcher
                         // TODO use config
                         let app_index = model
-                            .application_list
+                            .zindex_application_list
                             .iter()
                             .position(|id| id == app_id)
                             .unwrap_or_else(|| {
-                                model.application_list.push(app_id.clone());
-                                model.application_list.len() - 1
+                                model.zindex_application_list.push(app_id.clone());
+                                model.zindex_application_list.len() - 1
                             });
+                        if !model.application_list.contains(app_id) {
+                            model.application_list.push_front(app_id.clone());
+                        }
+
                         let app = model
                             .applications_cache
                             .entry(app_id.to_owned())
@@ -335,8 +376,8 @@ impl Workspace {
                             .clone();
 
                         let windows = model.app_windows_map.entry(app_id.clone()).or_default();
-
-                        windows.push(window.clone());
+                        let window_id = window.id().unwrap();
+                        windows.push(window_id);
                         {
                             if app.icon.is_none() {
                                 drop(model);
@@ -361,6 +402,15 @@ impl Workspace {
                 }
             });
         }
+        // keep only app in application_list that are in zindex_application_list
+        {
+            let mut model = self.model.write().unwrap();
+            let app_list = model.zindex_application_list.clone();
+            model
+                .application_list
+                .retain(|app_id| app_list.contains(app_id));
+        }
+
         let model = self.model.read().unwrap();
         let event = model.clone();
 
@@ -462,12 +512,11 @@ impl Workspace {
         let screen_size_w = size.x;
         let screen_size_h = size.y - padding_top - padding_bottom - workspace_selector_height;
         let model = self.model.read().unwrap();
-        let map = self.wl_windows_map.read().unwrap();
         let windows = model
             .windows_list
             .iter()
             .map(|w| {
-                let w = map.get(w).unwrap();
+                let w = self.get_window_for_surface(w).unwrap();
                 w.clone()
             })
             .collect();
@@ -511,9 +560,11 @@ impl Workspace {
         self.workspace_selector_view
             .layer
             .set_opacity(workspace_opacity, transition);
+        let dock_y = (-20.0).interpolate(&250.0, delta);
+        self.dock.view_layer.set_position((0.0, dock_y), transition);
 
         for window in model.windows_list.iter() {
-            let window = map.get(window).unwrap();
+            let window = self.get_window_for_surface(window).unwrap();
 
             let id = window.wl_surface.as_ref().unwrap().id();
             if let Some(rect) = bin.get(&id) {
@@ -552,7 +603,7 @@ impl Workspace {
                     .set_scale(layers::types::Point { x: scale, y: scale }, transition);
             }
         }
-        self.window_selector_view.view.update_state(state);
+        self.window_selector_view.view.update_state(&state);
 
         if end_gesture {
             *bin = HashMap::new();
@@ -569,7 +620,6 @@ impl Workspace {
         let show_desktop = self.get_show_desktop();
 
         let model = self.model.read().unwrap();
-        let map = self.wl_windows_map.read().unwrap();
 
         if end_gesture {
             if show_desktop {
@@ -609,7 +659,7 @@ impl Workspace {
         }
 
         for window in model.windows_list.iter() {
-            let window = map.get(window).unwrap();
+            let window = self.get_window_for_surface(window).unwrap();
             let to_x = -window.w;
             let to_y = -window.h;
             let x = window.x.interpolate(&to_x, delta);
@@ -620,7 +670,7 @@ impl Workspace {
                 .set_position(layers::types::Point { x, y }, transition);
         }
     }
-    pub fn get_app_windows(&self, app_id: &str) -> Vec<Window> {
+    pub fn get_app_windows(&self, app_id: &str) -> Vec<ObjectId> {
         let model = self.model.read().unwrap();
         model
             .app_windows_map
@@ -630,16 +680,17 @@ impl Workspace {
     }
     pub fn get_current_app(&self) -> Option<Application> {
         let model = self.model.read().unwrap();
-        let app_id = model.application_list[model.current_application].clone();
+        let app_id = model.zindex_application_list[model.current_application].clone();
         model.applications_cache.get(&app_id).cloned()
     }
-    pub fn get_current_app_windows(&self) -> Vec<Window> {
+    pub fn get_current_app_windows(&self) -> Vec<ObjectId> {
         self.get_current_app()
             .map(|app| self.get_app_windows(&app.identifier))
             .unwrap_or_default()
     }
     pub fn quit_app(&self, app_id: &str) {
-        for window in self.get_app_windows(app_id) {
+        for window_id in self.get_app_windows(app_id) {
+            let window = self.get_window_for_surface(&window_id).unwrap();
             if let Some(we) = window.window_element.as_ref() {
                 match we.underlying_surface() {
                     WindowSurface::Wayland(t) => t.send_close(),

@@ -273,10 +273,23 @@ impl Observer<Workspace> for WindowSelectorView {
 }
 impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelectorView {
     fn id(&self) -> Option<usize> {
-        self.view.layer.id().map(|id| id.0.into())
+        self.view
+            .layer
+            .read()
+            .unwrap()
+            .as_ref()
+            .and_then(|l| l.id())
+            .map(|id| id.0.into())
     }
+
     fn is_alive(&self) -> bool {
-        !self.view.layer.hidden()
+        !self.view
+            .layer
+            .read()
+            .unwrap()
+            .as_ref()
+            .map(|l| l.hidden())
+            .unwrap_or(true)
     }
     fn on_motion(
         &self,
@@ -308,7 +321,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
             })
             .map(|x| x.index);
 
-        self.view.update_state(WindowSelectorState {
+        self.view.update_state(&WindowSelectorState {
             rects: state.rects,
             current_selection: rect,
         });
@@ -316,24 +329,20 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
     fn on_button(
         &self,
         _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-        data: &mut crate::ScreenComposer<Backend>,
+        screencomposer: &mut crate::ScreenComposer<Backend>,
         event: &smithay::input::pointer::ButtonEvent,
     ) {
-        let state = self.view.get_state();
-        if let Some(index) = state.current_selection {
-            let window_selector_workspace_model = data.workspace.model.read();
-            let window_selector_workspace_model = window_selector_workspace_model.unwrap();
-            let oid = window_selector_workspace_model
-                .windows_list
-                .get(index)
-                .unwrap()
-                .clone();
-            drop(window_selector_workspace_model);
-            if let Some(window_view) = data.window_views.get(&oid).cloned() {
-                data.raise_element(&window_view.window, true, Some(event.serial), true);
+        let selector_state = self.view.get_state();
+        if let Some(index) = selector_state.current_selection {
+            let oid = screencomposer
+                .workspace
+                .with_model(|model| model.windows_list.get(index).unwrap().clone());
+
+            if let Some(window_view) = screencomposer.window_views.get(&oid).cloned() {
+                screencomposer.raise_element(&window_view.window, true, Some(event.serial), false);
             }
-            data.expose_show_all(-1.0, true);
-            data.set_cursor(&CursorImageStatus::default_named());
         }
+        screencomposer.expose_show_all(-1.0, true);
+        screencomposer.set_cursor(&CursorImageStatus::default_named());
     }
 }
