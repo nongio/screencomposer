@@ -140,13 +140,12 @@ where
     }
 
     fn is_alive(&self) -> bool {
-        self.layer
+        !self.layer
             .read()
             .unwrap()
             .as_ref()
             .map(|l| l.hidden())
             .unwrap_or(true)
-            == false
     }
 }
 
