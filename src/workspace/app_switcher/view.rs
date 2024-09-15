@@ -239,37 +239,37 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for AppSwitcherVi
     fn is_alive(&self) -> bool {
         self.alive()
     }
-    fn on_motion(
-        &self,
-        _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-        _data: &mut crate::ScreenComposer<Backend>,
-        event: &smithay::input::pointer::MotionEvent,
-    ) {
-        let id = self.view_layer.id().unwrap();
-        let scale = Config::with(|c| c.screen_scale);
-        self.view_layer.engine.pointer_move(
-            (
-                (event.location.x * scale) as f32,
-                (event.location.y * scale) as f32,
-            ),
-            id.0,
-        );
-    }
-    fn on_button(
-        &self,
-        _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-        _data: &mut crate::ScreenComposer<Backend>,
-        event: &smithay::input::pointer::ButtonEvent,
-    ) {
-        // let id = self.view_layer.id().unwrap();
-        // let scale = Config::with(|c| c.screen_scale);
-        match event.state {
-            ButtonState::Pressed => {
-                self.view_layer.engine.pointer_button_down();
-            }
-            ButtonState::Released => {
-                self.view_layer.engine.pointer_button_up();
-            }
-        }
-    }
+    // fn on_motion(
+    //     &self,
+    //     _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
+    //     _data: &mut crate::ScreenComposer<Backend>,
+    //     event: &smithay::input::pointer::MotionEvent,
+    // ) {
+    //     let id = self.view_layer.id().unwrap();
+    //     let scale = Config::with(|c| c.screen_scale);
+    //     self.view_layer.engine.pointer_move(
+    //         (
+    //             (event.location.x * scale) as f32,
+    //             (event.location.y * scale) as f32,
+    //         ),
+    //         id.0,
+    //     );
+    // }
+    // fn on_button(
+    //     &self,
+    //     _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
+    //     _data: &mut crate::ScreenComposer<Backend>,
+    //     event: &smithay::input::pointer::ButtonEvent,
+    // ) {
+    //     // let id = self.view_layer.id().unwrap();
+    //     // let scale = Config::with(|c| c.screen_scale);
+    //     match event.state {
+    //         ButtonState::Pressed => {
+    //             self.view_layer.engine.pointer_button_down();
+    //         }
+    //         ButtonState::Released => {
+    //             self.view_layer.engine.pointer_button_up();
+    //         }
+    //     }
+    // }
 }

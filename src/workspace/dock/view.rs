@@ -213,13 +213,13 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
         self.update_magnification_position(
             (event.location.x * scale) as f32 - self.view_layer.render_position().x,
         );
-        self.view_layer.engine.pointer_move(
-            (
-                (event.location.x * scale) as f32,
-                (event.location.y * scale) as f32,
-            ),
-            id.0,
-        );
+        // self.view_layer.engine.pointer_move(
+        //     (
+        //         (event.location.x * scale) as f32,
+        //         (event.location.y * scale) as f32,
+        //     ),
+        //     id.0,
+        // );
     }
     fn on_leave(&self, _serial: smithay::utils::Serial, _time: u32) {
         self.update_magnification_position(-500.0);
@@ -232,14 +232,14 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
     ) {
         // let id = self.view_layer.id().unwrap();
         // let scale = Config::with(|c| c.screen_scale);
-        match event.state {
-            ButtonState::Pressed => {
-                self.view_layer.engine.pointer_button_down();
-            }
-            ButtonState::Released => {
-                self.view_layer.engine.pointer_button_up();
-            }
-        }
+        // match event.state {
+        //     ButtonState::Pressed => {
+        //         self.view_layer.engine.pointer_button_down();
+        //     }
+        //     ButtonState::Released => {
+        //         self.view_layer.engine.pointer_button_up();
+        //     }
+        // }
     }
 }
 use std::f64::consts::E;

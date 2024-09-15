@@ -283,7 +283,8 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
     }
 
     fn is_alive(&self) -> bool {
-        !self.view
+        !self
+            .view
             .layer
             .read()
             .unwrap()
