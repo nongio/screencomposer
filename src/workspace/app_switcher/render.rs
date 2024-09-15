@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 use layers::{prelude::*, types::Size};
-use taffy::FromPoints;
+use taffy::FromLength;
 
 use crate::config::Config;
 
@@ -33,7 +33,7 @@ thread_local! {
 pub fn render_appswitcher_view(
     state: &AppSwitcherModel,
     view: &View<AppSwitcherModel>,
-) -> ViewLayer {
+) -> LayerTree {
     let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
 
     // those are constant like values
@@ -126,12 +126,12 @@ pub fn render_appswitcher_view(
         }
         skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
     };
-    ViewLayerBuilder::default()
+    LayerTreeBuilder::default()
         .key("apps_switcher")
         .size((
             Size {
-                width: taffy::Dimension::Points(component_width),
-                height: taffy::Dimension::Points(component_height),
+                width: taffy::Dimension::Length(component_width),
+                height: taffy::Dimension::Length(component_height),
             },
             Some(Transition {
                 duration: 1.0,
@@ -155,7 +155,7 @@ pub fn render_appswitcher_view(
             justify_items: Some(taffy::JustifyItems::Center),
             ..Default::default()
         })
-        .children(vec![ViewLayerBuilder::default()
+        .children(vec![LayerTreeBuilder::default()
             .key("apps_container")
             .size((
                 Size {
@@ -173,7 +173,7 @@ pub fn render_appswitcher_view(
                 justify_content: Some(taffy::JustifyContent::Center),
                 justify_items: Some(taffy::JustifyItems::Center),
                 align_items: Some(taffy::AlignItems::Baseline),
-                gap: taffy::Size::<taffy::LengthPercentage>::from_points(GAP),
+                gap: taffy::Size::<taffy::LengthPercentage>::from_length(GAP),
                 ..Default::default()
             })
             .children(
@@ -190,7 +190,7 @@ pub fn render_appswitcher_view(
                             ICON_PADDING / 2.0,
                         )
                     })
-                    .collect::<Vec<ViewLayer>>(),
+                    .collect::<Vec<LayerTree>>(),
             )
             .build()
             .unwrap()])

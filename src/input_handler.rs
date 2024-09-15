@@ -257,10 +257,10 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
         let state = wl_pointer::ButtonState::from(evt.state());
 
-        if wl_pointer::ButtonState::Pressed == state {
+        if !self.workspace.get_show_all() && wl_pointer::ButtonState::Pressed == state {
+            // this is messing with the window selector
             self.update_keyboard_focus(serial);
-        };
-        // if !self.workspace.get_show_all() {
+        }
         let pointer = self.pointer.clone();
         pointer.button(
             self,
@@ -381,15 +381,14 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         })?;
         let output_geo = self.space.output_geometry(output).unwrap();
         let layers = layer_map_for_output(output);
-
+        let scale = output.current_scale().fractional_scale();
+        let physical_pos = pos.to_physical(scale);
         let mut under = None;
 
         // App switcher check
         if self.workspace.app_switcher.alive() {
             let focus = self.workspace.app_switcher.as_ref().clone().into();
-            let position = self.workspace.app_switcher.view_layer.render_position();
-            return Some((focus, (position.x as f64, position.y as f64).into()));
-            // return Some((focus, (0, 0).into()));
+            return Some((focus, (0.0, 0.0).into()));
         }
         // Window selector check
         if self.workspace.get_show_all() {
@@ -411,6 +410,17 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         {
             let layer_loc = layers.layer_geometry(layer).unwrap().loc;
             under = Some((layer.clone().into(), output_geo.loc + layer_loc))
+        } else if self.workspace.dock.alive()
+            && self
+                .workspace
+                .dock
+                .view
+                .contains_point(layers::types::Point {
+                    x: physical_pos.x as f32,
+                    y: physical_pos.y as f32,
+                })
+        {
+            under = Some((self.workspace.dock.as_ref().clone().into(), (0, 0).into()));
         } else if let Some((focus, location)) =
             self.space.element_under(pos).and_then(|(window, loc)| {
                 window

@@ -32,8 +32,8 @@ impl BackgroundView {
             image: None,
             debug_string: "Screen composer 0.1".to_string(),
         };
-        let view = layers::prelude::View::new(layer, state, Box::new(view_background));
-
+        let view = layers::prelude::View::new("background_view", state, Box::new(view_background));
+        view.mount_layer(layer);
         Self {
             // engine: layers_engine,
             view,
@@ -42,14 +42,14 @@ impl BackgroundView {
     }
 
     pub fn set_debug_text(&self, text: String) {
-        self.view.update_state(BackgroundViewState {
+        self.view.update_state(&BackgroundViewState {
             debug_string: text,
             ..self.view.get_state()
         });
     }
 
     pub fn set_image(&self, image: skia_safe::Image) {
-        self.view.update_state(BackgroundViewState {
+        self.view.update_state(&BackgroundViewState {
             image: Some(image),
             ..self.view.get_state()
         });
@@ -60,7 +60,7 @@ impl BackgroundView {
 pub fn view_background(
     state: &BackgroundViewState,
     _view: &View<BackgroundViewState>,
-) -> ViewLayer {
+) -> LayerTree {
     let image = state.image.clone();
 
     // let debug_text = state.debug_string.clone();
@@ -108,7 +108,7 @@ pub fn view_background(
         skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
     };
 
-    ViewLayerBuilder::default()
+    LayerTreeBuilder::default()
         .key("background_view")
         .opacity((
             1.0,

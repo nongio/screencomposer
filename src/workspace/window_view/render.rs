@@ -25,7 +25,7 @@ use super::model::WindowViewBaseModel;
 pub fn view_base_window(
     state: &WindowViewBaseModel,
     _view: &View<WindowViewBaseModel>,
-) -> ViewLayer {
+) -> LayerTree {
     let w = state.w;
     let h = state.h;
 
@@ -73,16 +73,16 @@ pub fn view_base_window(
         canvas.draw_rect(rect, &shadow_paint);
         skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
     };
-    ViewLayerBuilder::default()
+    LayerTreeBuilder::default()
         .key("window_view")
         .size((
             Size {
-                width: taffy::Dimension::Points(w),
-                height: taffy::Dimension::Points(h),
+                width: taffy::Dimension::Length(w),
+                height: taffy::Dimension::Length(h),
             },
             None,
         ))
-        .children(vec![ViewLayerBuilder::default()
+        .children(vec![LayerTreeBuilder::default()
             .key("window_view_shadow")
             .layout_style(taffy::Style {
                 position: taffy::Position::Absolute,
@@ -97,8 +97,8 @@ pub fn view_base_window(
             ))
             .size((
                 Size {
-                    width: taffy::Dimension::Points(w + SAFE_AREA * 2.0),
-                    height: taffy::Dimension::Points(h + SAFE_AREA * 2.0),
+                    width: taffy::Dimension::Length(w + SAFE_AREA * 2.0),
+                    height: taffy::Dimension::Length(h + SAFE_AREA * 2.0),
                 },
                 None,
             ))

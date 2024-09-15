@@ -12,11 +12,13 @@ use layers::{
     prelude::taffy,
     taffy::style::Style,
     types::Size,
+    view::RenderLayerTree,
 };
-use smithay::utils::IsAlive;
+use smithay::{backend::input::ButtonState, utils::IsAlive};
 use tokio::sync::mpsc;
 
 use crate::{
+    config::Config,
     interactive_view::ViewInteractions,
     utils::Observer,
     workspace::{Application, WorkspaceModel},
@@ -52,6 +54,7 @@ impl AppSwitcherView {
         let wrap = layers_engine.new_layer();
         wrap.set_size(Size::percent(1.0, 1.0), None);
         wrap.set_layout_style(Style {
+            position: layers::taffy::style::Position::Absolute,
             display: layers::taffy::style::Display::Flex,
             justify_content: Some(taffy::JustifyContent::Center),
             align_items: Some(taffy::AlignItems::Center),
@@ -66,10 +69,11 @@ impl AppSwitcherView {
         let mut initial_state = AppSwitcherModel::new();
         initial_state.width = 1000;
         let view = layers::prelude::View::new(
-            layer.clone(),
+            "apps_switcher",
             initial_state,
             Box::new(render_appswitcher_view),
         );
+        view.mount_layer(layer.clone());
         let (notify_tx, notify_rx) = mpsc::channel(5);
         let app_switcher = Self {
             // app_switcher: Arc::new(RwLock::new(AppSwitcherModel::new())),
@@ -106,7 +110,7 @@ impl AppSwitcherView {
             current_app = 0;
         }
 
-        self.view.update_state(AppSwitcherModel {
+        self.view.update_state(&AppSwitcherModel {
             current_app,
             ..app_switcher
         });
@@ -131,7 +135,7 @@ impl AppSwitcherView {
             current_app = 0;
         }
 
-        self.view.update_state(AppSwitcherModel {
+        self.view.update_state(&AppSwitcherModel {
             current_app,
             ..app_switcher
         });
@@ -190,7 +194,7 @@ impl AppSwitcherView {
                 if let Some(workspace) = event {
                     let mut app_set = HashSet::new();
                     let apps: Vec<Application> = workspace
-                        .application_list
+                        .zindex_application_list
                         .iter()
                         .rev()
                         .filter_map(|app_id| {
@@ -211,10 +215,10 @@ impl AppSwitcherView {
                     } else if (current_app + 1) > apps.len() {
                         current_app = apps.len() - 1;
                     }
-                    view.update_state(AppSwitcherModel {
+                    view.update_state(&AppSwitcherModel {
                         current_app,
                         apps,
-                        width: workspace.output_width as i32,
+                        ..switcher_state
                     });
                 }
             }
@@ -241,10 +245,31 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for AppSwitcherVi
         _data: &mut crate::ScreenComposer<Backend>,
         event: &smithay::input::pointer::MotionEvent,
     ) {
-        // println!("AppSwitcherView on_motion {} {}", event.location.x, event.location.y);
         let id = self.view_layer.id().unwrap();
-        self.view_layer
-            .engine
-            .pointer_move((event.location.x as f32, event.location.y as f32), id.0);
+        let scale = Config::with(|c| c.screen_scale);
+        self.view_layer.engine.pointer_move(
+            (
+                (event.location.x * scale) as f32,
+                (event.location.y * scale) as f32,
+            ),
+            id.0,
+        );
+    }
+    fn on_button(
+        &self,
+        _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
+        _data: &mut crate::ScreenComposer<Backend>,
+        event: &smithay::input::pointer::ButtonEvent,
+    ) {
+        // let id = self.view_layer.id().unwrap();
+        // let scale = Config::with(|c| c.screen_scale);
+        match event.state {
+            ButtonState::Pressed => {
+                self.view_layer.engine.pointer_button_down();
+            }
+            ButtonState::Released => {
+                self.view_layer.engine.pointer_button_up();
+            }
+        }
     }
 }

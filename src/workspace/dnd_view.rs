@@ -2,6 +2,7 @@ use layers::{
     engine::{LayersEngine, NodeRef},
     prelude::taffy,
     types::Point,
+    view::{RenderLayerTree, View},
 };
 
 use crate::workspace::utils::view_render_elements;
@@ -37,11 +38,8 @@ impl DndView {
 
         let render_elements = Vec::new();
 
-        let view_content = layers::prelude::View::new(
-            content_layer.clone(),
-            render_elements,
-            Box::new(view_render_elements),
-        );
+        let view_content = View::new("window_view_content", render_elements, view_render_elements);
+        view_content.mount_layer(content_layer.clone());
 
         Self {
             view_content,

@@ -888,19 +888,14 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         let windows = self.space.elements().filter_map(|we| {
             let id = we.wl_surface().unwrap().id();
             if let Some(wv) = self.get_window_view(&id) {
-                let state = wv.view_base.state.read().unwrap();
-                Some((we.clone(), wv.layer.clone(), state.clone()))
+                let state = wv.view_base.get_state();
+                Some((we.clone(), wv.layer.clone(), state))
             } else {
                 None
             }
         });
         if !self.is_resizing {
-            let cursor_pos = self.pointer.current_location();
-            let output = self.space.output_under(cursor_pos).next().cloned().unwrap();
-
-            let output_width = output.current_mode().unwrap().size.w as f64;
-            self.workspace
-                .update_with_window_elements(windows, output_width);
+            self.workspace.update_with_window_elements(windows);
         }
     }
     #[profiling::function]
@@ -1048,10 +1043,10 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                     };
 
                     self.workspace.update_window(&id, &model);
-                    window_view.view_base.update_state(model);
+                    window_view.view_base.update_state(&model);
                     window_view
                         .view_content
-                        .update_state(render_elements.into());
+                        .update_state(&render_elements.into());
                 }
             }
         }
@@ -1063,7 +1058,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             let render_elements = self.get_render_elements(dnd_surface, scale);
             self.dnd_view
                 .view_content
-                .update_state(render_elements.into());
+                .update_state(&render_elements.into());
 
             self.dnd_view
                 .layer
@@ -1193,10 +1188,12 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         let windows = self.workspace.get_current_app_windows();
 
         if !windows.is_empty() {
-            for (i, window) in windows.iter().enumerate() {
+            for (i, window_id) in windows.iter().enumerate() {
                 if i == 0 {
-                    if let Some(we) = window.window_element.as_ref() {
-                        self.raise_element(we, true, serial, true);
+                    if let Some(window) = self.workspace.get_window_for_surface(window_id) {
+                        if let Some(we) = window.window_element.as_ref() {
+                            self.raise_element(we, true, serial, true);
+                        }
                     }
                 }
             }
@@ -1208,10 +1205,12 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         if !windows.is_empty() {
             let current_window = (windows.len() as i32) - 1;
             let current_window = max(current_window, 0) as usize;
-            for (i, window) in windows.iter().enumerate() {
+            for (i, window_id) in windows.iter().enumerate() {
                 if i == current_window {
-                    if let Some(we) = window.window_element.as_ref() {
-                        self.raise_element(we, true, serial, true);
+                    if let Some(window) = self.workspace.get_window_for_surface(window_id) {
+                        if let Some(we) = window.window_element.as_ref() {
+                            self.raise_element(we, true, serial, true);
+                        }
                     }
                 }
             }
@@ -1252,21 +1251,25 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         };
 
         let windows = self.workspace.get_app_windows(&window.app_id);
-        for window in windows.iter() {
-            if let Some(we) = window.window_element.as_ref() {
-                self.raise_element(we, false, None, false);
+        for window_id in windows.iter() {
+            if let Some(window) = self.workspace.get_window_for_surface(window_id) {
+                if let Some(we) = window.window_element.as_ref() {
+                    self.raise_element(we, false, None, false);
+                }
             }
         }
         self.raise_element(we, activate, serial, true);
     }
     pub fn raise_app_elements(&mut self, app_id: &str, activate: bool, serial: Option<Serial>) {
         let windows = self.workspace.get_app_windows(app_id);
-        for (i, window) in windows.iter().rev().enumerate() {
-            if let Some(we) = window.window_element.as_ref() {
-                if i == 0 {
-                    self.raise_element(we, activate, serial, false);
-                } else {
-                    self.raise_element(we, false, None, false);
+        for (i, window_id) in windows.iter().rev().enumerate() {
+            if let Some(window) = self.workspace.get_window_for_surface(window_id) {
+                if let Some(we) = window.window_element.as_ref() {
+                    if i == 0 {
+                        self.raise_element(we, activate, serial, false);
+                    } else {
+                        self.raise_element(we, false, None, false);
+                    }
                 }
             }
         }

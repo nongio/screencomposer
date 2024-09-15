@@ -1,9 +1,6 @@
 use std::hash::{Hash, Hasher};
 
-use crate::{
-    utils::Observer,
-    workspace::{Application, Workspace},
-};
+use crate::workspace::Application;
 
 #[derive(Debug, Clone, Default)]
 pub struct AppSwitcherModel {
@@ -14,7 +11,6 @@ pub struct AppSwitcherModel {
 
 impl Hash for AppSwitcherModel {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        // let apps = self.apps.read().unwrap();
         self.apps.hash(state);
         self.current_app.hash(state);
     }
@@ -23,11 +19,5 @@ impl Hash for AppSwitcherModel {
 impl AppSwitcherModel {
     pub fn new() -> Self {
         Default::default()
-    }
-}
-
-impl Observer<Workspace> for AppSwitcherModel {
-    fn notify(&self, _event: &Workspace) {
-        // println!("AppSwitcherState received event");
     }
 }
