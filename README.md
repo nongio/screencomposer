@@ -25,10 +25,11 @@ The project is not currently ready for a daily usage but any contributor curious
 </figure>
 
 ## Is it usable?
-Yes, you can try it out, though it is not ready for daily usage. The project is still in the early stages of development, and many features are missing. The project is not yet packaged for any distribution, so you'll need to build it yourself.
+Yes-ish, you can try it out, though it is not ready for daily usage. The project is still in the early stages of development, and many features are missing. The project is not yet packaged for any distribution, so you'll need to build it yourself.
 Following a draft roadmap of features and improvements.
 
 ## Features / Roadmap
+
 ### Basic window management
 - [x] move windows
 - [x] resize windows
@@ -36,11 +37,11 @@ Following a draft roadmap of features and improvements.
 - [x] window scaling
 - [x] animated drag and drop
 - [ ] minimize windows
-### Applications switcher
+### Applications switcher (hotkey: `alt + Tab`)
 - [x] background search for application metadata and icons (following xdg specs)
 - [x] close applications from application switcher
 - [x] cycle between same app windows
-### Expose windows
+### Expose windows (hotkey: `alt + f` gesture on udev: `three fingers swipe up`)
 - [x] all windows (algorithm from gnome-shell/kde)
 - [x] preview windows with name
 
@@ -72,10 +73,23 @@ Following a draft roadmap of features and improvements.
 - [ ] workspace switcher
 
 ### Config
-- [~] centralized config manager
+- [ ] centralized config manager
 - [ ] persistent config from text files
 - [ ] setup keybindings from config
 - [ ] setup screen mode
+
+### Hardcoded Hotkeys
+- show desktop: `alt + d`
+- show all windows: `alt + f`
+- cycle current app windows: `alt + r`
+- application switcher: `alt + tab`
+- open a terminal: `alt + shift + enter`
+- open a file browser: `alt + shift + space`
+- open a browser: `alt + shift + b`
+
+If you want to customise the binaries triggered by the hotkeys, you can edit the `src/config.rs` file.
+
+If you want to change the hotkeys, take a look at: `src/input_handler.rs#L1401`
 
 ## Is it open for contributions?
 You can contribute by testing the compositor, reporting bugs, by implementing new features or bring new ideas. Both this project and the LayersEngine are open to contributions. If you have any questions,  open an issue on the repository.
@@ -116,3 +130,7 @@ The currently available backends are:
   compositor. Note that this requires you to start screen-composer as root if your system does not have logind
   available.
 
+### Credits
+- Icon used: [WhiteSur Icon Theme](https://github.com/vinceliuice/WhiteSur-icon-theme)
+- Font used: [Inter Font](https://rsms.me/inter/)
+- Background used: [hdqwalls](https://hdqwalls.com/wallpaper/1152x864/macos-sonoma-orange-dark/)
