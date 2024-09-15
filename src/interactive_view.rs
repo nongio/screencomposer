@@ -131,10 +131,21 @@ where
     Arc<RwLock<S>>: Send + Sync,
 {
     fn id(&self) -> Option<usize> {
-        self.layer.id().map(|id| id.0.into())
+        self.layer
+            .read()
+            .unwrap()
+            .as_ref()
+            .and_then(|l| l.id())
+            .map(|id| id.0.into())
     }
+
     fn is_alive(&self) -> bool {
-        !self.layer.hidden()
+        !self.layer
+            .read()
+            .unwrap()
+            .as_ref()
+            .map(|l| l.hidden())
+            .unwrap_or(true)
     }
 }
 

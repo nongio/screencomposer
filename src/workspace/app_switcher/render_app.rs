@@ -1,5 +1,5 @@
 use layers::{
-    prelude::{taffy, Color, View, ViewLayer, ViewLayerBuilder},
+    prelude::{taffy, Color, LayerTree, LayerTreeBuilder, View},
     types::{BorderRadius, PaintColor, Size},
 };
 
@@ -13,7 +13,7 @@ pub fn render_app_view(
     view: View<AppSwitcherModel>,
     icon_width: f32,
     padding: f32,
-) -> ViewLayer {
+) -> LayerTree {
     let draw_picture = move |canvas: &skia_safe::Canvas, w: f32, h: f32| -> skia_safe::Rect {
         if let Some(image) = &state.icon {
             let mut paint =
@@ -54,12 +54,12 @@ pub fn render_app_view(
         }
         skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
     };
-    ViewLayerBuilder::default()
+    LayerTreeBuilder::default()
         .key(format!("app_{}", state.identifier))
         .size((
             Size {
-                width: taffy::Dimension::Points(icon_width + padding * 2.0),
-                height: taffy::Dimension::Points(icon_width + padding * 2.0),
+                width: taffy::Dimension::Length(icon_width + padding * 2.0),
+                height: taffy::Dimension::Length(icon_width + padding * 2.0),
             },
             None,
         ))
@@ -71,9 +71,8 @@ pub fn render_app_view(
         ))
         .border_corner_radius((BorderRadius::new_single(20.0), None))
         .content(Some(draw_picture))
-        .on_pointer_move(move |_x, _y| {
-            // println!("pointer move ({}) {}, {}", index, x, y);
-            view.update_state(AppSwitcherModel {
+        .on_pointer_in(move |_, _x, _y| {
+            view.update_state(&AppSwitcherModel {
                 current_app: index,
                 ..view.get_state()
             });

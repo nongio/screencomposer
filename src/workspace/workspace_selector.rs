@@ -22,7 +22,12 @@ pub struct WorkspaceSelectorView {
 impl WorkspaceSelectorView {
     pub fn new(_layers_engine: LayersEngine, layer: Layer) -> Self {
         let state = WorkspaceSelectorViewState {};
-        let view = layers::prelude::View::new(layer.clone(), state, Box::new(view));
+        let view = View::new(
+            "workspace_selector_view",
+            state,
+            render_window_selector_view,
+        );
+
         layer.set_position((0.0, -200.0), None);
         Self {
             // engine: layers_engine,
@@ -33,10 +38,10 @@ impl WorkspaceSelectorView {
     }
 }
 
-fn view(
+fn render_window_selector_view(
     _state: &WorkspaceSelectorViewState,
     _view: &View<WorkspaceSelectorViewState>,
-) -> ViewLayer {
+) -> LayerTree {
     let _draw_container = move |canvas: &skia_safe::Canvas, w, h| {
         let rect = skia_safe::Rect::from_xywh(0.0, 0.0, w, 200.0);
         let color = skia_safe::Color4f::new(0.8, 0.8, 0.8, 0.3);
@@ -46,12 +51,12 @@ fn view(
         skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
     };
 
-    ViewLayerBuilder::default()
+    LayerTreeBuilder::default()
         .key("workspace_selector_view")
         .size((
             layers::types::Size {
                 width: layers::taffy::style::Dimension::Percent(1.0),
-                height: layers::taffy::style::Dimension::Points(200.0),
+                height: layers::taffy::style::Dimension::Length(200.0),
             },
             None,
         ))

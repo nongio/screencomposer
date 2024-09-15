@@ -1,5 +1,5 @@
 use layers::{
-    prelude::{taffy, View, ViewLayer, ViewLayerBuilder},
+    prelude::{taffy, LayerTree, LayerTreeBuilder, View},
     types::{Point, Size},
 };
 use smithay::utils::Transform;
@@ -11,15 +11,15 @@ use super::WindowViewSurface;
 pub fn view_render_elements(
     render_elements: &Vec<WindowViewSurface>,
     _view: &View<Vec<WindowViewSurface>>,
-) -> ViewLayer {
+) -> LayerTree {
     let resampler = skia_safe::CubicResampler::catmull_rom();
 
-    ViewLayerBuilder::default()
+    LayerTreeBuilder::default()
         .key("window_view_content")
         .size((
             Size {
-                width: taffy::Dimension::Points(0.0),
-                height: taffy::Dimension::Points(0.0),
+                width: taffy::Dimension::Length(0.0),
+                height: taffy::Dimension::Length(0.0),
             },
             None,
         ))
@@ -128,7 +128,7 @@ pub fn view_render_elements(
                         // canvas.draw_rrect(rrect, &paint);
                         damage
                     };
-                    ViewLayerBuilder::default()
+                    LayerTreeBuilder::default()
                         .key(format!("window_view_content_{}", index))
                         .layout_style(taffy::Style {
                             position: taffy::Position::Absolute,
@@ -148,8 +148,8 @@ pub fn view_render_elements(
                         // ))
                         .size((
                             Size {
-                                width: taffy::Dimension::Points(wvs.phy_dst_w),
-                                height: taffy::Dimension::Points(wvs.phy_dst_h),
+                                width: taffy::Dimension::Length(wvs.phy_dst_w),
+                                height: taffy::Dimension::Length(wvs.phy_dst_h),
                             },
                             None,
                         ))

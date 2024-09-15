@@ -108,7 +108,8 @@ impl WindowSelectorView {
             rects: vec![],
             current_selection: None,
         };
-        let view = layers::prelude::View::new(layer.clone(), state, Box::new(view_window_selector));
+        let view = layers::prelude::View::new("window_selector_view", state, view_window_selector);
+        view.mount_layer(layer.clone());
         Self { view, layer }
     }
 }
@@ -149,7 +150,7 @@ pub fn get_paragraph_for_text(text: &str, font_size: f32) -> skia_safe::textlayo
 pub fn view_window_selector(
     state: &WindowSelectorState,
     _view: &View<WindowSelectorState>,
-) -> ViewLayer {
+) -> LayerTree {
     let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
 
     let font_size: f32 = 24.0 * draw_scale;
@@ -219,13 +220,13 @@ pub fn view_window_selector(
             text_bounding_box.height() + text_padding_y * 2.0
         },
     );
-    ViewLayerBuilder::default()
+    LayerTreeBuilder::default()
         .key("window_selector_view")
         .position(((0.0, 0.0).into(), None))
         .size((layers::types::Size::percent(1.0, 1.0), None))
         .border_width((10.0 * draw_scale, None))
         .content(draw_container)
-        .children(vec![ViewLayerBuilder::default()
+        .children(vec![LayerTreeBuilder::default()
             .key("window_selector_label")
             .layout_style(taffy::Style {
                 position: taffy::Position::Absolute,
@@ -272,10 +273,23 @@ impl Observer<Workspace> for WindowSelectorView {
 }
 impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelectorView {
     fn id(&self) -> Option<usize> {
-        self.view.layer.id().map(|id| id.0.into())
+        self.view
+            .layer
+            .read()
+            .unwrap()
+            .as_ref()
+            .and_then(|l| l.id())
+            .map(|id| id.0.into())
     }
+
     fn is_alive(&self) -> bool {
-        !self.view.layer.hidden()
+        !self.view
+            .layer
+            .read()
+            .unwrap()
+            .as_ref()
+            .map(|l| l.hidden())
+            .unwrap_or(true)
     }
     fn on_motion(
         &self,
@@ -307,7 +321,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
             })
             .map(|x| x.index);
 
-        self.view.update_state(WindowSelectorState {
+        self.view.update_state(&WindowSelectorState {
             rects: state.rects,
             current_selection: rect,
         });
@@ -315,24 +329,20 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
     fn on_button(
         &self,
         _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-        data: &mut crate::ScreenComposer<Backend>,
+        screencomposer: &mut crate::ScreenComposer<Backend>,
         event: &smithay::input::pointer::ButtonEvent,
     ) {
-        let state = self.view.get_state();
-        if let Some(index) = state.current_selection {
-            let window_selector_workspace_model = data.workspace.model.read();
-            let window_selector_workspace_model = window_selector_workspace_model.unwrap();
-            let oid = window_selector_workspace_model
-                .windows_list
-                .get(index)
-                .unwrap()
-                .clone();
-            drop(window_selector_workspace_model);
-            if let Some(window_view) = data.window_views.get(&oid).cloned() {
-                data.raise_element(&window_view.window, true, Some(event.serial), true);
+        let selector_state = self.view.get_state();
+        if let Some(index) = selector_state.current_selection {
+            let oid = screencomposer
+                .workspace
+                .with_model(|model| model.windows_list.get(index).unwrap().clone());
+
+            if let Some(window_view) = screencomposer.window_views.get(&oid).cloned() {
+                screencomposer.raise_element(&window_view.window, true, Some(event.serial), false);
             }
-            data.expose_show_all(-1.0, true);
-            data.set_cursor(&CursorImageStatus::default_named());
         }
+        screencomposer.expose_show_all(-1.0, true);
+        screencomposer.set_cursor(&CursorImageStatus::default_named());
     }
 }

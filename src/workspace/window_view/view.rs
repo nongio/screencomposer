@@ -1,6 +1,7 @@
 use layers::{
     engine::{LayersEngine, NodeRef},
     prelude::taffy,
+    view::{RenderLayerTree, View},
 };
 
 use crate::{shell::WindowElement, workspace::utils::view_render_elements};
@@ -64,15 +65,13 @@ impl WindowView {
             fullscreen: false,
         };
         let view_base =
-            layers::prelude::View::new(base_layer.clone(), base_rect, Box::new(view_base_window));
-        let view_content = layers::prelude::View::new(
-            content_layer.clone(),
-            render_elements,
-            Box::new(view_render_elements),
-        );
+            layers::prelude::View::new("window_view", base_rect, Box::new(view_base_window));
 
-        // view_base.render(&state.base_rect);
-        // view_content.render(&state.render_elements);
+        view_base.mount_layer(base_layer.clone());
+
+        let view_content = View::new("window_view_content", render_elements, view_render_elements);
+        view_content.mount_layer(content_layer.clone());
+
         Self {
             view_base,
             view_content,
