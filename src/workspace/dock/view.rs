@@ -14,7 +14,7 @@ use layers::{
     types::Size,
     view::{RenderLayerTree, View},
 };
-use smithay::{backend::input::ButtonState, utils::IsAlive};
+use smithay::utils::IsAlive;
 use tokio::sync::mpsc;
 
 use crate::{
@@ -207,7 +207,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
         _data: &mut crate::ScreenComposer<Backend>,
         event: &smithay::input::pointer::MotionEvent,
     ) {
-        let id = self.view_layer.id().unwrap();
+        // let _id = self.view_layer.id().unwrap();
         let scale = Config::with(|c| c.screen_scale);
 
         self.update_magnification_position(
@@ -228,7 +228,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
         &self,
         _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
         _data: &mut crate::ScreenComposer<Backend>,
-        event: &smithay::input::pointer::ButtonEvent,
+        _event: &smithay::input::pointer::ButtonEvent,
     ) {
         // let id = self.view_layer.id().unwrap();
         // let scale = Config::with(|c| c.screen_scale);

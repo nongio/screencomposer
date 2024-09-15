@@ -14,11 +14,10 @@ use layers::{
     types::Size,
     view::RenderLayerTree,
 };
-use smithay::{backend::input::ButtonState, utils::IsAlive};
+use smithay::utils::IsAlive;
 use tokio::sync::mpsc;
 
 use crate::{
-    config::Config,
     interactive_view::ViewInteractions,
     utils::Observer,
     workspace::{Application, WorkspaceModel},

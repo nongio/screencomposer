@@ -1103,7 +1103,7 @@ impl ScreenComposer<UdevData> {
 
     fn on_tablet_tool_proximity<B: InputBackend>(
         &mut self,
-        dh: &DisplayHandle,
+        _dh: &DisplayHandle,
         evt: B::TabletToolProximityEvent,
     ) {
         let tablet_seat = self.seat.tablet_seat();
@@ -1116,7 +1116,8 @@ impl ScreenComposer<UdevData> {
 
         if let Some(rect) = output_geometry {
             let tool = evt.tool();
-            tablet_seat.add_tool::<Self>(dh, &tool);
+            // FIXME
+            // tablet_seat.add_tool::<Self>(dh, &tool);
 
             let pointer_location = evt.position_transformed(rect.size) + rect.loc.to_f64();
 
