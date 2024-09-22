@@ -8,11 +8,14 @@ use smithay::{
 };
 
 use crate::{
-    drawing::{FpsElement, PointerRenderElement},
+    drawing::PointerRenderElement,
     skia_renderer::SkiaFrame,
 };
 
 use super::{scene_element::SceneElement, skia_element::SkiaElement};
+
+#[cfg(feature = "debug")]
+use crate::drawing::FpsElement;
 
 smithay::backend::renderer::element::render_elements! {
     pub WorkspaceRenderElements<'a, R> where
@@ -22,10 +25,11 @@ smithay::backend::renderer::element::render_elements! {
         <R as smithay::backend::renderer::Renderer>::Frame<'a>: (AsMut<SkiaFrame<'a>>),
         <R as smithay::backend::renderer::Renderer>::Error: (From<smithay::backend::renderer::gles::GlesError>);
     Pointer=PointerRenderElement<R>,
-    Fps=FpsElement<<R as smithay::backend::renderer::Renderer>::TextureId>,
     Scene=SceneElement,
     // this is needed to make the macro work with a lifetime specifier in the where clauses
     PhantomElement=PhantomElement<'a>,
+    #[cfg(feature = "debug")]
+    Fps=FpsElement<<R as smithay::backend::renderer::Renderer>::TextureId>,
 }
 
 // this is needed to make the macro work with a lifetime specifier in the where clauses

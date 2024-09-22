@@ -5,14 +5,6 @@ use std::{
 
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;
-#[cfg(feature = "debug")]
-use smithay::{
-    backend::{allocator::Fourcc, renderer::ImportMem},
-    reexports::winit::{
-        dpi::Size,
-        raw_window_handle::{HasWindowHandle, RawWindowHandle},
-    },
-};
 
 use smithay::{
     backend::{
@@ -34,7 +26,7 @@ use smithay::{
         calloop::EventLoop,
         wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
         wayland_server::{protocol::wl_surface, Display},
-        winit::{dpi::LogicalSize, platform::pump_events::PumpStatus, window::WindowAttributes},
+        winit::{dpi::LogicalSize, dpi::Size, platform::pump_events::PumpStatus, window::WindowAttributes},
     },
     utils::{IsAlive, Transform},
     wayland::{
@@ -55,6 +47,13 @@ use crate::{
     skia_renderer::{SkiaRenderer, SkiaTexture},
     state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
 };
+
+#[cfg(feature = "debug")]
+use smithay::{
+    backend::{allocator::Fourcc, renderer::ImportMem},
+    reexports::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle}
+};
+
 
 pub const OUTPUT_NAME: &str = "winit";
 
