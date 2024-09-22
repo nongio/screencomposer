@@ -10,10 +10,10 @@ use crate::{
 #[cfg(feature = "udev")]
 use crate::udev::UdevData;
 
+use skia_safe::Contains;
 use smithay::{
     backend::input::{
-        self, Axis, AxisSource, Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent,
-        PointerAxisEvent, PointerButtonEvent,
+        self, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent
     },
     desktop::{layer_map_for_output, WindowSurfaceType},
     input::{
@@ -262,16 +262,26 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             self.update_keyboard_focus(serial);
         }
         let pointer = self.pointer.clone();
+        let button_state = state.try_into().unwrap();
         pointer.button(
             self,
             &ButtonEvent {
                 button,
-                state: state.try_into().unwrap(),
+                state: button_state,
                 serial,
                 time: evt.time_msec(),
             },
         );
         pointer.frame(self);
+        match button_state {
+            ButtonState::Pressed => {
+                self.layers_engine.pointer_button_down();
+            },
+            ButtonState::Released => {
+                self.layers_engine.pointer_button_up();
+            }
+        }
+        
         // }
     }
 
@@ -332,20 +342,25 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                     }
                 }
             }
-            let window_under = self
-                .space
-                .element_under(self.pointer.current_location())
-                .map(|(w, p)| (w.clone(), p));
-
-            if let Some((window, _)) = window_under {
-                self.raise_app_element(&window, true, Some(serial));
-
-                #[cfg(feature = "xwayland")]
-                if let WindowSurface::X11(surf) = &window.underlying_surface() {
-                    self.xwm.as_mut().unwrap().raise_window(surf).unwrap();
+            let scale = output.as_ref().map(|o| o.current_scale().fractional_scale()).unwrap_or(1.0);
+            let position = self.pointer.current_location();
+            let scaled_position = position.to_physical(scale);
+            if !self.workspace.is_cursor_over_dock(scaled_position.x as f32, scaled_position.y as f32) {
+                    let window_under = self
+                        .space
+                        .element_under(position)
+                        .map(|(w, p)| (w.clone(), p));
+        
+                    if let Some((window, _)) = window_under {
+                        self.raise_app_element(&window, true, Some(serial));
+        
+                        #[cfg(feature = "xwayland")]
+                        if let WindowSurface::X11(surf) = &window.underlying_surface() {
+                            self.xwm.as_mut().unwrap().raise_window(surf).unwrap();
+                        }
+                        return;
+                    }
                 }
-                return;
-            }
 
             if let Some(output) = output.as_ref() {
                 let output_geo = self.space.output_geometry(output).unwrap();
@@ -410,16 +425,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         {
             let layer_loc = layers.layer_geometry(layer).unwrap().loc;
             under = Some((layer.clone().into(), output_geo.loc + layer_loc))
-        } else if self.workspace.dock.alive()
-            && self
-                .workspace
-                .dock
-                .view
-                .contains_point(layers::types::Point {
-                    x: physical_pos.x as f32,
-                    y: physical_pos.y as f32,
-                })
-        {
+        } else if self.workspace.is_cursor_over_dock(physical_pos.x as f32, physical_pos.y as f32) {
             under = Some((self.workspace.dock.as_ref().clone().into(), (0, 0).into()));
         } else if let Some((focus, location)) =
             self.space.element_under(pos).and_then(|(window, loc)| {
@@ -631,6 +637,10 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
             },
         );
         pointer.frame(self);
+
+        let scale = output.current_scale().fractional_scale();
+        let pos = pos.to_physical(scale);
+        self.layers_engine.pointer_move((pos.x as f32, pos.y as f32), None);
     }
 
     pub fn release_all_keys(&mut self) {
@@ -1418,8 +1428,8 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::ScaleUp)
     } else if modifiers.logo && modifiers.shift && keysym == Keysym::R {
         Some(KeyAction::RotateOutput)
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::D {
-        Some(KeyAction::ToggleDecorations)
+    } else if modifiers.logo && modifiers.shift && keysym == Keysym::I {
+        Some(KeyAction::Run(("layers_debug".to_string(), vec![])))
     } else if modifiers.alt && keysym == Keysym::Tab {
         Some(KeyAction::ApplicationSwitchNext)
     } else if modifiers.alt && modifiers.shift && keysym == Keysym::Tab {

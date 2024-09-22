@@ -37,9 +37,9 @@ tokio = { version = "1", features = ["full"] }
 skia-safe = "=0.70"
 
 [dependencies.layers]
-# path = "../layers"
-git = "https://github.com/nongio/layers"
-features = ["export-taffy"]
+path = "../layers"
+# git = "https://github.com/nongio/layers"
+features = ["export-taffy", "debugger"]
 
 [dependencies.smithay-drm-extras]
 # path = "../smithay/smithay-drm-extras"
