@@ -1,9 +1,10 @@
 use std::cell::RefCell;
 
 use layers::{prelude::*, types::Size};
+use skia_safe::PathEffect;
 use taffy::FromLength;
 
-use crate::config::Config;
+use crate::{config::Config, workspace::Application};
 
 use super::{
     render_app::{render_app_view, DockAppState},
@@ -152,4 +153,82 @@ pub fn render_dock_view(state: &DockModel, view: &View<DockModel>) -> LayerTree 
         ])
         .build()
         .unwrap()
+}
+
+
+pub fn draw_app_icon(application: &Application, pressed: bool) -> ContentDrawFunction {
+    let mut darken_factor = 255;
+    if pressed {
+        darken_factor = 150;
+    }
+    let application = application.clone();
+    let draw_picture = move |canvas: &skia_safe::Canvas, w: f32, h: f32| -> skia_safe::Rect {
+        let icon_size = (w).max(0.0);
+        if let Some(image) = &application.icon.clone() {
+            let mut paint =
+            skia_safe::Paint::new(skia_safe::Color4f::new(1.0, 1.0, 1.0, 1.0), None);
+
+            paint.set_style(skia_safe::paint::Style::Fill);
+            let color = skia_safe::Color::from_argb(255, darken_factor, darken_factor, darken_factor);
+            let darken_filter = skia_safe::color_filters::blend(color, skia_safe::BlendMode::Modulate);
+
+            paint.set_color_filter(darken_filter);
+            // draw image with shadow
+            let shadow_color = skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.5);
+
+            let mut shadow_paint = skia_safe::Paint::new(shadow_color, None);
+            let shadow_offset = skia_safe::Vector::new(5.0, 5.0);
+            let shadow_color = skia_safe::Color::from_argb(128, 0, 0, 0); // semi-transparent black
+            let shadow_blur_radius = 5.0;
+
+            let shadow_filter = skia_safe::image_filters::drop_shadow_only(
+                (shadow_offset.x, shadow_offset.y),
+                (shadow_blur_radius, shadow_blur_radius),
+                shadow_color,
+                None,
+                skia_safe::image_filters::CropRect::default(),
+            );
+            shadow_paint.set_image_filter(shadow_filter);
+
+            canvas.draw_image_rect(
+                image,
+                None,
+                skia_safe::Rect::from_xywh(0.0, 0.0, icon_size, icon_size),
+                &shadow_paint,
+            );
+            let resampler = skia_safe::CubicResampler::catmull_rom();
+            
+            canvas.draw_image_rect_with_sampling_options(
+                image,
+                None,
+                skia_safe::Rect::from_xywh(0.0, 0.0, icon_size, icon_size),
+                skia_safe::SamplingOptions::from(resampler),
+                &paint,
+            );
+        } else {
+            let mut rect = skia_safe::Rect::from_xywh(0.0, 0.0, icon_size, icon_size);
+            rect.inset((10.0, 10.0));
+            let rrect = skia_safe::RRect::new_rect_xy(rect, 10.0, 10.0);
+            let mut paint =
+                skia_safe::Paint::new(skia_safe::Color4f::new(1.0, 1.0, 1.0, 0.2), None);
+            canvas.draw_rrect(rrect, &paint);
+
+            paint.set_stroke(true);
+            paint.set_stroke_width(6.0);
+            paint.set_color4f(skia_safe::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
+            let intervals = [12.0, 6.0]; // Length of the dash and the gap
+            let path_effect = PathEffect::dash(&intervals, 0.0);
+            paint.set_path_effect(path_effect);
+            canvas.draw_rrect(rrect, &paint);
+        }
+        let mut paint = skia_safe::Paint::new(skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.5), None);
+        paint.set_anti_alias(true);
+        paint.set_style(skia_safe::paint::Style::Fill);
+        let circle_radius = 6.0;
+        canvas.draw_circle((w / 2.0, h - (10.0 + circle_radius)), circle_radius, &paint);
+
+        skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
+    };
+
+    return draw_picture.into();
 }

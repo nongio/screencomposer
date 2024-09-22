@@ -45,7 +45,7 @@ impl Hash for DockAppState {
     }
 }
 #[allow(clippy::too_many_arguments)]
-fn draw_balloon_rect(
+pub fn draw_balloon_rect(
     x: f32,
     y: f32,
     width: f32,
@@ -125,6 +125,7 @@ pub fn render_app_view(state: &DockAppState, view: &View<DockAppState>) -> Layer
     // let index = state.index;
     let icon_width = state.icon_width;
     let show_label: bool = view.get_internal_state("show_label").unwrap_or(false);
+    let pressed: bool = view.get_internal_state("pressed").unwrap_or(false);
     let app_name = state
         .application
         .desktop_name
@@ -142,16 +143,24 @@ pub fn render_app_view(state: &DockAppState, view: &View<DockAppState>) -> Layer
         })
         .unwrap();
     let font = skia_safe::Font::from_typeface_with_params(typeface, text_size, 1.0, 0.0);
-
+    let mut darken_factor = 255;
+    if pressed {
+        darken_factor = 150;
+    }
     let draw_picture = move |canvas: &skia_safe::Canvas, w: f32, h: f32| -> skia_safe::Rect {
         let icon_size = (w).max(0.0);
         if let Some(image) = &application.icon.clone() {
             let mut paint =
-                skia_safe::Paint::new(skia_safe::Color4f::new(0.0, 1.0, 0.0, 1.0), None);
-            paint.set_style(skia_safe::paint::Style::Fill);
+            skia_safe::Paint::new(skia_safe::Color4f::new(1.0, 1.0, 1.0, 1.0), None);
 
+            paint.set_style(skia_safe::paint::Style::Fill);
+            let color = skia_safe::Color::from_argb(255, darken_factor, darken_factor, darken_factor);
+            let darken_filter = skia_safe::color_filters::blend(color, skia_safe::BlendMode::Modulate);
+
+            paint.set_color_filter(darken_filter);
             // draw image with shadow
             let shadow_color = skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.5);
+
             let mut shadow_paint = skia_safe::Paint::new(shadow_color, None);
             let shadow_offset = skia_safe::Vector::new(5.0, 5.0);
             let shadow_color = skia_safe::Color::from_argb(128, 0, 0, 0); // semi-transparent black
@@ -173,6 +182,7 @@ pub fn render_app_view(state: &DockAppState, view: &View<DockAppState>) -> Layer
                 &shadow_paint,
             );
             let resampler = skia_safe::CubicResampler::catmull_rom();
+            
             canvas.draw_image_rect_with_sampling_options(
                 image,
                 None,
@@ -274,6 +284,9 @@ pub fn render_app_view(state: &DockAppState, view: &View<DockAppState>) -> Layer
 
     let view_ref = view.clone();
     let view_ref2 = view.clone();
+    let view_ref3 = view.clone();
+    let view_ref4 = view.clone();
+
     let label_size_width = text_bounds.width() + text_padding_h * 2.0 + safe_margin * 2.0;
     let label_size_height =
         text_bounds.height() + arrow_height + text_padding_v * 2.0 + safe_margin * 2.0;
@@ -291,6 +304,7 @@ pub fn render_app_view(state: &DockAppState, view: &View<DockAppState>) -> Layer
                 x: taffy::style::Overflow::Visible,
                 y: taffy::style::Overflow::Visible,
             },
+            // min_size: taffy::Size::from_lengths(icon_width/2.0, icon_width + 30.0),
             ..Default::default()
         })
         .size((
@@ -307,17 +321,22 @@ pub fn render_app_view(state: &DockAppState, view: &View<DockAppState>) -> Layer
             color: Color::new_rgba(1.0, 0.0, 0.0, 0.0),
         })
         .content(Some(draw_picture))
-        .on_pointer_in(move |_layer, _x, _y| {
+        
+        .on_pointer_in(move |_layer: Layer, _x, _y| {
+            println!("pointer in {:?}", _layer.id());
             view_ref.set_internal_state("show_label", &true);
         })
-        .on_pointer_out(move |_layer, _x, _y| {
+        .on_pointer_out(move |_layer: Layer, _x, _y| {
+            println!("pointer out {:?}", _layer.id());
             view_ref2.set_internal_state("show_label", &false);
         })
-        .on_pointer_press(move |_layer, _x, _y| {
-            println!("pressed");
+        .on_pointer_press(move |_layer: Layer, _x, _y| {
+            view_ref3.set_internal_state("pressed", &true);
+            println!("pointer press {:?}", _layer.id());
         })
-        .on_pointer_release(move |_layer, _x, _y| {
-            println!("released");
+        .on_pointer_release(move |_layer: Layer, _x, _y| {
+            view_ref4.set_internal_state("pressed", &false);
+            println!("pointer release {:?}", _layer.id());
         })
         .children(vec![LayerTreeBuilder::default()
             .key(format!("{}_label", key))
@@ -344,6 +363,7 @@ pub fn render_app_view(state: &DockAppState, view: &View<DockAppState>) -> Layer
                 y: -label_size_height - 10.0 + safe_margin,
             })
             .opacity((label_opacity, None))
+            .pointer_events(false)
             .content(Some(draw_label))
             .build()
             .unwrap()])

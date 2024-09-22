@@ -127,7 +127,7 @@ use crate::{
     render_elements::scene_element::SceneElement,
     shell::WindowElement,
     skia_renderer::SkiaTexture,
-    workspace::{DndView, WindowView, WindowViewBaseModel, WindowViewSurface, Workspace},
+    workspace::{DndView, Window, WindowView, WindowViewBaseModel, WindowViewSurface, Workspace},
 };
 #[cfg(feature = "xwayland")]
 use smithay::{
@@ -208,8 +208,7 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub scene_element: SceneElement,
     // state
     pub workspace: Arc<Workspace>,
-    // views
-    pub window_views: HashMap<ObjectId, WindowView>,
+
     pub dnd_view: DndView,
     // layers
     pub layers_engine: LayersEngine,
@@ -772,6 +771,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
 
         let layers_engine = LayersEngine::new(500.0, 500.0);
         let root_layer = layers_engine.new_layer();
+        root_layer.set_key("screen_composer_root");
         root_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
             ..Default::default()
@@ -782,6 +782,9 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         let workspace = Workspace::new(layers_engine.clone(), cursor_status.clone());
 
         let dnd_view = DndView::new(layers_engine.clone(), root_layer.id().unwrap());
+        
+        layers_engine.start_debugger();
+        
         ScreenComposer {
             backend_data,
             display_handle: dh,
@@ -826,7 +829,6 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             workspace,
             layers_engine,
             scene_element,
-            window_views: HashMap::new(),
             dnd_view,
 
             show_desktop: false,
@@ -885,15 +887,24 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         }
     }
     pub fn update_workspace_applications(&mut self) {
-        let windows = self.space.elements().filter_map(|we| {
-            let id = we.wl_surface().unwrap().id();
-            if let Some(wv) = self.get_window_view(&id) {
+        let windows: Vec<_> = self.space.elements().map(|we| {
+            (we.wl_surface().unwrap().id(), we.clone())
+        }).collect();
+        let minimized_windows = self.workspace.with_model(|model| {
+            model.minimized_windows.clone()
+        });
+        let windows: Vec<_> = [windows, minimized_windows]
+            .concat()
+            .iter()
+            .filter_map(|(id, we)| {
+
+            if let Some(wv) = self.workspace.get_window_view(&id) {
                 let state = wv.view_base.get_state();
-                Some((we.clone(), wv.layer.clone(), state))
+                Some((we.clone(), wv.window_layer.clone(), state))
             } else {
                 None
             }
-        });
+        }).collect();
         if !self.is_resizing {
             self.workspace.update_with_window_elements(windows);
         }
@@ -1032,7 +1043,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                     |_, _, _| true,
                 );
 
-                if let Some(window_view) = self.get_window_view(&id) {
+                if let Some(window_view) = self.workspace.get_window_view(&id) {
                     let model = WindowViewBaseModel {
                         x: location.x as f32,
                         y: location.y as f32,
@@ -1076,25 +1087,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         self.workspace.expose_show_desktop(delta, end_gesture);
     }
 
-    pub fn get_or_add_window_view(
-        &mut self,
-        object_id: &ObjectId,
-        parent_layer_id: NodeRef,
-        window: WindowElement,
-    ) -> &WindowView {
-        self.window_views
-            .entry(object_id.clone())
-            .or_insert_with(|| WindowView::new(self.layers_engine.clone(), parent_layer_id, window))
-    }
-    pub fn remove_window_view(&mut self, object_id: &ObjectId) {
-        if let Some(_view) = self.window_views.remove(object_id) {}
-    }
-    pub fn get_window_view(&self, id: &ObjectId) -> Option<&WindowView> {
-        self.window_views.get(id)
-    }
-    pub fn mut_window_view(&mut self, id: &ObjectId) -> Option<&mut WindowView> {
-        self.window_views.get_mut(id)
-    }
+    
     pub fn set_cursor(&mut self, image: &CursorImageStatus) {
         *self.cursor_status.lock().unwrap() = image.clone();
         self.backend_data.set_cursor(image);
@@ -1226,7 +1219,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         self.space.raise_element(window, activate);
         let id = window.wl_surface().unwrap().id();
         {
-            if let Some(view) = self.get_window_view(&id) {
+            if let Some(view) = self.workspace.get_window_view(&id) {
                 view.raise();
             }
         }
@@ -1244,36 +1237,68 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         activate: bool,
         serial: Option<Serial>,
     ) {
+        println!("raise_app_element");
         let id = we.wl_surface().unwrap().id();
         let window = {
-            let window_wl = self.workspace.wl_windows_map.read().unwrap();
-            window_wl.get(&id).unwrap().clone()
+            self.workspace.get_window_for_surface(&id).unwrap().clone()
         };
-
+        
         let windows = self.workspace.get_app_windows(&window.app_id);
         for window_id in windows.iter() {
             if let Some(window) = self.workspace.get_window_for_surface(window_id) {
-                if let Some(we) = window.window_element.as_ref() {
-                    self.raise_element(we, false, None, false);
-                }
-            }
-        }
-        self.raise_element(we, activate, serial, true);
-    }
-    pub fn raise_app_elements(&mut self, app_id: &str, activate: bool, serial: Option<Serial>) {
-        let windows = self.workspace.get_app_windows(app_id);
-        for (i, window_id) in windows.iter().rev().enumerate() {
-            if let Some(window) = self.workspace.get_window_for_surface(window_id) {
-                if let Some(we) = window.window_element.as_ref() {
-                    if i == 0 {
-                        self.raise_element(we, activate, serial, false);
-                    } else {
+                if !window.is_minimized {
+                    if let Some(we) = window.window_element.as_ref() {
                         self.raise_element(we, false, None, false);
                     }
                 }
             }
         }
-        self.update_workspace_applications();
+        if !window.is_minimized {
+            self.raise_element(we, activate, serial, true);
+        }
+    }
+    pub fn raise_app_elements(&mut self, app_id: &str, activate: bool, serial: Option<Serial>) {
+        println!("raise_app_elements");
+        let windows = self.workspace.get_app_windows(app_id);
+        for (i, window_id) in windows.iter().rev().enumerate() {
+            if let Some(window) = self.workspace.get_window_for_surface(window_id) {
+                if !window.is_minimized {
+                    if let Some(we) = window.window_element.as_ref() {
+                        if i == 0 {
+                            self.raise_element(we, activate, serial, false);
+                        } else {
+                            self.raise_element(we, false, None, false);
+                        }
+                        self.update_workspace_applications();
+                    }
+                }
+            }
+        }
+    }
+    pub fn raise_window_element(&mut self, window: &Window, activate: bool, serial: Option<Serial>) {
+        println!("raise_window_element");
+        if let Some(we) = window.window_element.as_ref() {
+            self.raise_element(we, activate, serial, true);
+            self.update_workspace_applications();
+        }
+    }
+
+    pub fn minimize_window(&mut self, window: &WindowElement) {
+        let id = window.wl_surface().unwrap().id();
+        self.workspace.minimize_window(&id, &window);
+        self.space.unmap_elem(&window);
+    }
+
+    pub fn unminimize_window(&mut self, window_element: &WindowElement) {
+        let id = window_element.wl_surface().unwrap().id();
+
+        let window = self.workspace.get_window_for_surface(&id).unwrap();
+
+        if let Some(view) = self.workspace.get_window_view(&id) {
+            self.workspace.unminimize_window(&id);
+            self.space.map_element(window_element.clone(), (view.unmaximized_rect.x as i32, view.unmaximized_rect.y as i32), true);
+            self.raise_window_element(&window, true, None);
+        }
     }
 }
 

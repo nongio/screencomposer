@@ -65,9 +65,9 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
             .map_element(self.window.clone(), new_location.to_i32_round(), true);
 
         if let Some(id) = self.window.wl_surface().map(|s| s.id()) {
-            if let Some(view) = data.get_window_view(&id) {
+            if let Some(view) = data.workspace.get_window_view(&id) {
                 let location = new_location.to_physical(scale);
-                view.layer.set_position(
+                view.window_layer.set_position(
                     layers::types::Point {
                         x: location.x as f32,
                         y: location.y as f32,
