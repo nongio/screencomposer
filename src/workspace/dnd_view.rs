@@ -22,6 +22,7 @@ pub struct DndView {
 impl DndView {
     pub fn new(layers_engine: LayersEngine, parent_layer_noderef: NodeRef) -> Self {
         let layer = layers_engine.new_layer();
+        layer.set_key("dnd_view");
         layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
             ..Default::default()
@@ -38,7 +39,7 @@ impl DndView {
 
         let render_elements = Vec::new();
 
-        let view_content = View::new("window_view_content", render_elements, view_render_elements);
+        let view_content = View::new("dnd", render_elements, view_render_elements);
         view_content.mount_layer(content_layer.clone());
 
         Self {

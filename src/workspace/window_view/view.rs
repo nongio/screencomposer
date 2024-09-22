@@ -8,7 +8,7 @@ use crate::{shell::WindowElement, workspace::utils::view_render_elements};
 
 use super::{
     model::{WindowViewBaseModel, WindowViewSurface},
-    render::view_base_window,
+    render::view_window_shadow,
 };
 
 #[derive(Clone)]
@@ -16,9 +16,8 @@ pub struct WindowView {
     engine: layers::prelude::LayersEngine,
     pub view_base: layers::prelude::View<WindowViewBaseModel>,
     pub view_content: layers::prelude::View<Vec<WindowViewSurface>>,
-    // pub state: WindowViewModel,
-    pub layer: layers::prelude::Layer,
-    pub base_layer: layers::prelude::Layer,
+    pub window_layer: layers::prelude::Layer,
+    pub shadow_layer: layers::prelude::Layer,
     pub content_layer: layers::prelude::Layer,
     parent_layer_noderef: NodeRef,
     pub window: WindowElement,
@@ -32,6 +31,7 @@ impl WindowView {
         window: WindowElement,
     ) -> Self {
         let layer = layers_engine.new_layer();
+        layer.set_key("window");
         layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
             ..Default::default()
@@ -42,13 +42,13 @@ impl WindowView {
             ..Default::default()
         });
 
-        let base_layer = layers_engine.new_layer();
-        base_layer.set_layout_style(taffy::Style {
+        let shadow_layer = layers_engine.new_layer();
+        shadow_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
         layers_engine.scene_add_layer_to(layer.clone(), Some(parent_layer_noderef));
-        layers_engine.scene_add_layer_to(base_layer.clone(), layer.id());
+        layers_engine.scene_add_layer_to(shadow_layer.clone(), layer.id());
         layers_engine.scene_add_layer_to(content_layer.clone(), layer.id());
 
         // let state = WindowViewModel {
@@ -64,22 +64,22 @@ impl WindowView {
             title: "".to_string(),
             fullscreen: false,
         };
-        let view_base =
-            layers::prelude::View::new("window_view", base_rect, Box::new(view_base_window));
+        let view_window_shadow =
+            layers::prelude::View::new("window_shadow", base_rect, Box::new(view_window_shadow));
 
-        view_base.mount_layer(base_layer.clone());
+        view_window_shadow.mount_layer(shadow_layer.clone());
 
-        let view_content = View::new("window_view_content", render_elements, view_render_elements);
+        let view_content = View::new("window_content", render_elements, view_render_elements);
         view_content.mount_layer(content_layer.clone());
 
         Self {
-            view_base,
+            view_base: view_window_shadow,
             view_content,
             engine: layers_engine,
             // state,
-            layer,
+            window_layer: layer,
             content_layer,
-            base_layer,
+            shadow_layer,
             parent_layer_noderef,
             window,
             unmaximized_rect: layers::prelude::Rectangle {
@@ -90,14 +90,9 @@ impl WindowView {
             },
         }
     }
-    // #[profiling::function]
-    // pub fn render(&mut self) {
-    //     self.view_base.render(&self.state.base_rect);
-    //     self.view_content.render(&self.state.render_elements);
-    // }
 
     pub fn raise(&self) {
         self.engine
-            .scene_add_layer_to(self.layer.clone(), Some(self.parent_layer_noderef));
+            .scene_add_layer_to(self.window_layer.clone(), Some(self.parent_layer_noderef));
     }
 }

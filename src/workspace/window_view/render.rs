@@ -2,27 +2,8 @@ use layers::{prelude::*, types::Size};
 
 use super::model::WindowViewBaseModel;
 
-// struct FontCache {
-//     font_collection: skia_safe::textlayout::FontCollection,
-//     font_mgr: skia_safe::FontMgr,
-//     type_face_font_provider: RefCell<skia_safe::textlayout::TypefaceFontProvider>,
-// }
-
-// // source: slint ui
-// // https://github.com/slint-ui/slint/blob/64e7bb27d12dd8f884275292c2333d37f4e224d5/internal/renderers/skia/textlayout.rs#L31
-// thread_local! {
-//     static FONT_CACHE: FontCache = {
-//         let font_mgr = skia_safe::FontMgr::new();
-//         let type_face_font_provider = skia_safe::textlayout::TypefaceFontProvider::new();
-//         let mut font_collection = skia_safe::textlayout::FontCollection::new();
-//         font_collection.set_asset_font_manager(Some(type_face_font_provider.clone().into()));
-//         font_collection.set_dynamic_font_manager(font_mgr.clone());
-//         FontCache { font_collection, font_mgr, type_face_font_provider: RefCell::new(type_face_font_provider) }
-//     };
-// }
-
 #[profiling::function]
-pub fn view_base_window(
+pub fn view_window_shadow(
     state: &WindowViewBaseModel,
     _view: &View<WindowViewBaseModel>,
 ) -> LayerTree {
@@ -74,7 +55,7 @@ pub fn view_base_window(
         skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
     };
     LayerTreeBuilder::default()
-        .key("window_view")
+        .key("window_shadow")
         .size((
             Size {
                 width: taffy::Dimension::Length(w),
@@ -82,8 +63,9 @@ pub fn view_base_window(
             },
             None,
         ))
+        .pointer_events(false)
         .children(vec![LayerTreeBuilder::default()
-            .key("window_view_shadow")
+            .key("window_shadow_inner")
             .layout_style(taffy::Style {
                 position: taffy::Position::Absolute,
                 ..Default::default()
@@ -104,6 +86,7 @@ pub fn view_base_window(
             ))
             .content(Some(draw_shadow))
             .image_cache(true)
+            .pointer_events(false)
             .build()
             .unwrap()])
         .build()

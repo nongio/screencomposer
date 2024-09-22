@@ -27,7 +27,7 @@ impl WorkspaceSelectorView {
             state,
             render_window_selector_view,
         );
-
+        layer.set_pointer_events(false);
         layer.set_position((0.0, -200.0), None);
         Self {
             // engine: layers_engine,

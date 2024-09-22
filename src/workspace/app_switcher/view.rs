@@ -51,6 +51,7 @@ impl IsAlive for AppSwitcherView {
 impl AppSwitcherView {
     pub fn new(layers_engine: LayersEngine) -> Self {
         let wrap = layers_engine.new_layer();
+        wrap.set_key("app_switcher_container");
         wrap.set_size(Size::percent(1.0, 1.0), None);
         wrap.set_layout_style(Style {
             position: layers::taffy::style::Position::Absolute,
@@ -62,9 +63,11 @@ impl AppSwitcherView {
         });
         wrap.set_opacity(0.0, None);
 
-        layers_engine.scene_add_layer(wrap.clone());
         let layer = layers_engine.new_layer();
+        layers_engine.scene_add_layer(wrap.clone());
         wrap.add_sublayer(layer.clone());
+        wrap.set_pointer_events(false);
+        layer.set_pointer_events(false);
         let mut initial_state = AppSwitcherModel::new();
         initial_state.width = 1000;
         let view = layers::prelude::View::new(

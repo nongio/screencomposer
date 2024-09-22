@@ -15,7 +15,7 @@ pub fn view_render_elements(
     let resampler = skia_safe::CubicResampler::catmull_rom();
 
     LayerTreeBuilder::default()
-        .key("window_view_content")
+        .key("window_content")
         .size((
             Size {
                 width: taffy::Dimension::Length(0.0),
@@ -129,7 +129,7 @@ pub fn view_render_elements(
                         damage
                     };
                     LayerTreeBuilder::default()
-                        .key(format!("window_view_content_{}", index))
+                        .key(format!("window_content_{}", index))
                         .layout_style(taffy::Style {
                             position: taffy::Position::Absolute,
                             ..Default::default()
@@ -154,6 +154,7 @@ pub fn view_render_elements(
                             None,
                         ))
                         .content(Some(draw_container))
+                        .pointer_events(false)
                         .build()
                         .unwrap()
                 })

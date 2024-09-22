@@ -101,7 +101,7 @@ impl WindowSelectorView {
             ..Default::default()
         });
         layer.set_size(layers::types::Size::percent(1.0, 1.0), None);
-
+        layer.set_pointer_events(false);
         layers_engine.scene_add_layer(layer.clone());
 
         let state = WindowSelectorState {
@@ -339,7 +339,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                 .workspace
                 .with_model(|model| model.windows_list.get(index).unwrap().clone());
 
-            if let Some(window_view) = screencomposer.window_views.get(&oid).cloned() {
+            if let Some(window_view) = screencomposer.workspace.get_window_view(&oid) {
                 screencomposer.raise_element(&window_view.window, true, Some(event.serial), false);
             }
         }
