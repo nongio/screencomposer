@@ -356,14 +356,19 @@ pub fn place_new_window(
         });
     }
 
-    let max_x = output_geometry.loc.x + (((output_geometry.size.w as f32) / 3.0) * 2.0) as i32;
-    let max_y = output_geometry.loc.y + (((output_geometry.size.h as f32) / 3.0) * 2.0) as i32;
-    let x_range = Uniform::new(output_geometry.loc.x, max_x);
-    let y_range = Uniform::new(output_geometry.loc.y, max_y);
-    let mut rng = rand::thread_rng();
-    let x = x_range.sample(&mut rng);
-    let y = y_range.sample(&mut rng);
+    let num_open_windows = space.elements().count();
+    let window_index = num_open_windows + 1; // Index of the new window
 
+    let max_x = output_geometry.loc.x + output_geometry.size.w as i32;
+    let max_y = output_geometry.loc.y + output_geometry.size.h as i32;
+
+// Calculate the position along the diagonal
+    const MAX_WINDOW_COUNT: f32 = 40.0;
+    let factor = window_index as f32 / MAX_WINDOW_COUNT;
+    println!("Factor: {}", factor);
+    let x = (output_geometry.loc.x as f32 + factor * max_x as f32) as i32;
+    let y = (output_geometry.loc.y as f32 + factor * max_y as f32) as i32;
+    println!("Placing window at ({}, {})", x, y);
     space.map_element(window.clone(), (x, y), activate);
 
     (x, y)

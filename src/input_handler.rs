@@ -10,7 +10,7 @@ use crate::{
 #[cfg(feature = "udev")]
 use crate::udev::UdevData;
 
-use skia_safe::Contains;
+use layers::skia::Contains;
 use smithay::{
     backend::input::{
         self, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent

@@ -1237,7 +1237,6 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         activate: bool,
         serial: Option<Serial>,
     ) {
-        println!("raise_app_element");
         let id = we.wl_surface().unwrap().id();
         let window = {
             self.workspace.get_window_for_surface(&id).unwrap().clone()
@@ -1258,7 +1257,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         }
     }
     pub fn raise_app_elements(&mut self, app_id: &str, activate: bool, serial: Option<Serial>) {
-        println!("raise_app_elements");
+
         let windows = self.workspace.get_app_windows(app_id);
         for (i, window_id) in windows.iter().rev().enumerate() {
             if let Some(window) = self.workspace.get_window_for_surface(window_id) {

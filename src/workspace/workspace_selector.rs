@@ -42,13 +42,13 @@ fn render_window_selector_view(
     _state: &WorkspaceSelectorViewState,
     _view: &View<WorkspaceSelectorViewState>,
 ) -> LayerTree {
-    let _draw_container = move |canvas: &skia_safe::Canvas, w, h| {
-        let rect = skia_safe::Rect::from_xywh(0.0, 0.0, w, 200.0);
-        let color = skia_safe::Color4f::new(0.8, 0.8, 0.8, 0.3);
-        let paint = skia_safe::Paint::new(color, None);
+    let _draw_container = move |canvas: &layers::skia::Canvas, w, h| {
+        let rect = layers::skia::Rect::from_xywh(0.0, 0.0, w, 200.0);
+        let color = layers::skia::Color4f::new(0.8, 0.8, 0.8, 0.3);
+        let paint = layers::skia::Paint::new(color, None);
 
         canvas.draw_rect(rect, &paint);
-        skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
+        layers::skia::Rect::from_xywh(0.0, 0.0, w, h)
     };
 
     LayerTreeBuilder::default()

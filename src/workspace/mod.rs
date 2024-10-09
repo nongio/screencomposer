@@ -20,7 +20,7 @@ use layers::{
     engine::{LayersEngine, NodeRef},
     prelude::{taffy, Easing, Interpolate, Layer, TimingFunction, Transition},
 };
-use skia_safe::Contains;
+use layers::skia::Contains;
 use smithay::{
     desktop::WindowSurface, input::pointer::CursorImageStatus, reexports::wayland_server::{backend::ObjectId, protocol::wl_surface::WlSurface, Resource}, utils::IsAlive, wayland::shell::xdg::XdgToplevelSurfaceData
 };
@@ -82,7 +82,7 @@ pub struct Application {
     pub identifier: String,
     pub desktop_name: Option<String>,
     pub icon_path: Option<String>,
-    pub icon: Option<skia_safe::Image>,
+    pub icon: Option<layers::skia::Image>,
 }
 impl PartialEq for Window {
     fn eq(&self, other: &Self) -> bool {
@@ -769,7 +769,7 @@ impl Workspace {
             .dock
             .view_layer
             .render_bounds()
-            .contains(skia_safe::Point::new(x, y))
+            .contains(layers::skia::Point::new(x, y))
     }
 
     pub fn get_or_add_window_view(
@@ -804,16 +804,18 @@ impl Workspace {
         let mut model = self.model.write().unwrap();
 
         if let Some(mut window) = model.windows_cache.get(id).cloned() {
-            
-            model.minimized_windows.push((id.clone(), we.clone()));
             window.is_minimized = true;
             model.windows_cache.insert(id.clone(), window.clone());
             
+            model.minimized_windows.push((id.clone(), we.clone()));
+            
             self.dock.minimize_window(&window, self);
-
             let event = model.clone();
             model.notify_observers(&event);
         }
+        // }
+        // let window_view = self.get_window_view(id).unwrap();
+        // window_view.minimize(layers::skia::Rect::from_xywh(1920.0-200.0, 1200.0 - 200.0, 100.0, 100.0));
     }
     pub fn unminimize_window(&self, id: &ObjectId) {
         let mut model = self.model.write().unwrap();

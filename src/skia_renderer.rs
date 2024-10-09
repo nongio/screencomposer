@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use skia_safe as skia;
+use layers::skia as skia;
 
 use smithay::{
     backend::{
@@ -85,7 +85,8 @@ impl SkiaSurface {
         let mut gr_context: skia::gpu::DirectContext = if let Some(context) = context {
             context.clone()
         } else {
-            skia::gpu::DirectContext::new_gl(None, None).unwrap()
+            let interface = skia::gpu::gl::Interface::new_native().unwrap();
+            skia::gpu::direct_contexts::make_gl(interface, None).unwrap()
         };
         gr_context.reset(None);
         let surface = skia::gpu::surfaces::wrap_backend_render_target(
@@ -135,7 +136,8 @@ impl SkiaSurface {
         let mut gr_context: skia::gpu::DirectContext = if let Some(context) = context {
             context.clone()
         } else {
-            skia::gpu::DirectContext::new_gl(None, None).unwrap()
+            let interface = skia::gpu::gl::Interface::new_native().unwrap();
+            skia::gpu::direct_contexts::make_gl(interface, None).unwrap()
         };
         gr_context.reset(None);
         let surface = skia::gpu::surfaces::wrap_backend_texture(
@@ -197,8 +199,8 @@ impl From<GlesRenderer> for SkiaRenderer {
         let mut options = skia::gpu::ContextOptions::default();
         options.skip_gl_error_checks = skia::gpu::context_options::Enable::Yes;
         // options.
-
-        let mut context = skia::gpu::DirectContext::new_gl(None, &options);
+        let interface = skia::gpu::gl::Interface::new_native().unwrap();
+        let mut context = skia::gpu::direct_contexts::make_gl(interface, &options);
 
         let ctx = context.as_mut().unwrap();
         ctx.reset(None);
@@ -321,8 +323,8 @@ impl SkiaRenderer {
         egl.make_current()?;
         let gl_renderer = GlesRenderer::with_capabilities(egl, capabilities)?;
         // let egl = gl_renderer.egl_context();
-
-        let context = skia::gpu::DirectContext::new_gl(None, None);
+        let interface = skia::gpu::gl::Interface::new_native().unwrap();
+        let context = skia::gpu::direct_contexts::make_gl(interface, None);
 
         let (gl, _exts) = {
             let gl =
@@ -814,7 +816,7 @@ impl<'frame> Frame for SkiaFrame<'frame> {
         // Transmute flushinfo2 into flushinfo
         let info = unsafe {
             let native = &*(&info as *const FlushInfo2 as *const sb::GrFlushInfo);
-            &*(native as *const sb::GrFlushInfo as *const skia_safe::gpu::FlushInfo)
+            &*(native as *const sb::GrFlushInfo as *const layers::skia::gpu::FlushInfo)
         };
 
         FINISHED_PROC_STATE.store(false, Ordering::SeqCst);
@@ -853,7 +855,7 @@ impl<'frame> Frame for SkiaFrame<'frame> {
 
 // this is a "hack" to expose finished_proc and submitted_proc
 // until a PR is made to skia-bindings
-use skia_bindings as sb;
+use layers::sb as sb;
 
 #[repr(C)]
 #[allow(dead_code)]

@@ -1,34 +1,10 @@
 use layers::prelude::*;
 use smithay::input::pointer::{CursorIcon, CursorImageStatus};
-use std::{
-    cell::RefCell,
-    hash::{Hash, Hasher},
-};
+use std::hash::{Hash, Hasher};
 
 use crate::{config::Config, interactive_view::ViewInteractions, utils::Observer};
 
-use super::Workspace;
-
-// use skia_safe::document::state;
-#[allow(unused)]
-struct FontCache {
-    font_collection: skia_safe::textlayout::FontCollection,
-    font_mgr: skia_safe::FontMgr,
-    type_face_font_provider: RefCell<skia_safe::textlayout::TypefaceFontProvider>,
-}
-
-// // source: slint ui
-// // https://github.com/slint-ui/slint/blob/64e7bb27d12dd8f884275292c2333d37f4e224d5/internal/renderers/skia/textlayout.rs#L31
-thread_local! {
-    static FONT_CACHE: FontCache = {
-        let font_mgr = skia_safe::FontMgr::new();
-        let type_face_font_provider = skia_safe::textlayout::TypefaceFontProvider::new();
-        let mut font_collection = skia_safe::textlayout::FontCollection::new();
-        font_collection.set_asset_font_manager(Some(type_face_font_provider.clone().into()));
-        font_collection.set_dynamic_font_manager(font_mgr.clone());
-        FontCache { font_collection, font_mgr, type_face_font_provider: RefCell::new(type_face_font_provider) }
-    };
-}
+use super::{utils::FONT_CACHE, Workspace};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct WindowSelection {
@@ -114,30 +90,30 @@ impl WindowSelectorView {
     }
 }
 
-pub fn get_paragraph_for_text(text: &str, font_size: f32) -> skia_safe::textlayout::Paragraph {
-    let mut text_style = skia_safe::textlayout::TextStyle::new();
+pub fn get_paragraph_for_text(text: &str, font_size: f32) -> layers::skia::textlayout::Paragraph {
+    let mut text_style = layers::skia::textlayout::TextStyle::new();
 
     text_style.set_font_size(font_size);
-    let font_style = skia_safe::FontStyle::new(
-        skia_safe::font_style::Weight::BOLD,
-        skia_safe::font_style::Width::CONDENSED,
-        skia_safe::font_style::Slant::Upright,
+    let font_style = layers::skia::FontStyle::new(
+        layers::skia::font_style::Weight::BOLD,
+        layers::skia::font_style::Width::CONDENSED,
+        layers::skia::font_style::Slant::Upright,
     );
     text_style.set_font_style(font_style);
     text_style.set_letter_spacing(-1.0);
-    let foreground_paint = skia_safe::Paint::new(skia_safe::Color4f::new(0.1, 0.1, 0.1, 0.9), None);
+    let foreground_paint = layers::skia::Paint::new(layers::skia::Color4f::new(0.1, 0.1, 0.1, 0.9), None);
     text_style.set_foreground_paint(&foreground_paint);
     text_style.set_font_families(&["Inter"]);
 
-    let mut paragraph_style = skia_safe::textlayout::ParagraphStyle::new();
+    let mut paragraph_style = layers::skia::textlayout::ParagraphStyle::new();
     paragraph_style.set_text_style(&text_style);
     paragraph_style.set_max_lines(1);
-    paragraph_style.set_text_align(skia_safe::textlayout::TextAlign::Center);
-    paragraph_style.set_text_direction(skia_safe::textlayout::TextDirection::LTR);
+    paragraph_style.set_text_align(layers::skia::textlayout::TextAlign::Center);
+    paragraph_style.set_text_direction(layers::skia::textlayout::TextDirection::LTR);
     paragraph_style.set_ellipsis("…");
 
     let mut builder = FONT_CACHE.with(|font_cache| {
-        skia_safe::textlayout::ParagraphBuilder::new(
+        layers::skia::textlayout::ParagraphBuilder::new(
             &paragraph_style,
             font_cache.font_collection.clone(),
         )
@@ -164,11 +140,11 @@ pub fn view_window_selector(
             let range: std::ops::Range<usize> = 0..window_selection.window_title.len();
             let rects = paragraph.get_rects_for_range(
                 range,
-                skia_safe::textlayout::RectHeightStyle::Tight,
-                skia_safe::textlayout::RectWidthStyle::Tight,
+                layers::skia::textlayout::RectHeightStyle::Tight,
+                layers::skia::textlayout::RectWidthStyle::Tight,
             );
-            let text_bounding_box = rects.iter().fold(skia_safe::Rect::new_empty(), |acc, b| {
-                skia_safe::Rect::join2(acc, b.rect)
+            let text_bounding_box = rects.iter().fold(layers::skia::Rect::new_empty(), |acc, b| {
+                layers::skia::Rect::join2(acc, b.rect)
             });
             (window_selection, text_bounding_box)
         });
@@ -177,15 +153,15 @@ pub fn view_window_selector(
         .as_ref()
         .map(|(window_selection, _)| window_selection.clone());
 
-    let draw_container = Some(move |canvas: &skia_safe::Canvas, w, h| {
+    let draw_container = Some(move |canvas: &layers::skia::Canvas, w, h| {
         if window_selection.is_some() {
             let window_selection = window_selection.as_ref().unwrap();
-            let color = skia_safe::Color4f::new(85.0 / 255.0, 150.0 / 255.0, 244.0 / 255.0, 1.0);
-            let mut paint = skia_safe::Paint::new(color, None);
+            let color = layers::skia::Color4f::new(85.0 / 255.0, 150.0 / 255.0, 244.0 / 255.0, 1.0);
+            let mut paint = layers::skia::Paint::new(color, None);
             paint.set_stroke(true);
             paint.set_stroke_width(10.0 * draw_scale);
-            let rrect = skia_safe::RRect::new_rect_xy(
-                skia_safe::Rect::from_xywh(
+            let rrect = layers::skia::RRect::new_rect_xy(
+                layers::skia::Rect::from_xywh(
                     window_selection.x,
                     window_selection.y,
                     window_selection.w,
@@ -197,7 +173,7 @@ pub fn view_window_selector(
 
             canvas.draw_rrect(rrect, &paint);
         }
-        skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
+        layers::skia::Rect::from_xywh(0.0, 0.0, w, h)
     });
 
     let text_padding_x: f32 = 10.0 * draw_scale;
@@ -207,7 +183,7 @@ pub fn view_window_selector(
     let (text_rect, text_bounding_box) = current
         .as_ref()
         .map(|(rect, bb)| (rect.clone(), *bb))
-        .unwrap_or((WindowSelection::default(), skia_safe::Rect::new_empty()));
+        .unwrap_or((WindowSelection::default(), layers::skia::Rect::new_empty()));
     let text_layer_size = layers::types::Size::points(
         if text_bounding_box.width() == 0.0 {
             0.0
@@ -253,7 +229,7 @@ pub fn view_window_selector(
             .shadow_offset(((0.0, 0.0).into(), None))
             .shadow_radius((5.0, None))
             // .shadow_spread((10.0, None))
-            .content(Some(move |canvas: &skia_safe::Canvas, w, h| {
+            .content(Some(move |canvas: &layers::skia::Canvas, w, h| {
                 let mut paragraph = get_paragraph_for_text(&text_rect.window_title, font_size);
                 paragraph.layout(w);
                 // let text_x = TEXT_PADDING_X;
@@ -261,7 +237,7 @@ pub fn view_window_selector(
 
                 paragraph.paint(canvas, (0.0, text_y));
                 let safe = 200.0 * draw_scale;
-                skia_safe::Rect::from_xywh(-safe, -safe, w + safe * 2.0, h + safe * 2.0)
+                layers::skia::Rect::from_xywh(-safe, -safe, w + safe * 2.0, h + safe * 2.0)
             }))
             .build()
             .unwrap()])
