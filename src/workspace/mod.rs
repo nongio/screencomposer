@@ -209,12 +209,7 @@ impl Workspace {
             ..Default::default()
         });
         background_layer.set_size(layers::types::Size::percent(1.0, 1.0), None);
-        background_layer
-            .set_background_color(layers::prelude::Color::new_rgba(0.0, 0.0, 0.0, 1.0), None);
-        background_layer
-            .set_border_corner_radius(layers::prelude::BorderRadius::new_single(20.0), None);
-        background_layer.set_pointer_events(false);
-        // background_layer.set_opacity(0.0, None);
+        background_layer.set_opacity(0.0, None);
         let windows_layer = layers_engine.new_layer();
         windows_layer.set_key("windows_container");
         windows_layer.set_layout_style(taffy::Style {

@@ -107,7 +107,6 @@ pub fn view_background(
         // font.set_size(font_size);
         // canvas.draw_str("test string string", (80.0, 100.0), &font, &paint);
         // canvas.draw_rect(skia::Rect::from_xywh(80.0, 100.0, 200.0, 100.0), &paint);
-
         skia::Rect::from_xywh(0.0, 0.0, w, h)
     };
 
@@ -116,13 +115,16 @@ pub fn view_background(
         .opacity((
             1.0,
             Some(Transition {
-                delay: 0.5,
-                duration: 5.0,
+                delay: 0.3,
+                duration: 1.0,
                 timing: TimingFunction::ease_out_quad(),
             }),
         ))
+        .border_corner_radius(BorderRadius::new_single(24.0))
         .content(Some(draw_container))
         .image_cache(true)
+        .background_color(layers::prelude::Color::new_rgba(0.0, 0.0, 0.0, 1.0))
+        .pointer_events(false)
         .build()
         .unwrap()
 }

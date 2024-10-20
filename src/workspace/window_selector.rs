@@ -203,7 +203,6 @@ pub fn view_window_selector(
         .key("window_selector_view")
         .position(((0.0, 0.0).into(), None))
         .size((layers::types::Size::percent(1.0, 1.0), None))
-        .border_width((10.0 * draw_scale, None))
         .content(draw_container)
         .children(vec![LayerTreeBuilder::default()
             .key("window_selector_label")
