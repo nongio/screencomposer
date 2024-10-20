@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet}, fs::read_to_string, sync::{atomic::AtomicBool, Arc, RwLock}, time::Duration
+    collections::{HashMap, HashSet}, sync::{atomic::AtomicBool, Arc, RwLock}, time::Duration
 };
 
 use layers::{
@@ -18,7 +18,7 @@ use crate::{
     config::Config,
     interactive_view::ViewInteractions,
     utils::Observer,
-    workspace::{utils::FONT_CACHE, Application, Window, WindowView, WorkspaceModel},
+    workspace::{utils::FONT_CACHE, Application, Window, WorkspaceModel},
 };
 
 use super::{model::DockModel, render::draw_app_icon, render_app::draw_balloon_rect};
@@ -480,16 +480,16 @@ impl DockView {
         if component_padding_h > 5.0 * draw_scale {
             component_padding_h = 5.0 * draw_scale;
         }
-        let mut component_padding_v: f32 = icon_size * 0.09 * draw_scale;
-        if component_padding_v > 50.0 * draw_scale {
-            component_padding_v = 50.0 * draw_scale;
-        }
+        // let mut component_padding_v: f32 = icon_size * 0.09 * draw_scale;
+        // if component_padding_v > 50.0 * draw_scale {
+        //     component_padding_v = 50.0 * draw_scale;
+        // }
         let available_icon_size =
             (available_width - component_padding_h * 2.0) / (apps_len + windows_len);
         let available_icon_size = icon_size.min(available_icon_size);
 
-        let component_width = (apps_len + windows_len) * available_icon_size + component_padding_h * 2.0;
-        let component_height = available_icon_size + component_padding_v * 2.0;
+        // let component_width = (apps_len + windows_len) * available_icon_size + component_padding_h * 2.0;
+        // let component_height = available_icon_size + component_padding_v * 2.0;
 
     //    self.view_layer.set_size(
     //         Size {
@@ -583,15 +583,15 @@ impl DockView {
         let apps_len = state.running_apps.len() as f32;
         let windows_len = state.minimized_windows.len() as f32;
 
-        let mut component_padding_h: f32 = icon_size * 0.09 * draw_scale;
-        if component_padding_h > 5.0 * draw_scale {
-            component_padding_h = 5.0 * draw_scale;
-        }
-        let mut component_padding_v: f32 = icon_size * 0.09 * draw_scale;
-        if component_padding_v > 50.0 * draw_scale {
-            component_padding_v = 50.0 * draw_scale;
-        }
-        let mut total_width = component_padding_h * 2.0;
+        // let mut component_padding_h: f32 = icon_size * 0.09 * draw_scale;
+        // if component_padding_h > 5.0 * draw_scale {
+        //     component_padding_h = 5.0 * draw_scale;
+        // }
+        // let mut component_padding_v: f32 = icon_size * 0.09 * draw_scale;
+        // if component_padding_v > 50.0 * draw_scale {
+        //     component_padding_v = 50.0 * draw_scale;
+        // }
+        // let total_width = component_padding_h * 2.0;
         let tot_elements = apps_len + windows_len;
         for (index, app) in state.running_apps.iter().enumerate() {
             let id = &app.identifier;
@@ -609,7 +609,7 @@ impl DockView {
                         ..Default::default()
                     }),
                 );
-                total_width += focused_icon_size;
+                // total_width += focused_icon_size;
             }
         }
 
@@ -629,7 +629,7 @@ impl DockView {
                     ..Default::default()
                 }),
             );
-            total_width += focused_icon_size;
+            // total_width += focused_icon_size;
         }
         // self.bar_layer.set_size(
         //     Size::points(total_width, component_padding_v * 2.0 + icon_size),
@@ -669,7 +669,7 @@ impl DockView {
         // })
     }
     
-    pub fn make_space_for_window(&self, window: &Window, view: &WindowView) -> Layer {
+    pub fn make_space_for_window(&self, window: &Window) -> Layer {
         let drawer = self.layers_engine.new_layer();
         drawer.set_size(Size::points(0.0, 130.0), None);
         drawer.set_background_color(layers::types::Color::new_rgba(0.0, 0.0, 0.0, 0.0), None);
@@ -688,7 +688,7 @@ impl DockView {
         drawer
     }
 
-    pub fn remove_space_for_window(&self, window: &Window, view: &WindowView) -> Option<Layer>{
+    pub fn remove_space_for_window(&self, window: &Window) -> Option<Layer>{
         let id = window.id().unwrap();
         let mut drawer = None;
         let mut wl = self.window_layers.write().unwrap();

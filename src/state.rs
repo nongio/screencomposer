@@ -1,6 +1,6 @@
 use std::{
     cmp::max,
-    collections::{HashMap, VecDeque},
+    collections::VecDeque,
     fmt::Debug,
     os::unix::io::OwnedFd,
     sync::{atomic::AtomicBool, Arc, Mutex},
@@ -8,7 +8,7 @@ use std::{
 };
 
 use layers::{
-    engine::{LayersEngine, NodeRef},
+    engine::LayersEngine,
     prelude::{taffy, Transition},
 };
 use tracing::{info, warn};
@@ -53,7 +53,7 @@ use smithay::{
             zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
         },
         wayland_server::{
-            backend::{ClientData, ClientId, DisconnectReason, ObjectId},
+            backend::{ClientData, ClientId, DisconnectReason},
             protocol::{
                 wl_data_device_manager::DndAction, wl_data_source::WlDataSource,
                 wl_surface::WlSurface,
@@ -127,7 +127,7 @@ use crate::{
     render_elements::scene_element::SceneElement,
     shell::WindowElement,
     skia_renderer::SkiaTexture,
-    workspace::{DndView, Window, WindowView, WindowViewBaseModel, WindowViewSurface, Workspace},
+    workspace::{DndView, Window, WindowViewBaseModel, WindowViewSurface, Workspace},
 };
 #[cfg(feature = "xwayland")]
 use smithay::{
@@ -783,6 +783,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
 
         let dnd_view = DndView::new(layers_engine.clone(), root_layer.id().unwrap());
         
+        #[cfg(feature = "debug")]
         layers_engine.start_debugger();
         
         ScreenComposer {
@@ -958,7 +959,17 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     }
     #[profiling::function]
     pub fn update_windows(&mut self) {
-        let windows = self.space.elements();
+        let windows: Vec<WindowElement> = self.space.elements()
+        .map(|we| we.clone())
+        .collect();
+
+        let minimized_windows:Vec<WindowElement> = self.workspace.with_model(|model| {
+            model.minimized_windows.iter()
+            .map(|(_id, we)| we.clone())
+            .collect()
+        });
+
+        let windows = windows.iter().chain(minimized_windows.iter());
         for window in windows {
             let output = self.space.outputs_for_element(window);
             let scale_factor = output

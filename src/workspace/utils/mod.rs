@@ -8,7 +8,7 @@ use smithay::utils::Transform;
 
 use super::WindowViewSurface;
 
-
+#[allow(unused)]
 pub struct FontCache {
     pub font_collection: layers::skia::textlayout::FontCollection,
     pub font_mgr: layers::skia::FontMgr,

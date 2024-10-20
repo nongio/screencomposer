@@ -10,7 +10,6 @@ use crate::{
 #[cfg(feature = "udev")]
 use crate::udev::UdevData;
 
-use layers::skia::Contains;
 use smithay::{
     backend::input::{
         self, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent
@@ -1371,6 +1370,7 @@ impl ScreenComposer<UdevData> {
 }
 
 /// Possible results of a keyboard action
+#[allow(dead_code)]
 #[derive(Debug)]
 enum KeyAction {
     /// Quit the compositor

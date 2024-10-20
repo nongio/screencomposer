@@ -129,19 +129,19 @@ impl RenderElement<SkiaRenderer> for SkiaElement {
         background_paint.set_anti_alias(true);
         background_paint.set_style(layers::skia::PaintStyle::Fill);
 
-        let mut save_layer_rec = layers::skia::canvas::SaveLayerRec::default();
-        let blur = layers::skia::image_filters::blur(
-            (20.0, 20.0),
-            layers::skia::TileMode::Clamp,
-            None,
-            Some(layers::skia::image_filters::CropRect::from(bounds)),
-        )
-        .unwrap();
+        // let save_layer_rec = layers::skia::canvas::SaveLayerRec::default();
+        // let blur = layers::skia::image_filters::blur(
+        //     (20.0, 20.0),
+        //     layers::skia::TileMode::Clamp,
+        //     None,
+        //     Some(layers::skia::image_filters::CropRect::from(bounds)),
+        // )
+        // .unwrap();
 
         let save_count = canvas.save();
 
         // save_layer_rec = save_layer_rec.backdrop(&blur).bounds(&bounds);
-        canvas.save_layer(&save_layer_rec);
+        // canvas.save_layer(&save_layer_rec);
         background_paint.set_blend_mode(layers::skia::BlendMode::SrcOver);
         canvas.clip_rrect(rrect, None, Some(true));
         for rect in instances.iter() {

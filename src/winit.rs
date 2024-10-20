@@ -119,13 +119,13 @@ pub fn run_winit() {
     let (mut backend, mut winit) = match winit::init_from_attributes_with_gl_attr::<SkiaRenderer>(
         WindowAttributes::default()
             .with_title("Screen Composer".to_string())
-            .with_inner_size(Size::new(LogicalSize::new(1280.0, 800.0)))
+            .with_inner_size(Size::new(LogicalSize::new(1280.0, 1000.0)))
             .with_visible(true),
         GlAttributes {
             version: (3, 0),
             profile: None,
             debug: cfg!(debug_assertions),
-            vsync: false,
+            vsync: true,
         },
     ) {
         Ok(ret) => ret,

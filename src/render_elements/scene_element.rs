@@ -44,18 +44,21 @@ impl SceneElement {
         if self.engine.update(dt) {
             self.commit_counter.increment();
             let scene_damage = self.engine.damage();
-            let safe = 0;
-            let damage = Rectangle::from_loc_and_size(
-                (
-                    scene_damage.x() as i32 - safe,
-                    scene_damage.y() as i32 - safe,
-                ),
-                (
-                    scene_damage.width() as i32 + safe * 2,
-                    scene_damage.height() as i32 + safe * 2,
-                ),
-            );
-            self.damage.borrow_mut().add(vec![damage]);
+            if !scene_damage.is_empty() {
+                self.commit_counter.increment();
+                let safe = 0;
+                let damage = Rectangle::from_loc_and_size(
+                    (
+                        scene_damage.x() as i32 - safe,
+                        scene_damage.y() as i32 - safe,
+                    ),
+                    (
+                        scene_damage.width() as i32 + safe * 2,
+                        scene_damage.height() as i32 + safe * 2,
+                    ),
+                );
+                self.damage.borrow_mut().add(vec![damage]);
+            }
         }
     }
     pub fn root_layer(&self) -> Option<SceneNode> {
@@ -142,16 +145,25 @@ impl RenderElement<SkiaRenderer> for SceneElement {
         #[cfg(feature = "profile-with-puffin")]
         profiling::puffin::profile_scope!("render_scene");
         let mut surface = frame.skia_surface.clone();
+        
         let canvas = surface.canvas();
+        
+        // if self.engine.damage().is_empty() {
+            // return Ok(());
+        // } else {
+            // println!("scene damage: {:?}", self.engine.damage());
+        // }
+        // println!("scene draw");
+        // canvas.clear(layers::skia::Color::from_argb(255, 0, 0, 0));
         let scene = self.engine.scene();
         let root_id = self.engine.scene_root();
         let arena = scene.nodes.data();
         let arena = &*arena.read().unwrap();
         // let scene_damage = self.engine.damage();
-        // let damage_rect = skia_safe::Rect::from_xywh(scene_damage.x, scene_damage.y, scene_damage.width, scene_damage.height);
-        let mut damage_rect = skia_safe::Rect::default();
+        // let damage_rect = layers::skia::Rect::from_xywh(scene_damage.x, scene_damage.y, scene_damage.width, scene_damage.height);
+        let mut damage_rect = layers::skia::Rect::default();
         damage.iter().for_each(|d| {
-            damage_rect.join(skia_safe::Rect::from_xywh(
+            damage_rect.join(layers::skia::Rect::from_xywh(
                 d.loc.x as f32,
                 d.loc.y as f32,
                 d.size.w as f32,
@@ -160,9 +172,27 @@ impl RenderElement<SkiaRenderer> for SceneElement {
         });
         if let Some(root_id) = root_id {
             let save_point = canvas.save();
-            canvas.clip_rect(damage_rect, None, None);
+
+            // DO NOT CLIP!
+            // canvas.clip_rect(damage_rect, None, None);
             render_node_tree(root_id, arena, canvas, 1.0);
-            canvas.restore_to_count(save_point);
+            
+            // draw damage rect 
+            // let mut paint = layers::skia::Paint::default();
+            // paint.set_color(layers::skia::Color::from_argb(255, 255, 0, 0));
+            // paint.set_stroke(true);
+            // paint.set_stroke_width(5.0);
+            // damage.iter().for_each(|d| {
+            //     canvas.draw_rect(layers::skia::Rect::from_xywh(
+            //         d.loc.x as f32,
+            //         d.loc.y as f32,
+            //         d.size.w as f32,
+            //         d.size.h as f32,
+            //     ), &paint);
+            // });
+            // println!("scene draw damage: {},{} {}x{}", damage_rect.x(), damage_rect.y(), damage_rect.width(), damage_rect.height());
+
+            canvas.restore_to_count(save_point);        
         }
         self.engine.clear_damage();
         Ok(())

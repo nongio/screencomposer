@@ -1,6 +1,9 @@
 use std::hash::{Hash, Hasher};
 
-use layers::prelude::*;
+use layers::{
+    skia,
+    prelude::*
+};
 
 use crate::utils::Observer;
 
@@ -8,7 +11,7 @@ use super::Workspace;
 
 #[derive(Clone, Debug)]
 pub struct BackgroundViewState {
-    pub image: Option<layers::skia::Image>,
+    pub image: Option<skia::Image>,
     pub debug_string: String,
 }
 impl Hash for BackgroundViewState {
@@ -48,7 +51,7 @@ impl BackgroundView {
         });
     }
 
-    pub fn set_image(&self, image: layers::skia::Image) {
+    pub fn set_image(&self, image: skia::Image) {
         self.view.update_state(&BackgroundViewState {
             image: Some(image),
             ..self.view.get_state()
@@ -65,18 +68,18 @@ pub fn view_background(
 
     // let debug_text = state.debug_string.clone();
 
-    let draw_container = move |canvas: &layers::skia::Canvas, w, h| {
-        let color = layers::skia::Color4f::new(1.0, 1.0, 1.0, 1.0);
-        let mut paint = layers::skia::Paint::new(color, None);
+    let draw_container = move |canvas: &skia::Canvas, w, h| {
+        let color = skia::Color4f::new(1.0, 1.0, 1.0, 1.0);
+        let mut paint = skia::Paint::new(color, None);
 
         if let Some(image) = image.as_ref() {
-            let mut matrix = layers::skia::Matrix::new_identity();
+            let mut matrix = skia::Matrix::new_identity();
             matrix.set_scale((w / image.width() as f32, h / image.height() as f32), None);
             // canvas.concat(&matrix);
             // canvas.draw_image_rect(image, None, rect, &paint);
             paint.set_shader(image.to_shader(
-                (layers::skia::TileMode::Repeat, layers::skia::TileMode::Repeat),
-                layers::skia::SamplingOptions::default(),
+                (skia::TileMode::Repeat, skia::TileMode::Repeat),
+                skia::SamplingOptions::default(),
                 &matrix,
             ));
         }
@@ -87,7 +90,7 @@ pub fn view_background(
 
         for i in 0..split {
             for j in 0..split {
-                let rect = layers::skia::Rect::from_xywh(
+                let rect = skia::Rect::from_xywh(
                     i as f32 * rect_size_w,
                     j as f32 * rect_size_h,
                     rect_size_w,
@@ -97,15 +100,15 @@ pub fn view_background(
             }
         }
 
-        // let color = layers::skia::Color4f::new(0.0, 0.0, 0.0, 1.0);
-        // let paint = layers::skia::Paint::new(color, None);
-        // let mut font = layers::skia::Font::default();
+        // let color = skia::Color4f::new(0.0, 0.0, 0.0, 1.0);
+        // let paint = skia::Paint::new(color, None);
+        // let mut font = skia::Font::default();
         // let font_size = 26.0;
         // font.set_size(font_size);
         // canvas.draw_str("test string string", (80.0, 100.0), &font, &paint);
-        // canvas.draw_rect(layers::skia::Rect::from_xywh(80.0, 100.0, 200.0, 100.0), &paint);
+        // canvas.draw_rect(skia::Rect::from_xywh(80.0, 100.0, 200.0, 100.0), &paint);
 
-        layers::skia::Rect::from_xywh(0.0, 0.0, w, h)
+        skia::Rect::from_xywh(0.0, 0.0, w, h)
     };
 
     LayerTreeBuilder::default()
@@ -114,9 +117,8 @@ pub fn view_background(
             1.0,
             Some(Transition {
                 delay: 0.5,
-                duration: 1.0,
-                timing: TimingFunction::Easing(Easing::ease_out()),
-                // ..Default::default()
+                duration: 5.0,
+                timing: TimingFunction::ease_out_quad(),
             }),
         ))
         .content(Some(draw_container))

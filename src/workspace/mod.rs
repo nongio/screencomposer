@@ -811,7 +811,7 @@ impl Workspace {
             model.minimized_windows.push((id.clone(), we.clone()));
             
             if let Some(view) = self.get_window_view(id) {
-                let drawer = self.dock.make_space_for_window(&window, &view);
+                let drawer = self.dock.make_space_for_window(&window);
                 drawer.set_size(Size::points(130.0, 130.0),
                 Some(Transition::ease_out_quad(0.3))
                 );
@@ -838,7 +838,7 @@ impl Workspace {
                 model.windows_cache.insert(id.clone(), window.clone());
                 model.minimized_windows.retain(|(wid, _)| wid != id);
 
-                if let Some(drawer) = self.dock.remove_space_for_window(&window, &view) {
+                if let Some(drawer) = self.dock.remove_space_for_window(&window) {
                     let engine_ref = self.layers_engine.clone();
                     let windows_layer_ref = self.windows_layer.clone();
                     let layer_ref = view.window_layer.clone();
@@ -853,7 +853,7 @@ impl Workspace {
                         delay: 0.2,
                         timing: TimingFunction::ease_out_quad(),
                     })
-                    .on_start(move |layer: &Layer, _| {
+                    .on_start(move |_layer: &Layer, _| {
                         layer_ref.remove_draw_content();
                         engine_ref.scene_add_layer_to_positioned(layer_ref.clone(), windows_layer_ref.clone());
                         layer_ref.set_position((pos_x,pos_y), Transition::ease_out(0.3));

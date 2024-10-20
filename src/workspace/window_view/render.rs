@@ -43,7 +43,11 @@ pub fn view_window_shadow(
             w - SAFE_AREA * 2.0,
             h - SAFE_AREA * 2.0,
         );
-
+        let rrect = layers::skia::RRect::new_rect_xy(
+            rect,
+            window_corner_radius,
+            window_corner_radius,
+        );
         shadow_paint.set_mask_filter(layers::skia::MaskFilter::blur(
             layers::skia::BlurStyle::Normal,
             30.0,

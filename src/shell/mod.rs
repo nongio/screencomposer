@@ -330,10 +330,6 @@ pub fn place_new_window(
     window: &WindowElement,
     activate: bool,
 ) -> (i32, i32) {
-    // place the window at a random location on same output as pointer
-    // or if there is not output in a [0;800]x[0;800] square
-    use rand::distributions::{Distribution, Uniform};
-
     let output = space
         .output_under(pointer_location)
         .next()
