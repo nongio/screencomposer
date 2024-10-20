@@ -378,11 +378,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     if let Some(view) = self.workspace.get_window_view(&id) {
                         view.window_layer.set_position(
                             layers::types::Point { x: 0.0, y: 0.0 },
-                            Some(Transition {
-                                delay: 0.0,
-                                duration: 0.4,
-                                timing: TimingFunction::Easing(Easing::ease_out()),
-                            }),
+                            Some(Transition::ease_in_out_quad(0.4)),
                         );
 
                         self.workspace.overlay_layer.add_sublayer(view.window_layer.clone());

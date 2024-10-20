@@ -365,9 +365,8 @@ pub fn place_new_window(
 // Calculate the position along the diagonal
     const MAX_WINDOW_COUNT: f32 = 40.0;
     let factor = window_index as f32 / MAX_WINDOW_COUNT;
-    println!("Factor: {}", factor);
-    let x = (output_geometry.loc.x as f32 + factor * max_x as f32) as i32;
-    let y = (output_geometry.loc.y as f32 + factor * max_y as f32) as i32;
+    let x = (output_geometry.loc.x as f32 + factor * max_x as f32) as i32 + 100;
+    let y = (output_geometry.loc.y as f32 + factor * max_y as f32) as i32 + 100;
     println!("Placing window at ({}, {})", x, y);
     space.map_element(window.clone(), (x, y), activate);
 
