@@ -1259,11 +1259,11 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     pub fn raise_app_elements(&mut self, app_id: &str, activate: bool, serial: Option<Serial>) {
 
         let windows = self.workspace.get_app_windows(app_id);
-        for (i, window_id) in windows.iter().rev().enumerate() {
+        for (i, window_id) in windows.iter().enumerate() {
             if let Some(window) = self.workspace.get_window_for_surface(window_id) {
                 if !window.is_minimized {
                     if let Some(we) = window.window_element.as_ref() {
-                        if i == 0 {
+                        if i == windows.len() - 1 {
                             self.raise_element(we, activate, serial, false);
                         } else {
                             self.raise_element(we, false, None, false);
@@ -1285,18 +1285,21 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     pub fn minimize_window(&mut self, window: &WindowElement) {
         let id = window.wl_surface().unwrap().id();
         self.workspace.minimize_window(&id, &window);
-        self.space.unmap_elem(&window);
+        // self.space.unmap_elem(&window);
     }
 
     pub fn unminimize_window(&mut self, window_element: &WindowElement) {
         let id = window_element.wl_surface().unwrap().id();
 
-        let window = self.workspace.get_window_for_surface(&id).unwrap();
+        // let window = self.workspace.get_window_for_surface(&id).unwrap();
 
         if let Some(view) = self.workspace.get_window_view(&id) {
             self.workspace.unminimize_window(&id);
-            self.space.map_element(window_element.clone(), (view.unmaximized_rect.x as i32, view.unmaximized_rect.y as i32), true);
-            self.raise_window_element(&window, true, None);
+                let pos_x = view.unmaximized_rect.x as i32;
+                let pos_y = view.unmaximized_rect.y as i32;
+
+                self.space.map_element(window_element.clone(), (pos_x, pos_y), true);
+                // self.raise_window_element(&window, true, None);
         }
     }
 }
