@@ -29,7 +29,6 @@ use super::model::AppSwitcherModel;
 
 #[derive(Debug, Clone)]
 pub struct AppSwitcherView {
-    // pub app_switcher: Arc<RwLock<AppSwitcherModel>>,
     pub wrap_layer: layers::prelude::Layer,
     pub view_layer: layers::prelude::Layer,
     pub view: layers::prelude::View<AppSwitcherModel>,
@@ -122,9 +121,9 @@ impl AppSwitcherView {
         self.wrap_layer.set_opacity(
             1.0,
             Some(Transition {
-                duration: 0.1,
+                duration: 0.150,
                 delay: 0.1,
-                timing: TimingFunction::default(),
+                timing: TimingFunction::ease_out(),
             }),
         );
     }
@@ -149,7 +148,7 @@ impl AppSwitcherView {
             Some(Transition {
                 duration: 0.1,
                 delay: 0.1,
-                timing: TimingFunction::default(),
+                timing: TimingFunction::ease_out(),
             }),
         );
     }
@@ -160,9 +159,9 @@ impl AppSwitcherView {
         self.wrap_layer.set_opacity(
             0.0,
             Some(Transition {
-                duration: 0.4,
+                duration: 0.1,
                 delay: 0.0,
-                timing: TimingFunction::default(),
+                timing: TimingFunction::ease_out(),
             }),
         );
     }

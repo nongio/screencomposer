@@ -18,9 +18,9 @@ use core::fmt;
 use freedesktop_desktop_entry::{default_paths, DesktopEntry, Iter as DesktopEntryIter};
 use layers::{
     engine::{LayersEngine, NodeRef},
-    prelude::{taffy, Easing, Interpolate, Layer, TimingFunction, Transition},
+    prelude::{taffy, Easing, Interpolate, Layer, TimingFunction, Transition}, types::Size,
 };
-use layers::skia::Contains;
+use layers::skia::{self, Contains};
 use smithay::{
     desktop::WindowSurface, input::pointer::CursorImageStatus, reexports::wayland_server::{backend::ObjectId, protocol::wl_surface::WlSurface, Resource}, utils::IsAlive, wayland::shell::xdg::XdgToplevelSurfaceData
 };
@@ -82,7 +82,7 @@ pub struct Application {
     pub identifier: String,
     pub desktop_name: Option<String>,
     pub icon_path: Option<String>,
-    pub icon: Option<layers::skia::Image>,
+    pub icon: Option<skia::Image>,
 }
 impl PartialEq for Window {
     fn eq(&self, other: &Self) -> bool {
@@ -213,7 +213,7 @@ impl Workspace {
             .set_background_color(layers::prelude::Color::new_rgba(0.0, 0.0, 0.0, 1.0), None);
         background_layer
             .set_border_corner_radius(layers::prelude::BorderRadius::new_single(20.0), None);
-        // background_layer.set_pointer_events(false);
+        background_layer.set_pointer_events(false);
         // background_layer.set_opacity(0.0, None);
         let windows_layer = layers_engine.new_layer();
         windows_layer.set_key("windows_container");
@@ -240,7 +240,7 @@ impl Workspace {
         workspace_selector_layer.set_pointer_events(false);
         layers_engine.scene_add_layer_to(background_layer.clone(), Some(workspace_id));
         layers_engine.scene_add_layer_to(windows_layer.clone(), Some(workspace_id));
-        // layers_engine.scene_add_layer_to(workspace_selector_layer.clone(), Some(workspace_id));
+        layers_engine.scene_add_layer_to(workspace_selector_layer.clone(), Some(workspace_id));
 
         let mut model = WorkspaceModel::default();
 
@@ -508,6 +508,7 @@ impl Workspace {
 
         let mut new_gesture = gesture + (delta * MULTIPLIER) as i32;
         let mut show_all = self.get_show_all();
+        let mut animation_duration = 0.200;
         if end_gesture {
             if show_all {
                 if new_gesture <= (9.0 * MULTIPLIER / 10.0) as i32 {
@@ -518,6 +519,7 @@ impl Workspace {
                     show_all = true;
                 }
             } else {
+                animation_duration = 0.200;
                 #[allow(clippy::collapsible_else_if)]
                 if new_gesture >= (1.0 * MULTIPLIER / 10.0) as i32 {
                     new_gesture = MULTIPLIER as i32;
@@ -574,7 +576,7 @@ impl Workspace {
         let mut index = 0;
 
         let mut transition = Some(Transition {
-            duration: 0.5,
+            duration: animation_duration,
             timing: TimingFunction::Easing(Easing::ease_in()),
             ..Default::default()
         });
@@ -768,8 +770,8 @@ impl Workspace {
         self
             .dock
             .view_layer
-            .render_bounds()
-            .contains(layers::skia::Point::new(x, y))
+            .render_bounds_transformed()
+            .contains(skia::Point::new(x, y))
     }
 
     pub fn get_or_add_window_view(
@@ -806,25 +808,64 @@ impl Workspace {
         if let Some(mut window) = model.windows_cache.get(id).cloned() {
             window.is_minimized = true;
             model.windows_cache.insert(id.clone(), window.clone());
-            
             model.minimized_windows.push((id.clone(), we.clone()));
             
-            self.dock.minimize_window(&window, self);
+            if let Some(view) = self.get_window_view(id) {
+                let drawer = self.dock.make_space_for_window(&window, &view);
+                drawer.set_size(Size::points(130.0, 130.0),
+                Some(Transition::ease_out_quad(0.3))
+                );
+                
+                view.window_layer.set_layout_style(taffy::Style {
+                    position: taffy::Position::Absolute,
+                    ..Default::default()
+                });
+                self.layers_engine.scene_add_layer_to_positioned(view.window_layer.clone(), drawer.clone());
+                // bounds are calculate after this call
+                let drawer_bounds = drawer.render_bounds_transformed();
+                view.minimize(skia::Rect::from_xywh(drawer_bounds.x(), drawer_bounds.y(), 130.0, 130.0));
+            }
             let event = model.clone();
             model.notify_observers(&event);
         }
-        // }
-        // let window_view = self.get_window_view(id).unwrap();
-        // window_view.minimize(layers::skia::Rect::from_xywh(1920.0-200.0, 1200.0 - 200.0, 100.0, 100.0));
     }
     pub fn unminimize_window(&self, id: &ObjectId) {
         let mut model = self.model.write().unwrap();
 
         if let Some(mut window) = model.windows_cache.get(id).cloned() {
-            model.minimized_windows.retain(|(wid, _)| wid != id);
-            window.is_minimized = false;
-            model.windows_cache.insert(id.clone(), window.clone());
-            self.dock.unminimize_window(window, self);
+            if let Some(view) = self.get_window_view(&id) {
+                window.is_minimized = false;
+                model.windows_cache.insert(id.clone(), window.clone());
+                model.minimized_windows.retain(|(wid, _)| wid != id);
+
+                if let Some(drawer) = self.dock.remove_space_for_window(&window, &view) {
+                    let engine_ref = self.layers_engine.clone();
+                    let windows_layer_ref = self.windows_layer.clone();
+                    let layer_ref = view.window_layer.clone();
+                    self.layers_engine.update(0.0);
+
+
+                    let drawer_bounds = drawer.render_bounds_transformed();
+                    let pos_x = window.x;
+                    let pos_y = window.y;
+                    drawer.set_size(Size::points(0.0, 130.0), Transition {
+                        duration: 0.3,
+                        delay: 0.2,
+                        timing: TimingFunction::ease_out_quad(),
+                    })
+                    .on_start(move |layer: &Layer, _| {
+                        layer_ref.remove_draw_content();
+                        engine_ref.scene_add_layer_to_positioned(layer_ref.clone(), windows_layer_ref.clone());
+                        layer_ref.set_position((pos_x,pos_y), Transition::ease_out(0.3));
+                    }, true)
+                    .then(move |layer: &Layer, _| {
+                        layer.remove();
+                    });
+                    
+
+                    view.unminimize(drawer_bounds);
+                }
+            }
 
             let event = model.clone();
             model.notify_observers(&event);

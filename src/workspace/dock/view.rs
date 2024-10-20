@@ -1,16 +1,15 @@
 use std::{
-    cell::RefCell, collections::{HashMap, HashSet}, sync::{atomic::AtomicBool, Arc, RwLock}, time::Duration
+    collections::{HashMap, HashSet}, fs::read_to_string, sync::{atomic::AtomicBool, Arc, RwLock}, time::Duration
 };
 
 use layers::{
     engine::{
         animation::{timing::TimingFunction, Transition},
         LayersEngine, NodeRef,
-    },
-    prelude::{taffy, Color, Layer},
-    taffy::{prelude::FromLength, style::Style, LengthPercentageAuto},
-    types::{BlendMode, PaintColor, Size},
-    view::{BuildLayerTree, LayerTreeBuilder},
+    }, 
+    prelude::{taffy, Color, Layer, Point}, 
+    skia, 
+    taffy::{prelude::FromLength, style::Style, LengthPercentageAuto}, types::{BlendMode, BorderRadius, PaintColor, Size}, view::{BuildLayerTree, LayerTreeBuilder}
 };
 use smithay::{backend::input::ButtonState, utils::IsAlive};
 use tokio::sync::mpsc;
@@ -19,7 +18,7 @@ use crate::{
     config::Config,
     interactive_view::ViewInteractions,
     utils::Observer,
-    workspace::{Application, Window, Workspace, WorkspaceModel},
+    workspace::{utils::FONT_CACHE, Application, Window, WindowView, WorkspaceModel},
 };
 
 use super::{model::DockModel, render::draw_app_icon, render_app::draw_balloon_rect};
@@ -35,7 +34,7 @@ pub struct DockView {
     dock_windows_container: layers::prelude::Layer,
 
     app_layers: Arc<RwLock<HashMap<String, (Layer, Layer)>>>,
-    // pub view: layers::prelude::View<DockModel>,
+    window_layers: Arc<RwLock<HashMap<NodeRef, Window>>>,
     state: Arc<RwLock<DockModel>>,
     active: Arc<AtomicBool>,
     notify_tx: tokio::sync::mpsc::Sender<WorkspaceModel>,
@@ -51,22 +50,6 @@ impl IsAlive for DockView {
     fn alive(&self) -> bool {
         self.active.load(std::sync::atomic::Ordering::Relaxed)
     }
-}
-#[allow(dead_code)]
-struct FontCache {
-    font_collection: skia_safe::textlayout::FontCollection,
-    pub font_mgr: skia_safe::FontMgr,
-    type_face_font_provider: RefCell<skia_safe::textlayout::TypefaceFontProvider>,
-}
-thread_local! {
-    static FONT_CACHE: FontCache = {
-        let font_mgr = skia_safe::FontMgr::new();
-        let type_face_font_provider = skia_safe::textlayout::TypefaceFontProvider::new();
-        let mut font_collection = skia_safe::textlayout::FontCollection::new();
-        font_collection.set_asset_font_manager(Some(type_face_font_provider.clone().into()));
-        font_collection.set_dynamic_font_manager(font_mgr.clone());
-        FontCache { font_collection, font_mgr, type_face_font_provider: RefCell::new(type_face_font_provider) }
-    };
 }
 
 impl DockView {
@@ -91,25 +74,29 @@ impl DockView {
         wrap_layer.add_sublayer(view_layer.clone());
         // FIXME
         view_layer.set_position((0.0, 1000.0), None);
-
-        
-
         let view_tree = LayerTreeBuilder::default()
         .key("dock-view")
+        .size(Size::auto()) 
         .layout_style(taffy::Style {
             position: taffy::Position::Relative,
             display: taffy::Display::Flex,
             flex_direction: taffy::FlexDirection::Row,
             justify_content: Some(taffy::JustifyContent::Center),
-            align_items: Some(taffy::AlignItems::Center),
             justify_items: Some(taffy::JustifyItems::Center),
-            gap: taffy::Size::<taffy::LengthPercentage>::from_length(10.0),
+            align_items: Some(taffy::AlignItems::FlexEnd),
+            gap: taffy::Size::<taffy::LengthPercentage>::from_length(0.0),
+            padding: taffy::Rect {
+                top: taffy::length(20.0),
+                bottom: taffy::length(20.0),
+                right: taffy::length(10.0),
+                left: taffy::length(10.0),
+            },
             ..Default::default()
         })
         .build()
         .unwrap();
         
-        view_layer.build_layer_tree(&view_tree, &mut HashMap::new());
+        view_layer.build_layer_tree(&view_tree);
 
 
         let bar_layer = layers_engine.new_layer();
@@ -118,7 +105,10 @@ impl DockView {
         let bar_tree = LayerTreeBuilder::default()
             .key("dock-bar")
             .pointer_events(false)
-            // .position(((0.0, 0.0).into(), None))
+            .size(Size{
+                width: taffy::percent(1.0),
+                height: taffy::Dimension::Length(190.0),
+            })
             .blend_mode(BlendMode::BackgroundBlur)
             .background_color(PaintColor::Solid {
                 color:  Color::new_rgba(0.94, 0.94, 0.94, 0.44),
@@ -131,11 +121,11 @@ impl DockView {
             .layout_style(taffy::Style {
                 position: taffy::Position::Absolute,
                 ..Default::default()
-            })
+            })  
             .build()
             .unwrap();
 
-        bar_layer.build_layer_tree(&bar_tree, &mut HashMap::new());
+        bar_layer.build_layer_tree(&bar_tree);
 
         let dock_apps_container = layers_engine.new_layer();
         view_layer.add_sublayer(dock_apps_container.clone());
@@ -143,16 +133,8 @@ impl DockView {
         let container_tree = LayerTreeBuilder::default()
             .key("dock_app_container")
             .pointer_events(false)
-            .position(((0.0, 0.0).into(), None))
-            .size((
-                Size {
-                    width: taffy::Dimension::Auto,
-                    height: taffy::Dimension::Auto,
-                },
-                None,
-            ))
+            .size(Size::auto())
             .layout_style(taffy::Style {
-                // position: taffy::Position::Absolute,
                 display: taffy::Display::Flex,
                 justify_content: Some(taffy::JustifyContent::FlexEnd),
                 justify_items: Some(taffy::JustifyItems::FlexEnd),
@@ -163,7 +145,34 @@ impl DockView {
 
             .build()
             .unwrap();
-        dock_apps_container.build_layer_tree(&container_tree, &mut HashMap::new());
+        dock_apps_container.build_layer_tree(&container_tree);
+
+        let dock_handle = layers_engine.new_layer();
+        view_layer.add_sublayer(dock_handle.clone());
+
+        let handle_tree = LayerTreeBuilder::default()
+            .key("dock_handle")
+            .pointer_events(false)
+            .size(Size {
+                width: taffy::Dimension::Length(50.0),
+                height: taffy::Dimension::Length(190.0),
+            })
+            // .background_color(Color::new_rgba(0.0, 0.0, 0.0, 0.0     ))
+            .content(Some(move |canvas: &skia::Canvas, w, h| {
+                let mut paint = layers::skia::Paint::default();
+                paint.set_color(layers::skia::Color::from_argb(70, 0, 0, 0));
+                const LINE_WIDTH: f32 = 5.0;
+                const LINE_HEIGHT: f32 = 140.0;
+                // let MARGIN_V: f32 = h - LINE_HEIGHT20.0; // 20.0;                    
+                let margin_h: f32 = (w - LINE_WIDTH) / 2.0;
+                let rect= layers::skia::Rect::from_xywh(margin_h, 15.0, w-2.0*margin_h, LINE_HEIGHT);
+                let rrect = layers::skia::RRect::new_rect_xy(rect, 3.0, 3.0);
+                canvas.draw_rrect(rrect, &paint);
+                skia::Rect::from_xywh(0.0, 0.0, w, h)
+            }))
+            .build()
+            .unwrap();
+        dock_handle.build_layer_tree(&handle_tree);
 
         let dock_windows_container = layers_engine.new_layer();
         view_layer.add_sublayer(dock_windows_container.clone());
@@ -171,27 +180,23 @@ impl DockView {
         let container_tree = LayerTreeBuilder::default()
             .key("dock_windows_container")
             .pointer_events(false)
-            .position(((0.0, 0.0).into(), None))
-            .size((
-                Size {
-                    width: taffy::Dimension::Auto,
-                    height: taffy::Dimension::Auto,
-                },
-                None,
-            ))
+            .position(Point::new(0.0, 0.0))
+            .size(Size {
+                width: taffy::Dimension::Auto,
+                height: taffy::Dimension::Percent(1.0),
+            })
             .layout_style(taffy::Style {
-                // position: taffy::Position::Absolute,
                 display: taffy::Display::Flex,
                 justify_content: Some(taffy::JustifyContent::FlexEnd),
                 justify_items: Some(taffy::JustifyItems::FlexEnd),
                 align_items: Some(taffy::AlignItems::Center),
-                gap: taffy::Size::<taffy::LengthPercentage>::from_length(10.0),
+                // gap: taffy::Size::<taffy::LengthPercentage>::from_length(    0.0),
                 ..Default::default()
             })
 
-            .build()
+            .build()                
             .unwrap();
-        dock_windows_container.build_layer_tree(&container_tree, &mut HashMap::new());
+        dock_windows_container.build_layer_tree(&container_tree);
         
         let mut initial_state = DockModel::new();
         initial_state.width = 1000;
@@ -206,6 +211,7 @@ impl DockView {
             dock_apps_container,
             dock_windows_container,
             app_layers: Arc::new(RwLock::new(HashMap::new())),
+            window_layers: Arc::new(RwLock::new(HashMap::new())),
             state: Arc::new(RwLock::new(initial_state)),
             active: Arc::new(AtomicBool::new(true)),
             notify_tx,
@@ -247,7 +253,6 @@ impl DockView {
         let mut current_app_layers = self.get_app_layers();
         let mut layers_map = self.app_layers.write().unwrap();
         for app in state.running_apps {
-            // println!("layer for dock app: {:?}", app.identifier);
             let app_copy = app.clone();
             let app_name=  app.clone().desktop_name.unwrap_or(app.identifier.clone());
             let (layer, label) = layers_map.entry(app.identifier.clone())
@@ -262,17 +267,17 @@ impl DockView {
                     (new_layer, label_layer)
                 });
             let draw_picture = draw_app_icon(&app_copy, false);
-            layer.set_draw_content(Some(draw_picture));
+            layer.set_draw_content(draw_picture);
 
             let app_copy = app.clone();
             layer.add_on_pointer_press(move |layer: Layer, _, _| {
                 let draw_picture = draw_app_icon(&app_copy, true);
-                layer.set_draw_content(Some(draw_picture));
+                layer.set_draw_content(draw_picture);
             });
             let app_copy = app.clone();
             layer.add_on_pointer_release(move |layer: Layer, _, _| {
                 let draw_picture = draw_app_icon(&app_copy, false);
-                layer.set_draw_content(Some(draw_picture));
+                layer.set_draw_content(draw_picture);
             });
             let lab = label.clone();
             layer.add_on_pointer_in(move |_, _, _| {
@@ -301,16 +306,14 @@ impl DockView {
         // remove the layers not used
         for layer in current_app_layers {
             self.layers_engine.scene_remove_layer(layer.id());
+            // layer.delete();
             layers_map.retain(|_k,(v, _)| {
                 v.id() != layer.id()
             });
         }
-
         // for win in state.minimized_windows {
         //     // println!("layer for dock app: {:?}", app.identifier);
-            
-            
-            
+                        
         // }
     }
 
@@ -343,13 +346,11 @@ impl DockView {
                     ..Default::default()
                 }), // None
             ))
-            .background_color(PaintColor::Solid {
-                color: Color::new_rgba(1.0, 0.0, 0.0, 0.0),
-            })
+            .background_color(Color::new_rgba(1.0, 0.0, 0.0, 0.0))
             .content(Some(draw_picture))
             .build()
             .unwrap();
-        layer.build_layer_tree(&icon_tree, &mut HashMap::new());        
+        layer.build_layer_tree(&icon_tree);        
     }
     fn setup_app_label(&self, new_layer: &Layer, app_name: String) {
         let text_size = 26.0;
@@ -358,13 +359,13 @@ impl DockView {
         .with(|font_cache| {
             font_cache
                 .font_mgr
-                .match_family_style("Inter", skia_safe::FontStyle::default())
+                .match_family_style("Inter", layers::skia::FontStyle::default())
         })
         .unwrap();
-        let font = skia_safe::Font::from_typeface_with_params(typeface, text_size, 1.0, 0.0);
+        let font = layers::skia::Font::from_typeface_with_params(typeface, text_size, 1.0, 0.0);
 
         let text = app_name.clone();
-        let paint = skia_safe::Paint::default();
+        let paint = layers::skia::Paint::default();
         let text_bounds = font.measure_str(text, Some(&paint));
 
         let text_bounds = text_bounds.1;
@@ -376,7 +377,7 @@ impl DockView {
         let label_size_height =
             text_bounds.height() + arrow_height + text_padding_v * 2.0 + safe_margin * 2.0;
     
-        let draw_label = move |canvas: &skia_safe::Canvas, w: f32, h: f32| -> skia_safe::Rect {
+        let draw_label = move |canvas: &layers::skia::Canvas, w: f32, h: f32| -> layers::skia::Rect {
             // Tooltip parameters
             // let text = "This is a tooltip!";
             let text = app_name.clone();
@@ -385,8 +386,8 @@ impl DockView {
             let arrow_corner_radius = 3.0;
     
             // Paint for the tooltip background
-            let mut paint = skia_safe::Paint::default();
-            paint.set_color(skia_safe::Color::from_argb(230, 255, 255, 255)); // Light gray
+            let mut paint = layers::skia::Paint::default();
+            paint.set_color(layers::skia::Color::from_argb(230, 255, 255, 255)); // Light gray
             paint.set_anti_alias(true);
     
             // Calculate tooltip dimensions
@@ -404,12 +405,12 @@ impl DockView {
                 0.5,
                 arrow_corner_radius,
             );
-            let shadow_color = skia_safe::Color::from_argb(80, 0, 0, 0); // semi-transparent black
-            let mut shadow_paint = skia_safe::Paint::default();
+            let shadow_color = layers::skia::Color::from_argb(80, 0, 0, 0); // semi-transparent black
+            let mut shadow_paint = layers::skia::Paint::default();
             shadow_paint.set_color(shadow_color);
             shadow_paint.set_anti_alias(true);
-            shadow_paint.set_mask_filter(skia_safe::MaskFilter::blur(
-                skia_safe::BlurStyle::Normal,
+            shadow_paint.set_mask_filter(layers::skia::MaskFilter::blur(
+                layers::skia::BlurStyle::Normal,
                 10.0,
                 None,
             ));
@@ -422,15 +423,15 @@ impl DockView {
             canvas.draw_path(&arrow_path, &paint);
     
             // // Paint for the text
-            let mut text_paint = skia_safe::Paint::default();
-            text_paint.set_color(skia_safe::Color::BLACK);
+            let mut text_paint = layers::skia::Paint::default();
+            text_paint.set_color(layers::skia::Color::BLACK);
             text_paint.set_anti_alias(true);
     
             // // Draw the text inside the tooltip
             let text_x = safe_margin + text_padding_h;
             let text_y = text_bounds.height() + text_padding_v + safe_margin - text_size * 0.2;
             canvas.draw_str(text.as_str(), (text_x, text_y), &font, &text_paint);
-            skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
+            layers::skia::Rect::from_xywh(0.0, 0.0, w, h)
         };
         let label_tree = LayerTreeBuilder::default()
         .key(format!("{}_label", new_layer.key()))
@@ -448,11 +449,11 @@ impl DockView {
             },
             ..Default::default()
         })
-        .size(Size {
+        .size(Size {    
             width: taffy::Dimension::Length(label_size_width),
             height: taffy::Dimension::Length(label_size_height),
         })
-        .position(layers::prelude::Point {
+        .position(Point {
             x: -label_size_width / 2.0,
             y: -label_size_height - 10.0 + safe_margin,
         })
@@ -462,54 +463,54 @@ impl DockView {
         .build()
         .unwrap();
 
-        new_layer.build_layer_tree(&label_tree, &mut HashMap::new());
-    }
+        new_layer.build_layer_tree(&label_tree);
+    }   
     fn update_dock(&self) {
 
         let state = self.get_state();
         let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
         // those are constant like values
         let available_width = state.width as f32 - 20.0 * draw_scale;
-        let ICON_SIZE: f32 = 100.0 * draw_scale;
+        let icon_size: f32 = 100.0 * draw_scale;
 
         let apps_len = state.running_apps.len() as f32;
         let windows_len = state.minimized_windows.len() as f32;
 
-        let mut component_padding_h: f32 = ICON_SIZE * 0.09 * draw_scale;
+        let mut component_padding_h: f32 = icon_size * 0.09 * draw_scale;
         if component_padding_h > 5.0 * draw_scale {
             component_padding_h = 5.0 * draw_scale;
         }
-        let mut component_padding_v: f32 = ICON_SIZE * 0.09 * draw_scale;
+        let mut component_padding_v: f32 = icon_size * 0.09 * draw_scale;
         if component_padding_v > 50.0 * draw_scale {
             component_padding_v = 50.0 * draw_scale;
         }
         let available_icon_size =
             (available_width - component_padding_h * 2.0) / (apps_len + windows_len);
-        let available_icon_size = ICON_SIZE.min(available_icon_size);
+        let available_icon_size = icon_size.min(available_icon_size);
 
         let component_width = (apps_len + windows_len) * available_icon_size + component_padding_h * 2.0;
         let component_height = available_icon_size + component_padding_v * 2.0;
 
-       self.view_layer.set_size(
-            Size {
-                width: taffy::Dimension::Length(component_width * 2.0),
-                height: taffy::Dimension::Length(component_height + 20.0),
-            },
-            Some(Transition {
-                duration: 1.0,
-                ..Default::default()
-            }),
-        );
+    //    self.view_layer.set_size(
+    //         Size {
+    //             width: taffy::Dimension::Length(component_width * 2.0),
+    //             height: taffy::Dimension::Length(component_height + 20.0),
+    //         },
+    //         Some(Transition {
+    //             duration: 1.0,
+    //             ..Default::default()
+    //         }),
+    //     );
 
-        self.bar_layer.set_size(Size {
-            width: taffy::Dimension::Length(component_width),
-            height: taffy::Dimension::Length(component_height),
-        },
-        Some(Transition {
-            duration: 0.5,
-            ..Default::default()
-        }));
-        self.bar_layer.set_border_corner_radius(ICON_SIZE / 4.0, None);
+                // self.bar_layer.set_size(Size {
+                //     width: taffy::Dimension::Length(component_width),
+                //     height: taffy::Dimension::Length(component_height),
+                // },
+                // Some(Transition {
+                //     duration: 0.5,
+                //     ..Default::default()
+                // }));
+        self.bar_layer.set_border_corner_radius(icon_size / 4.0, None);
 
         self.layers_for_state(available_icon_size);
         self.magnify_elements();
@@ -572,7 +573,7 @@ impl DockView {
     }
     pub fn magnify_elements(&self) {
         let pos = self.magnification_position.read().unwrap().clone();
-        let bounds = self.view_layer.render_bounds();
+        let bounds = self.view_layer.render_bounds_transformed();
         let focus = pos / bounds.width();
         let state = self.get_state();
 
@@ -611,6 +612,7 @@ impl DockView {
                 total_width += focused_icon_size;
             }
         }
+
         // TODO windows magnify
         for (index, win) in state.minimized_windows.iter().enumerate() {
             let index = index + state.running_apps.len();
@@ -618,9 +620,10 @@ impl DockView {
             let icon_focus = 1.0 + magnify_function(focus - icon_pos) * 0.2;
             // println!("x: {} -> {}", icon_pos, icon_focus);
             let focused_icon_size = icon_size * icon_focus as f32;
-
+            let ratio = win.w / win.h;
+            let icon_height = focused_icon_size / ratio;
             win.base_layer.set_size(
-                Size::points(focused_icon_size, focused_icon_size + 30.0),
+                Size::points(focused_icon_size, icon_height),
                 Some(Transition {
                     duration: 0.1,
                     ..Default::default()
@@ -628,13 +631,13 @@ impl DockView {
             );
             total_width += focused_icon_size;
         }
-        self.bar_layer.set_size(
-            Size::points(total_width, component_padding_v * 2.0 + icon_size),
-            Some(Transition {
-                duration: 0.1,
-                ..Default::default()
-            }),
-        );
+        // self.bar_layer.set_size(
+        //     Size::points(total_width, component_padding_v * 2.0 + icon_size),
+        //     Some(Transition {
+        //         duration: 0.1,
+        //         ..Default::default()
+        //     }),
+        // );
     }
     pub fn update_magnification_position(&self, pos: f32) {
         *self.magnification_position.write().unwrap()= pos;
@@ -648,101 +651,67 @@ impl DockView {
     }
 
     pub fn window_for_layer(&self, layer: &NodeRef) -> Option<Window> {
+        let window_layers = self.window_layers.read().unwrap();
+        if let Some(window) = window_layers.get(layer) {
+
+            return Some(window.clone());
+        }
+
+        None
+        // let state = self.get_state();
+        // state.minimized_windows.iter().find_map(|win| {
+        //     let win = win.clone();
+        //     if win.base_layer.id() == Some(*layer) {
+        //         Some(win)
+        //     } else {
+        //         None
+        //     }
+        // })
+    }
+    
+    pub fn make_space_for_window(&self, window: &Window, view: &WindowView) -> Layer {
+        let drawer = self.layers_engine.new_layer();
+        drawer.set_size(Size::points(0.0, 130.0), None);
+        drawer.set_background_color(layers::types::Color::new_rgba(0.0, 0.0, 0.0, 0.0), None);
+        drawer.set_border_corner_radius(BorderRadius::new_single(10.0), None);
+        
+        self.dock_windows_container.add_sublayer(drawer.clone());
+
         let state = self.get_state();
-        state.minimized_windows.iter().find_map(|win| {
-            let win = win.clone();
-            if win.base_layer.id() == Some(*layer) {
-                Some(win)
-            } else {
-                None
-            }
-        })
-    }
-    pub fn minimize_window(&self, window: &Window, workspace: &Workspace) {
-
-        
-        let width = 160.0;
-        let scale = width / window.w;
-        let height = window.h * scale;
-        let id = window.id().unwrap();
-        if let Some(view) = workspace.get_window_view(&id) {
-            
-            view.content_layer.set_anchor_point((1.0, 1.0), None);
-            view.shadow_layer.set_anchor_point((1.0, 1.0), None);
-            let animation_id = view.content_layer.set_scale((scale, scale), Some(Transition::default()));
-            view.shadow_layer.set_scale((scale, scale), Some(Transition::default()));
-            window.base_layer.set_size(Size::points(width, height), None);
-            let style = window.base_layer.node_layout_style();
-            window.base_layer.set_layout_style(taffy::Style {
-                position: taffy::Position::Relative,
-                ..style
-            });
-            window.base_layer.set_pointer_events(true);
-            let dock_windows_container = self.dock_windows_container.clone();
-            let base_layer_ref = window.base_layer.clone();
-            let engine_ref = self.layers_engine.clone();
-            self.layers_engine.on_finish(animation_id, move|_| {
-                
-                let transaction = base_layer_ref.set_position(
-                    layers::types::Point {
-                        x: 0.0,
-                        y: 0.0,
-                    },
-                    Some(Transition::default()),
-                );
-                let engine_ref = engine_ref.clone();
-                let dock_windows_container = dock_windows_container.clone();
-                let base_layer_ref = base_layer_ref.clone();
-                engine_ref.on_finish(transaction, move |_| {
-                    dock_windows_container.add_sublayer(base_layer_ref.clone());
-                });
-            });
-        
-        }
-
-        
-        // let dock = self.clone();
-        // let window_ref = window.clone();
-        // window.base_layer.add_on_pointer_release(move |_, _, _| {
-        //     // dock.unminimize_window(window_ref);
-        //     // DockView::unminimize_window(&dock, window_ref.clone());
-        // });
-        
-    }
-    pub fn unminimize_window(&self, window: Window, workspace: &Workspace) {
-        println!("unminimize window");
-        window.base_layer.set_position(
-            layers::types::Point {
-                x: window.x,
-                y: window.y,
-            },
-            Some(Transition::default()),
-        );
-
-        let id = window.id().unwrap();
-        let scale = 1.0;
-        if let Some(view) = workspace.get_window_view(&id) {
-            view.content_layer.set_scale((scale, scale), Some(Transition::default()));
-            view.shadow_layer.set_scale((scale, scale), Some(Transition::default()));
-        }
-        window.base_layer.set_size(Size::points(0.0, 0.0), None);
-        let style = window.base_layer.node_layout_style();
-        window.base_layer.set_layout_style(taffy::Style {
-            position: taffy::Position::Absolute,
-            ..style
+        let mut minimized_windows= state.minimized_windows.clone();
+        minimized_windows.push(window.clone());
+        self.update_state(&DockModel {
+            minimized_windows,
+            ..self.get_state()
         });
-        window.base_layer.set_pointer_events(false);
-        window.base_layer.remove_all_handlers();
+        self.window_layers.write().unwrap().insert(drawer.id().unwrap(), window.clone());
+        drawer
     }
 
+    pub fn remove_space_for_window(&self, window: &Window, view: &WindowView) -> Option<Layer>{
+        let id = window.id().unwrap();
+        let mut drawer = None;
+        let mut wl = self.window_layers.write().unwrap();
+        if let Some(node) = wl.iter().find(|(_, w)| w.id() == Some(id.clone())).map(|(n, _)| {
+            return n.clone();
+        }) {
+            if let Some(node) = self.layers_engine.scene_get_node(node) {
+                drawer = Some(node.get().layer.clone());
+            }
+            wl.remove(&node);
+        }
+        drawer
+    }
 }
 
+// Dock view observer
 impl Observer<WorkspaceModel> for DockView {
     fn notify(&self, event: &WorkspaceModel) {
         let _ = self.notify_tx.try_send(event.clone());
     }
 }
 
+// Dock view interactions
 impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
     fn id(&self) -> Option<usize> {
         self.wrap_layer.id().map(|id| id.0.into())
@@ -753,14 +722,12 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
     fn on_motion(
         &self,
         _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-        data: &mut crate::ScreenComposer<Backend>,
+        _data: &mut crate::ScreenComposer<Backend>,
         event: &smithay::input::pointer::MotionEvent,
     ) {
         // let _id = self.view_layer.id().unwrap();
         let scale = Config::with(|c| c.screen_scale);
-        if let Some(layer_id) = data.layers_engine.current_hover() {
-            // println!("dock hover: {:?}", layer_id);
-        }
+
         self.update_magnification_position(
             (event.location.x * scale) as f32 - self.view_layer.render_position().x,
         );
