@@ -1,7 +1,8 @@
 use layers::{
-    engine::{LayersEngine, NodeRef},
-    prelude::taffy,
+    engine::{LayersEngine, NodeRef, TransactionRef},
+    prelude::{taffy, Layer, TimingFunction, Transition},
     view::{RenderLayerTree, View},
+    skia,
 };
 
 use crate::{shell::WindowElement, workspace::utils::view_render_elements};
@@ -9,6 +10,7 @@ use crate::{shell::WindowElement, workspace::utils::view_render_elements};
 use super::{
     model::{WindowViewBaseModel, WindowViewSurface},
     render::view_window_shadow,
+    effects::GenieEffect,
 };
 
 #[derive(Clone)]
@@ -22,6 +24,7 @@ pub struct WindowView {
     parent_layer_noderef: NodeRef,
     pub window: WindowElement,
     pub unmaximized_rect: layers::prelude::Rectangle,
+    pub genie_effect: GenieEffect,
 }
 
 impl WindowView {
@@ -51,10 +54,6 @@ impl WindowView {
         layers_engine.scene_add_layer_to(shadow_layer.clone(), layer.id());
         layers_engine.scene_add_layer_to(content_layer.clone(), layer.id());
 
-        // let state = WindowViewModel {
-        //     window_element: None,
-        //     title: String::new(),
-        // };
         let render_elements = Vec::new();
         let base_rect = WindowViewBaseModel {
             x: 0.0,
@@ -72,6 +71,10 @@ impl WindowView {
         let view_content = View::new("window_content", render_elements, view_render_elements);
         view_content.mount_layer(content_layer.clone());
 
+        layer.set_image_cache(true);
+
+        let genie_effect = GenieEffect::new();
+
         Self {
             view_base: view_window_shadow,
             view_content,
@@ -82,6 +85,7 @@ impl WindowView {
             shadow_layer,
             parent_layer_noderef,
             window,
+            genie_effect,
             unmaximized_rect: layers::prelude::Rectangle {
                 x: 0.0,
                 y: 0.0,
@@ -94,5 +98,53 @@ impl WindowView {
     pub fn raise(&self) {
         self.engine
             .scene_add_layer_to(self.window_layer.clone(), Some(self.parent_layer_noderef));
+    }
+
+    pub fn minimize(&self, to_rect: skia::Rect) -> TransactionRef {
+        self.window_layer.set_effect(self.genie_effect.clone());
+        self.genie_effect.set_destination(to_rect);
+
+        let render_layer = self.window_layer.render_bounds_with_children();
+
+        let w = render_layer.width();
+        let h = render_layer.height();
+
+        self.window_layer.set_draw_content(move |_: &skia::Canvas, _w, _h| {
+            skia::Rect::join2(skia::Rect::from_wh(w, h), to_rect).with_outset((100.0, 100.0))
+        });
+        
+
+        self.window_layer.set_filter_progress(1.0, Transition {
+            duration: 0.7,
+            delay: 0.1,
+            timing: TimingFunction::linear()
+        })
+    }
+
+    pub fn unminimize(&self, from: skia::Rect) -> TransactionRef {
+        self.genie_effect.set_destination(from);
+
+        self.window_layer.set_filter_progress(0.0, Transition {
+            duration: 0.7,
+            delay: 0.0,
+            timing: TimingFunction::linear()
+        })
+        .on_finish(move |l:&Layer, _| {
+            l.remove_effect()
+        }, true)
+        .clone()
+    }
+}
+
+impl std::fmt::Debug for WindowView {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WindowView")
+            .field("view_base", &self.view_base)
+            .field("view_content", &self.view_content)
+            .field("window_layer", &self.window_layer)
+            .field("content_layer", &self.content_layer)
+            .field("parent_layer_noderef", &self.parent_layer_noderef)
+            .field("window", &self.window)
+            .finish()
     }
 }

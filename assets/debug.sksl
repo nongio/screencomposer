@@ -1,0 +1,84 @@
+// kind=shader
+
+float mapRange(float value, float inMin, float inMax, float outMin, float outMax) {
+    return ((value - inMin) * (outMax - outMin) / (inMax - inMin) + outMin);
+}
+
+float B1(float t) {
+    return t * t * t;
+}
+
+float B2(float t) {
+    return 3.0 * t * t * (1.0 - t);
+}
+
+float B3(float t) {
+    return 3.0 * t * (1.0 - t) * (1.0 - t);
+}
+
+float B4(float t) {
+    return (1.0 - t) * (1.0 - t) * (1.0 - t);
+}
+
+// Cubic Bézier interpolation function
+float bezier(float t, float4 params) {
+    float u = 1.0 - t;  // The complement of t
+    float tt = t * t;
+    float uu = u * u;
+    float ttt = tt * t;
+    float uuu = uu * u;
+
+    // Extract control points from params
+    float x1 = params.x;
+    float y1 = params.y;
+    float x2 = params.z;
+    float y2 = params.w;
+
+    // Calculate the Bézier curve using the control points
+    return (uuu * 0.0) +  // First point (0, 0)
+    (3.0 * uu * t * y1) +  // First control point (x1, y1)
+    (3.0 * u * tt * y2) +  // Second control point (x2, y2)
+    (ttt * 1.0);  // Final point (1, 1)
+}
+
+float smoothWave(float t) {
+    return sin(t * 3.141592653589793 * 0.15);  // sin(pi * t) oscillates from 0 to 1 to 0
+}
+const float4 easeOut = float4(0.0, 0.0, 0.58, 1.0);
+const float4 easeIn = float4(0.42, 0.0, 1.0, 1.0);
+const float4 easeInOut = float4(0.42, 0.0, 0.58, 1.0);
+const float4 linear = float4(0.0, 0.0, 1.0, 1.0);
+// bounce
+const float4 bounce = float4(0.0, 0.0, 0.58, 1.0);
+const float4 bounceIn = float4(0.42, 0.0, 1.0, 1.0);
+const float4 bounceOut = float4(0.0, 0.0, 0.58, 1.0);
+const float4 bounceInOut = float4(0.42, 0.0, 0.58, 1.0);
+// back
+const float4 back = float4(0.0, 0.0, 0.58, 1.0);
+const float4 backIn = float4(0.42, 0.0, 1.0, 1.0);
+const float4 backOut = float4(0.0, 0.0, 0.58, 1.0);
+const float4 backInOut = float4(0.42, 0.0, 0.58, 1.0);
+// elastic
+const float4 elastic = float4(0.0, 0.0, 0.58, 1.0);
+const float4 elasticIn = float4(0.42, 0.0, 1.0, 1.0);
+const float4 elasticOut = float4(0.0, 0.0, 0.58, 1.0);
+const float4 elasticInOut = float4(0.42, 0.0, 0.58, 1.0);
+
+uniform shader content;
+uniform float4 src_bounds;
+uniform float4 dst_bounds;
+uniform float progress;
+
+half4 main(float2 fragCoord) {
+    half4 color = half4(0.0, 0.0, 0.0, 0.0);
+    color = content.eval(fragCoord);
+
+    if(fragCoord.x >= src_bounds.x && fragCoord.x <= (src_bounds.x + src_bounds.z) && fragCoord.y >= src_bounds.y && fragCoord.y <= (src_bounds.y+src_bounds.w)){
+        color = mix(half4(1.0, 0.0, 0.0, 1.0), color, 0.5);
+    }
+    float4 dst = float4(dst_bounds.x, dst_bounds.y, dst_bounds.z, dst_bounds.w);
+    if(fragCoord.x >= dst.x && fragCoord.x <= (dst.x+dst.z) && fragCoord.y >= dst.y && fragCoord.y <= (dst.y+dst.w)){
+        color = mix(half4(1.0, 1.0, 0.0, 1.0), color, 0.8);
+    }
+    return color;
+}
