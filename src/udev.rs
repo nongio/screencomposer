@@ -1090,7 +1090,7 @@ impl ScreenComposer<UdevData> {
                 SUPPORTED_FORMATS
             };
 
-            let compositor = if std::env::var("ANVIL_DISABLE_DRM_COMPOSITOR").is_ok() {
+            let compositor = if Config::with(|c| c.compositor_mode == "surface") {
                 let gbm_surface = match GbmBufferedSurface::new(
                     surface,
                     allocator,

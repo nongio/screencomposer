@@ -8,6 +8,7 @@ pub struct Config {
     pub file_manager_bin: String,
     pub browser_bin: String,
     pub browser_args: Vec<String>,
+    pub compositor_mode: String,
 }
 thread_local! {
     static CONFIG: Config = Config::init();
@@ -22,10 +23,11 @@ impl Config {
             cursor_theme: "Notwaita-Black".to_string(),
             cursor_size: 32,
             natural_scroll: true,
-            terminal_bin: "kitty".to_string(),
+            terminal_bin: "terminator".to_string(),
             file_manager_bin: "dolphin".to_string(),
             browser_bin: "firefox".to_string(),
             browser_args: vec!["".to_string()],
+            compositor_mode: "drm".to_string(),
         };
         let scaled_cursor_size = (config.cursor_size as f64) as u32;
         std::env::set_var("XCURSOR_SIZE", (scaled_cursor_size).to_string());

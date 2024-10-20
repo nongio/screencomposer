@@ -1432,26 +1432,27 @@ impl Bind<Rc<EGLSurface>> for SkiaRenderer {
             self.egl_context().make_current_with_surface(&surface)?;
             self.gl.BindFramebuffer(ffi::FRAMEBUFFER, 0);
         }
-        let format = surface.pixel_format();
-        let format = match (format.color_bits, format.alpha_bits) {
-            (24, 8) => ffi::RGB8,
-            (30, 2) => ffi::RGB10_A2,
-            (48, 16) => ffi::RGB16F,
-            _ => ffi::RGB8,
-        };
-        let sfbo = SkiaGLesFbo {
-            fbo: 0,
-            tex_id: 0,
-            format: gl_internal_format_to_fourcc(format).unwrap(),
-            origin: skia::gpu::SurfaceOrigin::BottomLeft,
-        };
-
         let egl_surface = EGLSurfaceWrapper(surface.clone());
-
         let render_target = SkiaTarget::EGLSurface(egl_surface);
-        self.current_target = Some(render_target.clone());
 
-        self.buffers.insert(render_target, sfbo);
+        if !self.buffers.contains_key(&render_target) {
+            let format = surface.pixel_format();
+            let format = match (format.color_bits, format.alpha_bits) {
+                (24, 8) => ffi::RGB8,
+                (30, 2) => ffi::RGB10_A2,
+                (48, 16) => ffi::RGB16F,
+                _ => ffi::RGB8,
+            };
+            let sfbo = SkiaGLesFbo {
+                fbo: 0,
+                tex_id: 0,
+                format: gl_internal_format_to_fourcc(format).unwrap(),
+                origin: skia::gpu::SurfaceOrigin::BottomLeft,
+            };
+            self.buffers.insert(render_target.clone(), sfbo);
+        }
+        self.current_target = Some(render_target);
+
         Ok(())
     }
 }
