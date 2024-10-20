@@ -1,33 +1,11 @@
-use std::cell::RefCell;
-
 use layers::{prelude::*, types::Size};
 use taffy::FromLength;
 
-use crate::config::Config;
+use crate::{config::Config, workspace::utils::FONT_CACHE};
 
 use super::render_app::render_app_view;
 
 use super::model::AppSwitcherModel;
-
-#[allow(dead_code)]
-struct FontCache {
-    font_collection: skia_safe::textlayout::FontCollection,
-    font_mgr: skia_safe::FontMgr,
-    type_face_font_provider: RefCell<skia_safe::textlayout::TypefaceFontProvider>,
-}
-
-// source: slint ui
-// https://github.com/slint-ui/slint/blob/64e7bb27d12dd8f884275292c2333d37f4e224d5/internal/renderers/skia/textlayout.rs#L31
-thread_local! {
-    static FONT_CACHE: FontCache = {
-        let font_mgr = skia_safe::FontMgr::new();
-        let type_face_font_provider = skia_safe::textlayout::TypefaceFontProvider::new();
-        let mut font_collection = skia_safe::textlayout::FontCollection::new();
-        font_collection.set_asset_font_manager(Some(type_face_font_provider.clone().into()));
-        font_collection.set_dynamic_font_manager(font_mgr.clone());
-        FontCache { font_collection, font_mgr, type_face_font_provider: RefCell::new(type_face_font_provider) }
-    };
-}
 
 #[allow(non_snake_case)]
 pub fn render_appswitcher_view(
@@ -62,7 +40,7 @@ pub fn render_appswitcher_view(
     let component_width =
         apps_len * available_icon_size + total_padding + COMPONENT_PADDING_H * 2.0;
     let component_height = available_icon_size + ICON_PADDING * 2.0 + COMPONENT_PADDING_V * 2.0;
-    let background_color = Color::new_rgba255(236, 220, 195, 80);
+    let background_color = Color::new_rgba255(236, 220, 195, 120);
     let current_app = state.current_app as f32;
     let mut app_name = "".to_string();
     if !state.apps.is_empty() && state.current_app < state.apps.len() {
@@ -71,9 +49,9 @@ pub fn render_appswitcher_view(
             .clone()
             .unwrap_or("".to_string());
     }
-    let draw_container = move |canvas: &skia_safe::Canvas, w, h| {
-        let color = skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.15);
-        let paint = skia_safe::Paint::new(color, None);
+    let draw_container = move |canvas: &layers::skia::Canvas, w, h| {
+        let color = layers::skia::Color4f::new(0.0, 0.0, 0.0, 0.15);
+        let paint = layers::skia::Paint::new(color, None);
         // let available_icon_size = h - COMPONENT_PADDING_V * 2.0 - ICON_PADDING * 2.0;
         // let icon_size = ICON_SIZE.min(available_icon_size);
         let selection_width = available_icon_size + ICON_PADDING * 2.0;
@@ -82,37 +60,37 @@ pub fn render_appswitcher_view(
         let selection_x = COMPONENT_PADDING_H + total_gaps - GAP * current_app
             + current_app * (available_icon_size + ICON_PADDING * 2.0);
         let selection_y = h / 2.0 - selection_height / 2.0;
-        let rrect: skia_safe::RRect = skia_safe::RRect::new_rect_xy(
-            skia_safe::Rect::from_xywh(selection_x, selection_y, selection_width, selection_height),
+        let rrect: layers::skia::RRect = layers::skia::RRect::new_rect_xy(
+            layers::skia::Rect::from_xywh(selection_x, selection_y, selection_width, selection_height),
             selection_width / 10.0,
             selection_width / 10.0,
         );
         if apps_len > 0.0 {
             canvas.draw_rrect(rrect, &paint);
-            let mut text_style = skia_safe::textlayout::TextStyle::new();
+            let mut text_style = layers::skia::textlayout::TextStyle::new();
 
             text_style.set_font_size(FONT_SIZE);
-            let font_style = skia_safe::FontStyle::new(
-                skia_safe::font_style::Weight::MEDIUM,
-                skia_safe::font_style::Width::CONDENSED,
-                skia_safe::font_style::Slant::Upright,
+            let font_style = layers::skia::FontStyle::new(
+                layers::skia::font_style::Weight::MEDIUM,
+                layers::skia::font_style::Width::CONDENSED,
+                layers::skia::font_style::Slant::Upright,
             );
             text_style.set_font_style(font_style);
             text_style.set_letter_spacing(-1.0);
             let foreground_paint =
-                skia_safe::Paint::new(skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.5), None);
+                layers::skia::Paint::new(layers::skia::Color4f::new(0.0, 0.0, 0.0, 0.5), None);
             text_style.set_foreground_paint(&foreground_paint);
             text_style.set_font_families(&["Inter"]);
 
-            let mut paragraph_style = skia_safe::textlayout::ParagraphStyle::new();
+            let mut paragraph_style = layers::skia::textlayout::ParagraphStyle::new();
             paragraph_style.set_text_style(&text_style);
             paragraph_style.set_max_lines(1);
-            paragraph_style.set_text_align(skia_safe::textlayout::TextAlign::Center);
-            paragraph_style.set_text_direction(skia_safe::textlayout::TextDirection::LTR);
+            paragraph_style.set_text_align(layers::skia::textlayout::TextAlign::Center);
+            paragraph_style.set_text_direction(layers::skia::textlayout::TextDirection::LTR);
             paragraph_style.set_ellipsis("…");
 
             let mut builder = FONT_CACHE.with(|font_cache| {
-                skia_safe::textlayout::ParagraphBuilder::new(
+                layers::skia::textlayout::ParagraphBuilder::new(
                     &paragraph_style,
                     font_cache.font_collection.clone(),
                 )
@@ -124,7 +102,7 @@ pub fn render_appswitcher_view(
             paragraph.paint(canvas, (text_x, text_y));
             // };
         }
-        skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
+        layers::skia::Rect::from_xywh(0.0, 0.0, w, h)
     };
     LayerTreeBuilder::default()
         .key("apps_switcher")
@@ -133,10 +111,7 @@ pub fn render_appswitcher_view(
                 width: taffy::Dimension::Length(component_width),
                 height: taffy::Dimension::Length(component_height),
             },
-            Some(Transition {
-                duration: 1.0,
-                ..Default::default()
-            }),
+            Some(Transition::ease_out_quad(0.35)),
         ))
         .blend_mode(BlendMode::BackgroundBlur)
         .background_color((
@@ -162,10 +137,7 @@ pub fn render_appswitcher_view(
                     width: taffy::Dimension::Auto,
                     height: taffy::Dimension::Auto,
                 },
-                Some(Transition {
-                    duration: 2.0,
-                    ..Default::default()
-                }),
+                Some(Transition::ease_out_quad(0.4)),
             ))
             .layout_style(taffy::Style {
                 position: taffy::Position::Absolute,

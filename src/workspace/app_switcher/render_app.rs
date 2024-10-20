@@ -1,4 +1,5 @@
 use layers::{
+    skia,
     prelude::{taffy, Color, LayerTree, LayerTreeBuilder, View},
     types::{BorderRadius, PaintColor, Size},
 };
@@ -14,45 +15,46 @@ pub fn render_app_view(
     icon_width: f32,
     padding: f32,
 ) -> LayerTree {
-    let draw_picture = move |canvas: &skia_safe::Canvas, w: f32, h: f32| -> skia_safe::Rect {
+    let draw_picture = move |canvas: &skia::Canvas, w: f32, h: f32| -> skia::Rect {
         if let Some(image) = &state.icon {
             let mut paint =
-                skia_safe::Paint::new(skia_safe::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
+                skia::Paint::new(skia::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
             // paint.set_anti_alias(true);
-            paint.set_style(skia_safe::paint::Style::Fill);
+            paint.set_style(skia::paint::Style::Fill);
 
             // draw image with shadow
-            let shadow_color = skia_safe::Color4f::new(0.0, 0.0, 0.0, 0.5);
-            let mut shadow_paint = skia_safe::Paint::new(shadow_color, None);
-            let shadow_offset = skia_safe::Vector::new(5.0, 5.0);
-            let shadow_color = skia_safe::Color::from_argb(128, 0, 0, 0); // semi-transparent black
+            let shadow_color = skia::Color4f::new(0.0, 0.0, 0.0, 0.5);
+            let mut shadow_paint = skia::Paint::new(shadow_color, None);
+            let shadow_offset = skia::Vector::new(5.0, 5.0);
+            let shadow_color = skia::Color::from_argb(128, 0, 0, 0); // semi-transparent black
             let shadow_blur_radius = 5.0;
 
-            let shadow_filter = skia_safe::image_filters::drop_shadow_only(
+            let shadow_filter = skia::image_filters::drop_shadow_only(
                 (shadow_offset.x, shadow_offset.y),
                 (shadow_blur_radius, shadow_blur_radius),
                 shadow_color,
                 None,
-                skia_safe::image_filters::CropRect::default(),
+                None,
+                skia::image_filters::CropRect::default(),
             );
             shadow_paint.set_image_filter(shadow_filter);
             let icon_size = (w - padding * 2.0).max(0.0);
             canvas.draw_image_rect(
                 image,
                 None,
-                skia_safe::Rect::from_xywh(padding, padding, icon_size, icon_size),
+                skia::Rect::from_xywh(padding, padding, icon_size, icon_size),
                 &shadow_paint,
             );
-            let resampler = skia_safe::CubicResampler::catmull_rom();
+            let resampler = skia::CubicResampler::catmull_rom();
             canvas.draw_image_rect_with_sampling_options(
                 image,
                 None,
-                skia_safe::Rect::from_xywh(padding, padding, icon_size, icon_size),
-                skia_safe::SamplingOptions::from(resampler),
+                skia::Rect::from_xywh(padding, padding, icon_size, icon_size),
+                skia::SamplingOptions::from(resampler),
                 &paint,
             );
         }
-        skia_safe::Rect::from_xywh(0.0, 0.0, w, h)
+        skia::Rect::from_xywh(0.0, 0.0, w, h)
     };
     LayerTreeBuilder::default()
         .key(format!("app_{}", state.identifier))
