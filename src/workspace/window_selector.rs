@@ -1,4 +1,7 @@
-use layers::prelude::*;
+use layers::{
+    skia,
+    prelude::*
+};
 use smithay::input::pointer::{CursorIcon, CursorImageStatus};
 use std::hash::{Hash, Hasher};
 
@@ -90,30 +93,30 @@ impl WindowSelectorView {
     }
 }
 
-pub fn get_paragraph_for_text(text: &str, font_size: f32) -> layers::skia::textlayout::Paragraph {
-    let mut text_style = layers::skia::textlayout::TextStyle::new();
+pub fn get_paragraph_for_text(text: &str, font_size: f32) -> skia::textlayout::Paragraph {
+    let mut text_style = skia::textlayout::TextStyle::new();
 
     text_style.set_font_size(font_size);
-    let font_style = layers::skia::FontStyle::new(
-        layers::skia::font_style::Weight::BOLD,
-        layers::skia::font_style::Width::CONDENSED,
-        layers::skia::font_style::Slant::Upright,
+    let font_style = skia::FontStyle::new(
+        skia::font_style::Weight::BOLD,
+        skia::font_style::Width::CONDENSED,
+        skia::font_style::Slant::Upright,
     );
     text_style.set_font_style(font_style);
     text_style.set_letter_spacing(-1.0);
-    let foreground_paint = layers::skia::Paint::new(layers::skia::Color4f::new(0.1, 0.1, 0.1, 0.9), None);
+    let foreground_paint = skia::Paint::new(skia::Color4f::new(0.1, 0.1, 0.1, 0.9), None);
     text_style.set_foreground_paint(&foreground_paint);
     text_style.set_font_families(&["Inter"]);
 
-    let mut paragraph_style = layers::skia::textlayout::ParagraphStyle::new();
+    let mut paragraph_style = skia::textlayout::ParagraphStyle::new();
     paragraph_style.set_text_style(&text_style);
     paragraph_style.set_max_lines(1);
-    paragraph_style.set_text_align(layers::skia::textlayout::TextAlign::Center);
-    paragraph_style.set_text_direction(layers::skia::textlayout::TextDirection::LTR);
+    paragraph_style.set_text_align(skia::textlayout::TextAlign::Center);
+    paragraph_style.set_text_direction(skia::textlayout::TextDirection::LTR);
     paragraph_style.set_ellipsis("…");
 
     let mut builder = FONT_CACHE.with(|font_cache| {
-        layers::skia::textlayout::ParagraphBuilder::new(
+        skia::textlayout::ParagraphBuilder::new(
             &paragraph_style,
             font_cache.font_collection.clone(),
         )
@@ -140,11 +143,11 @@ pub fn view_window_selector(
             let range: std::ops::Range<usize> = 0..window_selection.window_title.len();
             let rects = paragraph.get_rects_for_range(
                 range,
-                layers::skia::textlayout::RectHeightStyle::Tight,
-                layers::skia::textlayout::RectWidthStyle::Tight,
+                skia::textlayout::RectHeightStyle::Tight,
+                skia::textlayout::RectWidthStyle::Tight,
             );
-            let text_bounding_box = rects.iter().fold(layers::skia::Rect::new_empty(), |acc, b| {
-                layers::skia::Rect::join2(acc, b.rect)
+            let text_bounding_box = rects.iter().fold(skia::Rect::new_empty(), |acc, b| {
+                skia::Rect::join2(acc, b.rect)
             });
             (window_selection, text_bounding_box)
         });
@@ -153,27 +156,27 @@ pub fn view_window_selector(
         .as_ref()
         .map(|(window_selection, _)| window_selection.clone());
 
-    let draw_container = Some(move |canvas: &layers::skia::Canvas, w, h| {
+    let draw_container = Some(move |canvas: &skia::Canvas, w, h| {
         if window_selection.is_some() {
             let window_selection = window_selection.as_ref().unwrap();
-            let color = layers::skia::Color4f::new(85.0 / 255.0, 150.0 / 255.0, 244.0 / 255.0, 1.0);
-            let mut paint = layers::skia::Paint::new(color, None);
+            let color = skia::Color4f::new(85.0 / 255.0, 150.0 / 255.0, 244.0 / 255.0, 1.0);
+            let mut paint = skia::Paint::new(color, None);
             paint.set_stroke(true);
             paint.set_stroke_width(10.0 * draw_scale);
-            let rrect = layers::skia::RRect::new_rect_xy(
-                layers::skia::Rect::from_xywh(
+            let rrect = skia::RRect::new_rect_xy(
+                skia::Rect::from_xywh(
                     window_selection.x,
                     window_selection.y,
                     window_selection.w,
                     window_selection.h,
-                ),
-                15.0 * draw_scale,
-                15.0 * draw_scale,
+                ).with_outset((draw_scale * 6.0, draw_scale * 6.0)),
+                10.0 * draw_scale,
+                10.0 * draw_scale,
             );
 
             canvas.draw_rrect(rrect, &paint);
         }
-        layers::skia::Rect::from_xywh(0.0, 0.0, w, h)
+        skia::Rect::from_xywh(0.0, 0.0, w, h)
     });
 
     let text_padding_x: f32 = 10.0 * draw_scale;
@@ -183,7 +186,7 @@ pub fn view_window_selector(
     let (text_rect, text_bounding_box) = current
         .as_ref()
         .map(|(rect, bb)| (rect.clone(), *bb))
-        .unwrap_or((WindowSelection::default(), layers::skia::Rect::new_empty()));
+        .unwrap_or((WindowSelection::default(), skia::Rect::new_empty()));
     let text_layer_size = layers::types::Size::points(
         if text_bounding_box.width() == 0.0 {
             0.0
@@ -229,7 +232,7 @@ pub fn view_window_selector(
             .shadow_offset(((0.0, 0.0).into(), None))
             .shadow_radius((5.0, None))
             // .shadow_spread((10.0, None))
-            .content(Some(move |canvas: &layers::skia::Canvas, w, h| {
+            .content(Some(move |canvas: &skia::Canvas, w, h| {
                 let mut paragraph = get_paragraph_for_text(&text_rect.window_title, font_size);
                 paragraph.layout(w);
                 // let text_x = TEXT_PADDING_X;
@@ -237,7 +240,7 @@ pub fn view_window_selector(
 
                 paragraph.paint(canvas, (0.0, text_y));
                 let safe = 200.0 * draw_scale;
-                layers::skia::Rect::from_xywh(-safe, -safe, w + safe * 2.0, h + safe * 2.0)
+                skia::Rect::from_xywh(-safe, -safe, w + safe * 2.0, h + safe * 2.0)
             }))
             .build()
             .unwrap()])
