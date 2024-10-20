@@ -8,7 +8,7 @@ use crate::{
     drawing::*,
     render::*,
     render_elements::workspace_render_elements::WorkspaceRenderElements,
-    skia_renderer::{SkiaRenderer, SkiaTexture},
+    skia_renderer::{SkiaRenderer, SkiaTextureImage},
     state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
 };
 #[cfg(feature = "egl")]
@@ -125,7 +125,7 @@ impl Backend for X11Data {
     fn texture_for_surface(
         &self,
         _surface: &smithay::backend::renderer::utils::RendererSurfaceState,
-    ) -> Option<SkiaTexture> {
+    ) -> Option<SkiaTextureImage> {
         None
     }
 }

@@ -230,6 +230,25 @@ pub struct SkiaTexture {
 
 unsafe impl Send for SkiaTexture {}
 
+#[derive(Debug, Clone)]
+pub struct SkiaTextureImage {
+    pub image: skia::Image,
+    pub has_alpha: bool,
+    pub format: Option<Fourcc>,
+    pub damage: Option<Vec<Rectangle<i32, Buffer>>>,
+}
+
+impl Into<SkiaTextureImage> for SkiaTexture {
+    fn into(self) -> SkiaTextureImage {
+        SkiaTextureImage {
+            image: self.image,
+            has_alpha: self.has_alpha,
+            format: self.format,
+            damage: self.damage,
+        }
+    }
+}
+
 pub struct SkiaFrame<'frame> {
     size: Size<i32, Physical>,
     pub skia_surface: SkiaSurface,

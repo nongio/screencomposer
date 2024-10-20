@@ -126,7 +126,7 @@ use crate::{
     focus::{KeyboardFocusTarget, PointerFocusTarget},
     render_elements::scene_element::SceneElement,
     shell::WindowElement,
-    skia_renderer::SkiaTexture,
+    skia_renderer::SkiaTextureImage,
     workspace::{DndView, Window, WindowViewBaseModel, WindowViewSurface, Workspace},
 };
 #[cfg(feature = "xwayland")]
@@ -1440,6 +1440,6 @@ pub trait Backend {
     fn seat_name(&self) -> String;
     fn reset_buffers(&mut self, output: &Output);
     fn early_import(&mut self, surface: &WlSurface);
-    fn texture_for_surface(&self, surface: &RendererSurfaceState) -> Option<SkiaTexture>;
+    fn texture_for_surface(&self, surface: &RendererSurfaceState) -> Option<SkiaTextureImage>;
     fn set_cursor(&mut self, image: &CursorImageStatus); //, renderer: &mut SkiaRenderer);
 }

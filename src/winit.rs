@@ -44,7 +44,7 @@ use crate::{
     drawing::*,
     render::*,
     render_elements::workspace_render_elements::WorkspaceRenderElements,
-    skia_renderer::{SkiaRenderer, SkiaTexture},
+    skia_renderer::{SkiaRenderer, SkiaTexture, SkiaTextureImage},
     state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
 };
 
@@ -104,8 +104,9 @@ impl Backend for WinitData {
             let _ = import_surface(self.backend.renderer(), states);
         });
     }
-    fn texture_for_surface(&self, render_surface: &RendererSurfaceState) -> Option<SkiaTexture> {
-        render_surface.texture::<SkiaRenderer>(99).cloned()
+    fn texture_for_surface(&self, render_surface: &RendererSurfaceState) -> Option<SkiaTextureImage> {
+        let tex = render_surface.texture::<SkiaRenderer>(99);
+        tex.map(|t| t.clone().into())
     }
     fn set_cursor(&mut self, _image: &CursorImageStatus) {}
 }

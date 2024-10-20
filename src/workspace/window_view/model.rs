@@ -1,10 +1,11 @@
-use crate::skia_renderer::SkiaTexture;
 use core::fmt;
 use smithay::{
     backend::renderer::utils::CommitCounter, reexports::wayland_server::backend::ObjectId,
     utils::Transform,
 };
 use std::hash::{Hash, Hasher};
+
+use crate::skia_renderer::SkiaTextureImage;
 
 #[derive(Clone)]
 pub struct WindowViewSurface {
@@ -19,7 +20,7 @@ pub struct WindowViewSurface {
     pub(crate) phy_dst_h: f32,
     pub(crate) log_offset_x: f32,
     pub(crate) log_offset_y: f32,
-    pub(crate) texture: Option<SkiaTexture>,
+    pub(crate) texture: Option<SkiaTextureImage>,
     pub(crate) commit: CommitCounter,
     pub(crate) transform: Transform,
 }

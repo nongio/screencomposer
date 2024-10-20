@@ -16,11 +16,15 @@ use super::{
 #[derive(Clone)]
 pub struct WindowView {
     engine: layers::prelude::LayersEngine,
+    // views
     pub view_base: layers::prelude::View<WindowViewBaseModel>,
     pub view_content: layers::prelude::View<Vec<WindowViewSurface>>,
+
+    // layers
     pub window_layer: layers::prelude::Layer,
     pub shadow_layer: layers::prelude::Layer,
     pub content_layer: layers::prelude::Layer,
+    
     parent_layer_noderef: NodeRef,
     pub window: WindowElement,
     pub unmaximized_rect: layers::prelude::Rectangle,

@@ -11,7 +11,7 @@ use crate::{
     cursor::Cursor,
     render_elements::{output_render_elements::OutputRenderElements, scene_element::SceneElement},
     shell::WindowRenderElement,
-    skia_renderer::SkiaTexture,
+    skia_renderer::SkiaTextureImage,
     state::SurfaceDmabufFeedback,
 };
 use crate::{
@@ -218,13 +218,13 @@ impl Backend for UdevData {
     fn texture_for_surface(
         &self,
         surface: &smithay::backend::renderer::utils::RendererSurfaceState,
-    ) -> Option<SkiaTexture> {
+    ) -> Option<SkiaTextureImage> {
         let tex = surface.texture::<UdevRenderer>(99);
         if let Some(multitexture) = tex {
             let texture =
                 multitexture.get::<GbmGlesBackend<SkiaRenderer, DrmDeviceFd>>(&self.primary_gpu);
-            if let Some(texture) = texture {
-                return Some(texture.clone());
+            if let Some(texture) = texture {        
+                return Some(texture.into());
             }
         }
         None
