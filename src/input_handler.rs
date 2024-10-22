@@ -22,7 +22,7 @@ use smithay::{
     output::Scale,
     reexports::{
         wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1,
-        wayland_server::{protocol::wl_pointer, DisplayHandle},
+        wayland_server::{protocol::wl_pointer, DisplayHandle, Resource},
     },
     utils::{IsAlive, Logical, Point, Serial, Transform, SERIAL_COUNTER as SCOUNTER},
     wayland::{
@@ -239,6 +239,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         if KeyState::Released == state && keycode == 56 {
             // App switcher
             if self.workspace.app_switcher.alive() {
+                
                 self.workspace.app_switcher.hide();
                 if let Some(app) = self.workspace.app_switcher.get_current_app() {
                     self.raise_app_elements(&app.identifier, true, Some(serial));
@@ -349,8 +350,16 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                         .space
                         .element_under(position)
                         .map(|(w, p)| (w.clone(), p));
-        
+                    
                     if let Some((window, _)) = window_under {
+                        if let Some(id) = window.wl_surface().as_ref().map(|s|s.id()) {
+                            if let Some(w) = self.workspace.get_window_for_surface(&id) {
+                                if w.is_minimized {
+                                    return;
+                                }
+                            }
+                        }
+                        
                         self.raise_app_element(&window, true, Some(serial));
         
                         #[cfg(feature = "xwayland")]
@@ -428,6 +437,13 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             under = Some((self.workspace.dock.as_ref().clone().into(), (0, 0).into()));
         } else if let Some((focus, location)) =
             self.space.element_under(pos).and_then(|(window, loc)| {
+                if let Some(id) = window.wl_surface().as_ref().map(|s|s.id()) {
+                    if let Some(w) = self.workspace.get_window_for_surface(&id) {
+                        if w.is_minimized {
+                            return None;
+                        }
+                    }
+                }
                 window
                     .surface_under(pos - loc.to_f64(), WindowSurfaceType::ALL)
                     .map(|(surface, surf_loc)| (surface, surf_loc + loc))
@@ -568,7 +584,7 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     self.workspace.quit_appswitcher_app();
                 }
                 KeyAction::ApplicationSwitchNextWindow => {
-                    self.next_window(Some(SCOUNTER.next_serial()));
+                    self.raise_next_app_window(Some(SCOUNTER.next_serial()));
                 }
                 KeyAction::ExposeShowDesktop => {
                     if self.workspace.get_show_desktop() {
@@ -820,7 +836,7 @@ impl ScreenComposer<UdevData> {
                     self.workspace.app_switcher.previous();
                 }
                 KeyAction::ApplicationSwitchNextWindow => {
-                    self.next_window(Some(SCOUNTER.next_serial()));
+                    self.raise_next_app_window(Some(SCOUNTER.next_serial()));
                 }
                 KeyAction::ApplicationSwitchQuit => {
                     self.workspace.quit_appswitcher_app();
@@ -833,7 +849,6 @@ impl ScreenComposer<UdevData> {
                     }
                 }
                 KeyAction::ExposeShowAll => {
-                    // self.workspace.set_show_all(!self.workspace.get_show_all());
                     if self.workspace.get_show_all() {
                         self.expose_show_all(-1.0, true);
                     } else {

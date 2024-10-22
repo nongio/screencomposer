@@ -234,6 +234,11 @@ impl Backend for UdevData {
             self.cursor_manager.load_icon(image.name());
         }
     }
+    fn renderer_context(&mut self) -> Option<layers::skia::gpu::DirectContext> {
+        let r = self.gpus.single_renderer(&self.primary_gpu).unwrap();
+        let r = r.as_ref();
+        r.context.clone()
+    }
 }
 
 pub fn run_udev() {

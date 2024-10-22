@@ -21,9 +21,9 @@ impl Config {
         let config = Self {
             screen_scale: 2.0,
             cursor_theme: "Notwaita-Black".to_string(),
-            cursor_size: 32,
+            cursor_size: 24,
             natural_scroll: true,
-            terminal_bin: "terminator".to_string(),
+            terminal_bin: "kitty".to_string(),
             file_manager_bin: "dolphin".to_string(),
             browser_bin: "firefox".to_string(),
             browser_args: vec!["".to_string()],

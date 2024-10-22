@@ -27,6 +27,83 @@ thread_local! {
     };
 }
 
+
+#[allow(clippy::too_many_arguments)]
+pub fn draw_balloon_rect(
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    corner_radius: f32,
+    arrow_width: f32,
+    arrow_height: f32,
+    arrow_position: f32, // Position of the arrow along the bottom edge (0.0 to 1.0)
+    arrow_corner_radius: f32,
+) -> layers::skia::Path {
+    let mut path = layers::skia::Path::new();
+
+    // Calculate the arrow tip position
+    let arrow_tip_x = x + arrow_position * width;
+    let arrow_base_left_x = arrow_tip_x - arrow_width / 2.0;
+    let arrow_base_right_x = arrow_tip_x + arrow_width / 2.0;
+
+    // Move to the starting point (top-left corner)
+    path.move_to((x + corner_radius, y));
+
+    // Top edge
+    path.line_to((x + width - corner_radius, y));
+    path.arc_to_tangent(
+        (x + width, y),
+        (x + width, y + corner_radius),
+        corner_radius,
+    );
+
+    // Right edge
+    path.line_to((x + width, y + height - corner_radius - arrow_height));
+    path.arc_to_tangent(
+        (x + width, y + height - arrow_height),
+        (x + width - corner_radius, y + height - arrow_height),
+        corner_radius,
+    );
+
+    // Arrow with rounded corners
+    path.line_to((
+        arrow_base_right_x, //- arrow_corner_radius,
+        y + height - arrow_height,
+    ));
+    path.arc_to_tangent(
+        (arrow_base_right_x, y + height - arrow_height),
+        (arrow_tip_x, y + height),
+        arrow_corner_radius,
+    );
+    path.arc_to_tangent(
+        (arrow_tip_x, y + height),
+        (arrow_base_left_x, y + height - arrow_height),
+        arrow_corner_radius,
+    );
+    path.arc_to_tangent(
+        (arrow_base_left_x, y + height - arrow_height),
+        (x + corner_radius, y + height - arrow_height),
+        arrow_corner_radius,
+    );
+
+    // Bottom edge
+    path.line_to((x + corner_radius, y + height - arrow_height));
+    path.arc_to_tangent(
+        (x, y + height - arrow_height),
+        (x, y + height - corner_radius - arrow_height),
+        corner_radius,
+    );
+
+    // Left edge
+    path.line_to((x, y + corner_radius));
+    path.arc_to_tangent((x, y), (x + corner_radius, y), corner_radius);
+
+    // Close the path
+    path.close();
+    path
+}
+
 #[allow(clippy::ptr_arg)]
 #[profiling::function]
 pub fn view_render_elements(

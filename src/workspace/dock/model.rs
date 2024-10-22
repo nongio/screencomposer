@@ -17,7 +17,6 @@ impl Hash for DockModel {
         self.running_apps.hash(state);
         self.minimized_windows.hash(state);
         self.width.hash(state);
-        // self.focus.to_bits().hash(state);
     }
 }
 

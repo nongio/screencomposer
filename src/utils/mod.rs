@@ -1,10 +1,10 @@
 use std::{thread, time::Duration};
 
 use usvg::TreeParsing;
-
+use layers::skia;
 pub mod natural_layout;
 
-pub fn image_from_svg(image_data: &[u8]) -> layers::skia::Image {
+pub fn image_from_svg(image_data: &[u8], ctx: Option<skia::gpu::DirectContext>) -> layers::skia::Image {
     let options = usvg::Options::default();
     let mut rtree = usvg::Tree::from_data(image_data, &options).unwrap();
     rtree.size = usvg::Size::from_wh(512.0, 512.0).unwrap();
@@ -13,17 +13,40 @@ pub fn image_from_svg(image_data: &[u8]) -> layers::skia::Image {
     let font_mgr = layers::skia::FontMgr::new();
     let svg = layers::skia::svg::Dom::from_bytes(xml.as_bytes(), font_mgr).unwrap();
 
-    let mut surface = layers::skia::surfaces::raster_n32_premul((512, 512)).unwrap();
+    let mut surface = {
+        if let Some(mut ctx) = ctx {
+            let image_info = skia::ImageInfo::new(
+                (512, 512),
+                skia::ColorType::RGBA8888,
+                skia::AlphaType::Premul,
+                None,
+            );
+            skia::gpu::surfaces::render_target(
+                &mut ctx,
+                skia::gpu::Budgeted::No,
+                &image_info,
+                None,
+                skia::gpu::SurfaceOrigin::TopLeft,
+                None,
+                false,
+                false,
+            )
+            .unwrap()
+        } else {
+            skia::surfaces::raster_n32_premul((512, 512)).unwrap()
+        }
+    };
+    
     let canvas = surface.canvas();
     svg.render(canvas);
     surface.image_snapshot()
 }
-pub fn image_from_path(image_path: &str) -> Option<layers::skia::Image> {
+pub fn image_from_path(image_path: &str, ctx: Option<skia::gpu::DirectContext>) -> Option<layers::skia::Image> {
     let image_path = std::path::Path::new(image_path);
     let image_data = std::fs::read(image_path).ok()?;
 
     let image = if image_path.extension().and_then(std::ffi::OsStr::to_str) == Some("svg") {
-        image_from_svg(&image_data)
+        image_from_svg(&image_data, ctx)
     } else {
         layers::skia::Image::from_encoded(layers::skia::Data::new_copy(image_data.as_slice())).unwrap()
     };

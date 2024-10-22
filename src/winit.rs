@@ -109,6 +109,10 @@ impl Backend for WinitData {
         tex.map(|t| t.clone().into())
     }
     fn set_cursor(&mut self, _image: &CursorImageStatus) {}
+    fn renderer_context(&mut self) -> Option<layers::skia::gpu::DirectContext> {
+        let r= self.backend.renderer();
+        r.context.clone()
+    }
 }
 
 pub fn run_winit() {

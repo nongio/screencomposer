@@ -115,8 +115,8 @@ pub fn view_background(
         .opacity((
             1.0,
             Some(Transition {
-                delay: 0.3,
-                duration: 1.0,
+                delay: 0.2,
+                duration: 0.8,
                 timing: TimingFunction::ease_out_quad(),
             }),
         ))

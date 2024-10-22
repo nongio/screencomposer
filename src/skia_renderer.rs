@@ -171,7 +171,7 @@ pub struct SkiaRenderer {
     target_renderer: HashMap<SkiaTarget, SkiaSurface>,
     current_target: Option<SkiaTarget>,
     buffers: HashMap<SkiaTarget, SkiaGLesFbo>,
-    context: Option<skia::gpu::DirectContext>,
+    pub context: Option<skia::gpu::DirectContext>,
 
     dmabuf_cache: std::collections::HashMap<WeakDmabuf, SkiaTexture>,
 }

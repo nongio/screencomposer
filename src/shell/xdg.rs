@@ -94,7 +94,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         {
             if let Some(view) = self.workspace.get_window_view(&id) {
                 let noderef = view.window_layer.id().unwrap();
-                let scene_layer = self.layers_engine.scene_get_node(noderef).unwrap();
+                let scene_layer = self.layers_engine.scene_get_node(&noderef).unwrap();
                 let scene_layer = scene_layer.get().clone();
                 scene_layer.delete();
                 self.workspace.remove_window_view(&id);

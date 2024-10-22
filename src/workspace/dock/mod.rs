@@ -1,7 +1,5 @@
 mod model;
 mod render;
-mod render_app;
-mod render_window;
 mod view;
-
+mod interactions;
 pub use view::DockView;

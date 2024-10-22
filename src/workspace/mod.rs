@@ -29,8 +29,7 @@ use std::{
     fmt::Debug,
     hash::{Hash, Hasher},
     sync::{
-        atomic::{AtomicBool, AtomicI32},
-        Arc, Mutex, RwLock, Weak,
+        atomic::{AtomicBool, AtomicI32}, Arc, Mutex, RwLock, Weak
     },
 };
 use workspace_selector::WorkspaceSelectorView;
@@ -115,6 +114,8 @@ impl Hash for Application {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.identifier.hash(state);
         self.icon_path.hash(state);
+        self.desktop_name.hash(state);
+        self.icon.as_ref().map(|i| i.unique_id().hash(state));
     }
 }
 
@@ -128,9 +129,6 @@ impl Eq for Application {}
 #[derive(Clone)]
 pub struct Workspace {
     model: Arc<RwLock<WorkspaceModel>>,
-
-    
-
     // views
     pub app_switcher: Arc<AppSwitcherView>,
     pub window_selector_view: Arc<WindowSelectorView>,
@@ -254,7 +252,7 @@ impl Workspace {
         dock.view_layer.set_position((0.0, -20.0), None);
 
         let background_view = BackgroundView::new(layers_engine.clone(), background_layer.clone());
-        if let Some(background_image) = image_from_path("./resources/background.jpg") {
+        if let Some(background_image) = image_from_path("./resources/background.jpg", None) {
             background_view.set_image(background_image);
         }
         let background_view = Arc::new(background_view);
@@ -399,9 +397,9 @@ impl Workspace {
                             })
                             .clone();
 
-                        let windows = model.app_windows_map.entry(app_id.clone()).or_default();
+                        let windows_for_app = model.app_windows_map.entry(app_id.clone()).or_default();
                         let window_id = window.id().unwrap();
-                        windows.push(window_id);
+                        windows_for_app.push(window_id);
                         drop(model);
                         {
                             if app.icon.is_none() {
@@ -430,9 +428,17 @@ impl Workspace {
         {
             let mut model = self.model.write().unwrap();
             let app_list = model.zindex_application_list.clone();
-            model
+            {
+                // update app list
+                model
                 .application_list
                 .retain(|app_id| app_list.contains(app_id));
+            }
+            {
+                // update minimized windows
+                let windows_list = model.windows_list.clone();
+                model.minimized_windows.retain(|(id, _)| windows_list.contains(id));
+            }
         }
 
         let model = self.model.read().unwrap();
@@ -446,6 +452,7 @@ impl Workspace {
         let app_id = app_id.to_string();
         let model = self.model.clone();
         // let instance = self.clone();
+        // let ctx = None;//self.direct_context.clone();
         tokio::spawn(async move {
             let mut desktop_entry: Option<DesktopEntry<'_>> = None;
             let bytes;
@@ -473,7 +480,8 @@ impl Workspace {
                         .map(|icon| icon.to_str().unwrap().to_string());
                     let icon = icon_path
                         .as_ref()
-                        .and_then(|icon_path| image_from_path(icon_path));
+                        .and_then(|icon_path| image_from_path(icon_path, None));
+
                     let mut app = model_mut
                         .applications_cache
                         .get(&app_id)
@@ -806,7 +814,7 @@ impl Workspace {
             model.minimized_windows.push((id.clone(), we.clone()));
             
             if let Some(view) = self.get_window_view(id) {
-                let drawer = self.dock.make_space_for_window(&window);
+                let (drawer, _) = self.dock.add_window_element(&window);
                 drawer.set_size(Size::points(130.0, 130.0),
                 Some(Transition::ease_out_quad(0.3))
                 );
@@ -819,6 +827,13 @@ impl Workspace {
                 // bounds are calculate after this call
                 let drawer_bounds = drawer.render_bounds_transformed();
                 view.minimize(skia::Rect::from_xywh(drawer_bounds.x(), drawer_bounds.y(), 130.0, 130.0));
+                
+                let view_ref = view.clone();
+                drawer.on_change_size(move |layer: &Layer, _| {
+                    let bounds = layer.render_bounds_transformed();
+                    view_ref.genie_effect.set_destination(bounds);
+                    view_ref.genie_effect.apply();
+                }, false);
             }
             let event = model.clone();
             model.notify_observers(&event);
@@ -833,7 +848,7 @@ impl Workspace {
                 model.windows_cache.insert(id.clone(), window.clone());
                 model.minimized_windows.retain(|(wid, _)| wid != id);
 
-                if let Some(drawer) = self.dock.remove_space_for_window(&window) {
+                if let Some(drawer) = self.dock.remove_window_element(&window) {
                     let engine_ref = self.layers_engine.clone();
                     let windows_layer_ref = self.windows_layer.clone();
                     let layer_ref = view.window_layer.clone();

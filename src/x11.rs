@@ -128,6 +128,9 @@ impl Backend for X11Data {
     ) -> Option<SkiaTextureImage> {
         None
     }
+    fn renderer_context(&mut self) -> Option<layers::skia::gpu::DirectContext> {
+        None
+    }
 }
 
 pub fn run_x11() {
