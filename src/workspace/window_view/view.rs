@@ -119,8 +119,8 @@ impl WindowView {
         
 
         self.window_layer.set_image_filter_progress(1.0, Transition {
-            duration: 0.7,
-            delay: 0.2,
+            duration: 1.0,
+            delay: 0.0,
             timing: TimingFunction::linear()
         })
     }

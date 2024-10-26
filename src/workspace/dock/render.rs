@@ -2,7 +2,7 @@ use layers::{prelude::*, types::Size};
 use layers::skia::PathEffect;
 use taffy::LengthPercentageAuto;
 
-use crate::workspace::{utils::{draw_balloon_rect, FONT_CACHE}, Application};
+use crate::{config::Config, workspace::{utils::{draw_balloon_rect, FONT_CACHE}, Application}};
 
 pub fn setup_app_icon(layer: &Layer, icon_layer: &Layer, application: Application, icon_width: f32) {
     let app_name = application
@@ -60,7 +60,7 @@ pub fn setup_app_icon(layer: &Layer, icon_layer: &Layer, application: Applicatio
     icon_layer.build_layer_tree(&icon_tree);
 }
 
-pub fn setup_miniwindow_icon(layer: &Layer, inner_layer: &Layer, icon_width: f32) {
+pub fn setup_miniwindow_icon(layer: &Layer, inner_layer: &Layer, _icon_width: f32) {
     let container_tree= LayerTreeBuilder::default()
         .key("miniwindow")
         .layout_style(taffy::Style {
@@ -70,7 +70,7 @@ pub fn setup_miniwindow_icon(layer: &Layer, inner_layer: &Layer, icon_width: f32
         .size((
             Size {
                 width: taffy::Dimension::Length(0.0),
-                height: taffy::Dimension::Length(icon_width + 30.0),
+                height: taffy::Dimension::Percent(1.0),
             },
             Some(Transition {
                 duration: 0.2,
@@ -107,12 +107,12 @@ pub fn setup_miniwindow_icon(layer: &Layer, inner_layer: &Layer, icon_width: f32
 
 pub fn setup_label(new_layer: &Layer, label_text: String) {
     let text_size = 26.0;
-
+    let font_family = Config::with(|config| config.font_family.clone());
     let typeface = FONT_CACHE
     .with(|font_cache| {
         font_cache
             .font_mgr
-            .match_family_style("Inter", layers::skia::FontStyle::default())
+            .match_family_style(font_family, layers::skia::FontStyle::default())
     })
     .unwrap();
     let font = layers::skia::Font::from_typeface_with_params(typeface, text_size, 1.0, 0.0);

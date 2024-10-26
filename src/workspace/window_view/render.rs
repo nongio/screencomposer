@@ -1,5 +1,7 @@
 use layers::{prelude::*, types::Size};
 
+use crate::config::Config;
+
 use super::model::WindowViewBaseModel;
 
 #[profiling::function]
@@ -10,10 +12,10 @@ pub fn view_window_shadow(
     let w = state.w;
     let h = state.h;
     const SAFE_AREA: f32 = 100.0;
-    
+    let draw_scale = Config::with(|config| config.screen_scale) as f32;
     let draw_shadow = move |canvas: &layers::skia::Canvas, w: f32, h: f32| {
         // draw shadow
-        let window_corner_radius = 24.0;
+        let window_corner_radius = 24.0 * draw_scale;
         let rect = layers::skia::Rect::from_xywh(
             SAFE_AREA,
             SAFE_AREA,
@@ -39,7 +41,7 @@ pub fn view_window_shadow(
 
         let rect = layers::skia::Rect::from_xywh(
             SAFE_AREA,
-            SAFE_AREA + 36.0,
+            SAFE_AREA + 20.0 * draw_scale,
             w - SAFE_AREA * 2.0,
             h - SAFE_AREA * 2.0,
         );

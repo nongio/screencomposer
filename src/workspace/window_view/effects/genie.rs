@@ -39,7 +39,7 @@ impl GenieEffect {
         };
 
         let mut builder = self.genie_builder.write().unwrap();
-        builder.set_uniform_float("dst_bounds", &[to_rect.x() - offset.0, to_rect.y() - offset.1, to_rect.width(), to_rect.height()]);
+        let _ = builder.set_uniform_float("dst_bounds", &[to_rect.x() - offset.0, to_rect.y() - offset.1, to_rect.width(), to_rect.height()]);
         {
             let mut dst= self.dst.write().unwrap();
             *dst = to_rect;
@@ -64,7 +64,7 @@ impl GenieEffect {
     }
     pub fn set_source(&self, from_rect: skia::Rect) {
         let mut builder = self.genie_builder.write().unwrap();
-        builder.set_uniform_float("src_bounds", &[from_rect.x(), from_rect.y(), from_rect.width(), from_rect.height()]);
+        let _ = builder.set_uniform_float("src_bounds", &[from_rect.x(), from_rect.y(), from_rect.width(), from_rect.height()]);
         {
             let mut src= self.src.write().unwrap();
             *src = from_rect;
@@ -91,14 +91,14 @@ impl layers::prelude::Effect for GenieEffect {
         
         self.set_source(render_layer);
         let mut builder = self.genie_builder.write().unwrap();
-        builder.set_uniform_float("progress", &[0.0]);
+        let _ = builder.set_uniform_float("progress", &[0.0]);
         if let Some(filter) = skia::image_filters::runtime_shader(&builder, "", None) {
             layer.set_image_filter(filter);
         }
     }
     fn update(&self, layer: &Layer, progress: f32) {
         let mut builder = self.genie_builder.write().unwrap();
-        builder.set_uniform_float("progress", &[progress]);
+        let _ = builder.set_uniform_float("progress", &[progress]);
         {
             let mut p = self.progress.write().unwrap();
             *p = progress;

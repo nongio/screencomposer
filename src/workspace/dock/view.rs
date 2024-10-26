@@ -29,6 +29,7 @@ pub struct DockView {
     pub wrap_layer: layers::prelude::Layer,
     pub view_layer: layers::prelude::Layer,
     bar_layer: layers::prelude::Layer,
+    pub resize_handle: layers::prelude::Layer,
     dock_apps_container: layers::prelude::Layer,
     dock_windows_container: layers::prelude::Layer,
 
@@ -53,6 +54,7 @@ impl IsAlive for DockView {
 
 impl DockView {
     pub fn new(layers_engine: LayersEngine) -> Self {
+        let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
         let wrap_layer = layers_engine.new_layer();
         wrap_layer.set_key("dock-wrapper");
         wrap_layer.set_pointer_events(false);
@@ -100,13 +102,13 @@ impl DockView {
 
         let bar_layer = layers_engine.new_layer();
         view_layer.add_sublayer(bar_layer.clone());
-
+        const DOCK_BAR_HEIGHT: f32 = 100.0;
         let bar_tree = LayerTreeBuilder::default()
             .key("dock-bar")
             .pointer_events(false)
             .size(Size{
                 width: taffy::percent(1.0),
-                height: taffy::Dimension::Length(190.0),
+                height: taffy::Dimension::Length(DOCK_BAR_HEIGHT * draw_scale),
             })
             .blend_mode(BlendMode::BackgroundBlur)
             .background_color(PaintColor::Solid {
@@ -149,22 +151,22 @@ impl DockView {
         let dock_handle = layers_engine.new_layer();
         view_layer.add_sublayer(dock_handle.clone());
 
+        let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
         let handle_tree = LayerTreeBuilder::default()
             .key("dock_handle")
             .pointer_events(false)
             .size(Size {
-                width: taffy::Dimension::Length(50.0),
-                height: taffy::Dimension::Length(190.0),
+                width: taffy::Dimension::Length(25.0 * draw_scale),
+                height: taffy::Dimension::Percent(DOCK_BAR_HEIGHT * draw_scale),
             })
             // .background_color(Color::new_rgba(0.0, 0.0, 0.0, 0.0     ))
             .content(Some(move |canvas: &skia::Canvas, w, h| {
                 let mut paint = layers::skia::Paint::default();
                 paint.set_color(layers::skia::Color::from_argb(70, 0, 0, 0));
-                const LINE_WIDTH: f32 = 5.0;
-                const LINE_HEIGHT: f32 = 140.0;
-                // let MARGIN_V: f32 = h - LINE_HEIGHT20.0; // 20.0;                    
-                let margin_h: f32 = (w - LINE_WIDTH) / 2.0;
-                let rect= layers::skia::Rect::from_xywh(margin_h, 15.0, w-2.0*margin_h, LINE_HEIGHT);
+                let line_width: f32 = 3.0 * draw_scale;
+                let margin_h = (w - line_width) / 2.0;
+                let margin_v = 15.0 * draw_scale;
+                let rect= layers::skia::Rect::from_xywh(margin_h, margin_v, w-2.0*margin_h, h - 2.0*margin_v);
                 let rrect = layers::skia::RRect::new_rect_xy(rect, 3.0, 3.0);
                 canvas.draw_rrect(rrect, &paint);
                 skia::Rect::from_xywh(0.0, 0.0, w, h)
@@ -188,8 +190,7 @@ impl DockView {
                 display: taffy::Display::Flex,
                 justify_content: Some(taffy::JustifyContent::FlexEnd),
                 justify_items: Some(taffy::JustifyItems::FlexEnd),
-                align_items: Some(taffy::AlignItems::FlexEnd),
-                // gap: taffy::Size::<taffy::LengthPercentage>::from_length(    0.0),
+                align_items: Some(taffy::AlignItems::Center),
                 ..Default::default()
             })
 
@@ -207,6 +208,7 @@ impl DockView {
             wrap_layer,
             view_layer,
             bar_layer,
+            resize_handle: dock_handle,
             dock_apps_container,
             dock_windows_container,
             app_layers: Arc::new(RwLock::new(HashMap::new())),
@@ -243,9 +245,24 @@ impl DockView {
     }
     
     fn render_elements_layers(&self, available_icon_width: f32) {
+        let draw_scale= Config::with(|config| config.screen_scale) as f32 * 0.8;
         let state = self.get_state();
         let app_height = available_icon_width + 30.0;
         let miniwindow_height = available_icon_width + 60.0;
+        let bar_height = app_height;
+        
+        self.bar_layer.set_border_corner_radius(available_icon_width / 4.0, None);
+        
+        self.resize_handle.set_size(Size{
+            width: taffy::length(25.0 * draw_scale),
+            height: taffy::Dimension::Length(bar_height),
+        }, None);
+
+        self.bar_layer.set_size(Size{
+            width: taffy::percent(1.0),
+            height: taffy::Dimension::Length(bar_height),
+        }, None);
+
         let mut previous_app_layers = self.get_app_layers();
         let mut apps_layers_map = self.app_layers.write().unwrap();
         for app in state.running_apps {
@@ -409,7 +426,6 @@ impl DockView {
         }
     }
     fn available_icon_size(&self) -> f32 {
-        
         let state = self.get_state();
         let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
         // those are constant like values
@@ -432,7 +448,6 @@ impl DockView {
     }
     fn render_dock(&self) {
         let available_icon_size = self.available_icon_size();
-        self.bar_layer.set_border_corner_radius(available_icon_size / 4.0, None);
 
         self.render_elements_layers(available_icon_size);
         self.magnify_elements();
@@ -561,13 +576,13 @@ impl DockView {
         let tot_elements = apps_len + windows_len;
         let animation = self.layers_engine.new_animation(Transition::ease_out_quad(0.2), false);
         let mut changes = Vec::new();
+
         for (index, app) in state.running_apps.iter().enumerate() {
             let id = &app.identifier;
             let layers_map = self.app_layers.read().unwrap();
             if let Some((layer, _, _)) = layers_map.get(id) {
                 let icon_pos = 1.0 / tot_elements * index as f32 + 1.0 / (tot_elements * 2.0);
                 let icon_focus = 1.0 + magnify_function(focus - icon_pos) * 0.4;
-                // println!("x: {} -> {}", icon_pos, icon_focus);
                 let focused_icon_size = icon_size * icon_focus as f32;
                 
 
@@ -584,31 +599,17 @@ impl DockView {
                 let index = index + state.running_apps.len();
                 let icon_pos = 1.0 / tot_elements * index as f32 + 1.0 / (tot_elements * 2.0);
                 let icon_focus = 1.0 + magnify_function(focus - icon_pos) * 0.4;
-                // println!("x: {} -> {}", icon_pos, icon_focus);
                 let focused_icon_size = icon_size * icon_focus as f32;
-                let ratio = win.w / win.h;
-                let icon_height = focused_icon_size / ratio + 60.0;
-                // fixme: group all these transactions into 1 animation
-                let change = layer.change_size(Size::points(focused_icon_size, icon_height));
+                // let ratio = win.w / win.h;
+                // let icon_height = focused_icon_size / ratio + 60.0;
+                let change = layer.change_size(Size::points(focused_icon_size, focused_icon_size));
                 changes.push(change);
-                // layer.set_size(
-                //     Size::points(focused_icon_size, icon_height),
-                //     Transition::ease_out_quad(0.2),
-                // );
-                // total_width += focused_icon_size;
             }
         }
 
         self.layers_engine.add_animated_changes(&changes, animation);
 
         self.layers_engine.start_animation(animation, 0.0);
-        // self.bar_layer.set_size(
-        //     Size::points(total_width, component_padding_v * 2.0 + icon_size),
-        //     Some(Transition {
-        //         duration: 0.1,
-        //         ..Default::default()
-        //     }),
-        // );
     }
     pub fn update_magnification_position(&self, pos: f32) {
         *self.magnification_position.write().unwrap()= pos;

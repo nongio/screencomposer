@@ -1052,6 +1052,7 @@ impl ScreenComposer<UdevData> {
 
         let pointer = self.pointer.clone();
         let under = self.surface_under(pointer_location);
+        let pos = pointer_location;
 
         pointer.motion(
             self,
@@ -1063,6 +1064,9 @@ impl ScreenComposer<UdevData> {
             },
         );
         pointer.frame(self);
+        let scale = Config::with(|c| c.screen_scale);
+        let pos = pos.to_physical(scale);
+        self.layers_engine.pointer_move((pos.x as f32, pos.y as f32), None);
     }
 
     fn on_tablet_tool_axis<B: InputBackend>(&mut self, evt: B::TabletToolAxisEvent) {

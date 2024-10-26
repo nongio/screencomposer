@@ -815,10 +815,7 @@ impl Workspace {
             
             if let Some(view) = self.get_window_view(id) {
                 let (drawer, _) = self.dock.add_window_element(&window);
-                drawer.set_size(Size::points(130.0, 130.0),
-                Some(Transition::ease_out_quad(0.3))
-                );
-                
+                    
                 view.window_layer.set_layout_style(taffy::Style {
                     position: taffy::Position::Absolute,
                     ..Default::default()
