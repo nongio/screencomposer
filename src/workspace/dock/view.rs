@@ -576,13 +576,13 @@ impl DockView {
         let tot_elements = apps_len + windows_len;
         let animation = self.layers_engine.new_animation(Transition::ease_out_quad(0.2), false);
         let mut changes = Vec::new();
-
+        let genie_scale = Config::with(|c| c.genie_scale);
         for (index, app) in state.running_apps.iter().enumerate() {
             let id = &app.identifier;
             let layers_map = self.app_layers.read().unwrap();
             if let Some((layer, _, _)) = layers_map.get(id) {
                 let icon_pos = 1.0 / tot_elements * index as f32 + 1.0 / (tot_elements * 2.0);
-                let icon_focus = 1.0 + magnify_function(focus - icon_pos) * 0.4;
+                let icon_focus = 1.0 + magnify_function(focus - icon_pos) * genie_scale;
                 let focused_icon_size = icon_size * icon_focus as f32;
                 
 
@@ -598,7 +598,7 @@ impl DockView {
             if let Some((layer, ..)) = miniwindow_layers.get(win) {
                 let index = index + state.running_apps.len();
                 let icon_pos = 1.0 / tot_elements * index as f32 + 1.0 / (tot_elements * 2.0);
-                let icon_focus = 1.0 + magnify_function(focus - icon_pos) * 0.4;
+                let icon_focus = 1.0 + magnify_function(focus - icon_pos) * genie_scale;
                 let focused_icon_size = icon_size * icon_focus as f32;
                 // let ratio = win.w / win.h;
                 // let icon_height = focused_icon_size / ratio + 60.0;
@@ -628,5 +628,7 @@ impl Observer<WorkspaceModel> for DockView {
 use std::f64::consts::E;
 pub fn magnify_function(x: impl Into<f64>) -> f64 {
     let x = x.into();
-    E.powf(-4.0 * (x).powi(2))
+    let genie_span = Config::with(|c| c.genie_span);
+    let genie_span = -1.0 * genie_span;
+    E.powf(genie_span * (x).powi(2))
 }

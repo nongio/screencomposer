@@ -1,3 +1,4 @@
+# Display
 screen_scale = 2.0
 compositor_mode = "drm"
 

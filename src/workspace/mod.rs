@@ -2,7 +2,7 @@ mod app_switcher;
 mod background;
 mod dnd_view;
 mod dock;
-mod utils;
+pub mod utils;
 mod window_selector;
 mod window_view;
 mod workspace_selector;
@@ -164,6 +164,7 @@ pub struct WorkspaceModel {
     pub windows_list: Vec<ObjectId>,
     pub minimized_windows: Vec<(ObjectId, WindowElement)>,
     pub current_application: usize,
+    pub width: i32,
     observers: Vec<Weak<dyn Observer<WorkspaceModel>>>,
 }
 
@@ -294,6 +295,14 @@ impl Workspace {
     pub fn get_show_all(&self) -> bool {
         self.show_all.load(std::sync::atomic::Ordering::Relaxed)
     }
+    pub fn set_size(&self, width: f32, _height: f32) {
+        self.with_model_mut(|model| {
+            model.width = width as i32;
+            let event = model.clone();
+            model.notify_observers(&event);
+        });
+        
+    }
 
     fn set_show_all(&self, show_all: bool) {
         self.show_all
@@ -309,6 +318,7 @@ impl Workspace {
             .store(show_all, std::sync::atomic::Ordering::Relaxed);
     }
 
+    #[profiling::function]
     pub(crate) fn update_window(&self, id: &ObjectId, model: &WindowViewBaseModel) {
         let mut workspace_model = self.model.write().unwrap();
 
@@ -603,6 +613,9 @@ impl Workspace {
         let dock_y = (-20.0).interpolate(&250.0, delta);
         self.dock.view_layer.set_position((0.0, dock_y), transition);
 
+        let mut changes = Vec::new();
+
+        let animation = transition.map(|t| self.layers_engine.new_animation(t, false));
         for window in model.windows_list.iter() {
             let window = self.get_window_for_surface(window).unwrap();
             if window.is_minimized {
@@ -637,16 +650,20 @@ impl Workspace {
                 let x = window.x.interpolate(&to_x, delta);
                 let y = window.y.interpolate(&to_y, delta);
 
-                window
+
+                let translation = window
                     .base_layer
-                    .set_position(layers::types::Point { x, y }, transition);
-                window
+                    .change_position(layers::types::Point { x, y });
+                let scale = window
                     .base_layer
-                    .set_scale(layers::types::Point { x: scale, y: scale }, transition);
+                    .change_scale(layers::types::Point { x: scale, y: scale });
+                changes.push(translation);
+                changes.push(scale);
             }
         }
+        self.layers_engine.add_animated_changes(&changes, animation);
         self.window_selector_view.view.update_state(&state);
-
+        animation.map(|a| self.layers_engine.start_animation(a, 0.0));
         if end_gesture {
             *bin = HashMap::new();
         }

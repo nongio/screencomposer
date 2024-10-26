@@ -13,6 +13,7 @@ impl Hash for AppSwitcherModel {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.apps.hash(state);
         self.current_app.hash(state);
+        self.width.hash(state);
     }
 }
 

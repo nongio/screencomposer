@@ -1060,6 +1060,7 @@ impl ScreenComposer<UdevData> {
             root.layer.set_size(scene_size, None);
             self.scene_element.set_size(w, h);
             self.layers_engine.set_scene_size(w, h);
+            self.workspace.set_size(w, h);
             let global = output.create_global::<ScreenComposer<UdevData>>(&self.display_handle);
 
             let x = self.space.outputs().fold(0, |acc, o| {

@@ -40,6 +40,9 @@ impl SceneElement {
     #[profiling::function]
     pub fn update(&mut self) {
         let dt = self.last_update.elapsed().as_secs_f32();
+        if dt <= 0.01 {
+            return;
+        }
         self.last_update = std::time::Instant::now();
         if self.engine.update(dt) {
             self.commit_counter.increment();
@@ -173,23 +176,35 @@ impl RenderElement<SkiaRenderer> for SceneElement {
         if let Some(root_id) = root_id {
             let save_point = canvas.save();
 
-            // DO NOT CLIP!
-            // canvas.clip_rect(damage_rect, None, None);
+ 
+            // canvas.clear(layers::skia::Color::TRANSPARENT);
+            canvas.clip_rect(damage_rect, None, None);
             render_node_tree(root_id, arena, canvas, 1.0);
             
             // draw damage rect 
-            // let mut paint = layers::skia::Paint::default();
-            // paint.set_color(layers::skia::Color::from_argb(255, 255, 0, 0));
+            let mut paint = layers::skia::Paint::default();
+            paint.set_color(layers::skia::Color::from_argb(255, 255, 0, 0));
             // paint.set_stroke(true);
             // paint.set_stroke_width(5.0);
-            // damage.iter().for_each(|d| {
-            //     canvas.draw_rect(layers::skia::Rect::from_xywh(
-            //         d.loc.x as f32,
-            //         d.loc.y as f32,
-            //         d.size.w as f32,
-            //         d.size.h as f32,
-            //     ), &paint);
-            // });
+            // // damage.iter().for_each(|d| {
+            // //     canvas.draw_rect(layers::skia::Rect::from_xywh(
+            // //         d.loc.x as f32,
+            // //         d.loc.y as f32,
+            // //         d.size.w as f32,
+            // //         d.size.h as f32,
+            // //     ), &paint);
+            // // });
+            // canvas.draw_rect(damage_rect, &paint);
+            // let typeface = crate::workspace::utils::FONT_CACHE
+            // .with(|font_cache| {
+            //     font_cache
+            //         .font_mgr
+            //         .match_family_style("Inter", layers::skia::FontStyle::default())
+            // })
+            // .unwrap();
+            // let font = layers::skia::Font::from_typeface_with_params(typeface, 22.0, 1.0, 0.0);
+            // let pos = self.engine.get_pointer_position();
+            // canvas.draw_str(format!("{},{}", pos.x, pos.y), (50.0, 50.0), &font, &paint);
             // println!("scene draw damage: {},{} {}x{}", damage_rect.x(), damage_rect.y(), damage_rect.width(), damage_rect.height());
 
             canvas.restore_to_count(save_point);        

@@ -219,6 +219,7 @@ impl AppSwitcherView {
                     view.update_state(&AppSwitcherModel {
                         current_app,
                         apps,
+                        width: workspace.width,
                         ..switcher_state
                     });
                 }

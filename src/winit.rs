@@ -306,6 +306,7 @@ pub fn run_winit() {
                 output.set_preferred(mode);
                 crate::shell::fixup_positions(&mut state.space, state.pointer.current_location());
                 state.scene_element.set_size(size.w as f32, size.h as f32);
+                state.workspace.set_size(size.w as f32, size.h as f32);
                 root.layer.set_size(
                     layers::types::Size::points(size.w as f32, size.h as f32),
                     None,
