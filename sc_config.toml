@@ -1,0 +1,22 @@
+screen_scale = 2.0
+compositor_mode = "drm"
+
+# Theme
+cursor_size = 24
+font_family = "Inter"
+cursor_theme = "Notwaita-Black"
+
+# Inputs
+keyboard_repeat_delay = 300
+keyboard_repeat_rate = 30
+natural_scroll = true
+
+# Dock
+genie_scale = 0.5
+genie_span = 10.0
+
+# Apps
+terminal_bin = "kitty"
+file_manager_bin = "dolphin"
+browser_bin = "google-chrome-stable"
+browser_args = [""]
