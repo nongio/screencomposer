@@ -1,8 +1,8 @@
 use std::{cell::RefCell, rc::Rc};
 
 use layers::{
-    drawing::scene::render_node_tree,
-    engine::{node::SceneNode, LayersEngine},
+    drawing::render_node_tree,
+    engine::{SceneNode, LayersEngine},
 };
 
 use smithay::{
@@ -65,7 +65,7 @@ impl SceneElement {
         }
     }
     pub fn root_layer(&self) -> Option<SceneNode> {
-        self.engine.root_layer()
+        self.engine.scene_root_layer()
     }
     pub fn set_size(&mut self, width: f32, height: f32) {
         self.engine.set_scene_size(width, height);

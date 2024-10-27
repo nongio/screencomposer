@@ -118,21 +118,13 @@ impl WindowView {
         });
         
 
-        self.window_layer.set_image_filter_progress(1.0, Transition {
-            duration: 1.0,
-            delay: 0.0,
-            timing: TimingFunction::linear()
-        })
+        self.window_layer.set_image_filter_progress(1.0, Transition::linear(1.0))
     }
 
     pub fn unminimize(&self, from: skia::Rect) -> TransactionRef {
         self.genie_effect.set_destination(from);
 
-        self.window_layer.set_image_filter_progress(0.0, Transition {
-            duration: 0.7,
-            delay: 0.0,
-            timing: TimingFunction::linear()
-        })
+        self.window_layer.set_image_filter_progress(0.0, Transition::linear(0.7))
         .on_finish(move |l:&Layer, _| {
             l.remove_effect()
         }, true)

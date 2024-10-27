@@ -588,11 +588,7 @@ impl Workspace {
 
         let mut index = 0;
 
-        let mut transition = Some(Transition {
-            duration: animation_duration,
-            timing: TimingFunction::Easing(Easing::ease_in()),
-            ..Default::default()
-        });
+        let mut transition = Some(Transition::ease_in(animation_duration));
         if !end_gesture {
             // in the middle of the gesture
             transition = None;
@@ -707,11 +703,8 @@ impl Workspace {
 
         let delta = delta.clamp(0.0, 1.0);
 
-        let mut transition = Some(Transition {
-            duration: 0.5,
-            timing: TimingFunction::Easing(Easing::ease_in()),
-            ..Default::default()
-        });
+        let mut transition = Some(Transition::ease_in(0.5));
+
         if !end_gesture {
             // in the middle of the gesture
             transition = None;
@@ -873,9 +866,8 @@ impl Workspace {
                     let pos_x = window.x;
                     let pos_y = window.y;
                     drawer.set_size(Size::points(0.0, 130.0), Transition {
-                        duration: 0.3,
                         delay: 0.2,
-                        timing: TimingFunction::ease_out_quad(),
+                        timing: TimingFunction::ease_out_quad(0.3),
                     })
                     .on_start(move |_layer: &Layer, _| {
                         layer_ref.remove_draw_content();

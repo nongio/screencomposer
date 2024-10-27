@@ -422,11 +422,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                                 x: state.x,
                                 y: state.y,
                             },
-                            Some(Transition {
-                                delay: 0.0,
-                                duration: 0.4,
-                                timing: TimingFunction::Easing(Easing::ease_out()),
-                            }),
+                            Some(Transition::ease_out_quad(0.4)),
                         );
 
                         self.workspace.windows_layer.add_sublayer(view.window_layer.clone());

@@ -308,10 +308,7 @@ impl DockView {
             layer.add_on_pointer_in(move |_, _, _| {
                 label_ref.set_opacity(
                     1.0,
-                    Some(Transition {
-                        duration: 0.1,
-                        ..Default::default()
-                    }),
+                    Some(Transition::ease_in_quad(0.1))
                 );
             });
             let label_ref = label.clone();
@@ -319,10 +316,7 @@ impl DockView {
             layer.add_on_pointer_out(move |_, _, _| {
                 label_ref.set_opacity(
                     0.0,
-                    Some(Transition {
-                        duration: 0.1,
-                        ..Default::default()
-                    }),
+                    Some(Transition::ease_in_quad(0.1)),
                 );
                 icon_ref.set_color_filter(None);
             });
@@ -374,10 +368,7 @@ impl DockView {
                     layer.add_on_pointer_in(move |_, _, _| {
                         label_ref.set_opacity(
                             1.0,
-                            Some(Transition {
-                                duration: 0.1,
-                                ..Default::default()
-                            }),
+                            Some(Transition::ease_in_quad(0.1))
                         );
                     });
                     let label_ref = label.clone();
@@ -385,10 +376,7 @@ impl DockView {
                     layer.add_on_pointer_out(move |l: Layer, _:f32, _:f32| {
                         label_ref.set_opacity(
                             0.0,
-                            Some(Transition {
-                                duration: 0.1,
-                                ..Default::default()
-                            }),
+                            Some(Transition::ease_in_out_quad(0.1))
                         );
                         l.children().iter().for_each(|child| {
                             child.set_color_filter(None);

@@ -28,10 +28,7 @@ pub fn setup_app_icon(layer: &Layer, icon_layer: &Layer, application: Applicatio
                 width: taffy::Dimension::Length(icon_width),
                 height: taffy::Dimension::Length(icon_width + 30.0),
             },
-            Some(Transition {
-                duration: 0.2,
-                ..Default::default()
-            }), // None
+            Some(Transition::ease_in_quad(0.2)) // None
         ))
         .background_color(Color::new_rgba(1.0, 0.0, 0.0, 0.0))
         .build()
@@ -72,10 +69,7 @@ pub fn setup_miniwindow_icon(layer: &Layer, inner_layer: &Layer, _icon_width: f3
                 width: taffy::Dimension::Length(0.0),
                 height: taffy::Dimension::Percent(1.0),
             },
-            Some(Transition {
-                duration: 0.2,
-                ..Default::default()
-            }), // None
+            Some(Transition::ease_in_quad(0.2))
         ))
         .background_color(Color::new_rgba(1.0, 0.0, 0.0, 0.0))
         .build()

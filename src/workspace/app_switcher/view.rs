@@ -6,7 +6,7 @@ use std::{
 
 use layers::{
     engine::{
-        animation::{timing::TimingFunction, Transition},
+        animation::{TimingFunction, Transition},
         LayersEngine, TransactionRef,
     },
     prelude::taffy,
@@ -121,9 +121,8 @@ impl AppSwitcherView {
         self.wrap_layer.set_opacity(
             1.0,
             Some(Transition {
-                duration: 0.150,
                 delay: 0.1,
-                timing: TimingFunction::ease_out(),
+                timing: TimingFunction::ease_out_quad(0.150),
             }),
         );
     }
@@ -146,9 +145,8 @@ impl AppSwitcherView {
         self.wrap_layer.set_opacity(
             1.0,
             Some(Transition {
-                duration: 0.01,
                 delay: 0.05,
-                timing: TimingFunction::linear(),
+                timing: TimingFunction::linear(0.01),
             }),
         );
     }
@@ -158,11 +156,7 @@ impl AppSwitcherView {
             .store(false, std::sync::atomic::Ordering::Relaxed);
         self.wrap_layer.set_opacity(
             0.0,
-            Some(Transition {
-                duration: 0.1,
-                delay: 0.0,
-                timing: TimingFunction::ease_out(),
-            }),
+            Some(Transition::ease_in_quad(0.1)),
         )
     }
 

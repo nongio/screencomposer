@@ -116,8 +116,7 @@ pub fn view_background(
             1.0,
             Some(Transition {
                 delay: 0.2,
-                duration: 0.8,
-                timing: TimingFunction::ease_out_quad(),
+                timing: TimingFunction::ease_out_quad(0.8),
             }),
         ))
         .border_corner_radius(BorderRadius::new_single(24.0))
