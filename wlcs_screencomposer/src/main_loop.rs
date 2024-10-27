@@ -7,12 +7,8 @@ use std::{
 use smithay::{
     backend::{
         input::ButtonState,
-        renderer::{
-            damage::OutputDamageTracker,
-            element::{AsRenderElements, RenderElementStates},
-        },
+        renderer::{damage::OutputDamageTracker, element::AsRenderElements},
     },
-    desktop::space::render_output,
     input::pointer::{
         ButtonEvent, CursorImageAttributes, CursorImageStatus, MotionEvent, RelativeMotionEvent,
     },
@@ -24,19 +20,15 @@ use smithay::{
         },
         wayland_server::{protocol::wl_surface, Client, Display, Resource},
     },
-    utils::{IsAlive, Point, Scale, SERIAL_COUNTER as SCOUNTER},
-    wayland::{compositor, input_method::InputMethodSeat},
+    utils::{IsAlive, Scale, SERIAL_COUNTER as SCOUNTER},
+    wayland::compositor,
 };
 
-use screen_composer::{
-    state::{Backend, ClientState, ScreenComposer},
-    winit::WinitData,
-    CalloopData,
-};
+use screen_composer::{drawing::PointerElement, render::*, state::Backend, ScreenComposer, ClientState};
 
 use crate::{renderer::DummyRenderer, WlcsEvent};
 
-pub const OUTPUT_NAME: &str = "screencomposer";
+const OUTPUT_NAME: &str = "screen_composer";
 
 struct TestState {
     clients: HashMap<i32, Client>,
@@ -44,194 +36,149 @@ struct TestState {
 
 impl Backend for TestState {
     fn seat_name(&self) -> String {
-        "screencomposer_wlcs".into()
+        "screen_composer_wlcs".into()
     }
 
     fn reset_buffers(&mut self, _output: &Output) {}
     fn early_import(&mut self, _surface: &wl_surface::WlSurface) {}
+    fn texture_for_surface(&self, surface: &smithay::backend::renderer::utils::RendererSurfaceState) -> Option<screen_composer::skia_renderer::SkiaTexture> {
+        None
+    }
 }
 
 pub fn run(channel: Channel<WlcsEvent>) {
-    // let mut display = Display::new().expect("Failed to init display");
+    let mut event_loop = EventLoop::try_new().unwrap();
+
     // let mut event_loop =
-    // EventLoop::<CalloopData<WinitData>>::try_new().expect("Failed to init the event loop.");
-    // let (winit_data) =
-    // screen_composer::winit::init_winit(event_loop.handle(), &mut display).unwrap();
-    // let state = ScreenComposer::new(event_loop.handle(), &mut display, &winit_data, true);
+    //     EventLoop::<ScreenComposer<TestState>>::try_new().expect("Failed to init the event loop.");
 
-    // let mut data = CalloopData { state, display };
+    let display = Display::new().expect("Failed to init display");
+    let test_state = TestState {
+        clients: HashMap::new(),
+    };
 
-    // event_loop.run(None, &mut data, move |_| {
-    //     // Smallvil is running
-    // });
-    // let mut event_loop =
-    //     EventLoop::<CalloopData<TestState>>::try_new().expect("Failed to init the event loop.");
+    let mut state = ScreenComposer::init(display, event_loop.handle(), test_state, false);
 
-    // let mut display = Display::new().expect("Failed to init display");
-    // let dh = display.handle();
-    // let test_state = TestState {
-    //     clients: HashMap::new(),
-    // };
+    event_loop
+        .handle()
+        .insert_source(channel, move |event, &mut (), data| match event {
+            ChannelEvent::Msg(evt) => handle_event(evt, data),
+            ChannelEvent::Closed => handle_event(WlcsEvent::Exit, data),
+        })
+        .unwrap();
 
-    // let mut state = screen_composer::state::ScreenComposer::new(
-    //     event_loop.handle(),
-    //     &mut display,
-    //     &test_state,
-    //     false,
-    // );
+    let mut renderer = DummyRenderer::new();
 
-    // event_loop
-    //     .handle()
-    //     .insert_source(channel, move |event, &mut (), data| match event {
-    //         ChannelEvent::Msg(evt) => handle_event(evt, &mut data.state, &mut data.display),
-    //         ChannelEvent::Closed => {
-    //             handle_event(WlcsEvent::Exit, &mut data.state, &mut data.display)
-    //         }
-    //     })
-    //     .unwrap();
+    let mode = Mode {
+        size: (800, 600).into(),
+        refresh: 60_000,
+    };
 
-    // let mut renderer = crate::renderer::DummyRenderer::new();
+    let output = Output::new(
+        OUTPUT_NAME.to_string(),
+        PhysicalProperties {
+            size: (0, 0).into(),
+            subpixel: Subpixel::Unknown,
+            make: "Smithay".into(),
+            model: "WLCS".into(),
+        },
+    );
+    let _global = output.create_global::<ScreenComposer<TestState>>(&state.display_handle);
+    output.change_current_state(Some(mode), None, None, Some((0, 0).into()));
+    output.set_preferred(mode);
+    state.space().map_output(&output, (0, 0));
 
-    // let mode = Mode {
-    //     size: (800, 600).into(),
-    //     refresh: 60_000,
-    // };
+    let mut damage_tracker = OutputDamageTracker::from_output(&output);
+    let mut pointer_element = PointerElement::default();
 
-    // let output = Output::new(
-    //     OUTPUT_NAME.to_string(),
-    //     PhysicalProperties {
-    //         size: (0, 0).into(),
-    //         subpixel: Subpixel::Unknown,
-    //         make: "Smithay".into(),
-    //         model: "WLCS".into(),
-    //     },
-    // );
-    // let _global = output.create_global::<ScreenComposer<TestState>>(&dh);
-    // output.change_current_state(Some(mode), None, None, Some((0, 0).into()));
-    // output.set_preferred(mode);
-    // state.space.map_output(&output, (0, 0));
+    while state.running.load(Ordering::SeqCst) {
+        // pretend to draw something
+        {
+            let scale = Scale::from(output.current_scale().fractional_scale());
+            let mut elements: Vec<CustomRenderElements<_>> = Vec::new();
 
-    // let mut damage_tracker = OutputDamageTracker::from_output(&output);
-    // // let mut pointer_element = PointerElement::default();
+            // draw the cursor as relevant
+            // reset the cursor if the surface is no longer alive
+            let mut reset = false;
+            if let CursorImageStatus::Surface(ref surface) = state.cursor_status {
+                reset = !surface.alive();
+            }
+            if reset {
+                state.cursor_status = CursorImageStatus::default_named();
+            }
 
-    // while state.running.load(Ordering::SeqCst) {
-    //     // pretend to draw something
-    //     {
-    //         let scale = Scale::from(output.current_scale().fractional_scale());
-    //         let mut cursor_guard = state.cursor_status.lock().unwrap();
-    //         let mut elements: Vec<RenderElementStates> = Vec::new();
+            let cursor_hotspot = if let CursorImageStatus::Surface(ref surface) = state.cursor_status {
+                compositor::with_states(surface, |states| {
+                    states
+                        .data_map
+                        .get::<Mutex<CursorImageAttributes>>()
+                        .unwrap()
+                        .lock()
+                        .unwrap()
+                        .hotspot
+                })
+            } else {
+                (0, 0).into()
+            };
+            let cursor_pos = state.pointer.current_location() - cursor_hotspot.to_f64();
+            let cursor_pos_scaled = cursor_pos.to_physical(scale).to_i32_round();
 
-    //         // draw input method square if any
-    //         let input_method = state.seat.input_method();
-    //         let rectangle = input_method.coordinates();
-    //         // let position = Point::from((
-    //         //     rectangle.loc.x + rectangle.size.w,
-    //         //     rectangle.loc.y + rectangle.size.h,
-    //         // ));
-    //         // input_method.with_surface(|surface| {
-    //         //     elements.extend(AsRenderElements::<DummyRenderer>::render_elements(
-    //         //         &smithay::desktop::space::SurfaceTree::from_surface(surface),
-    //         //         &mut renderer,
-    //         //         position.to_physical_precise_round(scale),
-    //         //         scale,
-    //         //         1.0,
-    //         //     ));
-    //         // });
+            pointer_element.set_status(state.cursor_status.clone());
+            elements.extend(pointer_element.render_elements(&mut renderer, cursor_pos_scaled, scale, 1.0));
 
-    //         // draw the cursor as relevant
-    //         // reset the cursor if the surface is no longer alive
-    //         let mut reset = false;
-    //         if let CursorImageStatus::Surface(ref surface) = *cursor_guard {
-    //             reset = !surface.alive();
-    //         }
-    //         if reset {
-    //             *cursor_guard = CursorImageStatus::Default;
-    //         }
+            // draw the dnd icon if any
+            if let Some(surface) = state.dnd_icon.as_ref() {
+                if surface.alive() {
+                    elements.extend(AsRenderElements::<DummyRenderer>::render_elements(
+                        &smithay::desktop::space::SurfaceTree::from_surface(surface),
+                        &mut renderer,
+                        cursor_pos_scaled,
+                        scale,
+                        1.0,
+                    ));
+                }
+            }
 
-    //         let cursor_hotspot = if let CursorImageStatus::Surface(ref surface) = *cursor_guard {
-    //             compositor::with_states(surface, |states| {
-    //                 states
-    //                     .data_map
-    //                     .get::<Mutex<CursorImageAttributes>>()
-    //                     .unwrap()
-    //                     .lock()
-    //                     .unwrap()
-    //                     .hotspot
-    //             })
-    //         } else {
-    //             (0, 0).into()
-    //         };
-    //         let cursor_pos = state.pointer.current_location() - cursor_hotspot.to_f64();
-    //         // let cursor_pos_scaled = cursor_pos.to_physical(scale).to_i32_round();
+            let _ = render_output(
+                &output,
+                &state.space,
+                elements,
+                &mut renderer,
+                &mut damage_tracker,
+                0,
+                false,
+            );
+        }
 
-    //         // pointer_element.set_status(cursor_guard.clone());
-    //         // elements.extend(pointer_element.render_elements(
-    //         //     &mut renderer,
-    //         //     cursor_pos_scaled,
-    //         //     scale,
-    //         //     1.0,
-    //         // ));
+        // Send frame events so that client start drawing their next frame
+        state.space().elements().for_each(|window| {
+            window.send_frame(&output, state.clock.now(), Some(Duration::ZERO), |_, _| {
+                Some(output.clone())
+            })
+        });
 
-    //         // draw the dnd icon if any
-    //         // if let Some(surface) = state.dnd_icon.as_ref() {
-    //         //     if surface.alive() {
-    //         //         elements.extend(AsRenderElements::<DummyRenderer>::render_elements(
-    //         //             &smithay::desktop::space::SurfaceTree::from_surface(surface),
-    //         //             &mut renderer,
-    //         //             cursor_pos_scaled,
-    //         //             scale,
-    //         //             1.0,
-    //         //         ));
-    //         //     }
-    //         // }
-
-    //         // to be implemented by sc
-    //         // let _ = render_output(
-    //         //     &output,
-    //         //     &mut state.space,
-    //         //     1.0,
-    //         //     elements,
-    //         //     &mut renderer,
-    //         //     &mut damage_tracker,
-    //         //     0,
-    //         //     false,
-    //         // );
-    //     }
-
-    //     // Send frame events so that client start drawing their next frame
-    //     state.space.elements().for_each(|window| {
-    //         window.send_frame(&output, state.clock.now(), Some(Duration::ZERO), |_, _| {
-    //             Some(output.clone())
-    //         })
-    //     });
-
-    //     let mut calloop_data = CalloopData { state, display };
-    //     let result = event_loop.dispatch(Some(Duration::from_millis(16)), &mut calloop_data);
-    //     CalloopData { state, display } = calloop_data;
-
-    //     if result.is_err() {
-    //         state.running.store(false, Ordering::SeqCst);
-    //     } else {
-    //         state.space.refresh();
-    //         state.popups.cleanup();
-    //         display.flush_clients().unwrap();
-    //     }
-    // }
+        if event_loop
+            .dispatch(Some(Duration::from_millis(16)), &mut state)
+            .is_err()
+        {
+            state.running.store(false, Ordering::SeqCst);
+        } else {
+            state.space().refresh();
+            state.popups.cleanup();
+            state.display_handle.flush_clients().unwrap();
+        }
+    }
 }
 
-fn handle_event(
-    event: WlcsEvent,
-    state: &mut screen_composer::state::ScreenComposer<TestState>,
-    display: &mut Display<screen_composer::state::ScreenComposer<TestState>>,
-) {
+fn handle_event(event: WlcsEvent, state: &mut ScreenComposer<TestState>) {
     match event {
         WlcsEvent::Exit => state.running.store(false, Ordering::SeqCst),
         WlcsEvent::NewClient { stream, client_id } => {
-            let client = display
-                .handle()
+            let client = state
+                .display_handle
                 .insert_client(stream, Arc::new(ClientState::default()))
                 .expect("Failed to insert client");
-            // state.backend_data.clients.insert(client_id, client);
+            state.backend_data.clients.insert(client_id, client);
         }
         WlcsEvent::PositionWindow {
             client_id,
@@ -239,19 +186,19 @@ fn handle_event(
             location,
         } => {
             // find the surface
-            // let client = state.backend_data.clients.get(&client_id);
-            // let toplevel = state.space.elements().find(|w| {
-            //     if let Some(surface) = w.wl_surface() {
-            //         display.handle().get_client(surface.id()).ok().as_ref() == client
-            //             && surface.id().protocol_id() == surface_id
-            //     } else {
-            //         false
-            //     }
-            // });
-            // if let Some(toplevel) = toplevel.cloned() {
-            //     // set its location
-            //     state.space.map_element(toplevel, location, false);
-            // }
+            let client = state.backend_data.clients.get(&client_id);
+            let toplevel = state.space().elements().find(|w| {
+                if let Some(surface) = w.wl_surface() {
+                    state.display_handle.get_client(surface.id()).ok().as_ref() == client
+                        && surface.id().protocol_id() == surface_id
+                } else {
+                    false
+                }
+            });
+            if let Some(toplevel) = toplevel.cloned() {
+                // set its location
+                state.space().write().map_element(toplevel, location, false);
+            }
         }
         // pointer inputs
         WlcsEvent::NewPointer { .. } => {}
@@ -269,6 +216,7 @@ fn handle_event(
                     time,
                 },
             );
+            ptr.frame(state);
         }
         WlcsEvent::PointerMoveRelative { delta, .. } => {
             let pointer_location = state.pointer.current_location() + delta;
@@ -294,27 +242,28 @@ fn handle_event(
                     delta_unaccel: delta,
                     utime,
                 },
-            )
+            );
+            ptr.frame(state);
         }
         WlcsEvent::PointerButtonDown { button_id, .. } => {
             let serial = SCOUNTER.next_serial();
-            let pointer = state.seat.get_pointer().unwrap();
-            if !pointer.is_grabbed() {
+            let ptr = state.seat.get_pointer().unwrap();
+            if !ptr.is_grabbed() {
                 let under = state
                     .space
-                    .element_under(pointer.current_location())
+                    .element_under(ptr.current_location())
                     .map(|(w, _)| w.clone());
                 if let Some(window) = under.as_ref() {
-                    state.space.raise_element(window, true);
+                    state.space().raise_element(window, true);
                 }
-                // state
-                //     .seat
-                //     .get_keyboard()
-                //     .unwrap()
-                //     .set_focus(state, under.map(Into::into), serial);
+                state
+                    .seat
+                    .get_keyboard()
+                    .unwrap()
+                    .set_focus(state, under.map(Into::into), serial);
             }
             let time = Duration::from(state.clock.now()).as_millis() as u32;
-            pointer.button(
+            ptr.button(
                 state,
                 &ButtonEvent {
                     button: button_id as u32,
@@ -323,11 +272,13 @@ fn handle_event(
                     time,
                 },
             );
+            ptr.frame(state);
         }
         WlcsEvent::PointerButtonUp { button_id, .. } => {
             let serial = SCOUNTER.next_serial();
             let time = Duration::from(state.clock.now()).as_millis() as u32;
-            state.seat.get_pointer().unwrap().button(
+            let ptr = state.seat.get_pointer().unwrap();
+            ptr.button(
                 state,
                 &ButtonEvent {
                     button: button_id as u32,
@@ -336,6 +287,7 @@ fn handle_event(
                     time,
                 },
             );
+            ptr.frame(state);
         }
         WlcsEvent::PointerRemoved { .. } => {}
         // touch inputs
