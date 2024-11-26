@@ -84,7 +84,7 @@ pub struct X11Data {
     dmabuf_state: DmabufState,
     _dmabuf_global: DmabufGlobal,
     _dmabuf_default_feedback: DmabufFeedback,
-    #[cfg(feature = "debug")]
+    #[cfg(feature = "fps_ticker")]
     fps: fps_ticker::Fps,
 }
 
@@ -128,7 +128,7 @@ impl Backend for X11Data {
     ) -> Option<SkiaTextureImage> {
         None
     }
-    fn renderer_context(&mut self) -> Option<layers::skia::gpu::DirectContext> {
+    fn renderer_context(&mut self) -> Option<lay_rs::skia::gpu::DirectContext> {
         None
     }
 }
@@ -248,14 +248,14 @@ pub fn run_x11() {
         refresh: 60_000,
     };
 
-    #[cfg(feature = "debug")]
+    #[cfg(feature = "fps_ticker")]
     let fps_image = image::io::Reader::with_format(
         std::io::Cursor::new(FPS_NUMBERS_PNG),
         image::ImageFormat::Png,
     )
     .decode()
     .unwrap();
-    #[cfg(feature = "debug")]
+    #[cfg(feature = "fps_ticker")]
     let fps_texture = renderer
         .import_memory(
             &fps_image.to_rgba8(),
@@ -264,7 +264,7 @@ pub fn run_x11() {
             false,
         )
         .expect("Unable to upload FPS texture");
-    #[cfg(feature = "debug")]
+    #[cfg(feature = "fps_ticker")]
     let mut fps_element = FpsElement::new(fps_texture);
     let output = Output::new(
         OUTPUT_NAME.to_string(),
@@ -290,7 +290,7 @@ pub fn run_x11() {
         dmabuf_state,
         _dmabuf_global: dmabuf_global,
         _dmabuf_default_feedback: dmabuf_default_feedback,
-        #[cfg(feature = "debug")]
+        #[cfg(feature = "fps_ticker")]
         fps: fps_ticker::Fps::default(),
     };
 
@@ -349,9 +349,9 @@ pub fn run_x11() {
             let backend_data = &mut state.backend_data;
             // We need to borrow everything we want to refer to inside the renderer callback otherwise rustc is unhappy.
             let cursor_status = &state.cursor_status;
-            #[cfg(feature = "debug")]
+            #[cfg(feature = "fps_ticker")]
             let fps = backend_data.fps.avg().round() as u32;
-            #[cfg(feature = "debug")]
+            #[cfg(feature = "fps_ticker")]
             fps_element.update_fps(fps);
 
             let (buffer, age) = backend_data
@@ -424,7 +424,7 @@ pub fn run_x11() {
             //     }
             // }
 
-            #[cfg(feature = "debug")]
+            #[cfg(feature = "fps_ticker")]
             elements.push(WorkspaceRenderElements::Fps(fps_element.clone()));
 
             let render_res = render_output(
@@ -515,7 +515,7 @@ pub fn run_x11() {
                 }
             }
 
-            #[cfg(feature = "debug")]
+            #[cfg(feature = "fps_ticker")]
             state.backend_data.fps.tick();
             window.set_cursor_visible(cursor_visible);
             profiling::finish_frame!();

@@ -26,7 +26,10 @@ use smithay::{
         calloop::EventLoop,
         wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
         wayland_server::{protocol::wl_surface, Display},
-        winit::{dpi::LogicalSize, dpi::Size, platform::pump_events::PumpStatus, window::WindowAttributes},
+        winit::{
+            dpi::LogicalSize, dpi::Size, platform::pump_events::PumpStatus,
+            window::WindowAttributes,
+        },
     },
     utils::{IsAlive, Transform},
     wayland::{
@@ -51,9 +54,8 @@ use crate::{
 #[cfg(feature = "debug")]
 use smithay::{
     backend::{allocator::Fourcc, renderer::ImportMem},
-    reexports::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle}
+    reexports::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle},
 };
-
 
 pub const OUTPUT_NAME: &str = "winit";
 
@@ -62,7 +64,7 @@ pub struct WinitData {
     damage_tracker: OutputDamageTracker,
     dmabuf_state: (DmabufState, DmabufGlobal, Option<DmabufFeedback>),
     full_redraw: u8,
-    #[cfg(feature = "debug")]
+    #[cfg(feature = "fps_ticker")]
     pub fps: fps_ticker::Fps,
 }
 
@@ -104,13 +106,16 @@ impl Backend for WinitData {
             let _ = import_surface(self.backend.renderer(), states);
         });
     }
-    fn texture_for_surface(&self, render_surface: &RendererSurfaceState) -> Option<SkiaTextureImage> {
+    fn texture_for_surface(
+        &self,
+        render_surface: &RendererSurfaceState,
+    ) -> Option<SkiaTextureImage> {
         let tex = render_surface.texture::<SkiaRenderer>(99);
         tex.map(|t| t.clone().into())
     }
     fn set_cursor(&mut self, _image: &CursorImageStatus) {}
-    fn renderer_context(&mut self) -> Option<layers::skia::gpu::DirectContext> {
-        let r= self.backend.renderer();
+    fn renderer_context(&mut self) -> Option<lay_rs::skia::gpu::DirectContext> {
+        let r = self.backend.renderer();
         r.context.clone()
     }
 }
@@ -164,14 +169,14 @@ pub fn run_winit() {
     );
     output.set_preferred(mode);
 
-    #[cfg(feature = "debug")]
+    #[cfg(feature = "fps_ticker")]
     let fps_image = image::io::Reader::with_format(
         std::io::Cursor::new(FPS_NUMBERS_PNG),
         image::ImageFormat::Png,
     )
     .decode()
     .unwrap();
-    #[cfg(feature = "debug")]
+    #[cfg(feature = "fps_ticker")]
     let fps_texture = backend
         .renderer()
         .import_memory(
@@ -181,7 +186,7 @@ pub fn run_winit() {
             false,
         )
         .expect("Unable to upload FPS texture");
-    #[cfg(feature = "debug")]
+    #[cfg(feature = "fps_ticker")]
     let mut fps_element = FpsElement::new(fps_texture);
 
     let render_node = EGLDevice::device_for_display(backend.renderer().egl_context().display())
@@ -240,7 +245,7 @@ pub fn run_winit() {
             damage_tracker,
             dmabuf_state,
             full_redraw: 0,
-            #[cfg(feature = "debug")]
+            #[cfg(feature = "fps_ticker")]
             fps: fps_ticker::Fps::default(),
         }
     };
@@ -252,7 +257,7 @@ pub fn run_winit() {
         .layers_engine
         .set_scene_size(scene_size.w as f32, scene_size.h as f32);
     root.layer.set_size(
-        layers::types::Size::points(scene_size.w as f32, scene_size.h as f32),
+        lay_rs::types::Size::points(scene_size.w as f32, scene_size.h as f32),
         None,
     );
 
@@ -273,7 +278,7 @@ pub fn run_winit() {
         #[cfg(feature = "profile-with-puffin")]
         profiling::puffin::GlobalProfiler::lock().new_frame();
 
-        #[cfg(feature = "debug")]
+        #[cfg(feature = "fps_ticker")]
         state.backend_data.fps.tick();
 
         {
@@ -306,9 +311,9 @@ pub fn run_winit() {
                 output.set_preferred(mode);
                 crate::shell::fixup_positions(&mut state.space, state.pointer.current_location());
                 state.scene_element.set_size(size.w as f32, size.h as f32);
-                state.workspace.set_size(size.w as f32, size.h as f32);
+                state.workspaces.set_size(size.w as f32, size.h as f32);
                 root.layer.set_size(
-                    layers::types::Size::points(size.w as f32, size.h as f32),
+                    lay_rs::types::Size::points(size.w as f32, size.h as f32),
                     None,
                 );
             }
@@ -346,9 +351,9 @@ pub fn run_winit() {
 
             pointer_element.set_status(cursor_guard.clone());
 
-            #[cfg(feature = "debug")]
+            #[cfg(feature = "fps_ticker")]
             let fps = state.backend_data.fps.avg().round() as u32;
-            #[cfg(feature = "debug")]
+            #[cfg(feature = "fps_ticker")]
             fps_element.update_fps(fps);
 
             let full_redraw = &mut state.backend_data.full_redraw;
@@ -456,7 +461,7 @@ pub fn run_winit() {
                     (cursor_rescale).into(),
                     1.0,
                 ));
-                #[cfg(feature = "debug")]
+                #[cfg(feature = "fps_ticker")]
                 elements.push(WorkspaceRenderElements::Fps(fps_element.clone()));
 
                 let scene_element = state.scene_element.clone();

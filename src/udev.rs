@@ -26,7 +26,7 @@ use crate::{
 use smithay::backend::drm::compositor::PrimaryPlaneElement;
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;
-#[cfg(feature = "debug")]
+#[cfg(feature = "fps_ticker")]
 use smithay::backend::renderer::ImportMem;
 use smithay::{
     backend::{
@@ -141,7 +141,7 @@ pub struct UdevData {
     backends: HashMap<DrmNode, BackendData>,
     pointer_images: Vec<(xcursor::parser::Image, TextureBuffer<MultiTexture>)>,
     pointer_element: PointerElement<MultiTexture>,
-    #[cfg(feature = "debug")]
+    #[cfg(feature = "fps_ticker")]
     fps_texture: Option<MultiTexture>,
     debug_flags: DebugFlags,
     cursor_manager: Cursor,
@@ -223,7 +223,7 @@ impl Backend for UdevData {
         if let Some(multitexture) = tex {
             let texture =
                 multitexture.get::<GbmGlesBackend<SkiaRenderer, DrmDeviceFd>>(&self.primary_gpu);
-            if let Some(texture) = texture {        
+            if let Some(texture) = texture {
                 return Some(texture.into());
             }
         }
@@ -234,7 +234,7 @@ impl Backend for UdevData {
             self.cursor_manager.load_icon(image.name());
         }
     }
-    fn renderer_context(&mut self) -> Option<layers::skia::gpu::DirectContext> {
+    fn renderer_context(&mut self) -> Option<lay_rs::skia::gpu::DirectContext> {
         let r = self.gpus.single_renderer(&self.primary_gpu).unwrap();
         let r = r.as_ref();
         r.context.clone()
@@ -293,7 +293,7 @@ pub fn run_udev() {
         backends: HashMap::new(),
         pointer_images: Vec::new(),
         pointer_element: PointerElement::default(),
-        #[cfg(feature = "debug")]
+        #[cfg(feature = "fps_ticker")]
         fps_texture: None,
         debug_flags: DebugFlags::empty(),
         cursor_manager: Cursor::load(),
@@ -403,7 +403,7 @@ pub fn run_udev() {
         .single_renderer(&primary_gpu)
         .unwrap();
 
-    #[cfg(feature = "debug")]
+    #[cfg(feature = "fps_ticker")]
     {
         let fps_image = image::io::Reader::with_format(
             std::io::Cursor::new(FPS_NUMBERS_PNG),
@@ -774,9 +774,9 @@ struct SurfaceData {
     render_node: DrmNode,
     global: Option<GlobalId>,
     compositor: SurfaceComposition,
-    #[cfg(feature = "debug")]
+    #[cfg(feature = "fps_ticker")]
     fps: fps_ticker::Fps,
-    #[cfg(feature = "debug")]
+    #[cfg(feature = "fps_ticker")]
     fps_element: Option<FpsElement<MultiTexture>>,
     dmabuf_feedback: Option<DrmSurfaceDmabufFeedback>,
 }
@@ -1056,11 +1056,11 @@ impl ScreenComposer<UdevData> {
             let root = self.scene_element.root_layer().unwrap();
             let w = wl_mode.size.w as f32;
             let h = wl_mode.size.h as f32;
-            let scene_size = layers::types::Size::points(w, h);
+            let scene_size = lay_rs::types::Size::points(w, h);
             root.layer.set_size(scene_size, None);
             self.scene_element.set_size(w, h);
             self.layers_engine.set_scene_size(w, h);
-            self.workspace.set_size(w, h);
+            self.workspaces.set_size(w, h);
             let global = output.create_global::<ScreenComposer<UdevData>>(&self.display_handle);
 
             let x = self.space.outputs().fold(0, |acc, o| {
@@ -1082,7 +1082,7 @@ impl ScreenComposer<UdevData> {
                 device_id: node,
             });
 
-            #[cfg(feature = "debug")]
+            #[cfg(feature = "fps_ticker")]
             let fps_element = self.backend_data.fps_texture.clone().map(FpsElement::new);
 
             let allocator = GbmAllocator::new(
@@ -1174,9 +1174,9 @@ impl ScreenComposer<UdevData> {
                 render_node: device.render_node,
                 global: Some(global),
                 compositor,
-                #[cfg(feature = "debug")]
+                #[cfg(feature = "fps_ticker")]
                 fps: fps_ticker::Fps::default(),
-                #[cfg(feature = "debug")]
+                #[cfg(feature = "fps_ticker")]
                 fps_element,
                 dmabuf_feedback,
             };
@@ -1813,7 +1813,7 @@ fn render_surface<'a, 'b>(
         // }
     }
 
-    #[cfg(feature = "debug")]
+    #[cfg(feature = "fps_ticker")]
     if let Some(element) = surface.fps_element.as_mut() {
         element.update_fps(surface.fps.avg().round() as u32);
         surface.fps.tick();

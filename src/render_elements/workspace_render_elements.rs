@@ -7,14 +7,11 @@ use smithay::{
     utils::{Physical, Rectangle, Scale},
 };
 
-use crate::{
-    drawing::PointerRenderElement,
-    skia_renderer::SkiaFrame,
-};
+use crate::{drawing::PointerRenderElement, skia_renderer::SkiaFrame};
 
 use super::{scene_element::SceneElement, skia_element::SkiaElement};
 
-#[cfg(feature = "debug")]
+#[cfg(feature = "fps_ticker")]
 use crate::drawing::FpsElement;
 
 smithay::backend::renderer::element::render_elements! {
@@ -28,7 +25,7 @@ smithay::backend::renderer::element::render_elements! {
     Scene=SceneElement,
     // this is needed to make the macro work with a lifetime specifier in the where clauses
     PhantomElement=PhantomElement<'a>,
-    #[cfg(feature = "debug")]
+    #[cfg(feature = "fps_ticker")]
     Fps=FpsElement<<R as smithay::backend::renderer::Renderer>::TextureId>,
 }
 

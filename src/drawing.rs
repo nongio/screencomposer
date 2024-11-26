@@ -13,7 +13,7 @@ use smithay::{
     render_elements,
     utils::{Physical, Point, Scale},
 };
-#[cfg(feature = "debug")]
+#[cfg(feature = "fps_ticker")]
 use smithay::{
     backend::renderer::{
         element::{Element, Id, RenderElement},
@@ -129,10 +129,10 @@ where
     }
 }
 
-#[cfg(feature = "debug")]
+#[cfg(feature = "fps_ticker")]
 pub static FPS_NUMBERS_PNG: &[u8] = include_bytes!("../resources/numbers.png");
 
-#[cfg(feature = "debug")]
+#[cfg(feature = "fps_ticker")]
 #[derive(Debug, Clone)]
 pub struct FpsElement<T: Texture> {
     id: Id,
@@ -141,7 +141,7 @@ pub struct FpsElement<T: Texture> {
     commit_counter: CommitCounter,
 }
 
-#[cfg(feature = "debug")]
+#[cfg(feature = "fps_ticker")]
 impl<T: Texture> FpsElement<T> {
     pub fn new(texture: T) -> Self {
         FpsElement {
@@ -160,7 +160,7 @@ impl<T: Texture> FpsElement<T> {
     }
 }
 
-#[cfg(feature = "debug")]
+#[cfg(feature = "fps_ticker")]
 impl<T> Element for FpsElement<T>
 where
     T: Texture + 'static,
@@ -200,7 +200,7 @@ where
     }
 }
 
-#[cfg(feature = "debug")]
+#[cfg(feature = "fps_ticker")]
 impl<R> RenderElement<R> for FpsElement<<R as Renderer>::TextureId>
 where
     R: Renderer + ImportAll,
