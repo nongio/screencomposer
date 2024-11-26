@@ -30,7 +30,7 @@ use crate::{
     interactive_view::InteractiveView,
     shell::WindowElement,
     state::{Backend, ScreenComposer},
-    workspace::{AppSwitcherView, DockView, WindowSelectorView},
+    workspaces::{AppSwitcherView, DockView, WindowSelectorView},
 };
 
 pub enum KeyboardFocusTarget<B: Backend> {
@@ -675,11 +675,11 @@ impl<B: Backend> From<KeyboardFocusTarget<B>> for PointerFocusTarget<B> {
         PointerFocusTarget::from(&*k.wl_surface().unwrap())
     }
 }
-impl<S: Hash + Clone + 'static, B: Backend> From<layers::prelude::View<S>> for PointerFocusTarget<B>
+impl<S: Hash + Clone + 'static, B: Backend> From<lay_rs::prelude::View<S>> for PointerFocusTarget<B>
 where
     std::sync::Arc<RwLock<S>>: Send + Sync,
 {
-    fn from(value: layers::prelude::View<S>) -> Self {
+    fn from(value: lay_rs::prelude::View<S>) -> Self {
         let view = value.clone();
         let d = InteractiveView {
             view: Box::new(view),
