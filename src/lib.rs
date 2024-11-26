@@ -28,3 +28,4 @@ mod workspace;
 
 mod config;
 mod utils;
+mod theme;

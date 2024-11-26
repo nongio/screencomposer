@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::theme::ThemeScheme;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub screen_scale: f64,
@@ -16,6 +18,7 @@ pub struct Config {
     pub genie_span: f64,
     pub keyboard_repeat_delay: i32,
     pub keyboard_repeat_rate: i32,
+    pub theme_scheme: ThemeScheme,
 }
 thread_local! {
     static CONFIG: Config = Config::init();
@@ -38,6 +41,7 @@ impl Default for Config {
             genie_span: 10.0,
             keyboard_repeat_delay: 300,
             keyboard_repeat_rate: 30,
+            theme_scheme: ThemeScheme::Light,
         }
     }
 }
@@ -50,22 +54,6 @@ impl Config {
             Ok(content) => toml::from_str(&content).unwrap(),
             Err(_) => Self::default(),
         };
-        // let config = Self {
-        //     screen_scale: 2.0,
-        //     cursor_theme: "Notwaita-Black".to_string(),
-        //     cursor_size: 24,
-        //     natural_scroll: true,
-        //     terminal_bin: "kitty".to_string(),
-        //     file_manager_bin: "dolphin".to_string(),
-        //     browser_bin: "firefox".to_string(),
-        //     browser_args: vec!["".to_string()],
-        //     compositor_mode: "drm".to_string(),
-        //     font_family: "Inter".to_string(),
-        //     genie_scale: 0.5,
-        //     genie_span: 10.0,
-        //     keyboard_repeat_delay: 300,
-        //     keyboard_repeat_rate: 30,
-        // };
 
         let scaled_cursor_size = (config.cursor_size as f64) as u32;
         std::env::set_var("XCURSOR_SIZE", (scaled_cursor_size).to_string());
