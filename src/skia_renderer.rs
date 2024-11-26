@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use layers::skia as skia;
+use lay_rs::skia;
 
 use smithay::{
     backend::{
@@ -197,7 +197,7 @@ impl From<GlesRenderer> for SkiaRenderer {
         };
 
         let mut options = skia::gpu::ContextOptions::default();
-        options.skip_gl_error_checks = skia::gpu::context_options::Enable::Yes;
+        options.skip_gl_error_checks = skia::gpu::ganesh::context_options::Enable::Yes;
         // options.
         let interface = skia::gpu::gl::Interface::new_native().unwrap();
         let mut context = skia::gpu::direct_contexts::make_gl(interface, &options);
@@ -835,7 +835,7 @@ impl<'frame> Frame for SkiaFrame<'frame> {
         // Transmute flushinfo2 into flushinfo
         let info = unsafe {
             let native = &*(&info as *const FlushInfo2 as *const sb::GrFlushInfo);
-            &*(native as *const sb::GrFlushInfo as *const layers::skia::gpu::FlushInfo)
+            &*(native as *const sb::GrFlushInfo as *const lay_rs::skia::gpu::FlushInfo)
         };
 
         FINISHED_PROC_STATE.store(false, Ordering::SeqCst);
@@ -874,7 +874,7 @@ impl<'frame> Frame for SkiaFrame<'frame> {
 
 // this is a "hack" to expose finished_proc and submitted_proc
 // until a PR is made to skia-bindings
-use layers::sb as sb;
+use lay_rs::sb;
 
 #[repr(C)]
 #[allow(dead_code)]

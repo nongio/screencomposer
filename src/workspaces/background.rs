@@ -1,9 +1,6 @@
 use std::hash::{Hash, Hasher};
 
-use layers::{
-    skia,
-    prelude::*
-};
+use lay_rs::{prelude::*, skia};
 
 use crate::utils::Observer;
 
@@ -24,8 +21,8 @@ impl Hash for BackgroundViewState {
 }
 
 pub struct BackgroundView {
-    // engine: layers::prelude::LayersEngine,
-    pub view: layers::prelude::View<BackgroundViewState>,
+    // engine: lay_rs::prelude::LayersEngine,
+    pub view: lay_rs::prelude::View<BackgroundViewState>,
     // pub state: RwLock<BackgroundViewState>,
 }
 
@@ -35,7 +32,7 @@ impl BackgroundView {
             image: None,
             debug_string: "Screen composer 0.1".to_string(),
         };
-        let view = layers::prelude::View::new("background_view", state, Box::new(view_background));
+        let view = lay_rs::prelude::View::new("background_view", state, Box::new(view_background));
         view.mount_layer(layer);
         Self {
             // engine: layers_engine,
@@ -74,9 +71,18 @@ pub fn view_background(
 
         if let Some(image) = image.as_ref() {
             let mut matrix = skia::Matrix::new_identity();
-            matrix.set_scale((w / image.width() as f32, h / image.height() as f32), None);
-            // canvas.concat(&matrix);
-            // canvas.draw_image_rect(image, None, rect, &paint);
+            let image_width = image.width() as f32;
+            let image_height = image.height() as f32;
+            let scale_x: f32 = w / image_width;
+            let scale_y: f32 = h / image_height;
+            let scale = scale_x.max(scale_y); // Choose the smaller scale to maintain aspect ratio
+
+            // Calculate the offsets for centering the image
+            let offset_x = (w - image_width * scale) / 2.0;
+            let offset_y = (h - image_height * scale) / 2.0;
+
+            matrix.set_scale_translate((scale, scale), (offset_x, offset_y)); // canvas.concat(&matrix);
+                                                                              // canvas.draw_image_rect(image, None, rect, &paint);
             paint.set_shader(image.to_shader(
                 (skia::TileMode::Repeat, skia::TileMode::Repeat),
                 skia::SamplingOptions::default(),
@@ -122,7 +128,7 @@ pub fn view_background(
         .border_corner_radius(BorderRadius::new_single(24.0))
         .content(Some(draw_container))
         .image_cache(true)
-        .background_color(layers::prelude::Color::new_rgba(0.0, 0.0, 0.0, 1.0))
+        .background_color(lay_rs::prelude::Color::new_rgba(0.0, 0.0, 0.0, 1.0))
         .pointer_events(false)
         .build()
         .unwrap()

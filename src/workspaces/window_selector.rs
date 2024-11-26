@@ -1,7 +1,4 @@
-use layers::{
-    skia,
-    prelude::*
-};
+use lay_rs::{prelude::*, skia};
 use smithay::input::pointer::{CursorIcon, CursorImageStatus};
 use std::hash::{Hash, Hasher};
 
@@ -65,21 +62,18 @@ impl<F: Fn(usize) + Send + Sync + 'static> From<F> for HandlerFunction {
 
 #[derive(Clone)]
 pub struct WindowSelectorView {
-    pub layer: layers::prelude::Layer,
-    pub view: layers::prelude::View<WindowSelectorState>,
+    pub layer: lay_rs::prelude::Layer,
+    pub view: lay_rs::prelude::View<WindowSelectorState>,
 }
 
 impl WindowSelectorView {
-    pub fn new(
-        layers_engine: LayersEngine,
-        _cursor_handler: std::sync::Arc<std::sync::Mutex<CursorImageStatus>>,
-    ) -> Self {
+    pub fn new(layers_engine: LayersEngine) -> Self {
         let layer = layers_engine.new_layer();
         layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
-        layer.set_size(layers::types::Size::percent(1.0, 1.0), None);
+        layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
         layer.set_pointer_events(false);
         layers_engine.scene_add_layer(layer.clone());
 
@@ -87,7 +81,7 @@ impl WindowSelectorView {
             rects: vec![],
             current_selection: None,
         };
-        let view = layers::prelude::View::new("window_selector_view", state, view_window_selector);
+        let view = lay_rs::prelude::View::new("window_selector_view", state, view_window_selector);
         view.mount_layer(layer.clone());
         Self { view, layer }
     }
@@ -106,7 +100,8 @@ pub fn get_paragraph_for_text(text: &str, font_size: f32) -> skia::textlayout::P
     text_style.set_letter_spacing(-1.0);
     let foreground_paint = skia::Paint::new(skia::Color4f::new(0.1, 0.1, 0.1, 0.9), None);
     text_style.set_foreground_paint(&foreground_paint);
-    text_style.set_font_families(&["Inter"]);
+    let ff = Config::with(|c| c.font_family.clone());
+    text_style.set_font_families(&[ff]);
 
     let mut paragraph_style = skia::textlayout::ParagraphStyle::new();
     paragraph_style.set_text_style(&text_style);
@@ -169,7 +164,8 @@ pub fn view_window_selector(
                     window_selection.y,
                     window_selection.w,
                     window_selection.h,
-                ).with_outset((draw_scale * 6.0, draw_scale * 6.0)),
+                )
+                .with_outset((draw_scale * 6.0, draw_scale * 6.0)),
                 10.0 * draw_scale,
                 10.0 * draw_scale,
             );
@@ -187,7 +183,7 @@ pub fn view_window_selector(
         .as_ref()
         .map(|(rect, bb)| (rect.clone(), *bb))
         .unwrap_or((WindowSelection::default(), skia::Rect::new_empty()));
-    let text_layer_size = layers::types::Size::points(
+    let text_layer_size = lay_rs::types::Size::points(
         if text_bounding_box.width() == 0.0 {
             0.0
         } else {
@@ -202,7 +198,7 @@ pub fn view_window_selector(
     LayerTreeBuilder::default()
         .key("window_selector_view")
         .position(((0.0, 0.0).into(), None))
-        .size((layers::types::Size::percent(1.0, 1.0), None))
+        .size((lay_rs::types::Size::percent(1.0, 1.0), None))
         .content(draw_container)
         .children(vec![LayerTreeBuilder::default()
             .key("window_selector_label")
@@ -219,7 +215,7 @@ pub fn view_window_selector(
                 None,
             ))
             .size((text_layer_size, None))
-            .blend_mode(layers::prelude::BlendMode::BackgroundBlur)
+            .blend_mode(lay_rs::prelude::BlendMode::BackgroundBlur)
             .border_corner_radius((BorderRadius::new_single(10.0 * draw_scale), None))
             .background_color((
                 PaintColor::Solid {
@@ -314,10 +310,11 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
         let selector_state = self.view.get_state();
         if let Some(index) = selector_state.current_selection {
             let oid = screencomposer
-                .workspace
+                .workspaces
+                // .get_current_workspace()
                 .with_model(|model| model.windows_list.get(index).unwrap().clone());
 
-            if let Some(window_view) = screencomposer.workspace.get_window_view(&oid) {
+            if let Some(window_view) = screencomposer.workspaces.get_window_view(&oid) {
                 screencomposer.raise_element(&window_view.window, true, Some(event.serial), false);
             }
         }

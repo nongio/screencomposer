@@ -1,6 +1,6 @@
 use std::hash::{Hash, Hasher};
 
-use crate::workspace::Application;
+use crate::workspaces::Application;
 
 #[derive(Debug, Clone, Default)]
 pub struct AppSwitcherModel {

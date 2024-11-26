@@ -12,7 +12,8 @@ use crate::udev::UdevData;
 
 use smithay::{
     backend::input::{
-        self, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent
+        self, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent, KeyState,
+        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
     },
     desktop::{layer_map_for_output, WindowSurfaceType},
     input::{
@@ -238,10 +239,9 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
         if KeyState::Released == state && keycode == 56 {
             // App switcher
-            if self.workspace.app_switcher.alive() {
-                
-                self.workspace.app_switcher.hide();
-                if let Some(app) = self.workspace.app_switcher.get_current_app() {
+            if self.workspaces.app_switcher.alive() {
+                self.workspaces.app_switcher.hide();
+                if let Some(app) = self.workspaces.app_switcher.get_current_app() {
                     self.raise_app_elements(&app.identifier, true, Some(serial));
                 }
             }
@@ -257,7 +257,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
         let state = wl_pointer::ButtonState::from(evt.state());
 
-        if !self.workspace.get_show_all() && wl_pointer::ButtonState::Pressed == state {
+        if !self.workspaces.get_show_all() && wl_pointer::ButtonState::Pressed == state {
             // this is messing with the window selector
             self.update_keyboard_focus(serial);
         }
@@ -276,12 +276,12 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         match button_state {
             ButtonState::Pressed => {
                 self.layers_engine.pointer_button_down();
-            },
+            }
             ButtonState::Released => {
                 self.layers_engine.pointer_button_up();
             }
         }
-        
+
         // }
     }
 
@@ -342,33 +342,39 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                     }
                 }
             }
-            let scale = output.as_ref().map(|o| o.current_scale().fractional_scale()).unwrap_or(1.0);
+            let scale = output
+                .as_ref()
+                .map(|o| o.current_scale().fractional_scale())
+                .unwrap_or(1.0);
             let position = self.pointer.current_location();
             let scaled_position = position.to_physical(scale);
-            if !self.workspace.is_cursor_over_dock(scaled_position.x as f32, scaled_position.y as f32) {
-                    let window_under = self
-                        .space
-                        .element_under(position)
-                        .map(|(w, p)| (w.clone(), p));
-                    
-                    if let Some((window, _)) = window_under {
-                        if let Some(id) = window.wl_surface().as_ref().map(|s|s.id()) {
-                            if let Some(w) = self.workspace.get_window_for_surface(&id) {
-                                if w.is_minimized {
-                                    return;
-                                }
+            if !self
+                .workspaces
+                .is_cursor_over_dock(scaled_position.x as f32, scaled_position.y as f32)
+            {
+                let window_under = self
+                    .space
+                    .element_under(position)
+                    .map(|(w, p)| (w.clone(), p));
+
+                if let Some((window, _)) = window_under {
+                    if let Some(id) = window.wl_surface().as_ref().map(|s| s.id()) {
+                        if let Some(w) = self.workspaces.get_window_for_surface(&id) {
+                            if w.is_minimized {
+                                return;
                             }
                         }
-                        
-                        self.raise_app_element(&window, true, Some(serial));
-        
-                        #[cfg(feature = "xwayland")]
-                        if let WindowSurface::X11(surf) = &window.underlying_surface() {
-                            self.xwm.as_mut().unwrap().raise_window(surf).unwrap();
-                        }
-                        return;
                     }
+
+                    self.raise_app_element(&window, true, Some(serial));
+
+                    #[cfg(feature = "xwayland")]
+                    if let WindowSurface::X11(surf) = &window.underlying_surface() {
+                        self.xwm.as_mut().unwrap().raise_window(surf).unwrap();
+                    }
+                    return;
                 }
+            }
 
             if let Some(output) = output.as_ref() {
                 let output_geo = self.space.output_geometry(output).unwrap();
@@ -409,14 +415,32 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         let mut under = None;
 
         // App switcher check
-        if self.workspace.app_switcher.alive() {
-            let focus = self.workspace.app_switcher.as_ref().clone().into();
+        if self.workspaces.app_switcher.alive() {
+            let focus = self.workspaces.app_switcher.as_ref().clone().into();
             return Some((focus, (0.0, 0.0).into()));
         }
         // Window selector check
-        if self.workspace.get_show_all() {
-            let focus = self.workspace.window_selector_view.as_ref().clone().into();
-            let position = self.workspace.window_selector_view.layer.render_position();
+        if self.workspaces.get_show_all() {
+            // TODO fix window selection
+            // let focus = self.workspaces.window_selector_view.as_ref().clone().into();
+            // let position = self.workspaces.window_selector_view.layer.render_position();
+
+            // return Some((focus, (position.x as f64, position.y as f64).into()));
+        }
+        // Workspace selector
+        if self.workspaces.get_show_all() {
+            // TODO fix window selection
+            let focus = self
+                .workspaces
+                .workspace_selector_view
+                .as_ref()
+                .clone()
+                .into();
+            let position = self
+                .workspaces
+                .workspace_selector_view
+                .layer
+                .render_position();
 
             return Some((focus, (position.x as f64, position.y as f64).into()));
         }
@@ -431,14 +455,19 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             .layer_under(WlrLayer::Overlay, pos)
             .or_else(|| layers.layer_under(WlrLayer::Top, pos))
         {
+            // WLR Layer
             let layer_loc = layers.layer_geometry(layer).unwrap().loc;
             under = Some((layer.clone().into(), output_geo.loc + layer_loc))
-        } else if self.workspace.is_cursor_over_dock(physical_pos.x as f32, physical_pos.y as f32) {
-            under = Some((self.workspace.dock.as_ref().clone().into(), (0, 0).into()));
+        } else if self
+            .workspaces
+            .is_cursor_over_dock(physical_pos.x as f32, physical_pos.y as f32)
+        {
+            // Dock
+            under = Some((self.workspaces.dock.as_ref().clone().into(), (0, 0).into()));
         } else if let Some((focus, location)) =
             self.space.element_under(pos).and_then(|(window, loc)| {
-                if let Some(id) = window.wl_surface().as_ref().map(|s|s.id()) {
-                    if let Some(w) = self.workspace.get_window_for_surface(&id) {
+                if let Some(id) = window.wl_surface().as_ref().map(|s| s.id()) {
+                    if let Some(w) = self.workspaces.get_window_for_surface(&id) {
                         if w.is_minimized {
                             return None;
                         }
@@ -575,31 +604,35 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     self.backend_data.reset_buffers(&output);
                 }
                 KeyAction::ApplicationSwitchNext => {
-                    self.workspace.app_switcher.next();
+                    self.workspaces.app_switcher.next();
                 }
                 KeyAction::ApplicationSwitchPrev => {
-                    self.workspace.app_switcher.previous();
+                    self.workspaces.app_switcher.previous();
                 }
                 KeyAction::ApplicationSwitchQuit => {
-                    self.workspace.quit_appswitcher_app();
+                    self.workspaces.quit_appswitcher_app();
                 }
                 KeyAction::ApplicationSwitchNextWindow => {
                     self.raise_next_app_window(Some(SCOUNTER.next_serial()));
                 }
                 KeyAction::ExposeShowDesktop => {
-                    if self.workspace.get_show_desktop() {
+                    if self.workspaces.get_show_desktop() {
                         self.expose_show_desktop(-1.0, true);
                     } else {
                         self.expose_show_desktop(1.0, true);
                     }
                 }
                 KeyAction::ExposeShowAll => {
-                    if self.workspace.get_show_all() {
+                    if self.workspaces.get_show_all() {
                         self.expose_show_all(-1.0, true);
                     } else {
                         self.expose_show_all(1.0, true);
                     }
                 }
+                KeyAction::WorkspaceNum(n) => {
+                    self.set_workspace_number(n);
+                }
+
                 action => match action {
                     KeyAction::None
                     | KeyAction::Quit
@@ -655,7 +688,8 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
 
         let scale = output.current_scale().fractional_scale();
         let pos = pos.to_physical(scale);
-        self.layers_engine.pointer_move((pos.x as f32, pos.y as f32), None);
+        self.layers_engine
+            .pointer_move((pos.x as f32, pos.y as f32), None);
     }
 
     pub fn release_all_keys(&mut self) {
@@ -830,26 +864,26 @@ impl ScreenComposer<UdevData> {
                     }
                 }
                 KeyAction::ApplicationSwitchNext => {
-                    self.workspace.app_switcher.next();
+                    self.workspaces.app_switcher.next();
                 }
                 KeyAction::ApplicationSwitchPrev => {
-                    self.workspace.app_switcher.previous();
+                    self.workspaces.app_switcher.previous();
                 }
                 KeyAction::ApplicationSwitchNextWindow => {
                     self.raise_next_app_window(Some(SCOUNTER.next_serial()));
                 }
                 KeyAction::ApplicationSwitchQuit => {
-                    self.workspace.quit_appswitcher_app();
+                    self.workspaces.quit_appswitcher_app();
                 }
                 KeyAction::ExposeShowDesktop => {
-                    if self.workspace.get_show_desktop() {
+                    if self.workspaces.get_show_desktop() {
                         self.expose_show_desktop(-1.0, true);
                     } else {
                         self.expose_show_desktop(1.0, true);
                     }
                 }
                 KeyAction::ExposeShowAll => {
-                    if self.workspace.get_show_all() {
+                    if self.workspaces.get_show_all() {
                         self.expose_show_all(-1.0, true);
                     } else {
                         self.expose_show_all(1.0, true);
@@ -1009,7 +1043,8 @@ impl ScreenComposer<UdevData> {
         let scale = Config::with(|c| c.screen_scale);
         let pos = pointer_location.to_physical(scale);
 
-        self.layers_engine.pointer_move((pos.x as f32, pos.y as f32), None);
+        self.layers_engine
+            .pointer_move((pos.x as f32, pos.y as f32), None);
 
         // If pointer is now in a constraint region, activate it
         // TODO Anywhere else pointer is moved needs to do this
@@ -1297,7 +1332,7 @@ impl ScreenComposer<UdevData> {
         //     delta -= 1.0;
         // }
 
-        // self.pinch_gesture = layers::types::Point {
+        // self.pinch_gesture = lay_rs::types::Point {
         //     x: delta,//(self.pinch_gesture.x - delta),
         //     y: delta,//(self.pinch_gesture.y - delta),
         // };
@@ -1410,6 +1445,7 @@ enum KeyAction {
     ApplicationSwitchNextWindow,
     ExposeShowDesktop,
     ExposeShowAll,
+    WorkspaceNum(usize),
     /// Do nothing more
     None,
 }
@@ -1461,6 +1497,10 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::ExposeShowDesktop)
     } else if modifiers.alt && keysym == Keysym::f {
         Some(KeyAction::ExposeShowAll)
+    } else if (xkb::KEY_1..=xkb::KEY_9).contains(&keysym.raw()) {
+        Some(KeyAction::WorkspaceNum(
+            (keysym.raw() - xkb::KEY_1) as usize,
+        ))
     } else {
         None
     }

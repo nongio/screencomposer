@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use smithay::reexports::wayland_server::{backend::ObjectId, Resource};
 
-use crate::workspace::Window;
+use crate::workspaces::Window;
 
 trait LayoutBoundingBox {
     fn bounding_box(&self) -> LayoutRect;
@@ -15,8 +15,8 @@ impl LayoutBoundingBox for Window {
     }
 }
 
-const WINDOW_PLACEMENT_NATURAL_ACCURACY: f32 = 20.0;
-const WINDOW_PLACEMENT_NATURAL_GAPS: f32 = 10.0;
+const WINDOW_PLACEMENT_NATURAL_ACCURACY: f32 = 10.0;
+const WINDOW_PLACEMENT_NATURAL_GAPS: f32 = 20.0;
 const WINDOW_PLACEMENT_NATURAL_MAX_TRANSLATIONS: usize = 5000;
 
 #[derive(Clone)]

@@ -1,4 +1,4 @@
-use layers::{prelude::*, types::Size};
+use lay_rs::{prelude::*, types::Size};
 
 use crate::config::Config;
 
@@ -13,52 +13,46 @@ pub fn view_window_shadow(
     let h = state.h;
     const SAFE_AREA: f32 = 100.0;
     let draw_scale = Config::with(|config| config.screen_scale) as f32;
-    let draw_shadow = move |canvas: &layers::skia::Canvas, w: f32, h: f32| {
+    let draw_shadow = move |canvas: &lay_rs::skia::Canvas, w: f32, h: f32| {
         // draw shadow
         let window_corner_radius = 24.0 * draw_scale;
-        let rect = layers::skia::Rect::from_xywh(
+        let rect = lay_rs::skia::Rect::from_xywh(
             SAFE_AREA,
             SAFE_AREA,
             w - SAFE_AREA * 2.0,
             h - SAFE_AREA * 2.0,
         );
 
-        let rrect = layers::skia::RRect::new_rect_xy(
-            rect,
-            window_corner_radius,
-            window_corner_radius,
-        );
-        canvas.clip_rrect(rrect, layers::skia::ClipOp::Difference, false);
-        
+        let rrect =
+            lay_rs::skia::RRect::new_rect_xy(rect, window_corner_radius, window_corner_radius);
+        canvas.clip_rrect(rrect, lay_rs::skia::ClipOp::Difference, false);
+
         let mut shadow_paint =
-            layers::skia::Paint::new(layers::skia::Color4f::new(0.0, 0.0, 0.0, 0.25), None);
-        shadow_paint.set_mask_filter(layers::skia::MaskFilter::blur(
-            layers::skia::BlurStyle::Normal,
+            lay_rs::skia::Paint::new(lay_rs::skia::Color4f::new(0.0, 0.0, 0.0, 0.25), None);
+        shadow_paint.set_mask_filter(lay_rs::skia::MaskFilter::blur(
+            lay_rs::skia::BlurStyle::Normal,
             3.0,
             false,
         ));
         canvas.draw_rrect(rrect, &shadow_paint);
 
-        let rect = layers::skia::Rect::from_xywh(
+        let rect = lay_rs::skia::Rect::from_xywh(
             SAFE_AREA,
             SAFE_AREA + 20.0 * draw_scale,
             w - SAFE_AREA * 2.0,
             h - SAFE_AREA * 2.0,
         );
-        let rrect = layers::skia::RRect::new_rect_xy(
-            rect,
-            window_corner_radius,
-            window_corner_radius,
-        );
-        shadow_paint.set_mask_filter(layers::skia::MaskFilter::blur(
-            layers::skia::BlurStyle::Normal,
+        let rrect =
+            lay_rs::skia::RRect::new_rect_xy(rect, window_corner_radius, window_corner_radius);
+        shadow_paint.set_mask_filter(lay_rs::skia::MaskFilter::blur(
+            lay_rs::skia::BlurStyle::Normal,
             30.0,
             false,
         ));
-        shadow_paint.set_color4f(layers::skia::Color4f::new(0.0, 0.0, 0.0, 0.7), None);
+        shadow_paint.set_color4f(lay_rs::skia::Color4f::new(0.0, 0.0, 0.0, 0.7), None);
 
         canvas.draw_rrect(rrect, &shadow_paint);
-        layers::skia::Rect::from_xywh(0.0, 0.0, w, h)
+        lay_rs::skia::Rect::from_xywh(0.0, 0.0, w, h)
     };
     LayerTreeBuilder::default()
         .key("window_shadow")

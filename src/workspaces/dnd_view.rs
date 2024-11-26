@@ -1,20 +1,20 @@
-use layers::{
+use lay_rs::{
     engine::{LayersEngine, NodeRef},
     prelude::taffy,
     types::Point,
     view::{RenderLayerTree, View},
 };
 
-use crate::workspace::utils::view_render_elements;
-use crate::workspace::WindowViewSurface;
+use crate::workspaces::utils::view_render_elements;
+use crate::workspaces::WindowViewSurface;
 
 #[derive(Clone)]
 pub struct DndView {
-    _engine: layers::prelude::LayersEngine,
-    pub view_content: layers::prelude::View<Vec<WindowViewSurface>>,
+    _engine: lay_rs::prelude::LayersEngine,
+    pub view_content: lay_rs::prelude::View<Vec<WindowViewSurface>>,
 
-    pub layer: layers::prelude::Layer,
-    pub content_layer: layers::prelude::Layer,
+    pub layer: lay_rs::prelude::Layer,
+    pub content_layer: lay_rs::prelude::Layer,
     _parent_layer_noderef: NodeRef,
     pub initial_position: Point,
 }

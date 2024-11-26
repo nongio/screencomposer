@@ -1,7 +1,7 @@
+mod effects;
 mod model;
 mod render;
 mod view;
-mod effects;
 
 pub use model::WindowViewBaseModel;
 pub use model::WindowViewSurface;

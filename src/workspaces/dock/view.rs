@@ -1,44 +1,49 @@
 use std::{
-    collections::{HashMap, HashSet}, sync::{atomic::AtomicBool, Arc, RwLock}, time::Duration
+    collections::{HashMap, HashSet},
+    sync::{atomic::AtomicBool, Arc, RwLock},
+    time::Duration,
 };
 
-use layers::{
-    engine::{
-        animation::Transition,
-        LayersEngine, NodeRef, TransactionRef,
-    }, 
-    prelude::{taffy, Color, Layer, Point}, 
-    skia, 
-    taffy::{prelude::FromLength, style::Style}, types::{BlendMode, PaintColor, Size}, view::{BuildLayerTree, LayerTreeBuilder}
+use lay_rs::{
+    engine::{animation::Transition, LayersEngine, NodeRef, TransactionRef},
+    prelude::{taffy, Color, Layer, Point},
+    skia,
+    taffy::{prelude::FromLength, style::Style},
+    types::{BlendMode, PaintColor, Size},
+    view::{BuildLayerTree, LayerTreeBuilder},
 };
 use smithay::utils::IsAlive;
 use tokio::sync::mpsc;
 
 use crate::{
     config::Config,
+    theme::theme_colors,
     utils::Observer,
-    workspace::{Application, Window, WorkspaceModel},
+    workspaces::{Application, Window, WorkspacesModel},
 };
 
-use super::{model::DockModel, render::{draw_app_icon, setup_app_icon, setup_label, setup_miniwindow_icon}};
+use super::{
+    model::DockModel,
+    render::{draw_app_icon, setup_app_icon, setup_label, setup_miniwindow_icon},
+};
 
 #[derive(Debug, Clone)]
 pub struct DockView {
     layers_engine: LayersEngine,
     // layers
-    pub wrap_layer: layers::prelude::Layer,
-    pub view_layer: layers::prelude::Layer,
-    bar_layer: layers::prelude::Layer,
-    pub resize_handle: layers::prelude::Layer,
-    dock_apps_container: layers::prelude::Layer,
-    dock_windows_container: layers::prelude::Layer,
+    pub wrap_layer: lay_rs::prelude::Layer,
+    pub view_layer: lay_rs::prelude::Layer,
+    bar_layer: lay_rs::prelude::Layer,
+    pub resize_handle: lay_rs::prelude::Layer,
+    dock_apps_container: lay_rs::prelude::Layer,
+    dock_windows_container: lay_rs::prelude::Layer,
 
     app_layers: Arc<RwLock<HashMap<String, (Layer, Layer, Layer)>>>,
     miniwindow_layers: Arc<RwLock<HashMap<Window, (Layer, Layer, Layer)>>>,
     state: Arc<RwLock<DockModel>>,
     active: Arc<AtomicBool>,
-    notify_tx: tokio::sync::mpsc::Sender<WorkspaceModel>,
-    latest_event: Arc<tokio::sync::RwLock<Option<WorkspaceModel>>>,
+    notify_tx: tokio::sync::mpsc::Sender<WorkspacesModel>,
+    latest_event: Arc<tokio::sync::RwLock<Option<WorkspacesModel>>>,
     magnification_position: Arc<RwLock<f32>>,
 }
 impl PartialEq for DockView {
@@ -60,8 +65,8 @@ impl DockView {
         wrap_layer.set_pointer_events(false);
         wrap_layer.set_size(Size::percent(1.0, 1.0), None);
         wrap_layer.set_layout_style(Style {
-            position: layers::taffy::style::Position::Absolute,
-            display: layers::taffy::style::Display::Flex,
+            position: lay_rs::taffy::style::Position::Absolute,
+            display: lay_rs::taffy::style::Display::Flex,
             justify_content: Some(taffy::JustifyContent::Center), // horizontal
             align_items: Some(taffy::AlignItems::FlexEnd),        // vertical alignment
             justify_items: Some(taffy::JustifyItems::Center),
@@ -76,29 +81,28 @@ impl DockView {
         // FIXME
         view_layer.set_position((0.0, 1000.0), None);
         let view_tree = LayerTreeBuilder::default()
-        .key("dock-view")
-        .size(Size::auto()) 
-        .layout_style(taffy::Style {
-            position: taffy::Position::Relative,
-            display: taffy::Display::Flex,
-            flex_direction: taffy::FlexDirection::Row,
-            justify_content: Some(taffy::JustifyContent::Center),
-            justify_items: Some(taffy::JustifyItems::Center),
-            align_items: Some(taffy::AlignItems::FlexEnd),
-            gap: taffy::Size::<taffy::LengthPercentage>::from_length(0.0),
-            padding: taffy::Rect {
-                top: taffy::length(20.0),
-                bottom: taffy::length(20.0),
-                right: taffy::length(10.0),
-                left: taffy::length(10.0),
-            },
-            ..Default::default()
-        })
-        .build()
-        .unwrap();
-        
-        view_layer.build_layer_tree(&view_tree);
+            .key("dock-view")
+            .size(Size::auto())
+            .layout_style(taffy::Style {
+                position: taffy::Position::Relative,
+                display: taffy::Display::Flex,
+                flex_direction: taffy::FlexDirection::Row,
+                justify_content: Some(taffy::JustifyContent::Center),
+                justify_items: Some(taffy::JustifyItems::Center),
+                align_items: Some(taffy::AlignItems::FlexEnd),
+                gap: taffy::Size::<taffy::LengthPercentage>::from_length(0.0),
+                padding: taffy::Rect {
+                    top: taffy::length(20.0),
+                    bottom: taffy::length(20.0),
+                    right: taffy::length(10.0),
+                    left: taffy::length(10.0),
+                },
+                ..Default::default()
+            })
+            .build()
+            .unwrap();
 
+        view_layer.build_layer_tree(&view_tree);
 
         let bar_layer = layers_engine.new_layer();
         view_layer.add_sublayer(bar_layer.clone());
@@ -106,15 +110,13 @@ impl DockView {
         let bar_tree = LayerTreeBuilder::default()
             .key("dock-bar")
             .pointer_events(false)
-            .size(Size{
+            .size(Size {
                 width: taffy::percent(1.0),
                 height: taffy::Dimension::Length(DOCK_BAR_HEIGHT * draw_scale),
             })
             .blend_mode(BlendMode::BackgroundBlur)
-            .background_color(PaintColor::Solid {
-                color:  Color::new_rgba(0.94, 0.94, 0.94, 0.44),
-            })
-            .border_width((2.5, None))
+            .background_color(theme_colors().materials_thin)
+            .border_width((3.0, None))
             .border_color(Color::new_rgba(1.0, 1.0, 1.0, 0.3))
             .shadow_color(Color::new_rgba(0.0, 0.0, 0.0, 0.2))
             .shadow_offset(((0.0, -5.0).into(), None))
@@ -122,7 +124,7 @@ impl DockView {
             .layout_style(taffy::Style {
                 position: taffy::Position::Absolute,
                 ..Default::default()
-            })  
+            })
             .build()
             .unwrap();
 
@@ -143,7 +145,6 @@ impl DockView {
                 gap: taffy::Size::<taffy::LengthPercentage>::from_length(0.0),
                 ..Default::default()
             })
-
             .build()
             .unwrap();
         dock_apps_container.build_layer_tree(&container_tree);
@@ -161,13 +162,18 @@ impl DockView {
             })
             // .background_color(Color::new_rgba(0.0, 0.0, 0.0, 0.0     ))
             .content(Some(move |canvas: &skia::Canvas, w, h| {
-                let mut paint = layers::skia::Paint::default();
-                paint.set_color(layers::skia::Color::from_argb(70, 0, 0, 0));
+                let mut paint = lay_rs::skia::Paint::default();
+                paint.set_color(lay_rs::skia::Color::from_argb(70, 0, 0, 0));
                 let line_width: f32 = 3.0 * draw_scale;
                 let margin_h = (w - line_width) / 2.0;
                 let margin_v = 15.0 * draw_scale;
-                let rect= layers::skia::Rect::from_xywh(margin_h, margin_v, w-2.0*margin_h, h - 2.0*margin_v);
-                let rrect = layers::skia::RRect::new_rect_xy(rect, 3.0, 3.0);
+                let rect = lay_rs::skia::Rect::from_xywh(
+                    margin_h,
+                    margin_v,
+                    w - 2.0 * margin_h,
+                    h - 2.0 * margin_v,
+                );
+                let rrect = lay_rs::skia::RRect::new_rect_xy(rect, 3.0, 3.0);
                 canvas.draw_rrect(rrect, &paint);
                 skia::Rect::from_xywh(0.0, 0.0, w, h)
             }))
@@ -193,14 +199,13 @@ impl DockView {
                 align_items: Some(taffy::AlignItems::Center),
                 ..Default::default()
             })
-
-            .build()                
+            .build()
             .unwrap();
         dock_windows_container.build_layer_tree(&container_tree);
-        
+
         let mut initial_state = DockModel::new();
         initial_state.width = 1000;
-        
+
         let (notify_tx, notify_rx) = mpsc::channel(5);
         let dock = Self {
             layers_engine,
@@ -224,7 +229,6 @@ impl DockView {
 
         dock
     }
-    
     pub fn update_state(&self, state: &DockModel) {
         {
             *self.state.write().unwrap() = state.clone();
@@ -234,65 +238,67 @@ impl DockView {
     pub fn get_state(&self) -> DockModel {
         self.state.read().unwrap().clone()
     }
-    
     pub fn hide(&self) -> TransactionRef {
         self.active
             .store(false, std::sync::atomic::Ordering::Relaxed);
-        self.wrap_layer.set_opacity(
-            0.0,
-            Some(Transition::ease_out_quad(0.4)),
-        )
+        self.wrap_layer
+            .set_opacity(0.0, Some(Transition::ease_out_quad(0.4)))
     }
-    
     fn render_elements_layers(&self, available_icon_width: f32) {
-        let draw_scale= Config::with(|config| config.screen_scale) as f32 * 0.8;
+        let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
         let state = self.get_state();
         let app_height = available_icon_width + 30.0;
         let miniwindow_height = available_icon_width + 60.0;
         let bar_height = app_height;
-        
-        self.bar_layer.set_border_corner_radius(available_icon_width / 4.0, None);
-        
-        self.resize_handle.set_size(Size{
-            width: taffy::length(25.0 * draw_scale),
-            height: taffy::Dimension::Length(bar_height),
-        }, None);
 
-        self.bar_layer.set_size(Size{
-            width: taffy::percent(1.0),
-            height: taffy::Dimension::Length(bar_height),
-        }, None);
+        self.bar_layer
+            .set_border_corner_radius(available_icon_width / 4.0, None);
+
+        self.resize_handle.set_size(
+            Size {
+                width: taffy::length(25.0 * draw_scale),
+                height: taffy::Dimension::Length(bar_height),
+            },
+            None,
+        );
+
+        self.bar_layer.set_size(
+            Size {
+                width: taffy::percent(1.0),
+                height: taffy::Dimension::Length(bar_height),
+            },
+            None,
+        );
 
         let mut previous_app_layers = self.get_app_layers();
         let mut apps_layers_map = self.app_layers.write().unwrap();
         for app in state.running_apps {
             let app_copy = app.clone();
-            let app_name=  app.clone().desktop_name.unwrap_or(app.identifier.clone());
-            let (layer, icon, label) = apps_layers_map.entry(app.identifier.clone())
-                .or_insert_with(||{
-                    let new_layer= self.layers_engine.new_layer();
-                    let icon_layer= self.layers_engine.new_layer();
+            let app_name = app.clone().desktop_name.unwrap_or(app.identifier.clone());
+            let (layer, icon, label) = apps_layers_map
+                .entry(app.identifier.clone())
+                .or_insert_with(|| {
+                    let new_layer = self.layers_engine.new_layer();
+                    let icon_layer = self.layers_engine.new_layer();
                     setup_app_icon(&new_layer, &icon_layer, app.clone(), available_icon_width);
                     icon_layer.set_image_cache(true);
 
                     self.dock_apps_container.add_sublayer(new_layer.clone());
                     let label_layer = self.layers_engine.new_layer();
-                    
+
                     setup_label(&label_layer, app_name);
                     new_layer.add_sublayer(icon_layer.clone());
                     new_layer.add_sublayer(label_layer.clone());
                     (new_layer, icon_layer, label_layer)
                 });
-            
+
             let draw_picture = draw_app_icon(&app_copy);
             icon.set_draw_content(draw_picture);
 
-
-            
             let darken_color = skia::Color::from_argb(100, 100, 100, 100);
             let add = skia::Color::from_argb(0, 0, 0, 0);
             let filter = skia::color_filters::lighting(darken_color, add);
-            
+
             let icon_ref = icon.clone();
             layer.remove_all_pointer_handlers();
 
@@ -306,18 +312,13 @@ impl DockView {
             });
             let label_ref = label.clone();
             layer.add_on_pointer_in(move |_, _, _| {
-                label_ref.set_opacity(
-                    1.0,
-                    Some(Transition::ease_in_quad(0.1))
-                );
+                label_ref.set_opacity(1.0, Some(Transition::ease_in_quad(0.1)));
             });
             let label_ref = label.clone();
             let icon_ref = icon.clone();
             layer.add_on_pointer_out(move |_, _, _| {
-                label_ref.set_opacity(
-                    0.0,
-                    Some(Transition::ease_in_quad(0.1)),
-                );
+                println!("pointer out");
+                label_ref.set_opacity(0.0, Some(Transition::ease_in_quad(0.1)));
                 icon_ref.set_color_filter(None);
             });
             previous_app_layers.retain(|l| l.id() != layer.id());
@@ -327,62 +328,57 @@ impl DockView {
         let mut miniwindows_layers_map = self.miniwindow_layers.write().unwrap();
         {
             for win in state.minimized_windows {
-                let (layer, _, label) = miniwindows_layers_map.entry(win.clone())
-                    .or_insert_with(||{
-                        let new_layer= self.layers_engine.new_layer();                    
-                        let inner_layer= self.layers_engine.new_layer();
-                        let label_layer = self.layers_engine.new_layer();
+                let (layer, _, label) =
+                    miniwindows_layers_map
+                        .entry(win.clone())
+                        .or_insert_with(|| {
+                            let new_layer = self.layers_engine.new_layer();
+                            let inner_layer = self.layers_engine.new_layer();
+                            let label_layer = self.layers_engine.new_layer();
 
-                        self.dock_windows_container.add_sublayer(new_layer.clone());
-                        
-                        
-                        setup_miniwindow_icon(&new_layer, &inner_layer, available_icon_width);
-                        
-                        setup_label(&label_layer, win.title.clone());
-                        new_layer.add_sublayer(label_layer.clone());
-                        
-                        (new_layer, inner_layer, label_layer)
-                    });
+                            self.dock_windows_container.add_sublayer(new_layer.clone());
 
-                    layer.remove_all_pointer_handlers();
+                            setup_miniwindow_icon(&new_layer, &inner_layer, available_icon_width);
 
-                    let darken_color = skia::Color::from_argb(100, 100, 100, 100);
-                    let add = skia::Color::from_argb(0, 0, 0, 0);
-                    let filter = skia::color_filters::lighting(darken_color, add);
-                                    
-                    layer.remove_all_pointer_handlers();
+                            setup_label(&label_layer, win.title.clone());
+                            new_layer.add_sublayer(label_layer.clone());
 
-                    layer.add_on_pointer_press(move |l: Layer, _:f32, _:f32| {
-                        l.children().iter().for_each(|child| {
-                            child.set_color_filter(filter.clone());
+                            (new_layer, inner_layer, label_layer)
                         });
-                    });
-                    // let inner_ref = inner.clone();
-                    layer.add_on_pointer_release(move |l: Layer, _:f32, _:f32| {
-                        l.children().iter().for_each(|child| {
-                            child.set_color_filter(None);
-                        });
-                    });
-        
-                    let label_ref = label.clone();
-                    layer.add_on_pointer_in(move |_, _, _| {
-                        label_ref.set_opacity(
-                            1.0,
-                            Some(Transition::ease_in_quad(0.1))
-                        );
-                    });
-                    let label_ref = label.clone();
 
-                    layer.add_on_pointer_out(move |l: Layer, _:f32, _:f32| {
-                        label_ref.set_opacity(
-                            0.0,
-                            Some(Transition::ease_in_out_quad(0.1))
-                        );
-                        l.children().iter().for_each(|child| {
-                            child.set_color_filter(None);
-                        });
-                    });     
-                    previous_miniwindows.retain(|l| l.id() != layer.id());
+                layer.remove_all_pointer_handlers();
+
+                let darken_color = skia::Color::from_argb(100, 100, 100, 100);
+                let add = skia::Color::from_argb(0, 0, 0, 0);
+                let filter = skia::color_filters::lighting(darken_color, add);
+
+                layer.remove_all_pointer_handlers();
+
+                layer.add_on_pointer_press(move |l: Layer, _: f32, _: f32| {
+                    l.children().iter().for_each(|child| {
+                        child.set_color_filter(filter.clone());
+                    });
+                });
+                // let inner_ref = inner.clone();
+                layer.add_on_pointer_release(move |l: Layer, _: f32, _: f32| {
+                    l.children().iter().for_each(|child| {
+                        child.set_color_filter(None);
+                    });
+                });
+
+                let label_ref = label.clone();
+                layer.add_on_pointer_in(move |_, _, _| {
+                    label_ref.set_opacity(1.0, Some(Transition::ease_in_quad(0.1)));
+                });
+                let label_ref = label.clone();
+
+                layer.add_on_pointer_out(move |l: Layer, _: f32, _: f32| {
+                    label_ref.set_opacity(0.0, Some(Transition::ease_in_out_quad(0.1)));
+                    l.children().iter().for_each(|child| {
+                        child.set_color_filter(None);
+                    });
+                });
+                previous_miniwindows.retain(|l| l.id() != layer.id());
             }
         }
 
@@ -391,26 +387,36 @@ impl DockView {
         // App layers
         for layer in previous_app_layers {
             layer.set_opacity(0.0, Transition::ease_out_quad(0.2));
-            layer.set_size(layers::types::Size::points(0.0, app_height), Transition::ease_out_quad(0.3))
-            .on_finish(|l:&Layer, _| {
-                l.remove();
-            }, true);
-            apps_layers_map.retain(|_k,(v, _, _)| {
-                v.id() != layer.id()
-            });
+            layer
+                .set_size(
+                    lay_rs::types::Size::points(0.0, app_height),
+                    Transition::ease_out_quad(0.3),
+                )
+                .on_finish(
+                    |l: &Layer, _| {
+                        l.remove();
+                    },
+                    true,
+                );
+            apps_layers_map.retain(|_k, (v, _, _)| v.id() != layer.id());
         }
 
         // Mini window layers
         for layer in previous_miniwindows {
             layer.set_opacity(0.0, Transition::ease_out_quad(0.2));
-            layer.set_size(layers::types::Size::points(0.0, miniwindow_height), Transition::ease_out_quad(0.3))
-            .on_finish(|l:&Layer, _| {
-                l.remove();
-            }, true);
+            layer
+                .set_size(
+                    lay_rs::types::Size::points(0.0, miniwindow_height),
+                    Transition::ease_out_quad(0.3),
+                )
+                .on_finish(
+                    |l: &Layer, _| {
+                        l.remove();
+                    },
+                    true,
+                );
 
-            miniwindows_layers_map.retain(|_k,(v, _, _)| {
-                v.id() != layer.id()
-            });
+            miniwindows_layers_map.retain(|_k, (v, _, _)| v.id() != layer.id());
         }
     }
     fn available_icon_size(&self) -> f32 {
@@ -439,10 +445,8 @@ impl DockView {
 
         self.render_elements_layers(available_icon_size);
         self.magnify_elements();
-        
     }
-    
-    fn notification_handler(&self, mut rx: tokio::sync::mpsc::Receiver<WorkspaceModel>) {
+    fn notification_handler(&self, mut rx: tokio::sync::mpsc::Receiver<WorkspacesModel>) {
         // let view = self.view.clone();
         let latest_event = self.latest_event.clone();
         // Task to receive events
@@ -481,7 +485,8 @@ impl DockView {
                         })
                         .collect();
 
-                    let minimized_windows: Vec<_> = workspace.minimized_windows
+                    let minimized_windows: Vec<_> = workspace
+                        .minimized_windows
                         .iter()
                         .filter_map(|(id, _)| workspace.windows_cache.get(id).cloned())
                         .collect();
@@ -497,24 +502,35 @@ impl DockView {
             }
         });
     }
-    
     fn get_app_layers(&self) -> Vec<Layer> {
         let app_layers = self.app_layers.read().unwrap();
-        app_layers.values().cloned().map(|(layer, _, _)| layer).collect()
+        app_layers
+            .values()
+            .cloned()
+            .map(|(layer, _, _)| layer)
+            .collect()
     }
     fn get_miniwin_layers(&self) -> Vec<Layer> {
         let miniwin_layers = self.miniwindow_layers.read().unwrap();
-        miniwin_layers.values().cloned().map(|(layer, _, _)| layer).collect()
+        miniwin_layers
+            .values()
+            .cloned()
+            .map(|(layer, _, _)| layer)
+            .collect()
     }
     pub fn get_appid_from_layer(&self, layer: &NodeRef) -> Option<String> {
         let layers_map = self.app_layers.read().unwrap();
-        layers_map.iter().find(|(_, (app_layer, _, _))| app_layer.id() == Some(*layer))
+        layers_map
+            .iter()
+            .find(|(_, (app_layer, _, _))| app_layer.id() == Some(*layer))
             .map(|(key, _)| key.clone())
     }
     pub fn get_window_from_layer(&self, layer: &NodeRef) -> Option<Window> {
-
         let miniwindow_layers = self.miniwindow_layers.read().unwrap();
-        if let Some((window, ..)) = miniwindow_layers.iter().find(|(_win, (l, ..))| l.id() == Some(layer.clone())) {
+        if let Some((window, ..)) = miniwindow_layers
+            .iter()
+            .find(|(_win, (l, ..))| l.id() == Some(layer.clone()))
+        {
             return Some(window.clone());
         }
 
@@ -522,7 +538,7 @@ impl DockView {
     }
     pub fn add_window_element(&self, window: &Window) -> (Layer, Layer) {
         let state = self.get_state();
-        let mut minimized_windows= state.minimized_windows.clone();
+        let mut minimized_windows = state.minimized_windows.clone();
         minimized_windows.push(window.clone());
 
         self.update_state(&DockModel {
@@ -534,7 +550,7 @@ impl DockView {
 
         (drawer.clone(), inner.clone())
     }
-    pub fn remove_window_element(&self, window: &Window) -> Option<Layer>{
+    pub fn remove_window_element(&self, window: &Window) -> Option<Layer> {
         let mut drawer = None;
         let mut miniwindow_layers = self.miniwindow_layers.write().unwrap();
         if let Some((d, _, label)) = miniwindow_layers.get(window) {
@@ -545,7 +561,6 @@ impl DockView {
         }
         drawer
     }
-
     // Magnify elements
     fn magnify_elements(&self) {
         let pos = self.magnification_position.read().unwrap().clone();
@@ -562,7 +577,9 @@ impl DockView {
         let windows_len = state.minimized_windows.len() as f32;
 
         let tot_elements = apps_len + windows_len;
-        let animation = self.layers_engine.new_animation(Transition::ease_out_quad(0.2), false);
+        let animation = self
+            .layers_engine
+            .new_animation(Transition::ease_out_quad(0.2), false);
         let mut changes = Vec::new();
         let genie_scale = Config::with(|c| c.genie_scale);
         for (index, app) in state.running_apps.iter().enumerate() {
@@ -572,15 +589,14 @@ impl DockView {
                 let icon_pos = 1.0 / tot_elements * index as f32 + 1.0 / (tot_elements * 2.0);
                 let icon_focus = 1.0 + magnify_function(focus - icon_pos) * genie_scale;
                 let focused_icon_size = icon_size * icon_focus as f32;
-                
 
-                let change = layer.change_size(Size::points(focused_icon_size, focused_icon_size + 30.0));
+                let change =
+                    layer.change_size(Size::points(focused_icon_size, focused_icon_size + 30.0));
                 changes.push(change);
             }
         }
 
         let miniwindow_layers = self.miniwindow_layers.read().unwrap();
-        
 
         for (index, win) in state.minimized_windows.iter().enumerate() {
             if let Some((layer, ..)) = miniwindow_layers.get(win) {
@@ -600,14 +616,14 @@ impl DockView {
         self.layers_engine.start_animation(animation, 0.0);
     }
     pub fn update_magnification_position(&self, pos: f32) {
-        *self.magnification_position.write().unwrap()= pos;
+        *self.magnification_position.write().unwrap() = pos;
         self.magnify_elements();
     }
 }
 
 // Dock view observer
-impl Observer<WorkspaceModel> for DockView {
-    fn notify(&self, event: &WorkspaceModel) {
+impl Observer<WorkspacesModel> for DockView {
+    fn notify(&self, event: &WorkspacesModel) {
         let _ = self.notify_tx.try_send(event.clone());
     }
 }

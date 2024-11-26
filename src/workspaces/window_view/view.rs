@@ -1,33 +1,33 @@
-use layers::{
+use lay_rs::{
     engine::{LayersEngine, NodeRef, TransactionRef},
-    prelude::{taffy, Layer, TimingFunction, Transition},
-    view::{RenderLayerTree, View},
+    prelude::{taffy, Layer, Transition},
     skia,
+    view::{RenderLayerTree, View},
 };
 
-use crate::{shell::WindowElement, workspace::utils::view_render_elements};
+use crate::{shell::WindowElement, workspaces::utils::view_render_elements};
 
 use super::{
+    effects::GenieEffect,
     model::{WindowViewBaseModel, WindowViewSurface},
     render::view_window_shadow,
-    effects::GenieEffect,
 };
 
 #[derive(Clone)]
 pub struct WindowView {
-    engine: layers::prelude::LayersEngine,
+    engine: lay_rs::prelude::LayersEngine,
     // views
-    pub view_base: layers::prelude::View<WindowViewBaseModel>,
-    pub view_content: layers::prelude::View<Vec<WindowViewSurface>>,
+    pub view_base: lay_rs::prelude::View<WindowViewBaseModel>,
+    pub view_content: lay_rs::prelude::View<Vec<WindowViewSurface>>,
 
     // layers
-    pub window_layer: layers::prelude::Layer,
-    pub shadow_layer: layers::prelude::Layer,
-    pub content_layer: layers::prelude::Layer,
-    
+    pub window_layer: lay_rs::prelude::Layer,
+    pub shadow_layer: lay_rs::prelude::Layer,
+    pub content_layer: lay_rs::prelude::Layer,
+
     parent_layer_noderef: NodeRef,
     pub window: WindowElement,
-    pub unmaximized_rect: layers::prelude::Rectangle,
+    pub unmaximized_rect: lay_rs::prelude::Rectangle,
     pub genie_effect: GenieEffect,
 }
 
@@ -68,7 +68,7 @@ impl WindowView {
             fullscreen: false,
         };
         let view_window_shadow =
-            layers::prelude::View::new("window_shadow", base_rect, Box::new(view_window_shadow));
+            lay_rs::prelude::View::new("window_shadow", base_rect, Box::new(view_window_shadow));
 
         view_window_shadow.mount_layer(shadow_layer.clone());
 
@@ -90,7 +90,7 @@ impl WindowView {
             parent_layer_noderef,
             window,
             genie_effect,
-            unmaximized_rect: layers::prelude::Rectangle {
+            unmaximized_rect: lay_rs::prelude::Rectangle {
                 x: 0.0,
                 y: 0.0,
                 width: 0.0,
@@ -113,22 +113,22 @@ impl WindowView {
         let w = render_layer.width();
         let h = render_layer.height();
 
-        self.window_layer.set_draw_content(move |_: &skia::Canvas, _w, _h| {
-            skia::Rect::join2(skia::Rect::from_wh(w, h), to_rect).with_outset((100.0, 100.0))
-        });
-        
+        self.window_layer
+            .set_draw_content(move |_: &skia::Canvas, _w, _h| {
+                skia::Rect::join2(skia::Rect::from_wh(w, h), to_rect).with_outset((100.0, 100.0))
+            });
 
-        self.window_layer.set_image_filter_progress(1.0, Transition::linear(1.0))
+        self.window_layer
+            .set_image_filter_progress(1.0, Transition::linear(1.0))
     }
 
     pub fn unminimize(&self, from: skia::Rect) -> TransactionRef {
         self.genie_effect.set_destination(from);
 
-        self.window_layer.set_image_filter_progress(0.0, Transition::linear(0.7))
-        .on_finish(move |l:&Layer, _| {
-            l.remove_effect()
-        }, true)
-        .clone()
+        self.window_layer
+            .set_image_filter_progress(0.0, Transition::linear(0.7))
+            .on_finish(move |l: &Layer, _| l.remove_effect(), true)
+            .clone()
     }
 }
 

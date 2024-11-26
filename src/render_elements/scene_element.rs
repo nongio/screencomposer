@@ -1,8 +1,8 @@
 use std::{cell::RefCell, rc::Rc};
 
-use layers::{
+use lay_rs::{
     drawing::render_node_tree,
-    engine::{SceneNode, LayersEngine},
+    engine::{LayersEngine, SceneNode},
 };
 
 use smithay::{
@@ -148,68 +148,69 @@ impl RenderElement<SkiaRenderer> for SceneElement {
         #[cfg(feature = "profile-with-puffin")]
         profiling::puffin::profile_scope!("render_scene");
         let mut surface = frame.skia_surface.clone();
-        
+
         let canvas = surface.canvas();
-        
+
         // if self.engine.damage().is_empty() {
-            // return Ok(());
+        // return Ok(());
         // } else {
-            // println!("scene damage: {:?}", self.engine.damage());
+        // println!("scene damage: {:?}", self.engine.damage());
         // }
         // println!("scene draw");
-        // canvas.clear(layers::skia::Color::from_argb(255, 0, 0, 0));
+        // canvas.clear(lay_rs::skia::Color::from_argb(255, 0, 0, 0));
+
         let scene = self.engine.scene();
         let root_id = self.engine.scene_root();
-        let arena = scene.nodes.data();
-        let arena = &*arena.read().unwrap();
-        // let scene_damage = self.engine.damage();
-        // let damage_rect = layers::skia::Rect::from_xywh(scene_damage.x, scene_damage.y, scene_damage.width, scene_damage.height);
-        let mut damage_rect = layers::skia::Rect::default();
-        damage.iter().for_each(|d| {
-            damage_rect.join(layers::skia::Rect::from_xywh(
-                d.loc.x as f32,
-                d.loc.y as f32,
-                d.size.w as f32,
-                d.size.h as f32,
-            ));
+
+        scene.with_arena(|arena| {
+            // let scene_damage = self.engine.damage();
+            // let damage_rect = lay_rs::skia::Rect::from_xywh(scene_damage.x, scene_damage.y, scene_damage.width, scene_damage.height);
+            let mut damage_rect = lay_rs::skia::Rect::default();
+            damage.iter().for_each(|d| {
+                damage_rect.join(lay_rs::skia::Rect::from_xywh(
+                    d.loc.x as f32,
+                    d.loc.y as f32,
+                    d.size.w as f32,
+                    d.size.h as f32,
+                ));
+            });
+            if let Some(root_id) = root_id {
+                let save_point = canvas.save();
+
+                // canvas.clear(lay_rs::skia::Color::TRANSPARENT);
+                canvas.clip_rect(damage_rect, None, None);
+                render_node_tree(root_id, arena, canvas, 1.0);
+
+                // draw damage rect
+                let mut paint = lay_rs::skia::Paint::default();
+                paint.set_color(lay_rs::skia::Color::from_argb(255, 255, 0, 0));
+                // paint.set_stroke(true);
+                // paint.set_stroke_width(5.0);
+                // // damage.iter().for_each(|d| {
+                // //     canvas.draw_rect(lay_rs::skia::Rect::from_xywh(
+                // //         d.loc.x as f32,
+                // //         d.loc.y as f32,
+                // //         d.size.w as f32,
+                // //         d.size.h as f32,
+                // //     ), &paint);
+                // // });
+                // canvas.draw_rect(damage_rect, &paint);
+                // let typeface = crate::workspace::utils::FONT_CACHE
+                // .with(|font_cache| {
+                //     font_cache
+                //         .font_mgr
+                //         .match_family_style("Inter", lay_rs::skia::FontStyle::default())
+                // })
+                // .unwrap();
+                // let font = lay_rs::skia::Font::from_typeface_with_params(typeface, 22.0, 1.0, 0.0);
+                // let pos = self.engine.get_pointer_position();
+                // canvas.draw_str(format!("{},{}", pos.x, pos.y), (50.0, 50.0), &font, &paint);
+                // println!("scene draw damage: {},{} {}x{}", damage_rect.x(), damage_rect.y(), damage_rect.width(), damage_rect.height());
+
+                canvas.restore_to_count(save_point);
+            }
+            self.engine.clear_damage();
         });
-        if let Some(root_id) = root_id {
-            let save_point = canvas.save();
-
- 
-            // canvas.clear(layers::skia::Color::TRANSPARENT);
-            canvas.clip_rect(damage_rect, None, None);
-            render_node_tree(root_id, arena, canvas, 1.0);
-            
-            // draw damage rect 
-            let mut paint = layers::skia::Paint::default();
-            paint.set_color(layers::skia::Color::from_argb(255, 255, 0, 0));
-            // paint.set_stroke(true);
-            // paint.set_stroke_width(5.0);
-            // // damage.iter().for_each(|d| {
-            // //     canvas.draw_rect(layers::skia::Rect::from_xywh(
-            // //         d.loc.x as f32,
-            // //         d.loc.y as f32,
-            // //         d.size.w as f32,
-            // //         d.size.h as f32,
-            // //     ), &paint);
-            // // });
-            // canvas.draw_rect(damage_rect, &paint);
-            // let typeface = crate::workspace::utils::FONT_CACHE
-            // .with(|font_cache| {
-            //     font_cache
-            //         .font_mgr
-            //         .match_family_style("Inter", layers::skia::FontStyle::default())
-            // })
-            // .unwrap();
-            // let font = layers::skia::Font::from_typeface_with_params(typeface, 22.0, 1.0, 0.0);
-            // let pos = self.engine.get_pointer_position();
-            // canvas.draw_str(format!("{},{}", pos.x, pos.y), (50.0, 50.0), &font, &paint);
-            // println!("scene draw damage: {},{} {}x{}", damage_rect.x(), damage_rect.y(), damage_rect.width(), damage_rect.height());
-
-            canvas.restore_to_count(save_point);        
-        }
-        self.engine.clear_damage();
         Ok(())
     }
 }

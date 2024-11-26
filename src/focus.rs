@@ -30,7 +30,7 @@ use crate::{
     interactive_view::InteractiveView,
     shell::WindowElement,
     state::{Backend, ScreenComposer},
-    workspaces::{AppSwitcherView, DockView, WindowSelectorView},
+    workspaces::{AppSwitcherView, DockView, WindowSelectorView, WorkspaceSelectorView},
 };
 
 pub enum KeyboardFocusTarget<B: Backend> {
@@ -710,6 +710,16 @@ impl<B: Backend> From<AppSwitcherView> for PointerFocusTarget<B> {
 
 impl<B: Backend> From<DockView> for PointerFocusTarget<B> {
     fn from(value: DockView) -> Self {
+        let view = value.clone();
+        let d = InteractiveView {
+            view: Box::new(view),
+        };
+        PointerFocusTarget::View(d)
+    }
+}
+
+impl<B: Backend> From<WorkspaceSelectorView> for PointerFocusTarget<B> {
+    fn from(value: WorkspaceSelectorView) -> Self {
         let view = value.clone();
         let d = InteractiveView {
             view: Box::new(view),

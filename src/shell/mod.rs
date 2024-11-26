@@ -358,7 +358,7 @@ pub fn place_new_window(
     let max_x = output_geometry.loc.x + output_geometry.size.w as i32;
     let max_y = output_geometry.loc.y + output_geometry.size.h as i32;
 
-// Calculate the position along the diagonal
+    // Calculate the position along the diagonal
     const MAX_WINDOW_COUNT: f32 = 40.0;
     let factor = window_index as f32 / MAX_WINDOW_COUNT;
     let x = (output_geometry.loc.x as f32 + factor * max_x as f32) as i32 + 100;

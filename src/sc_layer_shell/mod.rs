@@ -2,7 +2,7 @@ mod protocol;
 
 use std::sync::{Arc, Mutex};
 
-use layers::{
+use lay_rs::{
     engine::TransactionRef,
     prelude::Transition,
     types::{Color, PaintColor, Point},
@@ -36,7 +36,7 @@ type ZscLayerShellAnimationV1 = protocol::gen::sc_animation_v1::ScAnimationV1;
 pub struct LayerSurface {
     wl_surface: wl_surface::WlSurface,
     sc_layer: ZscLayerShellSurfaceV1,
-    layer: layers::prelude::Layer,
+    layer: lay_rs::prelude::Layer,
 }
 
 /// State of a layer surface

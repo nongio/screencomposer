@@ -4,12 +4,12 @@ use std::{
     time::Duration,
 };
 
-use layers::{
+use lay_rs::{
     engine::{
         animation::{TimingFunction, Transition},
         LayersEngine, TransactionRef,
     },
-    prelude::taffy,
+    prelude::{taffy, Layer},
     taffy::style::Style,
     types::Size,
     view::RenderLayerTree,
@@ -20,7 +20,7 @@ use tokio::sync::mpsc;
 use crate::{
     interactive_view::ViewInteractions,
     utils::Observer,
-    workspace::{Application, WorkspaceModel},
+    workspaces::{Application, WorkspacesModel},
 };
 
 use super::render::render_appswitcher_view;
@@ -29,12 +29,12 @@ use super::model::AppSwitcherModel;
 
 #[derive(Debug, Clone)]
 pub struct AppSwitcherView {
-    pub wrap_layer: layers::prelude::Layer,
-    pub view_layer: layers::prelude::Layer,
-    pub view: layers::prelude::View<AppSwitcherModel>,
+    pub wrap_layer: lay_rs::prelude::Layer,
+    pub view_layer: lay_rs::prelude::Layer,
+    pub view: lay_rs::prelude::View<AppSwitcherModel>,
     active: Arc<AtomicBool>,
-    notify_tx: tokio::sync::mpsc::Sender<WorkspaceModel>,
-    latest_event: Arc<tokio::sync::RwLock<Option<WorkspaceModel>>>,
+    notify_tx: tokio::sync::mpsc::Sender<WorkspacesModel>,
+    latest_event: Arc<tokio::sync::RwLock<Option<WorkspacesModel>>>,
 }
 impl PartialEq for AppSwitcherView {
     fn eq(&self, other: &Self) -> bool {
@@ -53,8 +53,8 @@ impl AppSwitcherView {
         wrap.set_key("app_switcher_container");
         wrap.set_size(Size::percent(1.0, 1.0), None);
         wrap.set_layout_style(Style {
-            position: layers::taffy::style::Position::Absolute,
-            display: layers::taffy::style::Display::Flex,
+            position: lay_rs::taffy::style::Position::Absolute,
+            display: lay_rs::taffy::style::Display::Flex,
             justify_content: Some(taffy::JustifyContent::Center),
             align_items: Some(taffy::AlignItems::Center),
             justify_items: Some(taffy::JustifyItems::Center),
@@ -69,7 +69,7 @@ impl AppSwitcherView {
         layer.set_pointer_events(false);
         let mut initial_state = AppSwitcherModel::new();
         initial_state.width = 1000;
-        let view = layers::prelude::View::new(
+        let view = lay_rs::prelude::View::new(
             "apps_switcher",
             initial_state,
             Box::new(render_appswitcher_view),
@@ -154,10 +154,8 @@ impl AppSwitcherView {
     pub fn hide(&self) -> TransactionRef {
         self.active
             .store(false, std::sync::atomic::Ordering::Relaxed);
-        self.wrap_layer.set_opacity(
-            0.0,
-            Some(Transition::ease_in_quad(0.1)),
-        )
+        self.wrap_layer
+            .set_opacity(0.0, Some(Transition::ease_in_quad(0.1)))
     }
 
     pub fn get_current_app(&self) -> Option<Application> {
@@ -165,7 +163,7 @@ impl AppSwitcherView {
         state.apps.get(state.current_app).cloned()
     }
 
-    fn init_notification_handler(&self, mut rx: tokio::sync::mpsc::Receiver<WorkspaceModel>) {
+    fn init_notification_handler(&self, mut rx: tokio::sync::mpsc::Receiver<WorkspacesModel>) {
         let view = self.view.clone();
         let latest_event = self.latest_event.clone();
         // Task to receive events
@@ -222,8 +220,8 @@ impl AppSwitcherView {
     }
 }
 
-impl Observer<WorkspaceModel> for AppSwitcherView {
-    fn notify(&self, event: &WorkspaceModel) {
+impl Observer<WorkspacesModel> for AppSwitcherView {
+    fn notify(&self, event: &WorkspacesModel) {
         let _ = self.notify_tx.try_send(event.clone());
     }
 }

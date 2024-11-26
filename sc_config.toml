@@ -6,6 +6,7 @@ compositor_mode = "drm"
 cursor_size = 24
 font_family = "Inter"
 cursor_theme = "Notwaita-Black"
+theme_scheme = "Light"
 
 # Inputs
 keyboard_repeat_delay = 300

@@ -1,10 +1,10 @@
-use layers::{
-    skia,
+use lay_rs::{
     prelude::{taffy, Color, LayerTree, LayerTreeBuilder, View},
+    skia,
     types::{BorderRadius, PaintColor, Size},
 };
 
-use crate::workspace::Application;
+use crate::workspaces::Application;
 
 use super::model::AppSwitcherModel;
 
@@ -17,8 +17,7 @@ pub fn render_app_view(
 ) -> LayerTree {
     let draw_picture = move |canvas: &skia::Canvas, w: f32, h: f32| -> skia::Rect {
         if let Some(image) = &state.icon {
-            let mut paint =
-                skia::Paint::new(skia::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
+            let mut paint = skia::Paint::new(skia::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
             // paint.set_anti_alias(true);
             paint.set_style(skia::paint::Style::Fill);
 

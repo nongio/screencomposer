@@ -1,7 +1,7 @@
-use layers::{prelude::*, types::Size};
+use lay_rs::{prelude::*, types::Size};
 use taffy::FromLength;
 
-use crate::{config::Config, workspace::utils::FONT_CACHE};
+use crate::{config::Config, theme::text_styles, workspaces::utils::FONT_CACHE};
 
 use super::render_app::render_app_view;
 
@@ -49,9 +49,9 @@ pub fn render_appswitcher_view(
             .clone()
             .unwrap_or("".to_string());
     }
-    let draw_container = move |canvas: &layers::skia::Canvas, w, h| {
-        let color = layers::skia::Color4f::new(0.0, 0.0, 0.0, 0.15);
-        let paint = layers::skia::Paint::new(color, None);
+    let draw_container = move |canvas: &lay_rs::skia::Canvas, w, h| {
+        let color = lay_rs::skia::Color4f::new(0.0, 0.0, 0.0, 0.15);
+        let paint = lay_rs::skia::Paint::new(color, None);
         // let available_icon_size = h - COMPONENT_PADDING_V * 2.0 - ICON_PADDING * 2.0;
         // let icon_size = ICON_SIZE.min(available_icon_size);
         let selection_width = available_icon_size + ICON_PADDING * 2.0;
@@ -60,37 +60,44 @@ pub fn render_appswitcher_view(
         let selection_x = COMPONENT_PADDING_H + total_gaps - GAP * current_app
             + current_app * (available_icon_size + ICON_PADDING * 2.0);
         let selection_y = h / 2.0 - selection_height / 2.0;
-        let rrect: layers::skia::RRect = layers::skia::RRect::new_rect_xy(
-            layers::skia::Rect::from_xywh(selection_x, selection_y, selection_width, selection_height),
+        let rrect: lay_rs::skia::RRect = lay_rs::skia::RRect::new_rect_xy(
+            lay_rs::skia::Rect::from_xywh(
+                selection_x,
+                selection_y,
+                selection_width,
+                selection_height,
+            ),
             selection_width / 10.0,
             selection_width / 10.0,
         );
         if apps_len > 0.0 {
             canvas.draw_rrect(rrect, &paint);
-            let mut text_style = layers::skia::textlayout::TextStyle::new();
+
+            let mut text_style = lay_rs::skia::textlayout::TextStyle::new();
 
             text_style.set_font_size(FONT_SIZE);
-            let font_style = layers::skia::FontStyle::new(
-                layers::skia::font_style::Weight::MEDIUM,
-                layers::skia::font_style::Width::CONDENSED,
-                layers::skia::font_style::Slant::Upright,
+            let font_style = lay_rs::skia::FontStyle::new(
+                lay_rs::skia::font_style::Weight::MEDIUM,
+                lay_rs::skia::font_style::Width::CONDENSED,
+                lay_rs::skia::font_style::Slant::Upright,
             );
             text_style.set_font_style(font_style);
             text_style.set_letter_spacing(-1.0);
             let foreground_paint =
-                layers::skia::Paint::new(layers::skia::Color4f::new(0.0, 0.0, 0.0, 0.5), None);
+                lay_rs::skia::Paint::new(lay_rs::skia::Color4f::new(0.0, 0.0, 0.0, 0.5), None);
             text_style.set_foreground_paint(&foreground_paint);
-            text_style.set_font_families(&["Inter"]);
+            let ff = Config::with(|c| c.font_family.clone());
+            text_style.set_font_families(&[ff]);
 
-            let mut paragraph_style = layers::skia::textlayout::ParagraphStyle::new();
+            let mut paragraph_style = lay_rs::skia::textlayout::ParagraphStyle::new();
             paragraph_style.set_text_style(&text_style);
             paragraph_style.set_max_lines(1);
-            paragraph_style.set_text_align(layers::skia::textlayout::TextAlign::Center);
-            paragraph_style.set_text_direction(layers::skia::textlayout::TextDirection::LTR);
+            paragraph_style.set_text_align(lay_rs::skia::textlayout::TextAlign::Center);
+            paragraph_style.set_text_direction(lay_rs::skia::textlayout::TextDirection::LTR);
             paragraph_style.set_ellipsis("…");
 
             let mut builder = FONT_CACHE.with(|font_cache| {
-                layers::skia::textlayout::ParagraphBuilder::new(
+                lay_rs::skia::textlayout::ParagraphBuilder::new(
                     &paragraph_style,
                     font_cache.font_collection.clone(),
                 )
@@ -102,7 +109,7 @@ pub fn render_appswitcher_view(
             paragraph.paint(canvas, (text_x, text_y));
             // };
         }
-        layers::skia::Rect::from_xywh(0.0, 0.0, w, h)
+        lay_rs::skia::Rect::from_xywh(0.0, 0.0, w, h)
     };
     LayerTreeBuilder::default()
         .key("apps_switcher")

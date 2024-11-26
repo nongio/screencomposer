@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use layers::{
+use lay_rs::{
     engine::LayersEngine,
     prelude::{taffy, Transition},
 };
@@ -127,7 +127,7 @@ use crate::{
     render_elements::scene_element::SceneElement,
     shell::WindowElement,
     skia_renderer::SkiaTextureImage,
-    workspace::{DndView, Window, WindowViewBaseModel, WindowViewSurface, Workspace},
+    workspaces::{DndView, Window, WindowViewBaseModel, WindowViewSurface, Workspaces},
 };
 #[cfg(feature = "xwayland")]
 use smithay::{
@@ -207,7 +207,7 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
 
     pub scene_element: SceneElement,
     // state
-    pub workspace: Arc<Workspace>,
+    pub workspaces: Workspaces,
 
     pub dnd_view: DndView,
     // layers
@@ -780,13 +780,13 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         layers_engine.scene_add_layer(root_layer.clone());
         let scene_element = SceneElement::with_engine(layers_engine.clone());
         let space = Space::default();
-        let workspace = Workspace::new(layers_engine.clone(), cursor_status.clone());
+        let workspaces = Workspaces::new(layers_engine.clone());
 
         let dnd_view = DndView::new(layers_engine.clone(), root_layer.id().unwrap());
-        
+
         #[cfg(feature = "debug")]
         layers_engine.start_debugger();
-        
+
         ScreenComposer {
             backend_data,
             display_handle: dh,
@@ -827,8 +827,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             #[cfg(feature = "debug")]
             renderdoc: renderdoc::RenderDoc::new().ok(),
 
-            // WIP workspace
-            workspace,
+            workspaces,
             layers_engine,
             scene_element,
             dnd_view,
@@ -889,23 +888,25 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         }
     }
     pub fn update_workspace_applications(&mut self) {
-        let windows: Vec<_> = self.space.elements().map(|we| {
-            (we.wl_surface().unwrap().id(), we.clone())
-        }).collect();
+        let windows: Vec<_> = self
+            .space
+            .elements()
+            .map(|we| (we.wl_surface().unwrap().id(), we.clone()))
+            .collect();
 
         let windows: Vec<_> = windows
             .iter()
             .filter_map(|(id, we)| {
-
-            if let Some(wv) = self.workspace.get_window_view(&id) {
-                let state = wv.view_base.get_state();
-                Some((we.clone(), wv.window_layer.clone(), state))
-            } else {
-                None
-            }
-        }).collect();
+                if let Some(wv) = self.workspaces.get_window_view(&id) {
+                    let state = wv.view_base.get_state();
+                    Some((we.clone(), wv.window_layer.clone(), state))
+                } else {
+                    None
+                }
+            })
+            .collect();
         if !self.is_resizing {
-            self.workspace.update_with_window_elements(windows);
+            self.workspaces.update_with_window_elements(windows);
         }
     }
     #[profiling::function]
@@ -957,14 +958,14 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     }
     #[profiling::function]
     pub fn update_windows(&mut self) {
-        let windows: Vec<WindowElement> = self.space.elements()
-        .map(|we| we.clone())
-        .collect();
+        let windows: Vec<WindowElement> = self.space.elements().map(|we| we.clone()).collect();
 
-        let minimized_windows:Vec<WindowElement> = self.workspace.with_model(|model| {
-            model.minimized_windows.iter()
-            .map(|(_id, we)| we.clone())
-            .collect()
+        let minimized_windows: Vec<WindowElement> = self.workspaces.with_model(|model| {
+            model
+                .minimized_windows
+                .iter()
+                .map(|(_id, we)| we.clone())
+                .collect()
         });
         {
             let windows = windows.iter().chain(minimized_windows.iter());
@@ -1008,9 +1009,12 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                                     .to_physical_precise_round(scale_factor);
                             let popup_surface = popup.wl_surface();
                             with_surfaces_surface_tree(popup_surface, |surface, states| {
-                                if let Some(window_view) =
-                                    self.window_view_for_surface(surface, states, &offset, scale_factor)
-                                {
+                                if let Some(window_view) = self.window_view_for_surface(
+                                    surface,
+                                    states,
+                                    &offset,
+                                    scale_factor,
+                                ) {
                                     render_elements.push_front(window_view);
                                 }
                             });
@@ -1035,7 +1039,8 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
 
                                 if let Some(view) = data.view() {
                                     location += view.offset.to_f64().to_physical(scale_factor);
-                                    location -= surface_geometry.loc.to_f64().to_physical(scale_factor);
+                                    location -=
+                                        surface_geometry.loc.to_f64().to_physical(scale_factor);
                                     TraversalAction::DoChildren(location)
                                 } else {
                                     TraversalAction::SkipChildren
@@ -1045,16 +1050,19 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                             }
                         },
                         |surface, states, location| {
-                            if let Some(window_view) =
-                                self.window_view_for_surface(surface, states, location, scale_factor)
-                            {
+                            if let Some(window_view) = self.window_view_for_surface(
+                                surface,
+                                states,
+                                location,
+                                scale_factor,
+                            ) {
                                 render_elements.push_front(window_view);
                             }
                         },
                         |_, _, _| true,
                     );
 
-                    if let Some(window_view) = self.workspace.get_window_view(&id) {
+                    if let Some(window_view) = self.workspaces.get_window_view(&id) {
                         let model = WindowViewBaseModel {
                             x: location.x as f32,
                             y: location.y as f32,
@@ -1064,7 +1072,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                             fullscreen,
                         };
 
-                        self.workspace.update_window(&id, &model);
+                        self.workspaces.update_window(&id, &model);
                         window_view.view_base.update_state(&model);
                         window_view
                             .view_content
@@ -1092,14 +1100,17 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     // scene_element
     // window_views
     pub fn expose_show_all(&mut self, delta: f32, end_gesture: bool) {
-        self.workspace.expose_show_all(delta, end_gesture);
+        self.workspaces.expose_show_all(delta, end_gesture);
     }
 
     pub fn expose_show_desktop(&mut self, delta: f32, end_gesture: bool) {
-        self.workspace.expose_show_desktop(delta, end_gesture);
+        self.workspaces.expose_show_desktop(delta, end_gesture);
     }
 
-    
+    pub fn set_workspace_number(&self, n: usize) {
+        self.workspaces.set_current_workspace(n);
+    }
+
     pub fn set_cursor(&mut self, image: &CursorImageStatus) {
         *self.cursor_status.lock().unwrap() = image.clone();
         self.backend_data.set_cursor(image);
@@ -1190,12 +1201,12 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         render_elements
     }
     pub fn raise_next_app_window(&mut self, serial: Option<Serial>) {
-        let windows = self.workspace.get_current_app_windows();
+        let windows = self.workspaces.get_current_app_windows();
 
         if !windows.is_empty() {
             for (i, window_id) in windows.iter().enumerate() {
                 if i == 0 {
-                    if let Some(window) = self.workspace.get_window_for_surface(window_id) {
+                    if let Some(window) = self.workspaces.get_window_for_surface(window_id) {
                         if let Some(we) = window.window_element.as_ref() {
                             self.raise_element(we, true, serial, true);
                         }
@@ -1205,14 +1216,14 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         }
     }
     pub fn raise_prev_app_window(&mut self, serial: Option<Serial>) {
-        let windows = self.workspace.get_current_app_windows();
+        let windows = self.workspaces.get_current_app_windows();
 
         if !windows.is_empty() {
             let current_window = (windows.len() as i32) - 1;
             let current_window = max(current_window, 0) as usize;
             for (i, window_id) in windows.iter().enumerate() {
                 if i == current_window {
-                    if let Some(window) = self.workspace.get_window_for_surface(window_id) {
+                    if let Some(window) = self.workspaces.get_window_for_surface(window_id) {
                         if let Some(we) = window.window_element.as_ref() {
                             self.raise_element(we, true, serial, true);
                         }
@@ -1231,7 +1242,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         self.space.raise_element(window, activate);
         let id = window.wl_surface().unwrap().id();
         {
-            if let Some(view) = self.workspace.get_window_view(&id) {
+            if let Some(view) = self.workspaces.get_window_view(&id) {
                 view.raise();
             }
         }
@@ -1250,10 +1261,10 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         serial: Option<Serial>,
     ) {
         let id = we.wl_surface().unwrap().id();
-        if let Some(window) = self.workspace.get_window_for_surface(&id) {
-            let windows = self.workspace.get_app_windows(&window.app_id);
+        if let Some(window) = self.workspaces.get_window_for_surface(&id) {
+            let windows = self.workspaces.get_app_windows(&window.app_id);
             for window_id in windows.iter() {
-                if let Some(window) = self.workspace.get_window_for_surface(window_id) {
+                if let Some(window) = self.workspaces.get_window_for_surface(window_id) {
                     if !window.is_minimized {
                         if let Some(we) = window.window_element.as_ref() {
                             self.raise_element(we, true, None, false);
@@ -1265,14 +1276,12 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 self.raise_element(we, activate, serial, true);
             }
         }
-        
     }
     pub fn raise_app_elements(&mut self, app_id: &str, activate: bool, serial: Option<Serial>) {
-
-        let windows = self.workspace.get_app_windows(app_id);
+        let windows = self.workspaces.get_app_windows(app_id);
 
         for (i, window_id) in windows.iter().enumerate() {
-            if let Some(window) = self.workspace.get_window_for_surface(window_id) {
+            if let Some(window) = self.workspaces.get_window_for_surface(window_id) {
                 if let Some(we) = window.window_element.as_ref() {
                     if !window.is_minimized {
                         if i == windows.len() - 1 {
@@ -1291,28 +1300,28 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             }
         }
     }
-    pub fn raise_window_element(&mut self, window: &Window, activate: bool, serial: Option<Serial>) {
+    pub fn raise_window_element(
+        &mut self,
+        window: &Window,
+        activate: bool,
+        serial: Option<Serial>,
+    ) {
         // println!("raise_window_element");
         if let Some(we) = window.window_element.as_ref() {
             self.raise_element(we, activate, serial, true);
             self.update_workspace_applications();
         }
     }
-    pub fn focus_next_window(&mut self) {
-
-    }
+    pub fn focus_next_window(&mut self) {}
     pub fn minimize_window(&mut self, window_element: &WindowElement) {
         let id = window_element.wl_surface().unwrap().id();
         {
-            self.workspace.minimize_window(&id, &window_element);
+            self.workspaces.minimize_window(&id, &window_element);
             window_element.set_activate(false);
         }
 
-        
         // ideally we set the focus to the next window in the stack
-        let windows: Vec<_> = self.space.elements()
-        .map(|we| we.clone())
-        .collect();
+        let windows: Vec<_> = self.space.elements().map(|we| we.clone()).collect();
 
         let win_len = windows.len();
         if win_len <= 1 {
@@ -1322,7 +1331,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             let window = windows.get(i).unwrap();
             let id = window.wl_surface().unwrap().id();
             let activate = i == win_len - 2;
-            if let Some(w) = self.workspace.get_window_for_surface(&id) {
+            if let Some(w) = self.workspaces.get_window_for_surface(&id) {
                 if !w.is_minimized {
                     self.raise_element(window, activate, Some(SERIAL_COUNTER.next_serial()), true);
                 }
@@ -1336,14 +1345,19 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     pub fn unminimize_window(&mut self, window_element: &WindowElement) {
         let id = window_element.wl_surface().unwrap().id();
 
-        if let Some(view) = self.workspace.get_window_view(&id) {
-            self.workspace.unminimize_window(&id);
-                let pos_x = view.unmaximized_rect.x as i32;
-                let pos_y = view.unmaximized_rect.y as i32;
+        if let Some(view) = self.workspaces.get_window_view(&id) {
+            self.workspaces.unminimize_window(&id);
+            let pos_x = view.unmaximized_rect.x as i32;
+            let pos_y = view.unmaximized_rect.y as i32;
 
-                self.space.map_element(window_element.clone(), (pos_x, pos_y), true);
-                window_element.set_activate(true);
-                self.seat.get_keyboard().unwrap().set_focus(self, Some(window_element.clone().into()), SERIAL_COUNTER.next_serial());
+            self.space
+                .map_element(window_element.clone(), (pos_x, pos_y), true);
+            window_element.set_activate(true);
+            self.seat.get_keyboard().unwrap().set_focus(
+                self,
+                Some(window_element.clone().into()),
+                SERIAL_COUNTER.next_serial(),
+            );
         }
     }
 }
@@ -1475,5 +1489,5 @@ pub trait Backend {
     fn early_import(&mut self, surface: &WlSurface);
     fn texture_for_surface(&self, surface: &RendererSurfaceState) -> Option<SkiaTextureImage>;
     fn set_cursor(&mut self, image: &CursorImageStatus); //, renderer: &mut SkiaRenderer);
-    fn renderer_context(&mut self) -> Option<layers::skia::gpu::DirectContext>;
+    fn renderer_context(&mut self) -> Option<lay_rs::skia::gpu::DirectContext>;
 }

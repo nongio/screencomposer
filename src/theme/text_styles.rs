@@ -22,5 +22,5 @@ define_text_styles!({
     caption_1_regular => (Weight::NORMAL, 10.0),
     caption_1_emphasized => (Weight::MEDIUM, 10.0),
     caption_2_regular => (Weight::MEDIUM, 10.0),
-    caption_2_emphasized => (Weight::SEMI_BOLD, 10.0)    
+    caption_2_emphasized => (Weight::SEMI_BOLD, 10.0)
 });

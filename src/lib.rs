@@ -24,8 +24,8 @@ pub mod winit;
 pub mod x11;
 
 pub use state::{CalloopData, ClientState, ScreenComposer};
-mod workspace;
+mod workspaces;
 
 mod config;
-mod utils;
 mod theme;
+mod utils;

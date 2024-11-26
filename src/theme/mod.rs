@@ -1,10 +1,13 @@
-use lay_rs::skia::{font_style::{Width, Slant}, textlayout::TextStyle, FontStyle};
+use lay_rs::skia::{
+    font_style::{Slant, Width},
+    textlayout::TextStyle,
+    FontStyle,
+};
 use lay_rs::types::Color;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
-
 
 // Macro to define a Lazy group of colors
 macro_rules! define_colors {
@@ -19,8 +22,10 @@ macro_rules! define_colors {
     };
 }
 
-pub fn text_style_with_size_and_weight(size: f32, weight: lay_rs::skia::font_style::Weight) 
--> lay_rs::skia::textlayout::TextStyle {
+pub fn text_style_with_size_and_weight(
+    size: f32,
+    weight: lay_rs::skia::font_style::Weight,
+) -> lay_rs::skia::textlayout::TextStyle {
     let scale = Config::with(|c| c.screen_scale);
     let mut ts = TextStyle::new();
     ts.set_font_size(size * scale as f32);
@@ -106,8 +111,8 @@ pub struct ThemeColors {
     pub materials_controls_hud: Color,
 }
 
-mod colors_light;
 mod colors_dark;
+mod colors_light;
 pub mod text_styles;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,14 +122,8 @@ pub enum ThemeScheme {
 }
 
 pub fn theme_colors() -> &'static Lazy<ThemeColors> {
-    Config::with(|c| {
-        match c.theme_scheme {
-            ThemeScheme::Light => {
-                &colors_light::COLORS
-            },
-            ThemeScheme::Dark => {
-                &colors_dark::COLORS
-            },
-        }
+    Config::with(|c| match c.theme_scheme {
+        ThemeScheme::Light => &colors_light::COLORS,
+        ThemeScheme::Dark => &colors_dark::COLORS,
     })
 }

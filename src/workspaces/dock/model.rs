@@ -1,6 +1,6 @@
 use std::hash::{Hash, Hasher};
 
-use crate::workspace::{Application, Window};
+use crate::workspaces::{Application, Window};
 
 #[derive(Debug, Clone, Default)]
 pub struct DockModel {
