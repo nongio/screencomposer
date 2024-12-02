@@ -2,7 +2,6 @@ use std::{
     cmp::max,
     collections::VecDeque,
     fmt::Debug,
-    os::unix::io::OwnedFd,
     sync::{atomic::AtomicBool, Arc, Mutex},
     time::Duration,
 };
@@ -18,8 +17,7 @@ use smithay::{
         input::TabletToolDescriptor,
         renderer::{
             element::{
-                default_primary_scanout_output_compare, utils::select_dmabuf_feedback,
-                RenderElementStates,
+                default_primary_scanout_output_compare, utils::select_dmabuf_feedback, AsRenderElements, RenderElementStates
             },
             utils::{RendererSurfaceState, RendererSurfaceStateUserData},
         },
@@ -85,36 +83,28 @@ use smithay::{
         relative_pointer::RelativePointerManagerState,
         seat::WaylandFocus,
         security_context::{
-            SecurityContext, SecurityContextHandler, SecurityContextListenerSource,
+            SecurityContext,
             SecurityContextState,
         },
         selection::{
-            data_device::{
-                set_data_device_focus, ClientDndGrabHandler, DataDeviceHandler, DataDeviceState,
-                ServerDndGrabHandler,
-            },
-            primary_selection::{
-                set_primary_focus, PrimarySelectionHandler, PrimarySelectionState,
-            },
-            wlr_data_control::{DataControlHandler, DataControlState},
-            SelectionHandler,
+            data_device::DataDeviceState,
+            primary_selection::PrimarySelectionState,
+            wlr_data_control::DataControlState,
         },
         shell::{
             wlr_layer::WlrLayerShellState,
             xdg::{
-                decoration::{XdgDecorationHandler, XdgDecorationState},
-                SurfaceCachedState, ToplevelSurface, XdgShellState, XdgToplevelSurfaceData,
+                decoration::XdgDecorationState,
+                SurfaceCachedState, XdgShellState, XdgToplevelSurfaceData,
             },
         },
         shm::{ShmHandler, ShmState},
         socket::ListeningSocketSource,
-        tablet_manager::{TabletManagerState, TabletSeatHandler},
+        tablet_manager::TabletManagerState,
         text_input::TextInputManagerState,
         viewporter::ViewporterState,
         virtual_keyboard::VirtualKeyboardManagerState,
-        xdg_activation::{
-            XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
-        },
+        xdg_activation::XdgActivationState,
         xdg_foreign::{XdgForeignHandler, XdgForeignState},
     },
 };
@@ -123,10 +113,9 @@ use smithay::{
 use crate::cursor::Cursor;
 use crate::{
     config::Config,
-    focus::{KeyboardFocusTarget, PointerFocusTarget},
-    render_elements::scene_element::SceneElement,
+    render_elements::{scene_element::SceneElement, workspace_render_elements::WorkspaceRenderElements},
     shell::WindowElement,
-    skia_renderer::SkiaTextureImage,
+    skia_renderer::{SkiaRenderer, SkiaTextureImage},
     workspaces::{DndView, Window, WindowViewBaseModel, WindowViewSurface, Workspaces},
 };
 #[cfg(feature = "xwayland")]
@@ -163,8 +152,8 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub handle: LoopHandle<'static, ScreenComposer<BackendData>>,
 
     // desktop
-    pub space: Space<WindowElement>,
     pub popups: PopupManager,
+    pub workspaces: Workspaces,
 
     // smithay state
     pub compositor_state: CompositorState,
@@ -206,8 +195,6 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub renderdoc: Option<renderdoc::RenderDoc<renderdoc::V141>>,
 
     pub scene_element: SceneElement,
-    // state
-    pub workspaces: Workspaces,
 
     pub dnd_view: DndView,
     // layers
@@ -219,228 +206,32 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub is_resizing: bool,
 }
 
-delegate_compositor!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-impl<BackendData: Backend> DataDeviceHandler for ScreenComposer<BackendData> {
-    fn data_device_state(&self) -> &DataDeviceState {
-        &self.data_device_state
-    }
-    fn action_choice(
-        &mut self,
-        available: smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction,
-        preferred: smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction,
-    ) -> smithay::reexports::wayland_server::protocol::wl_data_device_manager::DndAction {
-        // println!("available {:?} preferred {:?}", available, preferred);
-        // if the preferred action is valid (a single action) and in the available actions, use it
-        // otherwise, follow a fallback stategy
-
-        if [DndAction::Move, DndAction::Copy, DndAction::Ask].contains(&preferred)
-            && available.contains(preferred)
-        {
-            self.load_cursor_for_action(preferred);
-            preferred
-        } else if available.contains(DndAction::Ask) {
-            self.load_cursor_for_action(DndAction::Ask);
-            DndAction::Ask
-        } else if available.contains(DndAction::Copy) {
-            self.load_cursor_for_action(DndAction::Copy);
-            DndAction::Copy
-        } else if available.contains(DndAction::Move) {
-            self.load_cursor_for_action(DndAction::Move);
-            DndAction::Move
-        } else {
-            self.load_cursor_for_action(DndAction::None);
-            DndAction::empty()
-        }
-    }
-}
-
-impl<BackendData: Backend> ClientDndGrabHandler for ScreenComposer<BackendData> {
-    fn started(
-        &mut self,
-        _source: Option<WlDataSource>,
-        icon: Option<WlSurface>,
-        _seat: Seat<Self>,
-    ) {
-        self.dnd_icon = icon;
-        let p = self.get_cursor_position();
-        let p = (p.x as f32, p.y as f32).into();
-        self.dnd_view.set_initial_position(p);
-        self.dnd_view.layer.set_scale((1.0, 1.0), None);
-
-        self.dnd_view
-            .layer
-            .set_opacity(0.8, Some(Transition::default()));
-    }
-    fn dropped(&mut self, _seat: Seat<Self>) {
-        self.dnd_icon = None;
-        self.dnd_view
-            .layer
-            .set_opacity(0.0, Some(Transition::default()));
-        self.dnd_view
-            .layer
-            .set_scale((1.2, 1.2), Some(Transition::default()));
-        // self.dnd_view.layer.set_position(self.dnd_view.initial_position, Some(Transition::default()));
-    }
-}
-impl<BackendData: Backend> ServerDndGrabHandler for ScreenComposer<BackendData> {
-    fn send(&mut self, _mime_type: String, _fd: OwnedFd, _seat: Seat<Self>) {
-        unreachable!("Anvil doesn't do server-side grabs");
-    }
-}
-delegate_data_device!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+pub mod dnd_grab_handler;
+pub mod data_device_handler;
+pub mod selection_handler;
+pub mod seat_handler;
+pub mod input_method_handler;
+pub mod xdg_decoration_handler;
+pub mod xdg_activation_handler;
+pub mod fractional_scale_handler;
+pub mod security_context_handler;
+pub mod xwayland_handler;
 
 impl<BackendData: Backend> OutputHandler for ScreenComposer<BackendData> {}
-
-delegate_output!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-impl<BackendData: Backend> SelectionHandler for ScreenComposer<BackendData> {
-    type SelectionUserData = ();
-
-    #[cfg(feature = "xwayland")]
-    fn new_selection(
-        &mut self,
-        ty: SelectionTarget,
-        source: Option<SelectionSource>,
-        _seat: Seat<Self>,
-    ) {
-        if let Some(xwm) = self.xwm.as_mut() {
-            if let Err(err) = xwm.new_selection(ty, source.map(|source| source.mime_types())) {
-                warn!(?err, ?ty, "Failed to set Xwayland selection");
-            }
-        }
-    }
-
-    #[cfg(feature = "xwayland")]
-    fn send_selection(
-        &mut self,
-        ty: SelectionTarget,
-        mime_type: String,
-        fd: OwnedFd,
-        _seat: Seat<Self>,
-        _user_data: &(),
-    ) {
-        if let Some(xwm) = self.xwm.as_mut() {
-            if let Err(err) = xwm.send_selection(ty, mime_type, fd, self.handle.clone()) {
-                warn!(?err, "Failed to send primary (X11 -> Wayland)");
-            }
-        }
-    }
-    fn new_selection(
-        &mut self,
-        ty: smithay::wayland::selection::SelectionTarget,
-        source: Option<smithay::wayland::selection::SelectionSource>,
-        _seat: Seat<Self>,
-    ) {
-        println!("new_selection {:?} {:?}", ty, source);
-    }
-    fn send_selection(
-        &mut self,
-        ty: smithay::wayland::selection::SelectionTarget,
-        mime_type: String,
-        fd: OwnedFd,
-        _seat: Seat<Self>,
-        _user_data: &Self::SelectionUserData,
-    ) {
-        println!("send_selection {:?} {:?} {:?}", ty, mime_type, fd);
-    }
-}
-
-impl<BackendData: Backend> PrimarySelectionHandler for ScreenComposer<BackendData> {
-    fn primary_selection_state(&self) -> &PrimarySelectionState {
-        &self.primary_selection_state
-    }
-}
-delegate_primary_selection!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-impl<BackendData: Backend> DataControlHandler for ScreenComposer<BackendData> {
-    fn data_control_state(&self) -> &DataControlState {
-        &self.data_control_state
-    }
-}
-
-delegate_data_control!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
 impl<BackendData: Backend> ShmHandler for ScreenComposer<BackendData> {
     fn shm_state(&self) -> &ShmState {
         &self.shm_state
     }
 }
+
+delegate_compositor!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+
+delegate_output!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+
 delegate_shm!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
-impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
-    type KeyboardFocus = KeyboardFocusTarget<BackendData>;
-    type PointerFocus = PointerFocusTarget<BackendData>;
-    type TouchFocus = PointerFocusTarget<BackendData>;
-
-    fn seat_state(&mut self) -> &mut SeatState<ScreenComposer<BackendData>> {
-        &mut self.seat_state
-    }
-
-    fn focus_changed(
-        &mut self,
-        seat: &Seat<Self>,
-        target: Option<&KeyboardFocusTarget<BackendData>>,
-    ) {
-        let dh = &self.display_handle;
-
-        let wl_surface = target.and_then(WaylandFocus::wl_surface);
-
-        let focus = wl_surface.and_then(|s| dh.get_client(s.id()).ok());
-        set_data_device_focus(dh, seat, focus.clone());
-        set_primary_focus(dh, seat, focus);
-    }
-
-    fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
-        *self.cursor_status.lock().unwrap() = image;
-    }
-    fn led_state_changed(
-        &mut self,
-        _seat: &Seat<Self>,
-        _led_state: smithay::input::keyboard::LedState,
-    ) {
-        println!("keyboard led_state_changed {:?}", _led_state);
-    }
-}
-delegate_seat!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-impl<BackendData: Backend> TabletSeatHandler for ScreenComposer<BackendData> {
-    fn tablet_tool_image(&mut self, _tool: &TabletToolDescriptor, image: CursorImageStatus) {
-        // TODO: tablet tools should have their own cursors
-        let mut cursor_status = self.cursor_status.lock().unwrap();
-        *cursor_status = image;
-    }
-}
-delegate_tablet_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
 delegate_text_input_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-impl<BackendData: Backend> InputMethodHandler for ScreenComposer<BackendData> {
-    fn new_popup(&mut self, surface: PopupSurface) {
-        if let Err(err) = self.popups.track_popup(PopupKind::from(surface)) {
-            warn!("Failed to track popup: {}", err);
-        }
-    }
-
-    fn popup_repositioned(&mut self, _: PopupSurface) {}
-
-    fn dismiss_popup(&mut self, surface: PopupSurface) {
-        if let Some(parent) = surface.get_parent().map(|parent| parent.surface.clone()) {
-            let _ = PopupManager::dismiss_popup(&parent, &PopupKind::from(surface));
-        }
-    }
-
-    fn parent_geometry(&self, parent: &WlSurface) -> Rectangle<i32, smithay::utils::Logical> {
-        self.space
-            .elements()
-            .find_map(|window| {
-                (window.wl_surface().as_deref() == Some(parent)).then(|| window.geometry())
-            })
-            .unwrap_or_default()
-    }
-}
-
-delegate_input_method_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
 impl<BackendData: Backend> KeyboardShortcutsInhibitHandler for ScreenComposer<BackendData> {
     fn keyboard_shortcuts_inhibit_state(&mut self) -> &mut KeyboardShortcutsInhibitState {
@@ -461,210 +252,13 @@ delegate_pointer_gestures!(@<BackendData: Backend + 'static> ScreenComposer<Back
 
 delegate_relative_pointer!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
-impl<BackendData: Backend> PointerConstraintsHandler for ScreenComposer<BackendData> {
-    fn new_constraint(&mut self, surface: &WlSurface, pointer: &PointerHandle<Self>) {
-        // XXX region
-        let Some(current_focus) = pointer.current_focus() else {
-            return;
-        };
-        if current_focus.wl_surface().as_deref() == Some(surface) {
-            with_pointer_constraint(surface, pointer, |constraint| {
-                constraint.unwrap().activate();
-            });
-        }
-    }
-}
-delegate_pointer_constraints!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
 delegate_viewporter!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
-impl<BackendData: Backend> XdgActivationHandler for ScreenComposer<BackendData> {
-    fn activation_state(&mut self) -> &mut XdgActivationState {
-        &mut self.xdg_activation_state
-    }
-
-    fn token_created(&mut self, _token: XdgActivationToken, data: XdgActivationTokenData) -> bool {
-        if let Some((serial, seat)) = data.serial {
-            let keyboard = self.seat.get_keyboard().unwrap();
-            Seat::from_resource(&seat) == Some(self.seat.clone())
-                && keyboard
-                    .last_enter()
-                    .map(|last_enter| serial.is_no_older_than(&last_enter))
-                    .unwrap_or(false)
-        } else {
-            false
-        }
-    }
-
-    fn request_activation(
-        &mut self,
-        _token: XdgActivationToken,
-        token_data: XdgActivationTokenData,
-        surface: WlSurface,
-    ) {
-        if token_data.timestamp.elapsed().as_secs() < 10 {
-            // Just grant the wish
-            let w = self
-                .space
-                .elements()
-                .find(|window| window.wl_surface().map(|s| *s == surface).unwrap_or(false))
-                .cloned();
-            if let Some(window) = w {
-                self.raise_element(&window, true, Some(SERIAL_COUNTER.next_serial()), true);
-            }
-        }
-    }
-}
-delegate_xdg_activation!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-impl<BackendData: Backend> XdgDecorationHandler for ScreenComposer<BackendData> {
-    fn new_decoration(&mut self, toplevel: ToplevelSurface) {
-        use xdg_decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
-        // Set the default to client side
-        toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(Mode::ClientSide);
-        });
-    }
-    fn request_mode(&mut self, toplevel: ToplevelSurface, mode: DecorationMode) {
-        use xdg_decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
-
-        toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(match mode {
-                DecorationMode::ServerSide => Mode::ClientSide,
-                _ => Mode::ClientSide,
-            });
-        });
-
-        let initial_configure_sent = with_states(toplevel.wl_surface(), |states| {
-            states
-                .data_map
-                .get::<XdgToplevelSurfaceData>()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .initial_configure_sent
-        });
-        if initial_configure_sent {
-            toplevel.send_pending_configure();
-        }
-    }
-    fn unset_mode(&mut self, toplevel: ToplevelSurface) {
-        use xdg_decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
-        toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(Mode::ClientSide);
-        });
-        let initial_configure_sent = with_states(toplevel.wl_surface(), |states| {
-            states
-                .data_map
-                .get::<XdgToplevelSurfaceData>()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .initial_configure_sent
-        });
-        if initial_configure_sent {
-            toplevel.send_pending_configure();
-        }
-    }
-}
-delegate_xdg_decoration!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
 delegate_xdg_shell!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+
 delegate_layer_shell!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+
 delegate_presentation!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-impl<BackendData: Backend> FractionalScaleHandler for ScreenComposer<BackendData> {
-    fn new_fractional_scale(
-        &mut self,
-        surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-    ) {
-        // Here we can set the initial fractional scale
-        //
-        // First we look if the surface already has a primary scan-out output, if not
-        // we test if the surface is a subsurface and try to use the primary scan-out output
-        // of the root surface. If the root also has no primary scan-out output we just try
-        // to use the first output of the toplevel.
-        // If the surface is the root we also try to use the first output of the toplevel.
-        //
-        // If all the above tests do not lead to a output we just use the first output
-        // of the space (which in case of anvil will also be the output a toplevel will
-        // initially be placed on)
-        #[allow(clippy::redundant_clone)]
-        let mut root = surface.clone();
-        while let Some(parent) = get_parent(&root) {
-            root = parent;
-        }
-
-        with_states(&surface, |states| {
-            let primary_scanout_output = surface_primary_scanout_output(&surface, states)
-                .or_else(|| {
-                    if root != surface {
-                        with_states(&root, |states| {
-                            surface_primary_scanout_output(&root, states).or_else(|| {
-                                self.window_for_surface(&root).and_then(|window| {
-                                    self.space.outputs_for_element(&window).first().cloned()
-                                })
-                            })
-                        })
-                    } else {
-                        self.window_for_surface(&root).and_then(|window| {
-                            self.space.outputs_for_element(&window).first().cloned()
-                        })
-                    }
-                })
-                .or_else(|| self.space.outputs().next().cloned());
-            if let Some(output) = primary_scanout_output {
-                with_fractional_scale(states, |fractional_scale| {
-                    fractional_scale.set_preferred_scale(output.current_scale().fractional_scale());
-                });
-            }
-        });
-    }
-}
-delegate_fractional_scale!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-impl<BackendData: Backend + 'static> SecurityContextHandler for ScreenComposer<BackendData> {
-    fn context_created(
-        &mut self,
-        source: SecurityContextListenerSource,
-        security_context: SecurityContext,
-    ) {
-        self.handle
-            .insert_source(source, move |client_stream, _, data| {
-                let client_state = ClientState {
-                    security_context: Some(security_context.clone()),
-                    ..ClientState::default()
-                };
-                if let Err(err) = data
-                    .display_handle
-                    .insert_client(client_stream, Arc::new(client_state))
-                {
-                    warn!("Error adding wayland client: {}", err);
-                };
-            })
-            .expect("Failed to init wayland socket source");
-    }
-}
-delegate_security_context!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-#[cfg(feature = "xwayland")]
-impl<BackendData: Backend + 'static> XWaylandKeyboardGrabHandler for ScreenComposer<BackendData> {
-    fn keyboard_focus_for_xsurface(
-        &self,
-        surface: &WlSurface,
-    ) -> Option<KeyboardFocusTarget<BackendData>> {
-        let elem = self
-            .space
-            .elements()
-            .find(|elem| elem.wl_surface().as_deref() == Some(surface))?;
-        Some(KeyboardFocusTarget::Window(elem.clone()))
-    }
-}
-#[cfg(feature = "xwayland")]
-delegate_xwayland_keyboard_grab!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-#[cfg(feature = "xwayland")]
-delegate_xwayland_shell!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
 impl<BackendData: Backend> XdgForeignHandler for ScreenComposer<BackendData> {
     fn xdg_foreign_state(&mut self) -> &mut XdgForeignState {
@@ -779,7 +373,6 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         });
         layers_engine.scene_add_layer(root_layer.clone());
         let scene_element = SceneElement::with_engine(layers_engine.clone());
-        let space = Space::default();
         let workspaces = Workspaces::new(layers_engine.clone());
 
         let dnd_view = DndView::new(layers_engine.clone(), root_layer.id().unwrap());
@@ -793,7 +386,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             socket_name,
             running: Arc::new(AtomicBool::new(true)),
             handle,
-            space,
+
             popups: PopupManager::default(),
             compositor_state,
             data_device_state,
@@ -889,7 +482,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     }
     pub fn update_workspace_applications(&mut self) {
         let windows: Vec<_> = self
-            .space
+            .space()
             .elements()
             .map(|we| (we.wl_surface().unwrap().id(), we.clone()))
             .collect();
@@ -897,7 +490,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         let windows: Vec<_> = windows
             .iter()
             .filter_map(|(id, we)| {
-                if let Some(wv) = self.workspaces.get_window_view(&id) {
+                if let Some(wv) = self.workspaces.get_window_view(id) {
                     let state = wv.view_base.get_state();
                     Some((we.clone(), wv.window_layer.clone(), state))
                 } else {
@@ -958,7 +551,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     }
     #[profiling::function]
     pub fn update_windows(&mut self) {
-        let windows: Vec<WindowElement> = self.space.elements().map(|we| we.clone()).collect();
+        let windows: Vec<WindowElement> = self.space().elements().map(|we| we.clone()).collect();
 
         let minimized_windows: Vec<WindowElement> = self.workspaces.with_model(|model| {
             model
@@ -971,7 +564,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             let windows = windows.iter().chain(minimized_windows.iter());
             profiling::scope!("update_windows");
             for window in windows {
-                let output = self.space.outputs_for_element(window);
+                let output = self.space().outputs_for_element(window);
                 let scale_factor = output
                     .first()
                     .map(|output| output.current_scale())
@@ -980,13 +573,13 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 if let Some(window_surface) = window.wl_surface() {
                     let id = window_surface.id();
                     let location = self
-                        .space
+                        .space()
                         .element_location(window)
                         .unwrap_or((0, 0).into())
                         .to_f64()
                         .to_physical(scale_factor);
                     let window_geometry = self
-                        .space
+                        .space()
                         .element_geometry(window)
                         .unwrap_or_default()
                         .to_f64()
@@ -1106,6 +699,12 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     pub fn expose_show_desktop(&mut self, delta: f32, end_gesture: bool) {
         self.workspaces.expose_show_desktop(delta, end_gesture);
     }
+    pub fn space(&self) -> &Space<WindowElement> {
+        self.workspaces.space()
+    }
+    pub fn space_mut(&mut self) -> &mut Space<WindowElement> {
+        self.workspaces.space_mut()
+    }
 
     pub fn set_workspace_number(&self, n: usize) {
         self.workspaces.set_current_workspace(n);
@@ -1150,7 +749,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         };
 
         let cursor_pos = self.pointer.current_location() - cursor_hotspot.to_f64();
-        let output = self.space.output_under(cursor_pos).next().cloned().unwrap();
+        let output = self.space().output_under(cursor_pos).next().cloned().unwrap();
         let scale = output.current_scale().fractional_scale();
 
         cursor_pos.to_physical(scale).to_f64()
@@ -1239,7 +838,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         serial: Option<Serial>,
         update: bool,
     ) {
-        self.space.raise_element(window, activate);
+        self.space_mut().raise_element(window, activate);
         let id = window.wl_surface().unwrap().id();
         {
             if let Some(view) = self.workspaces.get_window_view(&id) {
@@ -1316,12 +915,12 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     pub fn minimize_window(&mut self, window_element: &WindowElement) {
         let id = window_element.wl_surface().unwrap().id();
         {
-            self.workspaces.minimize_window(&id, &window_element);
+            self.workspaces.minimize_window(&id, window_element);
             window_element.set_activate(false);
         }
 
         // ideally we set the focus to the next window in the stack
-        let windows: Vec<_> = self.space.elements().map(|we| we.clone()).collect();
+        let windows: Vec<_> = self.space().elements().map(|we| we.clone()).collect();
 
         let win_len = windows.len();
         if win_len <= 1 {
@@ -1350,7 +949,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             let pos_x = view.unmaximized_rect.x as i32;
             let pos_y = view.unmaximized_rect.y as i32;
 
-            self.space
+            self.space_mut()
                 .map_element(window_element.clone(), (pos_x, pos_y), true);
             window_element.set_activate(true);
             self.seat.get_keyboard().unwrap().set_focus(
@@ -1359,6 +958,28 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 SERIAL_COUNTER.next_serial(),
             );
         }
+    }
+    pub fn space_window_elements(&self) -> impl DoubleEndedIterator<Item = WindowElement> {
+        let _space_elements =
+            self.space().elements();
+        Vec::new().into_iter()
+    }
+    pub fn workspace_elements(&self) -> Vec<WorkspaceRenderElements<SkiaRenderer>> {
+        let scene_element = self.scene_element.clone();
+        let mut elements = Vec::new();
+        // elements.push(Box::new(scene_element) as Box<dyn AsRenderElements<SkiaRenderer, RenderElement = SceneElement>>);
+        // let mut pointer_element = PointerElement::<SkiaTexture>::default();
+
+        // elements.extend(pointer_element.render_elements(
+        //     renderer,
+        //     cursor_pos_scaled,
+        //     (cursor_rescale).into(),
+        //     1.0,
+        // ));
+        // let dnd = state.dnd_icon.as_ref();
+        // custom_elements.push(WorkspaceRenderElements::Scene(scene_element));
+        // Vec::new()
+        elements
     }
 }
 
@@ -1369,7 +990,7 @@ pub struct SurfaceDmabufFeedback<'a> {
 }
 
 #[profiling::function]
-pub fn post_repaint(
+pub fn post_repaint<'a>(
     output: &Output,
     render_element_states: &RenderElementStates,
     space: &Space<WindowElement>,
@@ -1397,20 +1018,20 @@ pub fn post_repaint(
         });
         window.send_frame(output, time, Some(Duration::ZERO), |_, _| {
             Some(output.clone())
-        })
-        // if space.outputs_for_element(window).contains(output) {
-        //     window.send_frame(output, time, throttle, surface_primary_scanout_output);
-        //     if let Some(dmabuf_feedback) = dmabuf_feedback {
-        //         window.send_dmabuf_feedback(output, surface_primary_scanout_output, |surface, _| {
-        //             select_dmabuf_feedback(
-        //                 surface,
-        //                 render_element_states,
-        //                 dmabuf_feedback.render_feedback,
-        //                 dmabuf_feedback.scanout_feedback,
-        //             )
-        //         });
-        //     }
-        // }
+        });
+        if space.outputs_for_element(window).contains(output) {
+            window.send_frame(output, time, throttle, surface_primary_scanout_output);
+            if let Some(dmabuf_feedback) = dmabuf_feedback {
+                window.send_dmabuf_feedback(output, surface_primary_scanout_output, |surface, _| {
+                    select_dmabuf_feedback(
+                        surface,
+                        render_element_states,
+                        dmabuf_feedback.render_feedback,
+                        dmabuf_feedback.scanout_feedback,
+                    )
+                });
+            }
+        }
     });
     let map = smithay::desktop::layer_map_for_output(output);
     for layer_surface in map.layers() {
@@ -1449,7 +1070,7 @@ pub fn post_repaint(
 }
 
 #[profiling::function]
-pub fn take_presentation_feedback(
+pub fn take_presentation_feedback<'a>(
     output: &Output,
     space: &Space<WindowElement>,
     render_element_states: &RenderElementStates,
@@ -1467,16 +1088,29 @@ pub fn take_presentation_feedback(
             );
         }
     });
-    let map = smithay::desktop::layer_map_for_output(output);
-    for layer_surface in map.layers() {
-        layer_surface.take_presentation_feedback(
-            &mut output_presentation_feedback,
-            surface_primary_scanout_output,
-            |surface, _| {
-                surface_presentation_feedback_flags_from_states(surface, render_element_states)
-            },
-        );
-    }
+
+    // space.elements().for_each(|window| {
+    //     if space.outputs_for_element(window).contains(output) {
+    //         window.take_presentation_feedback(
+    //             &mut output_presentation_feedback,
+    //             surface_primary_scanout_output,
+    //             |surface, _| {
+    //                 surface_presentation_feedback_flags_from_states(surface, render_element_states)
+    //             },
+    //         );
+    //     }
+    // });
+    // TODO layers presentation feedback
+    // let map = smithay::desktop::layer_map_for_output(output);
+    // for layer_surface in map.layers() {
+    //     layer_surface.take_presentation_feedback(
+    //         &mut output_presentation_feedback,
+    //         surface_primary_scanout_output,
+    //         |surface, _| {
+    //             surface_presentation_feedback_flags_from_states(surface, render_element_states)
+    //         },
+    //     );
+    // }
 
     output_presentation_feedback
 }
