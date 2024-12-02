@@ -43,19 +43,11 @@ use smithay::{
 use tracing::{error, info, warn};
 
 use crate::{
-    config::Config,
-    drawing::*,
-    render::*,
-    render_elements::workspace_render_elements::WorkspaceRenderElements,
-    skia_renderer::{SkiaRenderer, SkiaTexture, SkiaTextureImage},
-    state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
+    config::Config, drawing::*, render::*, render_elements::workspace_render_elements::WorkspaceRenderElements, shell::WindowElement, skia_renderer::{SkiaRenderer, SkiaTexture, SkiaTextureImage}, state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer}
 };
 
 #[cfg(feature = "debug")]
-use smithay::{
-    backend::{allocator::Fourcc, renderer::ImportMem},
-    reexports::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle},
-};
+use smithay::reexports::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 pub const OUTPUT_NAME: &str = "winit";
 
@@ -265,7 +257,7 @@ pub fn run_winit() {
         .shm_state
         .update_formats(state.backend_data.backend.renderer().shm_formats());
 
-    state.space.map_output(&output, (0, 0));
+    state.workspaces.space_mut().map_output(&output, (0, 0));
 
     #[cfg(feature = "xwayland")]
     state.start_xwayland();
@@ -274,6 +266,7 @@ pub fn run_winit() {
 
     let mut pointer_element = PointerElement::<SkiaTexture>::default();
 
+    // rendering / events loop
     while state.running.load(Ordering::SeqCst) {
         #[cfg(feature = "profile-with-puffin")]
         profiling::puffin::GlobalProfiler::lock().new_frame();
@@ -295,8 +288,8 @@ pub fn run_winit() {
         let status = winit.dispatch_new_events(|event| match event {
             WinitEvent::Resized { size, .. } => {
                 // We only have one output
-                let output = state.space.outputs().next().unwrap().clone();
-                state.space.map_output(&output, (0, 0));
+                let output = state.workspaces.space().outputs().next().unwrap().clone();
+                state.workspaces.space_mut().map_output(&output, (0, 0));
                 let mode = Mode {
                     size,
                     refresh: 60_000,
@@ -309,7 +302,8 @@ pub fn run_winit() {
                     None,
                 );
                 output.set_preferred(mode);
-                crate::shell::fixup_positions(&mut state.space, state.pointer.current_location());
+                let pointer_location = state.pointer.current_location();
+                crate::shell::fixup_positions(&mut state.workspaces.space_mut(), pointer_location);
                 state.scene_element.set_size(size.w as f32, size.h as f32);
                 state.workspaces.set_size(size.w as f32, size.h as f32);
                 root.layer.set_size(
@@ -358,7 +352,7 @@ pub fn run_winit() {
 
             let full_redraw = &mut state.backend_data.full_redraw;
             *full_redraw = full_redraw.saturating_sub(1);
-            let space = &mut state.space;
+            let space = &mut state.workspaces.space_mut();
             let damage_tracker = &mut state.backend_data.damage_tracker;
 
             let output_scale = output.current_scale().fractional_scale();
@@ -427,7 +421,10 @@ pub fn run_winit() {
             // println!("cursor phy size: {:?}, config_phy {:?} should_scale: {}", cursor_phy_size, cursor_config_physical_size, cursor_rescale);
             #[cfg(feature = "debug")]
             let mut renderdoc = state.renderdoc.as_mut();
-            let render_res = backend.bind().and_then(|_| {
+            // Rendering
+            let render_res = 
+            backend.bind().and_then(|_| {
+                // Start RenderDoc capture
                 #[cfg(feature = "debug")]
                 if let Some(renderdoc) = renderdoc.as_mut() {
                     renderdoc.start_frame_capture(
@@ -455,6 +452,7 @@ pub fn run_winit() {
 
                 let mut elements = Vec::<WorkspaceRenderElements<_>>::new();
 
+                // Collect render elements
                 elements.extend(pointer_element.render_elements(
                     renderer,
                     cursor_pos_scaled,
@@ -469,6 +467,8 @@ pub fn run_winit() {
 
                 #[cfg(feature = "profile-with-puffin")]
                 profiling::puffin::profile_scope!("render_output");
+
+                // Render elements
 
                 render_output(
                     &output,
@@ -494,6 +494,7 @@ pub fn run_winit() {
                         }
                     }
 
+                    // RenderDoc
                     #[cfg(feature = "debug")]
                     if let Some(renderdoc) = renderdoc.as_mut() {
                         renderdoc.end_frame_capture(
@@ -519,15 +520,16 @@ pub fn run_winit() {
                     post_repaint(
                         &output,
                         &render_output_result.states,
-                        &state.space,
+                        state.workspaces.space(),
                         None,
                         time,
                     );
 
+                    // Output presenation feedback
                     if has_rendered {
                         let mut output_presentation_feedback = take_presentation_feedback(
                             &output,
-                            &state.space,
+                            state.workspaces.space(),
                             &render_output_result.states,
                         );
                         output_presentation_feedback.presented(
@@ -566,12 +568,12 @@ pub fn run_winit() {
                 Err(err) => warn!("Rendering error: {}", err),
             }
         }
-
+        // Rendering Done, prepare loop
         let result = event_loop.dispatch(Some(Duration::from_millis(1)), &mut state);
         if result.is_err() {
             state.running.store(false, Ordering::SeqCst);
         } else {
-            state.space.refresh();
+            state.space_mut().refresh();
             state.popups.cleanup();
             display_handle.flush_clients().unwrap();
         }

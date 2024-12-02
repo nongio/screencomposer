@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 
-use lay_rs::prelude::{Easing, TimingFunction, Transition};
 use smithay::{
     desktop::{
         find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
@@ -51,22 +50,22 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         // the surface is not already configured
         let id = surface.wl_surface().id();
         let window = WindowElement(Window::new_wayland_window(surface));
+        let current_location = self.pointer.current_location();
+        let mut space = self.space_mut();
         place_new_window(
-            &mut self.space,
-            self.pointer.current_location(),
+            &mut space,
+            current_location,
             &window,
             true,
         );
-        self.space.refresh();
-        let scale = self
-            .space
+        space.refresh();
+        let scale = space
             .outputs_for_element(&window)
             .first()
             .unwrap()
             .current_scale()
             .fractional_scale();
-        let location = self
-            .space
+        let location = space
             .element_location(&window)
             .unwrap_or_default()
             .to_f64()
@@ -173,7 +172,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     return;
                 }
                 let geometry = window.geometry();
-                let loc = self.space.element_location(&window).unwrap();
+                let loc = self.space().element_location(&window).unwrap();
                 let (initial_window_location, initial_window_size) = (loc, geometry.size);
 
                 with_states(surface.wl_surface(), move |states| {
@@ -227,7 +226,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         }
 
         let geometry = window.geometry();
-        let loc = self.space.element_location(&window).unwrap();
+        let loc = self.space().element_location(&window).unwrap();
         let (initial_window_location, initial_window_size) = (loc, geometry.size);
 
         with_states(surface.wl_surface(), move |states| {
@@ -308,7 +307,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             use std::borrow::Cow;
 
             let window = self
-                .space
+                .space()
                 .elements()
                 .find(|element| element.wl_surface() == Some(Cow::Borrowed(&surface)));
             if let Some(_window) = window {
@@ -340,19 +339,19 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             let wl_surface = surface.wl_surface();
 
             let output_geometry =
-                fullscreen_output_geometry(wl_surface, wl_output.as_ref(), &mut self.space);
+                fullscreen_output_geometry(wl_surface, wl_output.as_ref(), self.space_mut());
 
             if let Some(geometry) = output_geometry {
                 let output = wl_output
                     .as_ref()
                     .and_then(Output::from_resource)
-                    .unwrap_or_else(|| self.space.outputs().next().unwrap().clone());
+                    .unwrap_or_else(|| self.space().outputs().next().unwrap().clone());
                 let client = self.display_handle.get_client(wl_surface.id()).unwrap();
                 for output in output.client_outputs(&client) {
                     wl_output = Some(output);
                 }
                 let window = self
-                    .space
+                    .space()
                     .elements()
                     .find(|window| {
                         window
@@ -449,7 +448,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         {
             let window = self.window_for_surface(surface.wl_surface()).unwrap();
 
-            let current_element_geometry = self.space.element_geometry(&window).unwrap();
+            let current_element_geometry = self.space().element_geometry(&window).unwrap();
             let id = surface.wl_surface().id();
             if let Some(mut view) = self.workspaces.get_window_view(&id) {
                 view.unmaximized_rect = lay_rs::prelude::Rectangle {
@@ -460,25 +459,25 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 };
                 self.workspaces.set_window_view(&id, view);
             }
-            let outputs_for_window = self.space.outputs_for_element(&window);
+            let outputs_for_window = self.space().outputs_for_element(&window);
             let output = outputs_for_window
                 .first()
                 // The window hasn't been mapped yet, use the primary output instead
-                .or_else(|| self.space.outputs().next())
+                .or_else(|| self.space().outputs().next())
                 // Assumes that at least one output exists
                 .expect("No outputs found");
-            let new_geometry = self.space.output_geometry(output).unwrap();
+            let new_geometry = self.space().output_geometry(output).unwrap();
 
             surface.with_pending_state(|state| {
                 state.states.set(xdg_toplevel::State::Maximized);
                 state.size = Some(new_geometry.size);
             });
 
-            let new_location = new_geometry
+            let _new_location = new_geometry
                 .loc
                 .to_f64()
                 .to_physical(output.current_scale().fractional_scale());
-            self.space.map_element(window, new_geometry.loc, true);
+            self.space_mut().map_element(window, new_geometry.loc, true);
 
             unimplemented!("maximize on workspaces");
             // if let Some(_window_layer_id) = self.workspaces.windows_layer.id() {
@@ -531,7 +530,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             //         .current_scale()
             //         .fractional_scale();
 
-            //     self.space.map_element(
+            //     self.space().map_element(
             //         window,
             //         (
             //             view.unmaximized_rect.x as i32,
@@ -561,7 +560,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         {
             let window = self.window_for_surface(surface.wl_surface()).unwrap();
 
-            let current_element_geometry = self.space.element_geometry(&window).unwrap();
+            let current_element_geometry = self.space().element_geometry(&window).unwrap();
             let id = surface.wl_surface().id();
             if let Some(mut view) = self.workspaces.get_window_view(&id) {
                 view.unmaximized_rect = lay_rs::prelude::Rectangle {
@@ -585,13 +584,13 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         let seat: Seat<ScreenComposer<BackendData>> = Seat::from_resource(&seat).unwrap();
         let kind = PopupKind::Xdg(surface);
         if let Some(root) = find_popup_root_surface(&kind).ok().and_then(|root| {
-            self.space
+            self.space()
                 .elements()
                 .find(|w| w.wl_surface().map(|s| *s == root).unwrap_or(false))
                 .cloned()
                 .map(KeyboardFocusTarget::from)
                 .or_else(|| {
-                    self.space
+                    self.space()
                         .outputs()
                         .find_map(|o| {
                             let map = layer_map_for_output(o);
@@ -660,7 +659,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                     return;
                 }
 
-                let mut initial_window_location = self.space.element_location(&window).unwrap();
+                let mut initial_window_location = self.space().element_location(&window).unwrap();
 
                 // If surface is maximized then unmaximize it
                 let current_state = surface.current_state();
@@ -727,7 +726,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             return;
         }
 
-        let mut initial_window_location = self.space.element_location(&window).unwrap();
+        let mut initial_window_location = self.space().element_location(&window).unwrap();
 
         // If surface is maximized then unmaximize it
         let current_state = surface.current_state();
@@ -774,21 +773,21 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             return;
         };
 
-        let mut outputs_for_window = self.space.outputs_for_element(&window);
+        let mut outputs_for_window = self.space().outputs_for_element(&window);
         if outputs_for_window.is_empty() {
             return;
         }
 
         // Get a union of all outputs' geometries.
         let mut outputs_geo = self
-            .space
+            .space()
             .output_geometry(&outputs_for_window.pop().unwrap())
             .unwrap();
         for output in outputs_for_window {
-            outputs_geo = outputs_geo.merge(self.space.output_geometry(&output).unwrap());
+            outputs_geo = outputs_geo.merge(self.space().output_geometry(&output).unwrap());
         }
 
-        let window_geo = self.space.element_geometry(&window).unwrap();
+        let window_geo = self.space().element_geometry(&window).unwrap();
 
         // The target geometry for the positioner should be relative to its parent's geometry, so
         // we will compute that here.

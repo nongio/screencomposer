@@ -1021,6 +1021,7 @@ impl ScreenComposer<UdevData> {
 
             let drm_mode = connector.modes()[mode_id];
             let mut wl_mode = WlMode::from(drm_mode);
+            // FIXME monitor get preferred mode or from config
             wl_mode.refresh = 60 * 1000;
             let surface = match device
                 .drm
@@ -1053,6 +1054,7 @@ impl ScreenComposer<UdevData> {
                 },
             );
 
+            // FIXME handle multimonitor setup
             let root = self.scene_element.root_layer().unwrap();
             let w = wl_mode.size.w as f32;
             let h = wl_mode.size.h as f32;
@@ -1063,8 +1065,8 @@ impl ScreenComposer<UdevData> {
             self.workspaces.set_size(w, h);
             let global = output.create_global::<ScreenComposer<UdevData>>(&self.display_handle);
 
-            let x = self.space.outputs().fold(0, |acc, o| {
-                acc + self.space.output_geometry(o).unwrap().size.w
+            let x = self.workspaces.space().outputs().fold(0, |acc, o| {
+                acc + self.workspaces.space().output_geometry(o).unwrap().size.w
             });
             let position = (x, 0).into();
             output.set_preferred(wl_mode);
@@ -1075,7 +1077,8 @@ impl ScreenComposer<UdevData> {
                 Some(smithay::output::Scale::Fractional(screen_scale)),
                 Some(position),
             );
-            self.space.map_output(&output, position);
+
+            self.workspaces.map_output(&output, position);
 
             output.user_data().insert_if_missing(|| UdevOutputId {
                 crtc,
@@ -1211,8 +1214,7 @@ impl ScreenComposer<UdevData> {
         } else {
             device.surfaces.remove(&crtc);
 
-            let output = self
-                .space
+            let output = self.workspaces.space()
                 .outputs()
                 .find(|o| {
                     o.user_data()
@@ -1223,7 +1225,7 @@ impl ScreenComposer<UdevData> {
                 .cloned();
 
             if let Some(output) = output {
-                self.space.unmap_output(&output);
+                self.workspaces.space_mut().unmap_output(&output);
             }
         }
     }
@@ -1262,7 +1264,7 @@ impl ScreenComposer<UdevData> {
         }
 
         // fixup window coordinates
-        crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
+        crate::shell::fixup_positions(&mut self.workspaces.space_mut(), self.pointer.current_location());
     }
 
     fn device_removed(&mut self, node: DrmNode) {
@@ -1300,7 +1302,7 @@ impl ScreenComposer<UdevData> {
             debug!("Dropping device");
         }
 
-        crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
+        crate::shell::fixup_positions(&mut self.workspaces.space_mut(), self.pointer.current_location());
     }
 
     fn frame_finish(
@@ -1327,7 +1329,7 @@ impl ScreenComposer<UdevData> {
             }
         };
 
-        let output = if let Some(output) = self.space.outputs().find(|o| {
+        let output = if let Some(output) = self.workspaces.outputs().find(|o| {
             o.user_data().get::<UdevOutputId>()
                 == Some(&UdevOutputId {
                     device_id: surface.device_id,
@@ -1517,7 +1519,7 @@ impl ScreenComposer<UdevData> {
         }
         .unwrap();
 
-        let output = if let Some(output) = self.space.outputs().find(|o| {
+        let output = if let Some(output) = self.workspaces.outputs().find(|o| {
             o.user_data().get::<UdevOutputId>()
                 == Some(&UdevOutputId {
                     device_id: surface.device_id,
@@ -1575,7 +1577,7 @@ impl ScreenComposer<UdevData> {
         let result = render_surface(
             surface,
             &mut renderer,
-            &self.space,
+            self.workspaces.space(),
             &output,
             self.pointer.current_location(),
             // &pointer_image,
@@ -1587,7 +1589,7 @@ impl ScreenComposer<UdevData> {
             self.scene_element.clone(),
         );
         {
-            self.space.refresh();
+            self.workspaces.space_mut().refresh();
             self.popups.cleanup();
             self.update_windows();
             self.scene_element.update();

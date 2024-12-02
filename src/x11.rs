@@ -13,8 +13,6 @@ use crate::{
 };
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;
-#[cfg(feature = "debug")]
-use smithay::backend::{allocator::Fourcc, renderer::ImportMem};
 
 use smithay::{
     backend::{
@@ -299,7 +297,7 @@ pub fn run_x11() {
         .shm_state
         .update_formats(state.backend_data.renderer.shm_formats());
 
-    state.space.map_output(&output, (0, 0));
+    state.workspaces.space_mut().map_output(&output, (0, 0));
 
     let output_clone = output.clone();
 
@@ -320,7 +318,7 @@ pub fn run_x11() {
                 output.delete_mode(output.current_mode().unwrap());
                 output.change_current_state(Some(data.backend_data.mode), None, None, None);
                 output.set_preferred(data.backend_data.mode);
-                crate::shell::fixup_positions(&mut data.space, data.pointer.current_location());
+                crate::shell::fixup_positions(&mut data.workspaces.space_mut(), data.pointer.current_location());
 
                 data.backend_data.render = true;
             }
@@ -429,7 +427,7 @@ pub fn run_x11() {
 
             let render_res = render_output(
                 &output,
-                &state.space,
+                state.workspaces.space(),
                 elements,
                 state.dnd_icon.as_ref(),
                 &mut backend_data.renderer,
@@ -453,7 +451,7 @@ pub fn run_x11() {
                     post_repaint(
                         &output,
                         &render_output_result.states,
-                        &state.space,
+                        state.workspaces.space(),
                         None,
                         time,
                     );
@@ -461,7 +459,7 @@ pub fn run_x11() {
                     if render_output_result.damage.is_some() {
                         let mut output_presentation_feedback = take_presentation_feedback(
                             &output,
-                            &state.space,
+                            state.workspaces.space(),
                             &render_output_result.states,
                         );
                         output_presentation_feedback.presented(
@@ -525,7 +523,7 @@ pub fn run_x11() {
         if result.is_err() {
             state.running.store(false, Ordering::SeqCst);
         } else {
-            state.space.refresh();
+            state.workspaces.space_mut().refresh();
             state.popups.cleanup();
             display_handle.flush_clients().unwrap();
         }
