@@ -52,7 +52,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
         handle.motion(data, None, event);
 
         let scale = data
-            .space
+            .space()
             .outputs_for_element(&self.window)
             .first()
             .unwrap()
@@ -61,7 +61,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
 
-        data.space
+        data.space_mut()
             .map_element(self.window.clone(), new_location.to_i32_round(), true);
 
         if let Some(id) = self.window.wl_surface().map(|s| s.id()) {
@@ -250,7 +250,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
 
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
-        data.space
+        data.space_mut()
             .map_element(self.window.clone(), new_location.to_i32_round(), true);
     }
 
@@ -495,7 +495,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
                     xdg.send_pending_configure();
                     if self.edges.intersects(ResizeEdge::TOP_LEFT) {
                         let geometry = self.window.geometry();
-                        let mut location = data.space.element_location(&self.window).unwrap();
+                        let mut location = data.space().element_location(&self.window).unwrap();
 
                         if self.edges.intersects(ResizeEdge::LEFT) {
                             location.x = self.initial_window_location.x
@@ -506,7 +506,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
                                 + (self.initial_window_size.h - geometry.size.h);
                         }
 
-                        data.space.map_element(self.window.clone(), location, true);
+                        data.space_mut().map_element(self.window.clone(), location, true);
                     }
 
                     with_states(&self.window.wl_surface().unwrap(), |states| {
@@ -714,7 +714,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
                 xdg.send_pending_configure();
                 if self.edges.intersects(ResizeEdge::TOP_LEFT) {
                     let geometry = self.window.geometry();
-                    let mut location = data.space.element_location(&self.window).unwrap();
+                    let mut location = data.space().element_location(&self.window).unwrap();
 
                     if self.edges.intersects(ResizeEdge::LEFT) {
                         location.x = self.initial_window_location.x
@@ -725,7 +725,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
                             + (self.initial_window_size.h - geometry.size.h);
                     }
 
-                    data.space.map_element(self.window.clone(), location, true);
+                    data.space_mut().map_element(self.window.clone(), location, true);
                 }
 
                 with_states(&self.window.wl_surface().unwrap(), |states| {

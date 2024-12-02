@@ -157,7 +157,8 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
         }
         self.popups.commit(surface);
 
-        ensure_initial_configure(surface, &self.space, &mut self.popups)
+        // ensure_initial_configure(surface, self.space(), &mut self.popups)
+        ensure_initial_configure(surface, self);
     }
 }
 
@@ -176,14 +177,14 @@ impl<BackendData: Backend> WlrLayerShellHandler for ScreenComposer<BackendData> 
         let output = wl_output
             .as_ref()
             .and_then(Output::from_resource)
-            .unwrap_or_else(|| self.space.outputs().next().unwrap().clone());
+            .unwrap_or_else(|| self.space().outputs().next().unwrap().clone());
         let mut map = layer_map_for_output(&output);
         map.map_layer(&LayerSurface::new(surface, namespace))
             .unwrap();
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
-        if let Some((mut map, layer)) = self.space.outputs().find_map(|o| {
+        if let Some((mut map, layer)) = self.space().outputs().find_map(|o| {
             let map = layer_map_for_output(o);
             let layer = map
                 .layers()
@@ -198,7 +199,7 @@ impl<BackendData: Backend> WlrLayerShellHandler for ScreenComposer<BackendData> 
 
 impl<BackendData: Backend> ScreenComposer<BackendData> {
     pub fn window_for_surface(&self, surface: &WlSurface) -> Option<WindowElement> {
-        self.space
+        self.space()
             .elements()
             .find(|window| window.wl_surface().map(|s| &*s == surface).unwrap_or(false))
             .cloned()
@@ -211,10 +212,11 @@ pub struct SurfaceData {
     pub resize_state: ResizeState,
 }
 
-fn ensure_initial_configure(
+fn ensure_initial_configure<Backend: crate::state::Backend>(
     surface: &WlSurface,
-    space: &Space<WindowElement>,
-    popups: &mut PopupManager,
+    state: &mut ScreenComposer<Backend>
+    // space: &Space<WindowElement>,
+    // popups: &mut PopupManager,
 ) {
     with_surface_tree_upward(
         surface,
@@ -228,7 +230,7 @@ fn ensure_initial_configure(
         |_, _, _| true,
     );
 
-    if let Some(window) = space
+    if let Some(window) = state.space()
         .elements()
         .find(|window| window.wl_surface().map(|s| &*s == surface).unwrap_or(false))
         .cloned()
@@ -266,7 +268,7 @@ fn ensure_initial_configure(
         return;
     }
 
-    if let Some(popup) = popups.find_popup(surface) {
+    if let Some(popup) = state.popups.find_popup(surface) {
         let popup = match popup {
             PopupKind::Xdg(ref popup) => popup,
             // Doesn't require configure
@@ -293,7 +295,7 @@ fn ensure_initial_configure(
         return;
     };
 
-    if let Some(output) = space.outputs().find(|o| {
+    if let Some(output) = state.space().outputs().find(|o| {
         let map = layer_map_for_output(o);
         map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
             .is_some()
@@ -355,8 +357,8 @@ pub fn place_new_window(
     let num_open_windows = space.elements().count();
     let window_index = num_open_windows + 1; // Index of the new window
 
-    let max_x = output_geometry.loc.x + output_geometry.size.w as i32;
-    let max_y = output_geometry.loc.y + output_geometry.size.h as i32;
+    let max_x = output_geometry.loc.x + output_geometry.size.w;
+    let max_y = output_geometry.loc.y + output_geometry.size.h;
 
     // Calculate the position along the diagonal
     const MAX_WINDOW_COUNT: f32 = 40.0;
