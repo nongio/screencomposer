@@ -1,17 +1,24 @@
 use std::collections::HashMap;
 
-use smithay::reexports::wayland_server::{backend::ObjectId, Resource};
+use smithay::reexports::wayland_server::backend::ObjectId;
 
-use crate::workspaces::Window;
+use crate::shell::WindowElement;
 
+#[allow(unused)]
 trait LayoutBoundingBox {
     fn bounding_box(&self) -> LayoutRect;
 }
 
-impl LayoutBoundingBox for Window {
+impl LayoutBoundingBox for WindowElement {
     fn bounding_box(&self) -> LayoutRect {
         // Return the bounding box of the window
-        LayoutRect::new(self.x, self.y, self.w, self.h)
+        let bbox = self.bbox();
+        LayoutRect::new(
+            bbox.loc.x as f32,
+            bbox.loc.y as f32,
+            bbox.size.w as f32,
+            bbox.size.h as f32,
+        )
     }
 }
 
@@ -87,21 +94,24 @@ impl LayoutRect {
 }
 
 #[allow(clippy::mutable_key_type)]
-pub fn natural_layout(
-    windows: &Vec<Window>,
+pub fn natural_layout<'a>(
+    slots: &mut HashMap<ObjectId, LayoutRect>,
+    windows: impl IntoIterator<Item = (&'a WindowElement, LayoutRect)>,
     area: &LayoutRect,
     use_more_screen: bool,
-) -> HashMap<ObjectId, LayoutRect> {
+) {
     let area_rect = area.copy();
     let mut bounds = area_rect.copy();
 
     let mut direction = 0;
     let mut directions = vec![];
     let mut rects = vec![];
-    for window in windows {
-        let rect = window.bounding_box();
-        rects.push(LayoutRect::new(rect.x, rect.y, rect.width, rect.height));
-        bounds = bounds.union(rects.last().unwrap());
+    for (window, rect) in windows {
+        // let rect = window.bounding_box();
+        let layout_rect = LayoutRect::new(rect.x, rect.y, rect.width, rect.height);
+        bounds = bounds.union(&layout_rect);
+
+        rects.push((window.id(), layout_rect));
 
         directions.push(direction);
         direction = (direction + 1) % 4;
@@ -116,13 +126,13 @@ pub fn natural_layout(
                 if i != j {
                     let adjustments =
                         [-1.0, -1.0, 1.0, 1.0].map(|v| v * WINDOW_PLACEMENT_NATURAL_GAPS);
-                    let i_adjusted = rects[i].adjusted(
+                    let i_adjusted = rects[i].1.adjusted(
                         adjustments[0],
                         adjustments[1],
                         adjustments[2],
                         adjustments[3],
                     );
-                    let j_adjusted = rects[j].adjusted(
+                    let j_adjusted = rects[j].1.adjusted(
                         adjustments[0],
                         adjustments[1],
                         adjustments[2],
@@ -132,8 +142,8 @@ pub fn natural_layout(
                         loop_counter += 1;
                         overlap = true;
 
-                        let i_center = rects[i].center();
-                        let j_center = rects[j].center();
+                        let i_center = rects[i].1.center();
+                        let j_center = rects[j].1.center();
                         let mut diff = (j_center.0 - i_center.0, j_center.1 - i_center.1);
 
                         if diff.0 == 0.0 && diff.1 == 0.0 {
@@ -149,14 +159,14 @@ pub fn natural_layout(
                         diff.0 = diff.0 * WINDOW_PLACEMENT_NATURAL_ACCURACY / length;
                         diff.1 = diff.1 * WINDOW_PLACEMENT_NATURAL_ACCURACY / length;
 
-                        rects[i].translate(-diff.0, -diff.1);
-                        rects[j].translate(diff.0, diff.1);
+                        rects[i].1.translate(-diff.0, -diff.1);
+                        rects[j].1.translate(diff.0, diff.1);
 
                         if use_more_screen {
                             let mut x_section =
-                                ((rects[i].x - bounds.x) / (bounds.width / 3.0)).round() as i32;
+                                ((rects[i].1.x - bounds.x) / (bounds.width / 3.0)).round() as i32;
                             let mut y_section =
-                                ((rects[i].y - bounds.y) / (bounds.height / 3.0)).round() as i32;
+                                ((rects[i].1.y - bounds.y) / (bounds.height / 3.0)).round() as i32;
 
                             let mut diff = (0.0, 0.0);
                             if x_section != 1 || y_section != 1 {
@@ -168,31 +178,31 @@ pub fn natural_layout(
                                 }
                             }
                             if x_section == 0 && y_section == 0 {
-                                diff.0 = bounds.x - rects[i].center().0;
-                                diff.1 = bounds.y - rects[i].center().1;
+                                diff.0 = bounds.x - rects[i].1.center().0;
+                                diff.1 = bounds.y - rects[i].1.center().1;
                             }
                             if x_section == 2 && y_section == 0 {
-                                diff.0 = bounds.x + bounds.width - rects[i].center().0;
-                                diff.1 = bounds.y - rects[i].center().1;
+                                diff.0 = bounds.x + bounds.width - rects[i].1.center().0;
+                                diff.1 = bounds.y - rects[i].1.center().1;
                             }
                             if x_section == 2 && y_section == 2 {
-                                diff.0 = bounds.x + bounds.width - rects[i].center().0;
-                                diff.1 = bounds.y + bounds.height - rects[i].center().1;
+                                diff.0 = bounds.x + bounds.width - rects[i].1.center().0;
+                                diff.1 = bounds.y + bounds.height - rects[i].1.center().1;
                             }
                             if x_section == 0 && y_section == 2 {
-                                diff.0 = bounds.x - rects[i].center().0;
-                                diff.1 = bounds.y + bounds.height - rects[i].center().1;
+                                diff.0 = bounds.x - rects[i].1.center().0;
+                                diff.1 = bounds.y + bounds.height - rects[i].1.center().1;
                             }
                             if diff.0 != 0.0 || diff.1 != 0.0 {
                                 let length = (diff.0 * diff.0 + diff.1 * diff.1).sqrt();
                                 diff.0 *= WINDOW_PLACEMENT_NATURAL_ACCURACY / length / 2.0;
                                 diff.1 *= WINDOW_PLACEMENT_NATURAL_ACCURACY / length / 2.0;
-                                rects[i].translate(diff.0, diff.1);
+                                rects[i].1.translate(diff.0, diff.1);
                             }
                         }
 
-                        bounds = bounds.union(&rects[i]);
-                        bounds = bounds.union(&rects[j]);
+                        bounds = bounds.union(&rects[i].1);
+                        bounds = bounds.union(&rects[j].1);
                     }
                 }
             }
@@ -211,21 +221,15 @@ pub fn natural_layout(
     bounds.width = area_rect.width / scale;
     bounds.height = area_rect.height / scale;
 
-    for rect in &mut rects {
+    for (_, rect) in &mut rects {
         rect.translate(-bounds.x, -bounds.y);
     }
 
-    let mut slots = HashMap::new();
-
-    for (i, rect) in rects.iter_mut().enumerate() {
-        let win = windows[i].clone();
+    for (id, rect) in rects.iter_mut() {
         rect.x = rect.x * scale + area_rect.x;
         rect.y = rect.y * scale + area_rect.y;
         rect.width *= scale;
         rect.height *= scale;
-        slots.insert(win.wl_surface.unwrap().id(), rect.clone());
-        // slots.push((rect.x, rect.y, rect.width, rect.height, windows[i].clone()));
+        slots.insert(id.clone(), rect.clone());
     }
-
-    slots
 }

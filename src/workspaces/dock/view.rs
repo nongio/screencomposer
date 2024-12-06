@@ -9,23 +9,25 @@ use lay_rs::{
     prelude::{taffy, Color, Layer, Point},
     skia,
     taffy::{prelude::FromLength, style::Style},
-    types::{BlendMode, PaintColor, Size},
+    types::{BlendMode, Size},
     view::{BuildLayerTree, LayerTreeBuilder},
 };
-use smithay::utils::IsAlive;
+use smithay::{reexports::wayland_server::backend::ObjectId, utils::IsAlive};
 use tokio::sync::mpsc;
 
 use crate::{
     config::Config,
+    shell::WindowElement,
     theme::theme_colors,
     utils::Observer,
-    workspaces::{Application, Window, WorkspacesModel},
+    workspaces::{Application, WorkspacesModel},
 };
 
 use super::{
     model::DockModel,
     render::{draw_app_icon, setup_app_icon, setup_label, setup_miniwindow_icon},
 };
+type AppLayers = (Layer, Layer, Layer);
 
 #[derive(Debug, Clone)]
 pub struct DockView {
@@ -38,8 +40,8 @@ pub struct DockView {
     dock_apps_container: lay_rs::prelude::Layer,
     dock_windows_container: lay_rs::prelude::Layer,
 
-    app_layers: Arc<RwLock<HashMap<String, (Layer, Layer, Layer)>>>,
-    miniwindow_layers: Arc<RwLock<HashMap<Window, (Layer, Layer, Layer)>>>,
+    app_layers: Arc<RwLock<HashMap<String, AppLayers>>>,
+    miniwindow_layers: Arc<RwLock<HashMap<ObjectId, AppLayers>>>,
     state: Arc<RwLock<DockModel>>,
     active: Arc<AtomicBool>,
     notify_tx: tokio::sync::mpsc::Sender<WorkspacesModel>,
@@ -57,6 +59,29 @@ impl IsAlive for DockView {
     }
 }
 
+// FIXME: DockView Layer Structure rename
+
+/// # DockView Layer Structure
+///
+/// ```
+/// DockView
+/// └── wrap_layer: `dock-wrapper`
+///     └── view_layer `dock-view`
+///         ├── bar_layer `dock-bar`
+///         ├── dock_apps_container `dock_app_container`
+///         │   ├── App
+///         │   │   ├── Icon
+///         │   │   └── Label
+///         │   └── App
+///         │       ├── Icon
+///         │       └── Label
+///         ├── dock_handle `dock_handle`
+///         └── dock_windows_container `dock_windows_container`
+///             ├── miniwindow
+///             └── miniwindow
+/// ```
+///
+///
 impl DockView {
     pub fn new(layers_engine: LayersEngine) -> Self {
         let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
@@ -78,7 +103,7 @@ impl DockView {
         let view_layer = layers_engine.new_layer();
 
         wrap_layer.add_sublayer(view_layer.clone());
-        // FIXME
+        // FIXME: initial dock position
         view_layer.set_position((0.0, 1000.0), None);
         let view_tree = LayerTreeBuilder::default()
             .key("dock-view")
@@ -340,7 +365,8 @@ impl DockView {
 
                             setup_miniwindow_icon(&new_layer, &inner_layer, available_icon_width);
 
-                            setup_label(&label_layer, win.title.clone());
+                            // FIXME : restore Miniwindow label
+                            // setup_label(&label_layer, win.title.clone());
                             new_layer.add_sublayer(label_layer.clone());
 
                             (new_layer, inner_layer, label_layer)
@@ -436,9 +462,7 @@ impl DockView {
 
         let available_icon_size =
             (available_width - component_padding_h * 2.0) / (apps_len + windows_len);
-        let available_icon_size = icon_size.min(available_icon_size);
-
-        available_icon_size
+        icon_size.min(available_icon_size)
     }
     fn render_dock(&self) {
         let available_icon_size = self.available_icon_size();
@@ -458,6 +482,7 @@ impl DockView {
         });
         let latest_event = self.latest_event.clone();
         let dock = self.clone();
+
         tokio::spawn(async move {
             loop {
                 // app switcher updates don't need to be instantanious
@@ -485,11 +510,7 @@ impl DockView {
                         })
                         .collect();
 
-                    let minimized_windows: Vec<_> = workspace
-                        .minimized_windows
-                        .iter()
-                        .filter_map(|(id, _)| workspace.windows_cache.get(id).cloned())
-                        .collect();
+                    let minimized_windows = workspace.minimized_windows.clone();
 
                     let state = dock.get_state();
 
@@ -525,45 +546,45 @@ impl DockView {
             .find(|(_, (app_layer, _, _))| app_layer.id() == Some(*layer))
             .map(|(key, _)| key.clone())
     }
-    pub fn get_window_from_layer(&self, layer: &NodeRef) -> Option<Window> {
+    pub fn get_window_from_layer(&self, layer: &NodeRef) -> Option<ObjectId> {
         let miniwindow_layers = self.miniwindow_layers.read().unwrap();
         if let Some((window, ..)) = miniwindow_layers
             .iter()
-            .find(|(_win, (l, ..))| l.id() == Some(layer.clone()))
+            .find(|(_win, (l, ..))| l.id() == Some(*layer))
         {
             return Some(window.clone());
         }
 
         None
     }
-    pub fn add_window_element(&self, window: &Window) -> (Layer, Layer) {
+    pub fn add_window_element(&self, window: &WindowElement) -> (Layer, Layer) {
         let state = self.get_state();
         let mut minimized_windows = state.minimized_windows.clone();
-        minimized_windows.push(window.clone());
+        minimized_windows.push(window.id());
 
         self.update_state(&DockModel {
             minimized_windows,
             ..self.get_state()
         });
         let layers_map = self.miniwindow_layers.read().unwrap();
-        let (drawer, inner, ..) = layers_map.get(window).unwrap();
+        let (drawer, inner, ..) = layers_map.get(&window.id()).unwrap();
 
         (drawer.clone(), inner.clone())
     }
-    pub fn remove_window_element(&self, window: &Window) -> Option<Layer> {
+    pub fn remove_window_element(&self, wid: &ObjectId) -> Option<Layer> {
         let mut drawer = None;
         let mut miniwindow_layers = self.miniwindow_layers.write().unwrap();
-        if let Some((d, _, label)) = miniwindow_layers.get(window) {
+        if let Some((d, _, label)) = miniwindow_layers.get(wid) {
             drawer = Some(d.clone());
             // hide the label
             label.set_opacity(0.0, None);
-            miniwindow_layers.remove(window);
+            miniwindow_layers.remove(wid);
         }
         drawer
     }
     // Magnify elements
     fn magnify_elements(&self) {
-        let pos = self.magnification_position.read().unwrap().clone();
+        let pos = *self.magnification_position.read().unwrap();
         let bounds = self.view_layer.render_bounds_transformed();
         let pos = pos - bounds.x();
         let padding = 20.0;

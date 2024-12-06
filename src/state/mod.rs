@@ -1,102 +1,73 @@
 use std::{
-    cmp::max,
     collections::VecDeque,
     fmt::Debug,
     sync::{atomic::AtomicBool, Arc, Mutex},
     time::Duration,
 };
 
-use lay_rs::{
-    engine::LayersEngine,
-    prelude::{taffy, Transition},
-};
+use lay_rs::{engine::LayersEngine, prelude::taffy};
 use tracing::{info, warn};
 
 use smithay::{
-    backend::{
-        input::TabletToolDescriptor,
-        renderer::{
-            element::{
-                default_primary_scanout_output_compare, utils::select_dmabuf_feedback, AsRenderElements, RenderElementStates
-            },
-            utils::{RendererSurfaceState, RendererSurfaceStateUserData},
+    backend::renderer::{
+        element::{
+            default_primary_scanout_output_compare, utils::select_dmabuf_feedback,
+            RenderElementStates,
         },
+        utils::{RendererSurfaceState, RendererSurfaceStateUserData},
     },
-    delegate_compositor, delegate_data_control, delegate_data_device, delegate_fractional_scale,
-    delegate_input_method_manager, delegate_keyboard_shortcuts_inhibit, delegate_layer_shell,
-    delegate_output, delegate_pointer_constraints, delegate_pointer_gestures,
-    delegate_presentation, delegate_primary_selection, delegate_relative_pointer, delegate_seat,
-    delegate_security_context, delegate_shm, delegate_tablet_manager, delegate_text_input_manager,
-    delegate_viewporter, delegate_virtual_keyboard_manager, delegate_xdg_activation,
-    delegate_xdg_decoration, delegate_xdg_shell,
+    delegate_compositor, delegate_keyboard_shortcuts_inhibit, delegate_layer_shell,
+    delegate_output, delegate_pointer_gestures, delegate_presentation, delegate_relative_pointer,
+    delegate_shm, delegate_text_input_manager, delegate_viewporter,
+    delegate_virtual_keyboard_manager, delegate_xdg_foreign, delegate_xdg_shell,
     desktop::{
-        space::SpaceElement,
         utils::{
             surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
             update_surface_primary_scanout_output, with_surfaces_surface_tree,
             OutputPresentationFeedback,
         },
-        PopupKind, PopupManager, Space,
+        PopupManager, Space,
     },
     input::{
         keyboard::{Keysym, XkbConfig},
         pointer::{CursorIcon, CursorImageAttributes, CursorImageStatus, PointerHandle},
-        Seat, SeatHandler, SeatState,
+        Seat, SeatState,
     },
     output::Output,
     reexports::{
         calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
-        wayland_protocols::xdg::decoration::{
-            self as xdg_decoration,
-            zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
-        },
         wayland_server::{
-            backend::{ClientData, ClientId, DisconnectReason},
-            protocol::{
-                wl_data_device_manager::DndAction, wl_data_source::WlDataSource,
-                wl_surface::WlSurface,
-            },
+            backend::{ClientData, ClientId, DisconnectReason, ObjectId},
+            protocol::{wl_data_device_manager::DndAction, wl_surface::WlSurface},
             Display, DisplayHandle, Resource,
         },
     },
-    utils::{self, Clock, Monotonic, Rectangle, Serial, SERIAL_COUNTER},
+    utils::{self, Clock, Monotonic, SERIAL_COUNTER},
     wayland::{
         compositor::{
-            self, get_parent, with_states, CompositorClientState, CompositorState,
-            SurfaceAttributes, SurfaceData, TraversalAction,
+            self, CompositorClientState, CompositorState, SurfaceAttributes, SurfaceData,
+            TraversalAction,
         },
         dmabuf::DmabufFeedback,
-        fractional_scale::{
-            with_fractional_scale, FractionalScaleHandler, FractionalScaleManagerState,
-        },
-        input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface},
+        fractional_scale::{with_fractional_scale, FractionalScaleManagerState},
+        input_method::InputMethodManagerState,
         keyboard_shortcuts_inhibit::{
             KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState,
             KeyboardShortcutsInhibitor,
         },
         output::{OutputHandler, OutputManagerState},
-        pointer_constraints::{
-            with_pointer_constraint, PointerConstraintsHandler, PointerConstraintsState,
-        },
+        pointer_constraints::PointerConstraintsState,
         pointer_gestures::PointerGesturesState,
         presentation::PresentationState,
         relative_pointer::RelativePointerManagerState,
-        seat::WaylandFocus,
-        security_context::{
-            SecurityContext,
-            SecurityContextState,
-        },
+        security_context::{SecurityContext, SecurityContextState},
         selection::{
-            data_device::DataDeviceState,
-            primary_selection::PrimarySelectionState,
+            data_device::DataDeviceState, primary_selection::PrimarySelectionState,
             wlr_data_control::DataControlState,
         },
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{
-                decoration::XdgDecorationState,
-                SurfaceCachedState, XdgShellState, XdgToplevelSurfaceData,
-            },
+            xdg::{decoration::XdgDecorationState, SurfaceCachedState, XdgShellState},
         },
         shm::{ShmHandler, ShmState},
         socket::ListeningSocketSource,
@@ -113,10 +84,10 @@ use smithay::{
 use crate::cursor::Cursor;
 use crate::{
     config::Config,
-    render_elements::{scene_element::SceneElement, workspace_render_elements::WorkspaceRenderElements},
+    render_elements::scene_element::SceneElement,
     shell::WindowElement,
-    skia_renderer::{SkiaRenderer, SkiaTextureImage},
-    workspaces::{DndView, Window, WindowViewBaseModel, WindowViewSurface, Workspaces},
+    skia_renderer::SkiaTextureImage,
+    workspaces::{DndView, WindowViewBaseModel, WindowViewSurface, Workspaces},
 };
 #[cfg(feature = "xwayland")]
 use smithay::{
@@ -206,15 +177,15 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub is_resizing: bool,
 }
 
-pub mod dnd_grab_handler;
 pub mod data_device_handler;
-pub mod selection_handler;
-pub mod seat_handler;
-pub mod input_method_handler;
-pub mod xdg_decoration_handler;
-pub mod xdg_activation_handler;
+pub mod dnd_grab_handler;
 pub mod fractional_scale_handler;
+pub mod input_method_handler;
+pub mod seat_handler;
 pub mod security_context_handler;
+pub mod selection_handler;
+pub mod xdg_activation_handler;
+pub mod xdg_decoration_handler;
 pub mod xwayland_handler;
 
 impl<BackendData: Backend> OutputHandler for ScreenComposer<BackendData> {}
@@ -224,14 +195,6 @@ impl<BackendData: Backend> ShmHandler for ScreenComposer<BackendData> {
         &self.shm_state
     }
 }
-
-delegate_compositor!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-delegate_output!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-delegate_shm!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-delegate_text_input_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
 impl<BackendData: Backend> KeyboardShortcutsInhibitHandler for ScreenComposer<BackendData> {
     fn keyboard_shortcuts_inhibit_state(&mut self) -> &mut KeyboardShortcutsInhibitState {
@@ -244,28 +207,25 @@ impl<BackendData: Backend> KeyboardShortcutsInhibitHandler for ScreenComposer<Ba
     }
 }
 
-delegate_keyboard_shortcuts_inhibit!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-delegate_virtual_keyboard_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-delegate_pointer_gestures!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-delegate_relative_pointer!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-delegate_viewporter!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-delegate_xdg_shell!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-delegate_layer_shell!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
-delegate_presentation!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-
 impl<BackendData: Backend> XdgForeignHandler for ScreenComposer<BackendData> {
     fn xdg_foreign_state(&mut self) -> &mut XdgForeignState {
         &mut self.xdg_foreign_state
     }
 }
-smithay::delegate_xdg_foreign!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+
+delegate_compositor!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_output!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_shm!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_text_input_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_keyboard_shortcuts_inhibit!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_virtual_keyboard_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_pointer_gestures!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_relative_pointer!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_viewporter!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_xdg_shell!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_layer_shell!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_presentation!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_xdg_foreign!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
 impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     pub fn init(
@@ -480,236 +440,6 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             );
         }
     }
-    pub fn update_workspace_applications(&mut self) {
-        let windows: Vec<_> = self
-            .space()
-            .elements()
-            .map(|we| (we.wl_surface().unwrap().id(), we.clone()))
-            .collect();
-
-        let windows: Vec<_> = windows
-            .iter()
-            .filter_map(|(id, we)| {
-                if let Some(wv) = self.workspaces.get_window_view(id) {
-                    let state = wv.view_base.get_state();
-                    Some((we.clone(), wv.window_layer.clone(), state))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        if !self.is_resizing {
-            self.workspaces.update_with_window_elements(windows);
-        }
-    }
-    #[profiling::function]
-    fn window_view_for_surface(
-        &self,
-        surface: &WlSurface,
-        states: &SurfaceData,
-        location: &smithay::utils::Point<f64, smithay::utils::Physical>,
-        scale: f64,
-    ) -> Option<WindowViewSurface> {
-        let id = surface.id();
-        let mut cached_state = states.cached_state.get::<SurfaceCachedState>();
-        let cached_state = cached_state.current();
-        let surface_geometry = cached_state
-            .geometry
-            .unwrap_or_default()
-            .to_f64()
-            .to_physical(scale);
-        let mut surface_attributes = states.cached_state.get::<SurfaceAttributes>();
-        let surface_attributes = surface_attributes.current();
-        if let Some(render_surface) = states.data_map.get::<RendererSurfaceStateUserData>() {
-            let render_surface: std::sync::MutexGuard<RendererSurfaceState> =
-                render_surface.lock().unwrap();
-
-            if let Some(view) = render_surface.view() {
-                let texture = self.backend_data.texture_for_surface(&render_surface);
-                let wvs = WindowViewSurface {
-                    id: id.clone(),
-                    log_offset_x: location.x as f32,
-                    log_offset_y: location.y as f32,
-
-                    phy_src_x: view.src.loc.x as f32 * surface_attributes.buffer_scale as f32,
-                    phy_src_y: view.src.loc.y as f32 * surface_attributes.buffer_scale as f32,
-                    phy_src_w: view.src.size.w as f32 * surface_attributes.buffer_scale as f32,
-                    phy_src_h: view.src.size.h as f32 * surface_attributes.buffer_scale as f32,
-
-                    phy_dst_x: view.offset.x as f32 * scale as f32 - surface_geometry.loc.x as f32,
-                    phy_dst_y: view.offset.y as f32 * scale as f32 - surface_geometry.loc.y as f32,
-                    phy_dst_w: view.dst.w as f32 * scale as f32,
-                    phy_dst_h: view.dst.h as f32 * scale as f32,
-                    texture,
-                    commit: render_surface.current_commit(),
-                    transform: surface_attributes.buffer_transform.into(),
-                };
-                return Some(wvs);
-            }
-        };
-        None
-    }
-    #[profiling::function]
-    pub fn update_windows(&mut self) {
-        let windows: Vec<WindowElement> = self.space().elements().map(|we| we.clone()).collect();
-
-        let minimized_windows: Vec<WindowElement> = self.workspaces.with_model(|model| {
-            model
-                .minimized_windows
-                .iter()
-                .map(|(_id, we)| we.clone())
-                .collect()
-        });
-        {
-            let windows = windows.iter().chain(minimized_windows.iter());
-            profiling::scope!("update_windows");
-            for window in windows {
-                let output = self.space().outputs_for_element(window);
-                let scale_factor = output
-                    .first()
-                    .map(|output| output.current_scale())
-                    .unwrap_or(smithay::output::Scale::Fractional(1.0))
-                    .fractional_scale();
-                if let Some(window_surface) = window.wl_surface() {
-                    let id = window_surface.id();
-                    let location = self
-                        .space()
-                        .element_location(window)
-                        .unwrap_or((0, 0).into())
-                        .to_f64()
-                        .to_physical(scale_factor);
-                    let window_geometry = self
-                        .space()
-                        .element_geometry(window)
-                        .unwrap_or_default()
-                        .to_f64()
-                        .to_physical(scale_factor);
-                    let mut title = "".to_string();
-                    let mut fullscreen = false;
-                    smithay::wayland::compositor::with_states(&window_surface, |states| {
-                        if let Some(attributes) = states.data_map.get::<XdgToplevelSurfaceData>() {
-                            let attributes = attributes.lock().unwrap();
-                            title = attributes.title.as_ref().cloned().unwrap_or_default();
-                            fullscreen = attributes.current.fullscreen_output.is_some();
-                        }
-                    });
-
-                    let mut render_elements = VecDeque::new();
-                    PopupManager::popups_for_surface(&window_surface).for_each(
-                        |(popup, popup_offset)| {
-                            let offset: smithay::utils::Point<f64, smithay::utils::Physical> =
-                                (popup_offset - popup.geometry().loc)
-                                    .to_physical_precise_round(scale_factor);
-                            let popup_surface = popup.wl_surface();
-                            with_surfaces_surface_tree(popup_surface, |surface, states| {
-                                if let Some(window_view) = self.window_view_for_surface(
-                                    surface,
-                                    states,
-                                    &offset,
-                                    scale_factor,
-                                ) {
-                                    render_elements.push_front(window_view);
-                                }
-                            });
-                        },
-                    );
-                    let initial_location: smithay::utils::Point<f64, smithay::utils::Physical> =
-                        (0.0, 0.0).into();
-
-                    smithay::wayland::compositor::with_surface_tree_downward(
-                        &window_surface,
-                        initial_location,
-                        |_, states, location| {
-                            profiling::scope!("surface_tree_downward");
-                            let mut location = *location;
-                            let data = states.data_map.get::<RendererSurfaceStateUserData>();
-                            let mut cached_state = states.cached_state.get::<SurfaceCachedState>();
-                            let cached_state = cached_state.current();
-                            let surface_geometry = cached_state.geometry.unwrap_or_default();
-
-                            if let Some(data) = data {
-                                let data = data.lock().unwrap();
-
-                                if let Some(view) = data.view() {
-                                    location += view.offset.to_f64().to_physical(scale_factor);
-                                    location -=
-                                        surface_geometry.loc.to_f64().to_physical(scale_factor);
-                                    TraversalAction::DoChildren(location)
-                                } else {
-                                    TraversalAction::SkipChildren
-                                }
-                            } else {
-                                TraversalAction::SkipChildren
-                            }
-                        },
-                        |surface, states, location| {
-                            if let Some(window_view) = self.window_view_for_surface(
-                                surface,
-                                states,
-                                location,
-                                scale_factor,
-                            ) {
-                                render_elements.push_front(window_view);
-                            }
-                        },
-                        |_, _, _| true,
-                    );
-
-                    if let Some(window_view) = self.workspaces.get_window_view(&id) {
-                        let model = WindowViewBaseModel {
-                            x: location.x as f32,
-                            y: location.y as f32,
-                            w: window_geometry.size.w as f32,
-                            h: window_geometry.size.h as f32,
-                            title,
-                            fullscreen,
-                        };
-
-                        self.workspaces.update_window(&id, &model);
-                        window_view.view_base.update_state(&model);
-                        window_view
-                            .view_content
-                            .update_state(&render_elements.into());
-                    }
-                }
-            }
-        }
-        if let Some(dnd_surface) = self.dnd_icon.as_ref() {
-            profiling::scope!("update_dnd_icon");
-            let cursor_position = self.get_cursor_position();
-
-            let scale = Config::with(|c| c.screen_scale);
-            let render_elements = self.get_render_elements(dnd_surface, scale);
-            self.dnd_view
-                .view_content
-                .update_state(&render_elements.into());
-
-            self.dnd_view
-                .layer
-                .set_position((cursor_position.x as f32, cursor_position.y as f32), None);
-        }
-    }
-
-    // scene_element
-    // window_views
-    pub fn expose_show_all(&mut self, delta: f32, end_gesture: bool) {
-        self.workspaces.expose_show_all(delta, end_gesture);
-    }
-
-    pub fn expose_show_desktop(&mut self, delta: f32, end_gesture: bool) {
-        self.workspaces.expose_show_desktop(delta, end_gesture);
-    }
-    pub fn space(&self) -> &Space<WindowElement> {
-        self.workspaces.space()
-    }
-    pub fn space_mut(&mut self) -> &mut Space<WindowElement> {
-        self.workspaces.space_mut()
-    }
-
-    pub fn set_workspace_number(&self, n: usize) {
-        self.workspaces.set_current_workspace(n);
-    }
-
     pub fn set_cursor(&mut self, image: &CursorImageStatus) {
         *self.cursor_status.lock().unwrap() = image.clone();
         self.backend_data.set_cursor(image);
@@ -749,7 +479,12 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         };
 
         let cursor_pos = self.pointer.current_location() - cursor_hotspot.to_f64();
-        let output = self.space().output_under(cursor_pos).next().cloned().unwrap();
+        let output = self
+            .workspaces
+            .output_under(cursor_pos)
+            .next()
+            .cloned()
+            .unwrap();
         let scale = output.current_scale().fractional_scale();
 
         cursor_pos.to_physical(scale).to_f64()
@@ -799,187 +534,189 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         );
         render_elements
     }
-    pub fn raise_next_app_window(&mut self, serial: Option<Serial>) {
-        let windows = self.workspaces.get_current_app_windows();
 
-        if !windows.is_empty() {
-            for (i, window_id) in windows.iter().enumerate() {
-                if i == 0 {
-                    if let Some(window) = self.workspaces.get_window_for_surface(window_id) {
-                        if let Some(we) = window.window_element.as_ref() {
-                            self.raise_element(we, true, serial, true);
-                        }
+    pub fn update_dnd(&mut self) {
+        if let Some(dnd_surface) = self.dnd_icon.as_ref() {
+            profiling::scope!("update_dnd_icon");
+            let cursor_position = self.get_cursor_position();
+
+            let scale = Config::with(|c| c.screen_scale);
+            let render_elements = self.get_render_elements(dnd_surface, scale);
+            self.dnd_view
+                .view_content
+                .update_state(&render_elements.into());
+
+            self.dnd_view
+                .layer
+                .set_position((cursor_position.x as f32, cursor_position.y as f32), None);
+        }
+    }
+
+    #[profiling::function]
+    pub fn window_view_for_surface(
+        &self,
+        surface: &WlSurface,
+        states: &SurfaceData,
+        location: &smithay::utils::Point<f64, smithay::utils::Physical>,
+        scale: f64,
+    ) -> Option<WindowViewSurface> {
+        let id = surface.id();
+        let mut cached_state = states.cached_state.get::<SurfaceCachedState>();
+        let cached_state = cached_state.current();
+        let surface_geometry = cached_state
+            .geometry
+            .unwrap_or_default()
+            .to_f64()
+            .to_physical(scale);
+        let mut surface_attributes = states.cached_state.get::<SurfaceAttributes>();
+        let surface_attributes = surface_attributes.current();
+        if let Some(render_surface) = states.data_map.get::<RendererSurfaceStateUserData>() {
+            let render_surface: std::sync::MutexGuard<RendererSurfaceState> =
+                render_surface.lock().unwrap();
+
+            if let Some(view) = render_surface.view() {
+                let texture = self.backend_data.texture_for_surface(&render_surface);
+                let wvs = WindowViewSurface {
+                    id: id.clone(),
+                    log_offset_x: location.x as f32,
+                    log_offset_y: location.y as f32,
+
+                    phy_src_x: view.src.loc.x as f32 * surface_attributes.buffer_scale as f32,
+                    phy_src_y: view.src.loc.y as f32 * surface_attributes.buffer_scale as f32,
+                    phy_src_w: view.src.size.w as f32 * surface_attributes.buffer_scale as f32,
+                    phy_src_h: view.src.size.h as f32 * surface_attributes.buffer_scale as f32,
+
+                    phy_dst_x: view.offset.x as f32 * scale as f32 - surface_geometry.loc.x as f32,
+                    phy_dst_y: view.offset.y as f32 * scale as f32 - surface_geometry.loc.y as f32,
+                    phy_dst_w: view.dst.w as f32 * scale as f32,
+                    phy_dst_h: view.dst.h as f32 * scale as f32,
+                    texture,
+                    commit: render_surface.current_commit(),
+                    transform: surface_attributes.buffer_transform.into(),
+                };
+                return Some(wvs);
+            }
+        };
+        None
+    }
+
+    pub fn update_window_view(&mut self, window: &WindowElement) {
+        let output = self.workspaces.outputs_for_element(window);
+        let scale_factor = output
+            .first()
+            .map(|output| output.current_scale())
+            .unwrap_or(smithay::output::Scale::Fractional(1.0))
+            .fractional_scale();
+        if let Some(window_surface) = window.wl_surface() {
+            let id = window_surface.id();
+            let location = self
+                .workspaces
+                .element_location(window)
+                .unwrap_or((0, 0).into())
+                .to_f64()
+                .to_physical(scale_factor);
+            let window_geometry = self
+                .workspaces
+                .element_geometry(window)
+                .unwrap_or_default()
+                .to_f64()
+                .to_physical(scale_factor);
+            let title = window.title();
+            let fullscreen = window.is_fullscreen();
+
+            let mut render_elements = VecDeque::new();
+            PopupManager::popups_for_surface(&window_surface).for_each(|(popup, popup_offset)| {
+                let offset: smithay::utils::Point<f64, smithay::utils::Physical> =
+                    (popup_offset - popup.geometry().loc).to_physical_precise_round(scale_factor);
+                let popup_surface = popup.wl_surface();
+                with_surfaces_surface_tree(popup_surface, |surface, states| {
+                    if let Some(window_view) =
+                        self.window_view_for_surface(surface, states, &offset, scale_factor)
+                    {
+                        render_elements.push_front(window_view);
                     }
-                }
+                });
+            });
+            let initial_location: smithay::utils::Point<f64, smithay::utils::Physical> =
+                (0.0, 0.0).into();
+
+            smithay::wayland::compositor::with_surface_tree_downward(
+                &window_surface,
+                initial_location,
+                |_, states, location| {
+                    profiling::scope!("surface_tree_downward");
+                    let mut location = *location;
+                    let data = states.data_map.get::<RendererSurfaceStateUserData>();
+                    let mut cached_state = states.cached_state.get::<SurfaceCachedState>();
+                    let cached_state = cached_state.current();
+                    let surface_geometry = cached_state.geometry.unwrap_or_default();
+
+                    if let Some(data) = data {
+                        let data = data.lock().unwrap();
+
+                        if let Some(view) = data.view() {
+                            location += view.offset.to_f64().to_physical(scale_factor);
+                            location -= surface_geometry.loc.to_f64().to_physical(scale_factor);
+                            TraversalAction::DoChildren(location)
+                        } else {
+                            TraversalAction::SkipChildren
+                        }
+                    } else {
+                        TraversalAction::SkipChildren
+                    }
+                },
+                |surface, states, location| {
+                    if let Some(window_view) =
+                        self.window_view_for_surface(surface, states, location, scale_factor)
+                    {
+                        render_elements.push_front(window_view);
+                    }
+                },
+                |_, _, _| true,
+            );
+
+            if let Some(window_view) = self.workspaces.get_window_view(&id) {
+                let model = WindowViewBaseModel {
+                    x: location.x as f32,
+                    y: location.y as f32,
+                    w: window_geometry.size.w as f32,
+                    h: window_geometry.size.h as f32,
+                    title,
+                    fullscreen,
+                };
+                window_view.view_base.update_state(&model);
+                window_view
+                    .view_content
+                    .update_state(&render_elements.into());
             }
         }
     }
-    pub fn raise_prev_app_window(&mut self, serial: Option<Serial>) {
-        let windows = self.workspaces.get_current_app_windows();
 
-        if !windows.is_empty() {
-            let current_window = (windows.len() as i32) - 1;
-            let current_window = max(current_window, 0) as usize;
-            for (i, window_id) in windows.iter().enumerate() {
-                if i == current_window {
-                    if let Some(window) = self.workspaces.get_window_for_surface(window_id) {
-                        if let Some(we) = window.window_element.as_ref() {
-                            self.raise_element(we, true, serial, true);
-                        }
-                    }
-                }
-            }
+    pub fn quit_appswitcher_app(&mut self) {
+        self.workspaces.quit_appswitcher_app();
+        // FIXME focus the previous window
+    }
+    pub fn raise_next_app_window(&mut self) {
+        if let Some(wid) = self.workspaces.raise_next_app_window() {
+            self.focus_keyboard_on_surface(&wid);
         }
     }
-    pub fn raise_element(
-        &mut self,
-        window: &WindowElement,
-        activate: bool,
-        serial: Option<Serial>,
-        update: bool,
-    ) {
-        self.space_mut().raise_element(window, activate);
-        let id = window.wl_surface().unwrap().id();
-        {
-            if let Some(view) = self.workspaces.get_window_view(&id) {
-                view.raise();
-            }
+    pub fn raise_app_elements(&mut self, app_id: &str) {
+        if let Some(wid) = self.workspaces.raise_app_elements(app_id) {
+            self.focus_keyboard_on_surface(&wid);
         }
-        if let Some(serial) = serial {
+    }
+    pub fn set_current_workspace_index(&mut self, index: usize) {
+        self.workspaces.set_current_workspace_index(index);
+        // FIXME focus the top window of the workspace
+    }
+
+    pub fn focus_keyboard_on_surface(&mut self, wid: &ObjectId) {
+        if let Some(window) = self.workspaces.get_window_for_surface(wid) {
             let keyboard = self.seat.get_keyboard().unwrap();
+            let serial = SERIAL_COUNTER.next_serial();
             keyboard.set_focus(self, Some(window.clone().into()), serial);
         }
-        if update {
-            self.update_workspace_applications();
-        }
-    }
-    pub fn raise_app_element(
-        &mut self,
-        we: &WindowElement,
-        activate: bool,
-        serial: Option<Serial>,
-    ) {
-        let id = we.wl_surface().unwrap().id();
-        if let Some(window) = self.workspaces.get_window_for_surface(&id) {
-            let windows = self.workspaces.get_app_windows(&window.app_id);
-            for window_id in windows.iter() {
-                if let Some(window) = self.workspaces.get_window_for_surface(window_id) {
-                    if !window.is_minimized {
-                        if let Some(we) = window.window_element.as_ref() {
-                            self.raise_element(we, true, None, false);
-                        }
-                    }
-                }
-            }
-            if !window.is_minimized {
-                self.raise_element(we, activate, serial, true);
-            }
-        }
-    }
-    pub fn raise_app_elements(&mut self, app_id: &str, activate: bool, serial: Option<Serial>) {
-        let windows = self.workspaces.get_app_windows(app_id);
-
-        for (i, window_id) in windows.iter().enumerate() {
-            if let Some(window) = self.workspaces.get_window_for_surface(window_id) {
-                if let Some(we) = window.window_element.as_ref() {
-                    if !window.is_minimized {
-                        if i == windows.len() - 1 {
-                            self.raise_element(we, activate, serial, false);
-                        } else {
-                            self.raise_element(we, false, None, false);
-                        }
-                        self.update_workspace_applications();
-                    } else {
-                        // println!("raise app elements for {} window len: {}", app_id, windows.len());
-                        if windows.len() == 1 {
-                            self.unminimize_window(we);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    pub fn raise_window_element(
-        &mut self,
-        window: &Window,
-        activate: bool,
-        serial: Option<Serial>,
-    ) {
-        // println!("raise_window_element");
-        if let Some(we) = window.window_element.as_ref() {
-            self.raise_element(we, activate, serial, true);
-            self.update_workspace_applications();
-        }
-    }
-    pub fn focus_next_window(&mut self) {}
-    pub fn minimize_window(&mut self, window_element: &WindowElement) {
-        let id = window_element.wl_surface().unwrap().id();
-        {
-            self.workspaces.minimize_window(&id, window_element);
-            window_element.set_activate(false);
-        }
-
-        // ideally we set the focus to the next window in the stack
-        let windows: Vec<_> = self.space().elements().map(|we| we.clone()).collect();
-
-        let win_len = windows.len();
-        if win_len <= 1 {
-            return;
-        }
-        for i in 0..win_len {
-            let window = windows.get(i).unwrap();
-            let id = window.wl_surface().unwrap().id();
-            let activate = i == win_len - 2;
-            if let Some(w) = self.workspaces.get_window_for_surface(&id) {
-                if !w.is_minimized {
-                    self.raise_element(window, activate, Some(SERIAL_COUNTER.next_serial()), true);
-                }
-            }
-        }
-
-        // self.seat.get_keyboard().unwrap().set_focus(self, None, SERIAL_COUNTER.next_serial());
-        // self.seat.get_pointer().unwrap().unset_grab(self, SERIAL_COUNTER.next_serial(), 0);
-    }
-
-    pub fn unminimize_window(&mut self, window_element: &WindowElement) {
-        let id = window_element.wl_surface().unwrap().id();
-
-        if let Some(view) = self.workspaces.get_window_view(&id) {
-            self.workspaces.unminimize_window(&id);
-            let pos_x = view.unmaximized_rect.x as i32;
-            let pos_y = view.unmaximized_rect.y as i32;
-
-            self.space_mut()
-                .map_element(window_element.clone(), (pos_x, pos_y), true);
-            window_element.set_activate(true);
-            self.seat.get_keyboard().unwrap().set_focus(
-                self,
-                Some(window_element.clone().into()),
-                SERIAL_COUNTER.next_serial(),
-            );
-        }
-    }
-    pub fn space_window_elements(&self) -> impl DoubleEndedIterator<Item = WindowElement> {
-        let _space_elements =
-            self.space().elements();
-        Vec::new().into_iter()
-    }
-    pub fn workspace_elements(&self) -> Vec<WorkspaceRenderElements<SkiaRenderer>> {
-        let scene_element = self.scene_element.clone();
-        let mut elements = Vec::new();
-        // elements.push(Box::new(scene_element) as Box<dyn AsRenderElements<SkiaRenderer, RenderElement = SceneElement>>);
-        // let mut pointer_element = PointerElement::<SkiaTexture>::default();
-
-        // elements.extend(pointer_element.render_elements(
-        //     renderer,
-        //     cursor_pos_scaled,
-        //     (cursor_rescale).into(),
-        //     1.0,
-        // ));
-        // let dnd = state.dnd_icon.as_ref();
-        // custom_elements.push(WorkspaceRenderElements::Scene(scene_element));
-        // Vec::new()
-        elements
     }
 }
 
@@ -1022,14 +759,18 @@ pub fn post_repaint<'a>(
         if space.outputs_for_element(window).contains(output) {
             window.send_frame(output, time, throttle, surface_primary_scanout_output);
             if let Some(dmabuf_feedback) = dmabuf_feedback {
-                window.send_dmabuf_feedback(output, surface_primary_scanout_output, |surface, _| {
-                    select_dmabuf_feedback(
-                        surface,
-                        render_element_states,
-                        dmabuf_feedback.render_feedback,
-                        dmabuf_feedback.scanout_feedback,
-                    )
-                });
+                window.send_dmabuf_feedback(
+                    output,
+                    surface_primary_scanout_output,
+                    |surface, _| {
+                        select_dmabuf_feedback(
+                            surface,
+                            render_element_states,
+                            dmabuf_feedback.render_feedback,
+                            dmabuf_feedback.scanout_feedback,
+                        )
+                    },
+                );
             }
         }
     });

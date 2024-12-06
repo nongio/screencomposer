@@ -294,5 +294,5 @@ pub fn draw_app_icon(application: &Application) -> ContentDrawFunction {
         lay_rs::skia::Rect::from_xywh(0.0, 0.0, w, h)
     };
 
-    return draw_picture.into();
+    draw_picture.into()
 }

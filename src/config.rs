@@ -19,6 +19,7 @@ pub struct Config {
     pub keyboard_repeat_delay: i32,
     pub keyboard_repeat_rate: i32,
     pub theme_scheme: ThemeScheme,
+    pub background_image: String,
 }
 thread_local! {
     static CONFIG: Config = Config::init();
@@ -42,6 +43,7 @@ impl Default for Config {
             keyboard_repeat_delay: 300,
             keyboard_repeat_rate: 30,
             theme_scheme: ThemeScheme::Light,
+            background_image: "./resources/zach3.jpg".to_string(),
         }
     }
 }

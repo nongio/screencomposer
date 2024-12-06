@@ -1058,15 +1058,17 @@ impl ScreenComposer<UdevData> {
             let root = self.scene_element.root_layer().unwrap();
             let w = wl_mode.size.w as f32;
             let h = wl_mode.size.h as f32;
+            self.workspaces
+                .set_screen_dimension(wl_mode.size.w, wl_mode.size.h);
             let scene_size = lay_rs::types::Size::points(w, h);
             root.layer.set_size(scene_size, None);
             self.scene_element.set_size(w, h);
             self.layers_engine.set_scene_size(w, h);
-            self.workspaces.set_size(w, h);
+
             let global = output.create_global::<ScreenComposer<UdevData>>(&self.display_handle);
 
-            let x = self.workspaces.space().outputs().fold(0, |acc, o| {
-                acc + self.workspaces.space().output_geometry(o).unwrap().size.w
+            let x = self.workspaces.outputs().fold(0, |acc, o| {
+                acc + self.workspaces.output_geometry(o).unwrap().size.w
             });
             let position = (x, 0).into();
             output.set_preferred(wl_mode);
@@ -1214,7 +1216,8 @@ impl ScreenComposer<UdevData> {
         } else {
             device.surfaces.remove(&crtc);
 
-            let output = self.workspaces.space()
+            let output = self
+                .workspaces
                 .outputs()
                 .find(|o| {
                     o.user_data()
@@ -1225,7 +1228,7 @@ impl ScreenComposer<UdevData> {
                 .cloned();
 
             if let Some(output) = output {
-                self.workspaces.space_mut().unmap_output(&output);
+                self.workspaces.unmap_output(&output);
             }
         }
     }
@@ -1264,7 +1267,7 @@ impl ScreenComposer<UdevData> {
         }
 
         // fixup window coordinates
-        crate::shell::fixup_positions(&mut self.workspaces.space_mut(), self.pointer.current_location());
+        crate::shell::fixup_positions(&mut self.workspaces, self.pointer.current_location());
     }
 
     fn device_removed(&mut self, node: DrmNode) {
@@ -1302,7 +1305,7 @@ impl ScreenComposer<UdevData> {
             debug!("Dropping device");
         }
 
-        crate::shell::fixup_positions(&mut self.workspaces.space_mut(), self.pointer.current_location());
+        crate::shell::fixup_positions(&mut self.workspaces, self.pointer.current_location());
     }
 
     fn frame_finish(
@@ -1589,9 +1592,9 @@ impl ScreenComposer<UdevData> {
             self.scene_element.clone(),
         );
         {
-            self.workspaces.space_mut().refresh();
+            self.workspaces.refresh_space();
             self.popups.cleanup();
-            self.update_windows();
+            self.update_dnd();
             self.scene_element.update();
         }
         let reschedule = match &result {

@@ -4,10 +4,7 @@ use std::cell::RefCell;
 use smithay::xwayland::XWaylandClientData;
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
-    desktop::{
-        layer_map_for_output, space::SpaceElement, LayerSurface, PopupKind, PopupManager, Space,
-        WindowSurface, WindowSurfaceType,
-    },
+    desktop::{layer_map_for_output, LayerSurface, PopupKind, WindowSurface, WindowSurfaceType},
     output::Output,
     reexports::{
         calloop::Interest,
@@ -37,6 +34,7 @@ use smithay::{
 
 use crate::{
     state::{Backend, ScreenComposer},
+    workspaces::Workspaces,
     ClientState,
 };
 
@@ -53,15 +51,15 @@ pub use self::grabs::*;
 fn fullscreen_output_geometry(
     wl_surface: &WlSurface,
     wl_output: Option<&wl_output::WlOutput>,
-    space: &mut Space<WindowElement>,
+    workspaces: &mut Workspaces,
 ) -> Option<Rectangle<i32, Logical>> {
     // First test if a specific output has been requested
     // if the requested output is not found ignore the request
     wl_output
         .and_then(Output::from_resource)
         .or_else(|| {
-            let w = space
-                .elements()
+            let w = workspaces
+                .spaces_elements()
                 .find(|window| {
                     window
                         .wl_surface()
@@ -69,9 +67,9 @@ fn fullscreen_output_geometry(
                         .unwrap_or(false)
                 })
                 .cloned();
-            w.and_then(|w| space.outputs_for_element(&w).first().cloned())
+            w.and_then(|w| workspaces.outputs_for_element(&w).first().cloned())
         })
-        .and_then(|o| space.output_geometry(&o))
+        .and_then(|o| workspaces.output_geometry(&o))
 }
 
 #[derive(Default)]
@@ -152,7 +150,8 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
                 root = parent;
             }
             if let Some(window) = self.window_for_surface(&root) {
-                window.0.on_commit();
+                window.on_commit();
+                self.update_window_view(&window);
             }
         }
         self.popups.commit(surface);
@@ -177,14 +176,14 @@ impl<BackendData: Backend> WlrLayerShellHandler for ScreenComposer<BackendData> 
         let output = wl_output
             .as_ref()
             .and_then(Output::from_resource)
-            .unwrap_or_else(|| self.space().outputs().next().unwrap().clone());
+            .unwrap_or_else(|| self.workspaces.outputs().next().unwrap().clone());
         let mut map = layer_map_for_output(&output);
         map.map_layer(&LayerSurface::new(surface, namespace))
             .unwrap();
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
-        if let Some((mut map, layer)) = self.space().outputs().find_map(|o| {
+        if let Some((mut map, layer)) = self.workspaces.outputs().find_map(|o| {
             let map = layer_map_for_output(o);
             let layer = map
                 .layers()
@@ -199,8 +198,8 @@ impl<BackendData: Backend> WlrLayerShellHandler for ScreenComposer<BackendData> 
 
 impl<BackendData: Backend> ScreenComposer<BackendData> {
     pub fn window_for_surface(&self, surface: &WlSurface) -> Option<WindowElement> {
-        self.space()
-            .elements()
+        self.workspaces
+            .spaces_elements()
             .find(|window| window.wl_surface().map(|s| &*s == surface).unwrap_or(false))
             .cloned()
     }
@@ -214,9 +213,8 @@ pub struct SurfaceData {
 
 fn ensure_initial_configure<Backend: crate::state::Backend>(
     surface: &WlSurface,
-    state: &mut ScreenComposer<Backend>
-    // space: &Space<WindowElement>,
-    // popups: &mut PopupManager,
+    state: &mut ScreenComposer<Backend>, // space: &Space<WindowElement>,
+                                         // popups: &mut PopupManager,
 ) {
     with_surface_tree_upward(
         surface,
@@ -230,8 +228,9 @@ fn ensure_initial_configure<Backend: crate::state::Backend>(
         |_, _, _| true,
     );
 
-    if let Some(window) = state.space()
-        .elements()
+    if let Some(window) = state
+        .workspaces
+        .spaces_elements()
         .find(|window| window.wl_surface().map(|s| &*s == surface).unwrap_or(false))
         .cloned()
     {
@@ -295,7 +294,7 @@ fn ensure_initial_configure<Backend: crate::state::Backend>(
         return;
     };
 
-    if let Some(output) = state.space().outputs().find(|o| {
+    if let Some(output) = state.workspaces.outputs().find(|o| {
         let map = layer_map_for_output(o);
         map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
             .is_some()
@@ -326,77 +325,37 @@ fn ensure_initial_configure<Backend: crate::state::Backend>(
     };
 }
 
-pub fn place_new_window(
-    space: &mut Space<WindowElement>,
-    pointer_location: Point<f64, Logical>,
-    window: &WindowElement,
-    activate: bool,
-) -> (i32, i32) {
-    let output = space
-        .output_under(pointer_location)
-        .next()
-        .or_else(|| space.outputs().next())
-        .cloned();
-    let output_geometry = output
-        .and_then(|o| {
-            let geo = space.output_geometry(&o)?;
-            let map = layer_map_for_output(&o);
-            let zone = map.non_exclusive_zone();
-            Some(Rectangle::from_loc_and_size(geo.loc + zone.loc, zone.size))
-        })
-        .unwrap_or_else(|| Rectangle::from_loc_and_size((0, 0), (800, 800)));
-
-    // set the initial toplevel bounds
-    #[allow(irrefutable_let_patterns)]
-    if let WindowSurface::Wayland(window) = window.underlying_surface() {
-        window.with_pending_state(|state| {
-            state.bounds = Some(output_geometry.size);
-        });
-    }
-
-    let num_open_windows = space.elements().count();
-    let window_index = num_open_windows + 1; // Index of the new window
-
-    let max_x = output_geometry.loc.x + output_geometry.size.w;
-    let max_y = output_geometry.loc.y + output_geometry.size.h;
-
-    // Calculate the position along the diagonal
-    const MAX_WINDOW_COUNT: f32 = 40.0;
-    let factor = window_index as f32 / MAX_WINDOW_COUNT;
-    let x = (output_geometry.loc.x as f32 + factor * max_x as f32) as i32 + 100;
-    let y = (output_geometry.loc.y as f32 + factor * max_y as f32) as i32 + 100;
-    println!("Placing window at ({}, {})", x, y);
-    space.map_element(window.clone(), (x, y), activate);
-
-    (x, y)
-}
-
-pub fn fixup_positions(space: &mut Space<WindowElement>, pointer_location: Point<f64, Logical>) {
+pub fn fixup_positions(workspaces: &mut Workspaces, pointer_location: Point<f64, Logical>) {
     // fixup outputs
     let mut offset = Point::<i32, Logical>::from((0, 0));
-    for output in space.outputs().cloned().collect::<Vec<_>>().into_iter() {
-        let size = space
+    for output in workspaces
+        .outputs()
+        .cloned()
+        .collect::<Vec<_>>()
+        .into_iter()
+    {
+        let size = workspaces
             .output_geometry(&output)
             .map(|geo| geo.size)
             .unwrap_or_else(|| Size::from((0, 0)));
-        space.map_output(&output, offset);
+        workspaces.map_output(&output, offset);
         layer_map_for_output(&output).arrange();
         offset.x += size.w;
     }
 
     // fixup windows
     let mut orphaned_windows = Vec::new();
-    let outputs = space
+    let outputs = workspaces
         .outputs()
         .flat_map(|o| {
-            let geo = space.output_geometry(o)?;
+            let geo = workspaces.output_geometry(o)?;
             let map = layer_map_for_output(o);
             let zone = map.non_exclusive_zone();
             Some(Rectangle::from_loc_and_size(geo.loc + zone.loc, zone.size))
         })
         .collect::<Vec<_>>();
-    for window in space.elements() {
-        let window_location = match space.element_location(window) {
+    for window in workspaces.spaces_elements() {
+        let window_location = match workspaces.element_location(window) {
             Some(loc) => loc,
             None => continue,
         };
@@ -407,6 +366,6 @@ pub fn fixup_positions(space: &mut Space<WindowElement>, pointer_location: Point
         }
     }
     for window in orphaned_windows.into_iter() {
-        place_new_window(space, pointer_location, &window, false);
+        workspaces.place_new_window(window, pointer_location);
     }
 }

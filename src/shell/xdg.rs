@@ -1,10 +1,11 @@
 use std::cell::RefCell;
 
+use lay_rs::prelude::Transition;
 use smithay::{
     desktop::{
         find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
-        space::SpaceElement, PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy,
-        Window, WindowSurfaceType,
+        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, Window,
+        WindowSurfaceType,
     },
     input::{pointer::Focus, Seat},
     output::Output,
@@ -34,7 +35,7 @@ use crate::{
 };
 
 use super::{
-    fullscreen_output_geometry, place_new_window, FullscreenSurface, PointerMoveSurfaceGrab,
+    fullscreen_output_geometry, FullscreenSurface, PointerMoveSurfaceGrab,
     PointerResizeSurfaceGrab, ResizeData, ResizeState, SurfaceData, TouchMoveSurfaceGrab,
     WindowElement,
 };
@@ -48,62 +49,33 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         // Do not send a configure here, the initial configure
         // of a xdg_surface has to be sent during the commit if
         // the surface is not already configured
-        let id = surface.wl_surface().id();
-        let window = WindowElement(Window::new_wayland_window(surface));
-        let current_location = self.pointer.current_location();
-        let mut space = self.space_mut();
-        place_new_window(
-            &mut space,
-            current_location,
-            &window,
-            true,
-        );
-        space.refresh();
-        let scale = space
-            .outputs_for_element(&window)
-            .first()
-            .unwrap()
-            .current_scale()
-            .fractional_scale();
-        let location = space
-            .element_location(&window)
-            .unwrap_or_default()
-            .to_f64()
-            .to_physical(scale);
-        let keyboard = self.seat.get_keyboard().unwrap();
-        keyboard.set_focus(self, Some(window.clone().into()), Serial::from(0));
-        {
-            if let Some(window_layer_id) =
-                self.workspaces.get_current_workspace().windows_layer.id()
-            {
-                let view =
-                    self.workspaces
-                        .get_or_add_window_view(&id, window_layer_id, window.clone());
 
-                view.window_layer.set_position(
-                    lay_rs::types::Point {
-                        x: location.x as f32,
-                        y: location.y as f32,
-                    },
-                    None,
-                );
-            }
-        }
+        let window_layer = self.layers_engine.new_layer();
+        let window_element = WindowElement::new(
+            Window::new_wayland_window(surface.clone()),
+            window_layer.clone(),
+        );
+        let wid = window_element.id();
+
+        let pointer_location = self.pointer.current_location();
+        self.workspaces
+            .place_new_window(window_element, pointer_location);
+
+        self.workspaces.refresh_space();
+
+        let window_element = self.workspaces.get_window_for_surface(&wid).unwrap();
+
+        let keyboard = self.seat.get_keyboard().unwrap();
+        keyboard.set_focus(self, Some(window_element.clone().into()), Serial::from(0));
+
+        self.workspaces.update_workspace_model();
     }
 
     fn toplevel_destroyed(&mut self, toplevel: ToplevelSurface) {
-        self.update_workspace_applications();
         let id = toplevel.wl_surface().id();
-        {
-            if let Some(view) = self.workspaces.get_window_view(&id) {
-                let noderef = view.window_layer.id().unwrap();
-                let scene_layer = self.layers_engine.scene_get_node(&noderef).unwrap();
-                let scene_layer = scene_layer.get().clone();
-                scene_layer.mark_for_deletion();
-                self.workspaces.remove_window_view(&id);
-            }
-        }
-        self.update_workspace_applications();
+        // let workspace = self.workspaces.get_current_workspace();
+        self.workspaces.unmap_window(&id);
+        self.workspaces.update_workspace_model();
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
@@ -172,7 +144,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     return;
                 }
                 let geometry = window.geometry();
-                let loc = self.space().element_location(&window).unwrap();
+                let loc = self.workspaces.element_location(&window).unwrap();
                 let (initial_window_location, initial_window_size) = (loc, geometry.size);
 
                 with_states(surface.wl_surface(), move |states| {
@@ -226,7 +198,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         }
 
         let geometry = window.geometry();
-        let loc = self.space().element_location(&window).unwrap();
+        let loc = self.workspaces.element_location(&window).unwrap();
         let (initial_window_location, initial_window_size) = (loc, geometry.size);
 
         with_states(surface.wl_surface(), move |states| {
@@ -307,8 +279,8 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             use std::borrow::Cow;
 
             let window = self
-                .space()
-                .elements()
+                .workspaces
+                .spaces_elements()
                 .find(|element| element.wl_surface() == Some(Cow::Borrowed(&surface)));
             if let Some(_window) = window {
                 use xdg_decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
@@ -318,7 +290,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     .map(|mode| mode == Mode::ServerSide)
                     .unwrap_or(false);
                 // window.set_ssd(false);
-                self.update_workspace_applications();
+                self.workspaces.update_workspace_model();
             }
         }
     }
@@ -339,20 +311,20 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             let wl_surface = surface.wl_surface();
 
             let output_geometry =
-                fullscreen_output_geometry(wl_surface, wl_output.as_ref(), self.space_mut());
+                fullscreen_output_geometry(wl_surface, wl_output.as_ref(), &mut self.workspaces);
 
             if let Some(geometry) = output_geometry {
                 let output = wl_output
                     .as_ref()
                     .and_then(Output::from_resource)
-                    .unwrap_or_else(|| self.space().outputs().next().unwrap().clone());
+                    .unwrap_or_else(|| self.workspaces.outputs().next().unwrap().clone());
                 let client = self.display_handle.get_client(wl_surface.id()).unwrap();
                 for output in output.client_outputs(&client) {
                     wl_output = Some(output);
                 }
                 let window = self
-                    .space()
-                    .elements()
+                    .workspaces
+                    .spaces_elements()
                     .find(|window| {
                         window
                             .wl_surface()
@@ -448,7 +420,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         {
             let window = self.window_for_surface(surface.wl_surface()).unwrap();
 
-            let current_element_geometry = self.space().element_geometry(&window).unwrap();
+            let current_element_geometry = self.workspaces.element_geometry(&window).unwrap();
             let id = surface.wl_surface().id();
             if let Some(mut view) = self.workspaces.get_window_view(&id) {
                 view.unmaximized_rect = lay_rs::prelude::Rectangle {
@@ -459,38 +431,39 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 };
                 self.workspaces.set_window_view(&id, view);
             }
-            let outputs_for_window = self.space().outputs_for_element(&window);
+            let outputs_for_window = self.workspaces.outputs_for_element(&window);
             let output = outputs_for_window
                 .first()
                 // The window hasn't been mapped yet, use the primary output instead
-                .or_else(|| self.space().outputs().next())
+                .or_else(|| self.workspaces.outputs().next())
                 // Assumes that at least one output exists
                 .expect("No outputs found");
-            let new_geometry = self.space().output_geometry(output).unwrap();
+            let new_geometry = self.workspaces.output_geometry(output).unwrap();
 
             surface.with_pending_state(|state| {
                 state.states.set(xdg_toplevel::State::Maximized);
                 state.size = Some(new_geometry.size);
             });
 
-            let _new_location = new_geometry
+            let new_location = new_geometry
                 .loc
                 .to_f64()
                 .to_physical(output.current_scale().fractional_scale());
-            self.space_mut().map_element(window, new_geometry.loc, true);
+            self.workspaces.map_element(window, new_geometry.loc, true);
 
-            unimplemented!("maximize on workspaces");
-            // if let Some(_window_layer_id) = self.workspaces.windows_layer.id() {
-            //     if let Some(view) = self.workspaces.get_window_view(&id) {
-            //         view.window_layer.set_position(
-            //             lay_rs::types::Point {
-            //                 x: new_location.x as f32,
-            //                 y: new_location.y as f32,
-            //             },
-            //             Some(Transition::default()),
-            //         );
-            //     }
-            // }
+            // unimplemented!("maximize on workspaces");
+            let workspace = self.workspaces.get_current_workspace();
+            if let Some(_window_layer_id) = workspace.windows_layer.id() {
+                if let Some(view) = self.workspaces.get_window_view(&id) {
+                    view.window_layer.set_position(
+                        lay_rs::types::Point {
+                            x: new_location.x as f32,
+                            y: new_location.y as f32,
+                        },
+                        Some(Transition::default()),
+                    );
+                }
+            }
         }
 
         // The protocol demands us to always reply with a configure,
@@ -520,38 +493,40 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                         .into(),
                 );
             });
-            unimplemented!("unmaximize");
-            // if let Some(_window_layer_id) = self.workspaces.windows_layer.id() {
-            //     let scale = self
-            //         .space
-            //         .outputs_for_element(&window)
-            //         .first()
-            //         .unwrap()
-            //         .current_scale()
-            //         .fractional_scale();
+            // unimplemented!("unmaximize");
+            let workspace = self.workspaces.get_current_workspace();
+            if let Some(_window_layer_id) = workspace.windows_layer.id() {
+                let scale = self
+                    .workspaces
+                    .outputs_for_element(&window)
+                    .first()
+                    .unwrap()
+                    .current_scale()
+                    .fractional_scale();
 
-            //     self.space().map_element(
-            //         window,
-            //         (
-            //             view.unmaximized_rect.x as i32,
-            //             view.unmaximized_rect.y as i32,
-            //         ),
-            //         true,
-            //     );
+                self.workspaces.map_element(
+                    window,
+                    (
+                        view.unmaximized_rect.x as i32,
+                        view.unmaximized_rect.y as i32,
+                    ),
+                    true,
+                );
 
-            //     if let Some(view) = self.workspaces.get_window_view(&id) {
-            //         view.window_layer.set_position(
-            //             lay_rs::types::Point {
-            //                 x: view.unmaximized_rect.x * scale as f32,
-            //                 y: view.unmaximized_rect.y * scale as f32,
-            //             },
-            //             Some(Transition::default()),
-            //         );
-            //     }
-            // }
+                if let Some(view) = self.workspaces.get_window_view(&id) {
+                    view.window_layer.set_position(
+                        lay_rs::types::Point {
+                            x: view.unmaximized_rect.x * scale as f32,
+                            y: view.unmaximized_rect.y * scale as f32,
+                        },
+                        Some(Transition::default()),
+                    );
+                }
+            }
         }
         surface.send_pending_configure();
     }
+
     fn minimize_request(&mut self, surface: ToplevelSurface) {
         if surface
             .current_state()
@@ -560,7 +535,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         {
             let window = self.window_for_surface(surface.wl_surface()).unwrap();
 
-            let current_element_geometry = self.space().element_geometry(&window).unwrap();
+            let current_element_geometry = self.workspaces.element_geometry(&window).unwrap();
             let id = surface.wl_surface().id();
             if let Some(mut view) = self.workspaces.get_window_view(&id) {
                 view.unmaximized_rect = lay_rs::prelude::Rectangle {
@@ -572,7 +547,8 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 self.workspaces.set_window_view(&id, view);
             }
 
-            self.minimize_window(&window);
+            self.workspaces.minimize_window(&window);
+            self.focus_keyboard_on_surface(&id);
         }
 
         // The protocol demands us to always reply with a configure,
@@ -584,13 +560,13 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         let seat: Seat<ScreenComposer<BackendData>> = Seat::from_resource(&seat).unwrap();
         let kind = PopupKind::Xdg(surface);
         if let Some(root) = find_popup_root_surface(&kind).ok().and_then(|root| {
-            self.space()
-                .elements()
+            self.workspaces
+                .spaces_elements()
                 .find(|w| w.wl_surface().map(|s| *s == root).unwrap_or(false))
                 .cloned()
                 .map(KeyboardFocusTarget::from)
                 .or_else(|| {
-                    self.space()
+                    self.workspaces
                         .outputs()
                         .find_map(|o| {
                             let map = layer_map_for_output(o);
@@ -659,7 +635,8 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                     return;
                 }
 
-                let mut initial_window_location = self.space().element_location(&window).unwrap();
+                let mut initial_window_location =
+                    self.workspaces.element_location(&window).unwrap();
 
                 // If surface is maximized then unmaximize it
                 let current_state = surface.current_state();
@@ -726,7 +703,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             return;
         }
 
-        let mut initial_window_location = self.space().element_location(&window).unwrap();
+        let mut initial_window_location = self.workspaces.element_location(&window).unwrap();
 
         // If surface is maximized then unmaximize it
         let current_state = surface.current_state();
@@ -773,21 +750,21 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             return;
         };
 
-        let mut outputs_for_window = self.space().outputs_for_element(&window);
+        let mut outputs_for_window = self.workspaces.outputs_for_element(&window);
         if outputs_for_window.is_empty() {
             return;
         }
 
         // Get a union of all outputs' geometries.
         let mut outputs_geo = self
-            .space()
+            .workspaces
             .output_geometry(&outputs_for_window.pop().unwrap())
             .unwrap();
         for output in outputs_for_window {
-            outputs_geo = outputs_geo.merge(self.space().output_geometry(&output).unwrap());
+            outputs_geo = outputs_geo.merge(self.workspaces.output_geometry(&output).unwrap());
         }
 
-        let window_geo = self.space().element_geometry(&window).unwrap();
+        let window_geo = self.workspaces.element_geometry(&window).unwrap();
 
         // The target geometry for the positioner should be relative to its parent's geometry, so
         // we will compute that here.

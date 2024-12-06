@@ -1,20 +1,15 @@
 use smithay::{
     delegate_xdg_decoration,
-    wayland::{
-        compositor::with_states, shell::xdg::{
-            decoration::XdgDecorationHandler, ToplevelSurface, XdgToplevelSurfaceData
-        }
+    reexports::wayland_protocols::xdg::decoration::{
+        self as xdg_decoration, zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
     },
-    reexports::{
-        wayland_protocols::xdg::decoration::{
-            self as xdg_decoration,
-            zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
-        },
-    }
+    wayland::{
+        compositor::with_states,
+        shell::xdg::{decoration::XdgDecorationHandler, ToplevelSurface, XdgToplevelSurfaceData},
+    },
 };
 
 use super::{Backend, ScreenComposer};
-
 
 impl<BackendData: Backend> XdgDecorationHandler for ScreenComposer<BackendData> {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {

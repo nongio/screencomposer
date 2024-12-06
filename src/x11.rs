@@ -297,7 +297,7 @@ pub fn run_x11() {
         .shm_state
         .update_formats(state.backend_data.renderer.shm_formats());
 
-    state.workspaces.space_mut().map_output(&output, (0, 0));
+    state.workspaces.map_output(&output, (0, 0));
 
     let output_clone = output.clone();
 
@@ -318,7 +318,10 @@ pub fn run_x11() {
                 output.delete_mode(output.current_mode().unwrap());
                 output.change_current_state(Some(data.backend_data.mode), None, None, None);
                 output.set_preferred(data.backend_data.mode);
-                crate::shell::fixup_positions(&mut data.workspaces.space_mut(), data.pointer.current_location());
+                crate::shell::fixup_positions(
+                    &mut data.workspaces,
+                    data.pointer.current_location(),
+                );
 
                 data.backend_data.render = true;
             }
@@ -523,7 +526,7 @@ pub fn run_x11() {
         if result.is_err() {
             state.running.store(false, Ordering::SeqCst);
         } else {
-            state.workspaces.space_mut().refresh();
+            state.workspaces.refresh_space();
             state.popups.cleanup();
             display_handle.flush_clients().unwrap();
         }

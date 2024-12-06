@@ -1,6 +1,12 @@
 use std::os::fd::OwnedFd;
 
-use smithay::{delegate_primary_selection, wayland::selection::{primary_selection::{PrimarySelectionHandler, PrimarySelectionState}, SelectionHandler}};
+use smithay::{
+    delegate_primary_selection,
+    wayland::selection::{
+        primary_selection::{PrimarySelectionHandler, PrimarySelectionState},
+        SelectionHandler,
+    },
+};
 
 use super::{Backend, ScreenComposer};
 

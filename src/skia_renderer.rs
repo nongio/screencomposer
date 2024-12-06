@@ -238,13 +238,13 @@ pub struct SkiaTextureImage {
     pub damage: Option<Vec<Rectangle<i32, Buffer>>>,
 }
 
-impl Into<SkiaTextureImage> for SkiaTexture {
-    fn into(self) -> SkiaTextureImage {
+impl From<SkiaTexture> for SkiaTextureImage {
+    fn from(value: SkiaTexture) -> Self {
         SkiaTextureImage {
-            image: self.image,
-            has_alpha: self.has_alpha,
-            format: self.format,
-            damage: self.damage,
+            image: value.image,
+            has_alpha: value.has_alpha,
+            format: value.format,
+            damage: value.damage,
         }
     }
 }

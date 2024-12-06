@@ -1,7 +1,12 @@
-use smithay::{delegate_xdg_activation, reexports::wayland_server::protocol::wl_surface::WlSurface, utils::SERIAL_COUNTER, wayland::xdg_activation::{XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData}};
+use smithay::{
+    delegate_xdg_activation,
+    reexports::wayland_server::{protocol::wl_surface::WlSurface, Resource},
+    wayland::xdg_activation::{
+        XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
+    },
+};
 
 use super::{Backend, ScreenComposer};
-
 
 impl<BackendData: Backend> XdgActivationHandler for ScreenComposer<BackendData> {
     fn activation_state(&mut self) -> &mut XdgActivationState {
@@ -28,15 +33,8 @@ impl<BackendData: Backend> XdgActivationHandler for ScreenComposer<BackendData> 
         surface: WlSurface,
     ) {
         if token_data.timestamp.elapsed().as_secs() < 10 {
-            // Just grant the wish
-            let w = self
-                .space()
-                .elements()
-                .find(|window| window.wl_surface().map(|s| *s == surface).unwrap_or(false))
-                .cloned();
-            if let Some(window) = w {
-                self.raise_element(&window, true, Some(SERIAL_COUNTER.next_serial()), true);
-            }
+            self.workspaces.raise_element(&surface.id(), true, true);
+            self.focus_keyboard_on_surface(&surface.id());
         }
     }
 }

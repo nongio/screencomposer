@@ -1,7 +1,13 @@
-use smithay::{delegate_fractional_scale, desktop::utils::surface_primary_scanout_output, wayland::{compositor::{get_parent, with_states}, fractional_scale::{with_fractional_scale, FractionalScaleHandler}}};
+use smithay::{
+    delegate_fractional_scale,
+    desktop::utils::surface_primary_scanout_output,
+    wayland::{
+        compositor::{get_parent, with_states},
+        fractional_scale::{with_fractional_scale, FractionalScaleHandler},
+    },
+};
 
 use super::{Backend, ScreenComposer};
-
 
 impl<BackendData: Backend> FractionalScaleHandler for ScreenComposer<BackendData> {
     fn new_fractional_scale(
@@ -32,17 +38,23 @@ impl<BackendData: Backend> FractionalScaleHandler for ScreenComposer<BackendData
                         with_states(&root, |states| {
                             surface_primary_scanout_output(&root, states).or_else(|| {
                                 self.window_for_surface(&root).and_then(|window| {
-                                    self.space().outputs_for_element(&window).first().cloned()
+                                    self.workspaces
+                                        .outputs_for_element(&window)
+                                        .first()
+                                        .cloned()
                                 })
                             })
                         })
                     } else {
                         self.window_for_surface(&root).and_then(|window| {
-                            self.space().outputs_for_element(&window).first().cloned()
+                            self.workspaces
+                                .outputs_for_element(&window)
+                                .first()
+                                .cloned()
                         })
                     }
                 })
-                .or_else(|| self.space().outputs().next().cloned());
+                .or_else(|| self.workspaces.outputs().next().cloned());
             if let Some(output) = primary_scanout_output {
                 with_fractional_scale(states, |fractional_scale| {
                     fractional_scale.set_preferred_scale(output.current_scale().fractional_scale());

@@ -10,6 +10,12 @@ pub struct GenieEffect {
     dst: Arc<RwLock<skia::Rect>>,
     progress: Arc<RwLock<f32>>,
 }
+impl Default for GenieEffect {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GenieEffect {
     pub fn new() -> Self {
         let sksl = include_str!("./genie.sksl");
@@ -62,11 +68,11 @@ impl GenieEffect {
             let p = self.progress.read().unwrap();
 
             if (*p) == 0.0 {
-                layer.set_filter_bounds(src.clone());
+                layer.set_filter_bounds(*src);
                 return;
             }
 
-            let bounds = skia::Rect::join2(&*src, &*dst);
+            let bounds = skia::Rect::join2(*src, *dst);
             layer.set_filter_bounds(bounds);
         }
     }

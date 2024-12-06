@@ -23,6 +23,7 @@ use super::WorkspacesModel;
 #[derive(Clone, Debug, Hash)]
 pub struct WorkspaceViewState {
     name: String,
+    index: usize,
     workspace_node: Option<NodeRef>,
 }
 
@@ -41,12 +42,27 @@ impl Hash for WorkspaceSelectorViewState {
 
 #[derive(Clone)]
 pub struct WorkspaceSelectorView {
-    // engine: lay_rs::prelude::LayersEngine,
     pub layer: lay_rs::prelude::Layer,
     pub view: lay_rs::prelude::View<WorkspaceSelectorViewState>,
     pub cursor_location: Arc<RwLock<Point>>,
 }
 
+/// # WorkspaceSelectorView Layer Structure
+///
+/// ```
+/// WorkspaceSelectorView
+/// ├── layer (view(render_workspace_selector_view))
+/// │   ├── workspace_selector_view_content
+/// │   │   └── workspace_selector_desktop_{x}
+/// │   │       └── workspace_selector_desktop_content_{x}
+/// │   │           ├── workspace_desktop_content_preview_{x}
+/// │   │           └── workspace_selector_desktop_remove_{x}
+/// │   └── workspace_selector_add
+/// ```
+///
+/// - `layer`: The root layer for the window selector view.
+///
+///
 impl WorkspaceSelectorView {
     pub fn new(_layers_engine: LayersEngine, layer: Layer) -> Self {
         let state = WorkspaceSelectorViewState {
@@ -56,7 +72,7 @@ impl WorkspaceSelectorView {
         let view = View::new(
             "workspace_selector_view",
             state,
-            render_window_selector_view,
+            render_workspace_selector_view,
         );
         layer.set_pointer_events(false);
         layer.set_position((0.0, -250.0), None);
@@ -72,7 +88,7 @@ impl WorkspaceSelectorView {
     }
 }
 
-fn render_window_selector_view(
+fn render_workspace_selector_view(
     state: &WorkspaceSelectorViewState,
     _view: &View<WorkspaceSelectorViewState>,
 ) -> LayerTree {
@@ -138,14 +154,33 @@ fn render_window_selector_view(
                             let scale = preview_width / workspace_width;
                             let preview_height = workspace_height * scale;
 
-                            LayerTreeBuilder::with_key(format!("workspace_desktop_{}", i))
+                            LayerTreeBuilder::with_key(format!(
+                                "workspace_selector_desktop_{}",
+                                w.index
+                            ))
+                            .layout_style(taffy::Style {
+                                display: taffy::Display::Flex,
+                                position: taffy::Position::Relative,
+                                flex_direction: taffy::FlexDirection::Column,
+                                align_items: Some(taffy::AlignItems::Center),
+                                justify_content: Some(taffy::AlignContent::Center),
+                                gap: taffy::Size::length(20.0),
+                                ..Default::default()
+                            })
+                            .size((
+                                lay_rs::types::Size {
+                                    width: lay_rs::taffy::style::Dimension::Length(preview_width),
+                                    height: lay_rs::taffy::style::Dimension::Auto,
+                                },
+                                None,
+                            ))
+                            .children(vec![
+                                LayerTreeBuilder::with_key(format!(
+                                    "workspace_selector_desktop_content_{}",
+                                    w.index
+                                ))
                                 .layout_style(taffy::Style {
-                                    display: taffy::Display::Flex,
                                     position: taffy::Position::Relative,
-                                    flex_direction: taffy::FlexDirection::Column,
-                                    align_items: Some(taffy::AlignItems::Center),
-                                    justify_content: Some(taffy::AlignContent::Center),
-                                    gap: taffy::Size::length(20.0),
                                     ..Default::default()
                                 })
                                 .size((
@@ -153,121 +188,106 @@ fn render_window_selector_view(
                                         width: lay_rs::taffy::style::Dimension::Length(
                                             preview_width,
                                         ),
-                                        height: lay_rs::taffy::style::Dimension::Auto,
+                                        height: lay_rs::taffy::style::Dimension::Length(
+                                            preview_height,
+                                        ),
                                     },
                                     None,
                                 ))
+                                .border_width((border_width, None))
+                                .border_color(theme_colors().accents_blue)
+                                .border_corner_radius(BorderRadius::new_single(10.0))
                                 .children(vec![
                                     LayerTreeBuilder::with_key(format!(
-                                        "workspace_desktop_content_{}",
-                                        i
+                                        "workspace_desktop_content_preview_{}",
+                                        w.index
                                     ))
+                                    .layout_style(taffy::Style {
+                                        position: taffy::Position::Absolute,
+                                        ..Default::default()
+                                    })
                                     .size((
                                         lay_rs::types::Size {
                                             width: lay_rs::taffy::style::Dimension::Length(
-                                                preview_width,
+                                                workspace_width,
                                             ),
                                             height: lay_rs::taffy::style::Dimension::Length(
-                                                preview_height,
+                                                workspace_height,
                                             ),
                                         },
                                         None,
                                     ))
-                                    .border_width((border_width, None))
-                                    .border_color(theme_colors().accents_blue)
-                                    .border_corner_radius(BorderRadius::new_single(10.0))
-                                    .children(vec![
-                                        LayerTreeBuilder::with_key(format!(
-                                            "workspace_desktop_content_preview_{}",
-                                            i
-                                        ))
-                                        .layout_style(taffy::Style {
-                                            position: taffy::Position::Absolute,
-                                            ..Default::default()
-                                        })
-                                        .size((
-                                            lay_rs::types::Size {
-                                                width: lay_rs::taffy::style::Dimension::Length(
-                                                    workspace_width,
-                                                ),
-                                                height: lay_rs::taffy::style::Dimension::Length(
-                                                    workspace_height,
-                                                ),
-                                            },
-                                            None,
-                                        ))
-                                        .scale(Point::new(scale, scale))
-                                        .replicate_node(w.workspace_node)
-                                        .image_cache(true)
-                                        .on_pointer_press(button_press_filter())
-                                        .on_pointer_release(button_release_filter())
-                                        .build()
-                                        .unwrap(),
-                                        LayerTreeBuilder::with_key(format!(
-                                            "workspace_desktop_remove_{}",
-                                            i
-                                        ))
-                                        .layout_style(taffy::Style {
-                                            position: taffy::Position::Absolute,
-                                            ..Default::default()
-                                        })
-                                        .anchor_point(Point::new(0.5, 0.5))
-                                        .position(Point::new(preview_width, 0.0))
-                                        .size((
-                                            lay_rs::types::Size {
-                                                width: lay_rs::taffy::style::Dimension::Length(
-                                                    50.0,
-                                                ),
-                                                height: lay_rs::taffy::style::Dimension::Length(
-                                                    50.0,
-                                                ),
-                                            },
-                                            None,
-                                        ))
-                                        .background_color(theme_colors().materials_ultrathick)
-                                        .border_corner_radius(BorderRadius::new_single(25.0))
-                                        .content(draw_named_icon("close-symbolic"))
-                                        .shadow_color((Color::new_rgba(0.0, 0.0, 0.0, 0.2), None))
-                                        .shadow_offset(((0.0, 0.0).into(), None))
-                                        .shadow_radius((5.0, None))
-                                        .image_cache(true)
-                                        .on_pointer_press(button_press_filter())
-                                        .on_pointer_release(button_release_filter())
-                                        .build()
-                                        .unwrap(),
-                                    ])
+                                    .scale(Point::new(scale, scale))
+                                    .replicate_node(w.workspace_node)
+                                    .image_cache(true)
+                                    .on_pointer_press(button_press_filter())
+                                    .on_pointer_release(button_release_filter())
                                     .build()
                                     .unwrap(),
-                                    LayerTreeBuilder::with_key(&format!("desktop_label_{}", i))
-                                        .size((
-                                            lay_rs::types::Size {
-                                                width: lay_rs::taffy::style::Dimension::Percent(
-                                                    1.0,
-                                                ),
-                                                height: lay_rs::taffy::style::Dimension::Length(
-                                                    40.0,
-                                                ),
-                                            },
-                                            None,
-                                        ))
-                                        // .background_color(theme_colors().accents_purple)
-                                        .content(draw_text_content(
-                                            format!("Desktop {}", i + 1),
-                                            theme::text_styles::title_3_regular(),
-                                            lay_rs::skia::textlayout::TextAlign::Center,
-                                        ))
-                                        .build()
-                                        .unwrap(),
+                                    LayerTreeBuilder::with_key(format!(
+                                        "workspace_selector_desktop_remove_{}",
+                                        w.index
+                                    ))
+                                    .layout_style(taffy::Style {
+                                        position: taffy::Position::Absolute,
+                                        ..Default::default()
+                                    })
+                                    .anchor_point(Point::new(0.5, 0.5))
+                                    .position(Point::new(preview_width, 0.0))
+                                    .size((
+                                        lay_rs::types::Size {
+                                            width: lay_rs::taffy::style::Dimension::Length(50.0),
+                                            height: lay_rs::taffy::style::Dimension::Length(50.0),
+                                        },
+                                        None,
+                                    ))
+                                    .background_color(theme_colors().materials_ultrathick)
+                                    .border_corner_radius(BorderRadius::new_single(25.0))
+                                    .content(draw_named_icon("close-symbolic"))
+                                    .shadow_color((Color::new_rgba(0.0, 0.0, 0.0, 0.2), None))
+                                    .shadow_offset(((0.0, 0.0).into(), None))
+                                    .shadow_radius((5.0, None))
+                                    .image_cache(true)
+                                    .on_pointer_press(button_press_filter())
+                                    .on_pointer_release(button_release_filter())
+                                    .build()
+                                    .unwrap(),
                                 ])
                                 .build()
-                                .unwrap()
+                                .unwrap(),
+                                LayerTreeBuilder::with_key(format!(
+                                    "workspace_selector_desktop_label_{}",
+                                    w.index
+                                ))
+                                .layout_style(taffy::Style {
+                                    position: taffy::Position::Relative,
+                                    ..Default::default()
+                                })
+                                .size((
+                                    lay_rs::types::Size {
+                                        width: lay_rs::taffy::style::Dimension::Percent(1.0),
+                                        height: lay_rs::taffy::style::Dimension::Length(40.0),
+                                    },
+                                    None,
+                                ))
+                                // .background_color(theme_colors().accents_purple)
+                                .content(draw_text_content(
+                                    format!("Bench {}", i + 1),
+                                    theme::text_styles::title_3_regular(),
+                                    lay_rs::skia::textlayout::TextAlign::Center,
+                                ))
+                                .build()
+                                .unwrap(),
+                            ])
+                            .build()
+                            .unwrap()
                         })
                         .collect(),
                 )
                 .build()
                 .unwrap(),
             LayerTreeBuilder::default()
-                .key("workspace_desktop_add")
+                .key("workspace_selector_desktop_add")
                 .layout_style(taffy::Style {
                     ..Default::default()
                 })
@@ -301,7 +321,8 @@ impl Observer<WorkspacesModel> for WorkspaceSelectorView {
             .iter()
             .enumerate()
             .map(|(i, w)| WorkspaceViewState {
-                name: format!("Desktop {}", i),
+                name: format!("Bench {}", i),
+                index: w.index,
                 workspace_node: w.workspace_layer.id(),
             })
             .collect();
@@ -342,21 +363,24 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WorkspaceSele
         let location = event.location.to_physical(screen_scale);
         let location = lay_rs::types::Point::new(location.x as f32, location.y as f32);
         let mut hover = false;
-        if self.view.hover_layer("workspace_desktop_add", &location) {
+        if self
+            .view
+            .hover_layer("workspace_selector_desktop_add", &location)
+        {
             hover = true;
         }
-        for (i, _w) in state.workspaces.iter().enumerate() {
-            if self
-                .view
-                .hover_layer(&format!("workspace_desktop_{}", i), &location)
-            {
+        for w in state.workspaces.iter() {
+            if self.view.hover_layer(
+                &format!("workspace_selector_desktop_{}", w.index),
+                &location,
+            ) {
                 hover = true;
                 break;
             }
-            if self
-                .view
-                .hover_layer(&format!("workspace_desktop_remove_{}", i), &location)
-            {
+            if self.view.hover_layer(
+                &format!("workspace_selector_desktop_remove_{}", w.index),
+                &location,
+            ) {
                 hover = true;
                 break;
             }
@@ -383,25 +407,28 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WorkspaceSele
         match event.state {
             ButtonState::Pressed => {}
             ButtonState::Released => {
-                if self.view.hover_layer("workspace_desktop_add", &location) {
+                if self
+                    .view
+                    .hover_layer("workspace_selector_desktop_add", &location)
+                {
                     // hover = true;
                     screencomposer.workspaces.add_workspace();
                 }
-                for (i, _w) in state.workspaces.iter().enumerate() {
-                    if self
-                        .view
-                        .hover_layer(&format!("workspace_desktop_{}", i), &location)
-                    {
+                for (i, w) in state.workspaces.iter().enumerate() {
+                    if self.view.hover_layer(
+                        &format!("workspace_selector_desktop_{}", w.index),
+                        &location,
+                    ) {
                         // hover = true;
-                        screencomposer.workspaces.set_current_workspace(i);
+                        screencomposer.workspaces.set_current_workspace_index(i);
                         break;
                     }
-                    if self
-                        .view
-                        .hover_layer(&format!("workspace_desktop_remove_{}", i), &location)
-                    {
+                    if self.view.hover_layer(
+                        &format!("workspace_selector_desktop_remove_{}", w.index),
+                        &location,
+                    ) {
                         // hover = true;
-                        screencomposer.workspaces.remove_workspace(i);
+                        screencomposer.workspaces.remove_workspace_at(i);
                         break;
                     }
                 }

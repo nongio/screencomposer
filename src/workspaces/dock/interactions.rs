@@ -28,7 +28,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
     fn on_button(
         &self,
         _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-        data: &mut crate::ScreenComposer<Backend>,
+        state: &mut crate::ScreenComposer<Backend>,
         event: &smithay::input::pointer::ButtonEvent,
     ) {
         match event.state {
@@ -36,11 +36,13 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
                 // println!("dock Button pressed");
             }
             ButtonState::Released => {
-                if let Some(layer_id) = data.layers_engine.current_hover() {
+                if let Some(layer_id) = state.layers_engine.current_hover() {
                     if let Some(identifier) = self.get_appid_from_layer(&layer_id) {
-                        data.raise_app_elements(&identifier, true, Some(event.serial));
-                    } else if let Some(window) = self.get_window_from_layer(&layer_id) {
-                        data.unminimize_window(&window.window_element.unwrap().clone());
+                        // if we click on an app icon, focus the app
+                        state.workspaces.focus_app(&identifier);
+                    } else if let Some(wid) = self.get_window_from_layer(&layer_id) {
+                        // if we click on a minimized window, unminimize it
+                        state.workspaces.unminimize_window(&wid);
                     }
                 }
             }
