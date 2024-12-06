@@ -1,9 +1,13 @@
 use std::sync::Arc;
 
-use smithay::{delegate_security_context, wayland::security_context::{SecurityContext, SecurityContextHandler, SecurityContextListenerSource}};
+use smithay::{
+    delegate_security_context,
+    wayland::security_context::{
+        SecurityContext, SecurityContextHandler, SecurityContextListenerSource,
+    },
+};
 
 use super::{Backend, ClientState, ScreenComposer};
-
 
 impl<BackendData: Backend + 'static> SecurityContextHandler for ScreenComposer<BackendData> {
     fn context_created(

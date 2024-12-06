@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 use smithay::{
-    desktop::{space::SpaceElement, WindowSurface},
+    desktop::WindowSurface,
     input::{
         pointer::{
             AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent,
@@ -43,16 +43,16 @@ pub struct PointerMoveSurfaceGrab<B: Backend + 'static> {
 impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
     fn motion(
         &mut self,
-        data: &mut ScreenComposer<B>,
+        state: &mut ScreenComposer<B>,
         handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         _focus: Option<(PointerFocusTarget<B>, Point<f64, Logical>)>,
         event: &MotionEvent,
     ) {
         // While the grab is active, no client has pointer focus
-        handle.motion(data, None, event);
+        handle.motion(state, None, event);
 
-        let scale = data
-            .space()
+        let scale = state
+            .workspaces
             .outputs_for_element(&self.window)
             .first()
             .unwrap()
@@ -61,11 +61,12 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
 
-        data.space_mut()
+        state
+            .workspaces
             .map_element(self.window.clone(), new_location.to_i32_round(), true);
 
         if let Some(id) = self.window.wl_surface().map(|s| s.id()) {
-            if let Some(view) = data.workspaces.get_window_view(&id) {
+            if let Some(view) = state.workspaces.get_window_view(&id) {
                 let location = new_location.to_physical(scale);
                 view.window_layer.set_position(
                     lay_rs::types::Point {
@@ -250,7 +251,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
 
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
-        data.space_mut()
+        data.workspaces
             .map_element(self.window.clone(), new_location.to_i32_round(), true);
     }
 
@@ -439,7 +440,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
 
         self.last_window_size = (new_window_width, new_window_height).into();
 
-        match &self.window.0.underlying_surface() {
+        match &self.window.underlying_surface() {
             WindowSurface::Wayland(xdg) => {
                 xdg.with_pending_state(|state| {
                     state.states.set(xdg_toplevel::State::Resizing);
@@ -471,22 +472,22 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
 
     fn button(
         &mut self,
-        data: &mut ScreenComposer<B>,
+        state: &mut ScreenComposer<B>,
         handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
         event: &ButtonEvent,
     ) {
-        handle.button(data, event);
+        handle.button(state, event);
         if handle.current_pressed().is_empty() {
-            data.is_resizing = false;
+            state.is_resizing = false;
             // No more buttons are pressed, release the grab.
-            handle.unset_grab(self, data, event.serial, event.time, true);
+            handle.unset_grab(self, state, event.serial, event.time, true);
 
             // If toplevel is dead, we can't resize it, so we return early.
             if !self.window.alive() {
                 return;
             }
 
-            match &self.window.0.underlying_surface() {
+            match &self.window.underlying_surface() {
                 WindowSurface::Wayland(xdg) => {
                     xdg.with_pending_state(|state| {
                         state.states.unset(xdg_toplevel::State::Resizing);
@@ -495,7 +496,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
                     xdg.send_pending_configure();
                     if self.edges.intersects(ResizeEdge::TOP_LEFT) {
                         let geometry = self.window.geometry();
-                        let mut location = data.space().element_location(&self.window).unwrap();
+                        let mut location = state.workspaces.element_location(&self.window).unwrap();
 
                         if self.edges.intersects(ResizeEdge::LEFT) {
                             location.x = self.initial_window_location.x
@@ -506,7 +507,9 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
                                 + (self.initial_window_size.h - geometry.size.h);
                         }
 
-                        data.space_mut().map_element(self.window.clone(), location, true);
+                        state
+                            .workspaces
+                            .map_element(self.window.clone(), location, true);
                     }
 
                     with_states(&self.window.wl_surface().unwrap(), |states| {
@@ -525,7 +528,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
                 }
                 #[cfg(feature = "xwayland")]
                 WindowSurface::X11(x11) => {
-                    let mut location = data.space.element_location(&self.window).unwrap();
+                    let mut location = state.space.element_location(&self.window).unwrap();
                     if self.edges.intersects(ResizeEdge::TOP_LEFT) {
                         let geometry = self.window.geometry();
 
@@ -538,7 +541,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
                                 + (self.initial_window_size.h - geometry.size.h);
                         }
 
-                        data.space.map_element(self.window.clone(), location, true);
+                        state.space.map_element(self.window.clone(), location, true);
                     }
                     x11.configure(Rectangle::from_loc_and_size(
                         location,
@@ -556,10 +559,10 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
                             .get::<RefCell<SurfaceData>>()
                             .unwrap()
                             .borrow_mut();
-                        if let ResizeState::Resizing(resize_data) = data.resize_state {
-                            data.resize_state = ResizeState::WaitingForCommit(resize_data);
+                        if let ResizeState::Resizing(resize_data) = state.resize_state {
+                            state.resize_state = ResizeState::WaitingForCommit(resize_data);
                         } else {
-                            panic!("invalid resize state: {:?}", data.resize_state);
+                            panic!("invalid resize state: {:?}", state.resize_state);
                         }
                     });
                 }
@@ -690,7 +693,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
 
     fn up(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
+        state: &mut ScreenComposer<BackendData>,
         handle: &mut smithay::input::touch::TouchInnerHandle<'_, ScreenComposer<BackendData>>,
         event: &smithay::input::touch::UpEvent,
         _seq: Serial,
@@ -698,14 +701,14 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
         if event.slot != self.start_data.slot {
             return;
         }
-        handle.unset_grab(self, data);
+        handle.unset_grab(self, state);
 
         // If toplevel is dead, we can't resize it, so we return early.
         if !self.window.alive() {
             return;
         }
 
-        match self.window.0.underlying_surface() {
+        match self.window.underlying_surface() {
             WindowSurface::Wayland(xdg) => {
                 xdg.with_pending_state(|state| {
                     state.states.unset(xdg_toplevel::State::Resizing);
@@ -714,7 +717,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
                 xdg.send_pending_configure();
                 if self.edges.intersects(ResizeEdge::TOP_LEFT) {
                     let geometry = self.window.geometry();
-                    let mut location = data.space().element_location(&self.window).unwrap();
+                    let mut location = state.workspaces.element_location(&self.window).unwrap();
 
                     if self.edges.intersects(ResizeEdge::LEFT) {
                         location.x = self.initial_window_location.x
@@ -725,7 +728,9 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
                             + (self.initial_window_size.h - geometry.size.h);
                     }
 
-                    data.space_mut().map_element(self.window.clone(), location, true);
+                    state
+                        .workspaces
+                        .map_element(self.window.clone(), location, true);
                 }
 
                 with_states(&self.window.wl_surface().unwrap(), |states| {
@@ -744,7 +749,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
             }
             #[cfg(feature = "xwayland")]
             WindowSurface::X11(x11) => {
-                let mut location = data.space.element_location(&self.window).unwrap();
+                let mut location = state.space.element_location(&self.window).unwrap();
                 if self.edges.intersects(ResizeEdge::TOP_LEFT) {
                     let geometry = self.window.geometry();
 
@@ -757,7 +762,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
                             + (self.initial_window_size.h - geometry.size.h);
                     }
 
-                    data.space.map_element(self.window.clone(), location, true);
+                    state.space.map_element(self.window.clone(), location, true);
                 }
                 x11.configure(Rectangle::from_loc_and_size(
                     location,
@@ -775,10 +780,10 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
                         .get::<RefCell<SurfaceData>>()
                         .unwrap()
                         .borrow_mut();
-                    if let ResizeState::Resizing(resize_data) = data.resize_state {
-                        data.resize_state = ResizeState::WaitingForCommit(resize_data);
+                    if let ResizeState::Resizing(resize_data) = state.resize_state {
+                        state.resize_state = ResizeState::WaitingForCommit(resize_data);
                     } else {
-                        panic!("invalid resize state: {:?}", data.resize_state);
+                        panic!("invalid resize state: {:?}", state.resize_state);
                     }
                 });
             }
@@ -859,7 +864,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
 
         self.last_window_size = (new_window_width, new_window_height).into();
 
-        match self.window.0.underlying_surface() {
+        match self.window.underlying_surface() {
             WindowSurface::Wayland(xdg) => {
                 xdg.with_pending_state(|state| {
                     state.states.set(xdg_toplevel::State::Resizing);

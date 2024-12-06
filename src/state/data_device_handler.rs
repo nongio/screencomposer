@@ -1,7 +1,13 @@
-use smithay::{delegate_data_control, delegate_data_device, reexports::wayland_server::protocol::wl_data_device_manager::DndAction, wayland::selection::{data_device::{DataDeviceHandler, DataDeviceState}, wlr_data_control::{DataControlHandler, DataControlState}}};
+use smithay::{
+    delegate_data_control, delegate_data_device,
+    reexports::wayland_server::protocol::wl_data_device_manager::DndAction,
+    wayland::selection::{
+        data_device::{DataDeviceHandler, DataDeviceState},
+        wlr_data_control::{DataControlHandler, DataControlState},
+    },
+};
 
 use super::{Backend, ScreenComposer};
-
 
 impl<BackendData: Backend> DataDeviceHandler for ScreenComposer<BackendData> {
     fn data_device_state(&self) -> &DataDeviceState {

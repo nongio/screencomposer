@@ -43,7 +43,12 @@ use smithay::{
 use tracing::{error, info, warn};
 
 use crate::{
-    config::Config, drawing::*, render::*, render_elements::workspace_render_elements::WorkspaceRenderElements, shell::WindowElement, skia_renderer::{SkiaRenderer, SkiaTexture, SkiaTextureImage}, state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer}
+    config::Config,
+    drawing::*,
+    render::*,
+    render_elements::workspace_render_elements::WorkspaceRenderElements,
+    skia_renderer::{SkiaRenderer, SkiaTexture, SkiaTextureImage},
+    state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
 };
 
 #[cfg(feature = "debug")]
@@ -257,7 +262,7 @@ pub fn run_winit() {
         .shm_state
         .update_formats(state.backend_data.backend.renderer().shm_formats());
 
-    state.workspaces.space_mut().map_output(&output, (0, 0));
+    state.workspaces.map_output(&output, (0, 0));
 
     #[cfg(feature = "xwayland")]
     state.start_xwayland();
@@ -277,7 +282,7 @@ pub fn run_winit() {
         {
             #[cfg(feature = "profile-with-puffin")]
             profiling::puffin::profile_scope!("update_windows");
-            state.update_windows();
+            state.update_dnd();
         }
         {
             #[cfg(feature = "profile-with-puffin")]
@@ -288,8 +293,8 @@ pub fn run_winit() {
         let status = winit.dispatch_new_events(|event| match event {
             WinitEvent::Resized { size, .. } => {
                 // We only have one output
-                let output = state.workspaces.space().outputs().next().unwrap().clone();
-                state.workspaces.space_mut().map_output(&output, (0, 0));
+                let output = state.workspaces.outputs().next().unwrap().clone();
+                state.workspaces.map_output(&output, (0, 0));
                 let mode = Mode {
                     size,
                     refresh: 60_000,
@@ -303,9 +308,9 @@ pub fn run_winit() {
                 );
                 output.set_preferred(mode);
                 let pointer_location = state.pointer.current_location();
-                crate::shell::fixup_positions(&mut state.workspaces.space_mut(), pointer_location);
+                crate::shell::fixup_positions(&mut state.workspaces, pointer_location);
                 state.scene_element.set_size(size.w as f32, size.h as f32);
-                state.workspaces.set_size(size.w as f32, size.h as f32);
+                state.workspaces.set_screen_dimension(size.w, size.h);
                 root.layer.set_size(
                     lay_rs::types::Size::points(size.w as f32, size.h as f32),
                     None,
@@ -352,7 +357,7 @@ pub fn run_winit() {
 
             let full_redraw = &mut state.backend_data.full_redraw;
             *full_redraw = full_redraw.saturating_sub(1);
-            let space = &mut state.workspaces.space_mut();
+
             let damage_tracker = &mut state.backend_data.damage_tracker;
 
             let output_scale = output.current_scale().fractional_scale();
@@ -422,8 +427,7 @@ pub fn run_winit() {
             #[cfg(feature = "debug")]
             let mut renderdoc = state.renderdoc.as_mut();
             // Rendering
-            let render_res = 
-            backend.bind().and_then(|_| {
+            let render_res = backend.bind().and_then(|_| {
                 // Start RenderDoc capture
                 #[cfg(feature = "debug")]
                 if let Some(renderdoc) = renderdoc.as_mut() {
@@ -472,7 +476,7 @@ pub fn run_winit() {
 
                 render_output(
                     &output,
-                    space,
+                    state.workspaces.space(),
                     elements,
                     state.dnd_icon.as_ref(),
                     renderer,
@@ -573,7 +577,7 @@ pub fn run_winit() {
         if result.is_err() {
             state.running.store(false, Ordering::SeqCst);
         } else {
-            state.space_mut().refresh();
+            state.workspaces.refresh_space();
             state.popups.cleanup();
             display_handle.flush_clients().unwrap();
         }

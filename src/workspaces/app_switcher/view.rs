@@ -9,7 +9,7 @@ use lay_rs::{
         animation::{TimingFunction, Transition},
         LayersEngine, TransactionRef,
     },
-    prelude::{taffy, Layer},
+    prelude::taffy,
     taffy::style::Style,
     types::Size,
     view::RenderLayerTree,
@@ -46,6 +46,18 @@ impl IsAlive for AppSwitcherView {
         self.active.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
+
+/// # AppSwitcherView Layer Structure
+///
+/// ```
+/// AppSwitcherView
+/// └── app_switcher_container `app_switcher_container`
+///     └── app_switcher `app_switcher`
+///         └── apps_container `apps_container`
+///             ├── App
+///             ├── App
+/// ```
+///
 
 impl AppSwitcherView {
     pub fn new(layers_engine: LayersEngine) -> Self {
@@ -212,7 +224,7 @@ impl AppSwitcherView {
                         current_app,
                         apps,
                         width: workspace.width,
-                        ..switcher_state
+                        // ..switcher_state
                     });
                 }
             }

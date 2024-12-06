@@ -1,108 +1,19 @@
 use super::{BackgroundView, WindowSelectorView};
-use crate::{shell::WindowElement, utils::image_from_path};
+use crate::{config::Config, shell::WindowElement, utils::image_from_path};
 use core::fmt;
 
-use lay_rs::skia;
 use lay_rs::{
     engine::LayersEngine,
     prelude::{taffy, Layer},
 };
-use smithay::reexports::wayland_server::{
-    backend::ObjectId, protocol::wl_surface::WlSurface, Resource,
-};
-use std::{
-    fmt::Debug,
-    hash::{Hash, Hasher},
-    sync::Arc,
-};
-
-#[allow(dead_code)]
-#[derive(Clone, Debug)]
-pub struct Window {
-    pub wl_surface: Option<WlSurface>,
-    pub window_element: Option<WindowElement>,
-    pub title: String,
-    pub x: f32,
-    pub y: f32,
-    pub w: f32,
-    pub h: f32,
-    pub is_fullscreen: bool,
-    pub is_maximized: bool,
-    pub is_minimized: bool,
-    pub app_id: String,
-    pub base_layer: Layer,
-}
-impl Window {
-    pub fn new_with_layer(layer: Layer) -> Self {
-        Self {
-            base_layer: layer,
-            wl_surface: None,
-            window_element: None,
-            title: "".to_string(),
-            x: 0.0,
-            y: 0.0,
-            w: 0.0,
-            h: 0.0,
-            is_fullscreen: false,
-            is_maximized: false,
-            is_minimized: false,
-            app_id: "".to_string(),
-        }
-    }
-}
-
-#[derive(Clone, Default)]
-pub struct Application {
-    pub identifier: String,
-    pub desktop_name: Option<String>,
-    pub icon_path: Option<String>,
-    pub icon: Option<skia::Image>,
-}
-impl PartialEq for Window {
-    fn eq(&self, other: &Self) -> bool {
-        self.wl_surface == other.wl_surface
-    }
-}
-impl Eq for Window {}
-impl Hash for Window {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.wl_surface.hash(state);
-    }
-}
-impl Window {
-    pub fn id(&self) -> Option<ObjectId> {
-        self.wl_surface.as_ref().map(|s| s.id())
-    }
-}
-impl fmt::Debug for Application {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Application")
-            .field("identifier", &self.identifier)
-            .field("desktop_name", &self.desktop_name)
-            .field("icon_path", &self.icon_path)
-            .field("icon", &self.icon.is_some())
-            .finish()
-    }
-}
-
-impl Hash for Application {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.identifier.hash(state);
-        self.icon_path.hash(state);
-        self.desktop_name.hash(state);
-        self.icon.as_ref().map(|i| i.unique_id().hash(state));
-    }
-}
-
-impl PartialEq for Application {
-    fn eq(&self, other: &Self) -> bool {
-        self.identifier == other.identifier
-    }
-}
-impl Eq for Application {}
+use smithay::reexports::wayland_server::backend::ObjectId;
+use std::sync::{Arc, RwLock};
 
 #[derive(Clone)]
-pub struct Workspace {
+pub struct WorkspaceView {
+    pub index: usize,
+    pub windows_list: Arc<RwLock<Vec<ObjectId>>>,
+
     // views
     pub window_selector_view: Arc<WindowSelectorView>,
     pub background_view: Arc<BackgroundView>,
@@ -113,7 +24,7 @@ pub struct Workspace {
     pub windows_layer: Layer,
 }
 
-impl fmt::Debug for Workspace {
+impl fmt::Debug for WorkspaceView {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // let model = self.model.read().unwrap();
 
@@ -126,19 +37,25 @@ impl fmt::Debug for Workspace {
     }
 }
 
-impl Application {
-    pub fn new(app_id: &str) -> Self {
-        Self {
-            identifier: app_id.to_string(),
-            ..Default::default()
-        }
-    }
-}
+/// # Workspace Layer Structure
+///
+/// ```
+/// WorkspaceView
+/// └── workspace_view
+///     ├── background_view
+///     └── workspace_windows_container
+///         ├── window
+///         ├── window
+///         └── window
+/// ```
+///
+///
+impl WorkspaceView {
+    pub fn new(index: usize, layers_engine: LayersEngine, parent: &Layer) -> Self {
+        println!("add_workspace {}", index);
 
-impl Workspace {
-    pub fn new(layers_engine: LayersEngine, parent: &Layer) -> Self {
         let workspace_layer = layers_engine.new_layer();
-        workspace_layer.set_key("workspace_view");
+        workspace_layer.set_key(format!("workspace_view_{}", index));
         workspace_layer.set_layout_style(taffy::Style {
             flex_grow: 1.0,
             flex_shrink: 0.0,
@@ -157,7 +74,7 @@ impl Workspace {
         // background_layer.set_opacity(0.0, None);
 
         let windows_layer = layers_engine.new_layer();
-        windows_layer.set_key("windows_container");
+        windows_layer.set_key(format!("workspace_windows_container_{}", index));
         windows_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
             ..Default::default()
@@ -169,22 +86,86 @@ impl Workspace {
         layers_engine.scene_add_layer_to(background_layer.clone(), Some(workspace_id));
         layers_engine.scene_add_layer_to(windows_layer.clone(), Some(workspace_id));
 
-        let background_view = BackgroundView::new(layers_engine.clone(), background_layer.clone());
-        if let Some(background_image) = image_from_path("./resources/background.jpg", None) {
+        let background_view = BackgroundView::new(index, background_layer.clone());
+        let background_path = Config::with(|c| c.background_image.clone());
+        if let Some(background_image) = image_from_path(&background_path, None) {
             background_view.set_image(background_image);
         }
         let background_view = Arc::new(background_view);
 
-        let window_selector_view = WindowSelectorView::new(layers_engine.clone());
+        let window_selector_view = WindowSelectorView::new(
+            index,
+            layers_engine.clone(),
+            background_view.base_layer.clone(),
+        );
+
         let window_selector_view = Arc::new(window_selector_view);
 
         Self {
-            // app_switcher,
+            index,
+            windows_list: Arc::new(RwLock::new(Vec::new())),
             window_selector_view: window_selector_view.clone(),
             background_view,
             layers_engine,
             windows_layer,
             workspace_layer,
         }
+    }
+
+    /// add a window layer to the workspace windows container
+    /// append the window to the windows list
+    /// creates a clone of the window layer to be used in the window selector view
+    pub fn map_window(&self, window_element: &WindowElement) {
+        // println!("Mapping window {:?}", window_element);
+        let mut window_list = self.windows_list.write().unwrap();
+        let wid = window_element.id();
+        if window_list.contains(&wid) {
+            return;
+        }
+        window_list.push(wid.clone());
+        self.windows_layer
+            .add_sublayer(window_element.base_layer().clone());
+
+        let clone_window = self.layers_engine.new_layer();
+        clone_window.set_key(format!(
+            "clone_window_{}",
+            window_element.base_layer().id().unwrap().0
+        ));
+        clone_window.set_layout_style(taffy::Style {
+            position: taffy::Position::Absolute,
+            ..Default::default()
+        });
+        clone_window.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+        self.window_selector_view
+            .windows_layer
+            .add_sublayer(clone_window.clone());
+        let clone_id = clone_window.id().unwrap();
+        let clone_node = self.layers_engine.scene_get_node(&clone_id).unwrap();
+
+        let clone_node = clone_node.get();
+        clone_node.replicate_node(&window_element.base_layer().id());
+        self.window_selector_view.map_layer(wid, clone_window);
+    }
+
+    pub fn unmap_window(&self, window_id: &ObjectId) {
+        let mut window_list = self.windows_list.write().unwrap();
+
+        if let Some(index) = window_list.iter().position(|x| x == window_id) {
+            window_list.remove(index);
+        }
+        self.window_selector_view.unmap_layer(window_id);
+    }
+}
+
+// Implementing the Drop trait for Workspace
+impl Drop for WorkspaceView {
+    fn drop(&mut self) {
+        self.layers_engine
+            .scene_remove_layer(self.windows_layer.id());
+        self.layers_engine
+            .scene_remove_layer(self.workspace_layer.id());
+        self.layers_engine
+            .scene_remove_layer(self.window_selector_view.layer.id());
+        // Perform any necessary clean here
     }
 }

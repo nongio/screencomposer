@@ -3,3 +3,5 @@ Cargo.lock
 *.bk
 .vscode
 .vagga
+resources/backgrounds/*
+sc_config.toml

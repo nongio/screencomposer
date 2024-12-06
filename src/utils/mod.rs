@@ -7,7 +7,7 @@ use std::{
 
 use lay_rs::{
     prelude::{ContentDrawFunction, Layer, PointerHandlerFunction},
-    skia::{self, color_filter},
+    skia::{self},
 };
 use usvg::TreeParsing;
 
@@ -104,10 +104,10 @@ pub fn named_icon(
     let icon = icon_path
         .as_ref()
         .and_then(|icon_path| image_from_path(icon_path, ctx));
-    icon.as_ref().map(|i| {
+    if let Some(i) = icon.as_ref() {
         ic.insert(icon_name.to_string(), i.clone());
-    });
-    return icon;
+    }
+    icon
 }
 pub fn draw_named_icon(icon_name: &str) -> Option<ContentDrawFunction> {
     let icon = named_icon(icon_name, None);
@@ -129,6 +129,15 @@ pub fn draw_named_icon(icon_name: &str) -> Option<ContentDrawFunction> {
         draw_function.into()
     })
 }
+
+pub fn notify_observers<T>(observers: &Vec<std::sync::Weak<dyn Observer<T>>>, event: &T) {
+    for observer in observers {
+        if let Some(observer) = observer.upgrade() {
+            observer.notify(event);
+        }
+    }
+}
+
 pub trait Observable<T> {
     fn add_listener(&mut self, observer: std::sync::Arc<dyn Observer<T>>);
     fn observers<'a>(&'a self) -> Box<dyn Iterator<Item = std::sync::Weak<dyn Observer<T>>> + 'a>;

@@ -1,10 +1,17 @@
 use lay_rs::{prelude::*, skia};
-use smithay::input::pointer::{CursorIcon, CursorImageStatus};
-use std::hash::{Hash, Hasher};
+use smithay::{
+    input::pointer::{CursorIcon, CursorImageStatus},
+    reexports::wayland_server::backend::ObjectId,
+};
+use std::{
+    collections::HashMap,
+    hash::{Hash, Hasher},
+    sync::RwLock,
+};
 
 use crate::{config::Config, interactive_view::ViewInteractions, utils::Observer};
 
-use super::{utils::FONT_CACHE, Workspace};
+use super::{utils::FONT_CACHE, WorkspacesModel};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct WindowSelection {
@@ -63,27 +70,110 @@ impl<F: Fn(usize) + Send + Sync + 'static> From<F> for HandlerFunction {
 #[derive(Clone)]
 pub struct WindowSelectorView {
     pub layer: lay_rs::prelude::Layer,
+    pub background_layer: lay_rs::prelude::Layer,
+    pub windows_layer: lay_rs::prelude::Layer,
+    pub overlay_layer: lay_rs::prelude::Layer,
     pub view: lay_rs::prelude::View<WindowSelectorState>,
+    pub windows: std::sync::Arc<RwLock<HashMap<ObjectId, Layer>>>,
 }
 
+/// # WindowSelectorView Layer Structure
+///
+/// ```
+/// WindowSelectorView
+/// ├── layer
+/// │   ├── background_layer
+/// │   ├── windows_layer
+/// │   ├── overlay_layer (view(view_window_selector))
+/// │   │   └── window_selector_label
+/// ```
+///
+/// - `layer`: The root layer for the window selector view.
+/// - `background_layer`: a replica of the workspace background
+/// - `windows_layer`: windows replica container
+/// - `overlay_layer`: draw the window selection and text
+/// - `window_selector_label`: text layer for the window title
+///
+
 impl WindowSelectorView {
-    pub fn new(layers_engine: LayersEngine) -> Self {
-        let layer = layers_engine.new_layer();
-        layer.set_layout_style(taffy::Style {
+    pub fn new(index: usize, layers_engine: LayersEngine, background_layer: Layer) -> Self {
+        let window_selector_root = layers_engine.new_layer();
+        window_selector_root.set_layout_style(taffy::Style {
+            // position: taffy::Position::Absolute,
+            flex_grow: 1.0,
+            flex_shrink: 0.0,
+            flex_basis: taffy::Dimension::Percent(1.0),
+            ..Default::default()
+        });
+
+        window_selector_root.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+
+        window_selector_root.set_key(format!("window_selector_root_{}", index));
+        layers_engine.scene_add_layer(window_selector_root.clone());
+        let overlay_layer = layers_engine.new_layer();
+        overlay_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
-        layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
-        layer.set_pointer_events(false);
-        layers_engine.scene_add_layer(layer.clone());
+        overlay_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+        overlay_layer.set_pointer_events(false);
+        window_selector_root.add_sublayer(overlay_layer.clone());
 
         let state = WindowSelectorState {
             rects: vec![],
             current_selection: None,
         };
-        let view = lay_rs::prelude::View::new("window_selector_view", state, view_window_selector);
-        view.mount_layer(layer.clone());
-        Self { view, layer }
+        let view = lay_rs::prelude::View::new(
+            format!("window_selector_view_{}", index),
+            state,
+            view_window_selector,
+        );
+        view.mount_layer(overlay_layer.clone());
+
+        let clone_background_layer = layers_engine.new_layer();
+        clone_background_layer.set_key(format!("window_selector_background_{}", index));
+        clone_background_layer.set_layout_style(taffy::Style {
+            position: taffy::Position::Absolute,
+            ..Default::default()
+        });
+        clone_background_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+        window_selector_root.add_sublayer(clone_background_layer.clone());
+
+        let clone_id = clone_background_layer.id().unwrap();
+        let clone_node = layers_engine.scene_get_node(&clone_id).unwrap();
+        let clone_node = clone_node.get();
+        clone_node.replicate_node(&background_layer.id());
+
+        let windows_layer = layers_engine.new_layer();
+        windows_layer.set_key(format!("window_selector_windows_container_{}", index));
+        windows_layer.set_layout_style(taffy::Style {
+            position: taffy::Position::Absolute,
+            ..Default::default()
+        });
+        windows_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+        window_selector_root.add_sublayer(windows_layer.clone());
+
+        Self {
+            view,
+            layer: window_selector_root,
+            background_layer: clone_background_layer,
+            windows_layer,
+            overlay_layer,
+            windows: std::sync::Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+    pub fn layer_for_window(&self, window: &ObjectId) -> Option<Layer> {
+        self.windows.read().unwrap().get(window).cloned()
+    }
+
+    pub fn map_layer(&self, window_id: ObjectId, layer: Layer) {
+        // self.windows_layer.add_sublayer(layer.clone());
+        self.windows.write().unwrap().insert(window_id, layer);
+    }
+    pub fn unmap_layer(&self, window_id: &ObjectId) {
+        if let Some(layer) = self.windows.write().unwrap().remove(window_id) {
+            layer.remove();
+        }
     }
 }
 
@@ -123,7 +213,7 @@ pub fn get_paragraph_for_text(text: &str, font_size: f32) -> skia::textlayout::P
 
 pub fn view_window_selector(
     state: &WindowSelectorState,
-    _view: &View<WindowSelectorState>,
+    view: &View<WindowSelectorState>,
 ) -> LayerTree {
     let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
 
@@ -196,9 +286,9 @@ pub fn view_window_selector(
         },
     );
     LayerTreeBuilder::default()
-        .key("window_selector_view")
+        .key(view.key())
         .position(((0.0, 0.0).into(), None))
-        .size((lay_rs::types::Size::percent(1.0, 1.0), None))
+        .size(lay_rs::types::Size::percent(1.0, 1.0))
         .content(draw_container)
         .children(vec![LayerTreeBuilder::default()
             .key("window_selector_label")
@@ -242,8 +332,8 @@ pub fn view_window_selector(
         .build()
         .unwrap()
 }
-impl Observer<Workspace> for WindowSelectorView {
-    fn notify(&self, _event: &Workspace) {}
+impl Observer<WorkspacesModel> for WindowSelectorView {
+    fn notify(&self, _workspaces: &WorkspacesModel) {}
 }
 impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelectorView {
     fn id(&self) -> Option<usize> {
@@ -272,9 +362,11 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
         data: &mut crate::ScreenComposer<Backend>,
         event: &smithay::input::pointer::MotionEvent,
     ) {
+        // println!("on_motion");
         let mut state = self.view.get_state().clone();
         let screen_scale = Config::with(|config| config.screen_scale);
         let location = event.location.to_physical(screen_scale);
+
         let rect = state
             .rects
             .iter()
@@ -305,20 +397,19 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
         &self,
         _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
         screencomposer: &mut crate::ScreenComposer<Backend>,
-        event: &smithay::input::pointer::ButtonEvent,
+        _event: &smithay::input::pointer::ButtonEvent,
     ) {
         let selector_state = self.view.get_state();
         if let Some(index) = selector_state.current_selection {
-            let oid = screencomposer
+            let wid = screencomposer
                 .workspaces
                 // .get_current_workspace()
                 .with_model(|model| model.windows_list.get(index).unwrap().clone());
 
-            if let Some(window_view) = screencomposer.workspaces.get_window_view(&oid) {
-                screencomposer.raise_element(&window_view.window, true, Some(event.serial), false);
-            }
+            screencomposer.workspaces.raise_element(&wid, true, false);
+            screencomposer.focus_keyboard_on_surface(&wid);
         }
-        screencomposer.expose_show_all(-1.0, true);
+        screencomposer.workspaces.expose_show_all(-1.0, true);
         screencomposer.set_cursor(&CursorImageStatus::default_named());
     }
 }

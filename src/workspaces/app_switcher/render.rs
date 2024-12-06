@@ -1,7 +1,7 @@
 use lay_rs::{prelude::*, types::Size};
 use taffy::FromLength;
 
-use crate::{config::Config, theme::text_styles, workspaces::utils::FONT_CACHE};
+use crate::{config::Config, workspaces::utils::FONT_CACHE};
 
 use super::render_app::render_app_view;
 

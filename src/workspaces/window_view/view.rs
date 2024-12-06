@@ -1,9 +1,10 @@
 use lay_rs::{
-    engine::{LayersEngine, NodeRef, TransactionRef},
+    engine::{LayersEngine, TransactionRef},
     prelude::{taffy, Layer, Transition},
     skia,
     view::{RenderLayerTree, View},
 };
+use smithay::reexports::wayland_server::backend::ObjectId;
 
 use crate::{shell::WindowElement, workspaces::utils::view_render_elements};
 
@@ -15,7 +16,7 @@ use super::{
 
 #[derive(Clone)]
 pub struct WindowView {
-    engine: lay_rs::prelude::LayersEngine,
+    pub window_id: ObjectId,
     // views
     pub view_base: lay_rs::prelude::View<WindowViewBaseModel>,
     pub view_content: lay_rs::prelude::View<Vec<WindowViewSurface>>,
@@ -25,19 +26,14 @@ pub struct WindowView {
     pub shadow_layer: lay_rs::prelude::Layer,
     pub content_layer: lay_rs::prelude::Layer,
 
-    parent_layer_noderef: NodeRef,
-    pub window: WindowElement,
     pub unmaximized_rect: lay_rs::prelude::Rectangle,
     pub genie_effect: GenieEffect,
 }
 
 impl WindowView {
-    pub fn new(
-        layers_engine: LayersEngine,
-        parent_layer_noderef: NodeRef,
-        window: WindowElement,
-    ) -> Self {
-        let layer = layers_engine.new_layer();
+    pub fn new(layers_engine: LayersEngine, window: &WindowElement) -> Self {
+        let window_id = window.id();
+        let layer = window.base_layer().clone();
         layer.set_key("window");
         layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
@@ -54,7 +50,7 @@ impl WindowView {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
-        layers_engine.scene_add_layer_to(layer.clone(), Some(parent_layer_noderef));
+
         layers_engine.scene_add_layer_to(shadow_layer.clone(), layer.id());
         layers_engine.scene_add_layer_to(content_layer.clone(), layer.id());
 
@@ -80,15 +76,13 @@ impl WindowView {
         let genie_effect = GenieEffect::new();
 
         Self {
+            window_id,
             view_base: view_window_shadow,
             view_content,
-            engine: layers_engine,
             // state,
             window_layer: layer,
             content_layer,
             shadow_layer,
-            parent_layer_noderef,
-            window,
             genie_effect,
             unmaximized_rect: lay_rs::prelude::Rectangle {
                 x: 0.0,
@@ -97,11 +91,6 @@ impl WindowView {
                 height: 0.0,
             },
         }
-    }
-
-    pub fn raise(&self) {
-        self.engine
-            .scene_add_layer_to(self.window_layer.clone(), Some(self.parent_layer_noderef));
     }
 
     pub fn minimize(&self, to_rect: skia::Rect) -> TransactionRef {
@@ -125,10 +114,10 @@ impl WindowView {
     pub fn unminimize(&self, from: skia::Rect) -> TransactionRef {
         self.genie_effect.set_destination(from);
 
-        self.window_layer
+        *self
+            .window_layer
             .set_image_filter_progress(0.0, Transition::linear(0.7))
             .on_finish(move |l: &Layer, _| l.remove_effect(), true)
-            .clone()
     }
 }
 
@@ -139,8 +128,6 @@ impl std::fmt::Debug for WindowView {
             .field("view_content", &self.view_content)
             .field("window_layer", &self.window_layer)
             .field("content_layer", &self.content_layer)
-            .field("parent_layer_noderef", &self.parent_layer_noderef)
-            .field("window", &self.window)
             .finish()
     }
 }

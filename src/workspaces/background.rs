@@ -2,10 +2,6 @@ use std::hash::{Hash, Hasher};
 
 use lay_rs::{prelude::*, skia};
 
-use crate::utils::Observer;
-
-use super::Workspace;
-
 #[derive(Clone, Debug)]
 pub struct BackgroundViewState {
     pub image: Option<skia::Image>,
@@ -24,20 +20,24 @@ pub struct BackgroundView {
     // engine: lay_rs::prelude::LayersEngine,
     pub view: lay_rs::prelude::View<BackgroundViewState>,
     // pub state: RwLock<BackgroundViewState>,
+    pub base_layer: Layer,
 }
 
 impl BackgroundView {
-    pub fn new(_layers_engine: LayersEngine, layer: Layer) -> Self {
+    pub fn new(index: usize, layer: Layer) -> Self {
         let state = BackgroundViewState {
             image: None,
             debug_string: "Screen composer 0.1".to_string(),
         };
-        let view = lay_rs::prelude::View::new("background_view", state, Box::new(view_background));
-        view.mount_layer(layer);
+        let view = lay_rs::prelude::View::new(
+            format!("background_view_{}", index),
+            state,
+            Box::new(view_background),
+        );
+        view.mount_layer(layer.clone());
         Self {
-            // engine: layers_engine,
             view,
-            // state: RwLock::new(state),
+            base_layer: layer,
         }
     }
 
@@ -132,8 +132,4 @@ pub fn view_background(
         .pointer_events(false)
         .build()
         .unwrap()
-}
-
-impl Observer<Workspace> for BackgroundView {
-    fn notify(&self, _event: &Workspace) {}
 }

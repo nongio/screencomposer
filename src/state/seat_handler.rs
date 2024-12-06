@@ -1,9 +1,18 @@
-use smithay::{backend::input::TabletToolDescriptor, delegate_seat, delegate_tablet_manager, input::{pointer::CursorImageStatus, SeatHandler, SeatState}, reexports::wayland_server::Resource, wayland::{seat::WaylandFocus, selection::{data_device::set_data_device_focus, primary_selection::set_primary_focus}, tablet_manager::TabletSeatHandler}};
+use smithay::{
+    backend::input::TabletToolDescriptor,
+    delegate_seat, delegate_tablet_manager,
+    input::{pointer::CursorImageStatus, SeatHandler, SeatState},
+    reexports::wayland_server::Resource,
+    wayland::{
+        seat::WaylandFocus,
+        selection::{data_device::set_data_device_focus, primary_selection::set_primary_focus},
+        tablet_manager::TabletSeatHandler,
+    },
+};
 
 use crate::focus::{KeyboardFocusTarget, PointerFocusTarget};
 
 use super::{Backend, ScreenComposer};
-
 
 impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
     type KeyboardFocus = KeyboardFocusTarget<BackendData>;

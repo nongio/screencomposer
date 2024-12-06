@@ -1,11 +1,6 @@
 use std::{convert::TryInto, process::Command, sync::atomic::Ordering};
 
-use crate::{
-    config::Config,
-    focus::PointerFocusTarget,
-    shell::{FullscreenSurface, WindowElement},
-    ScreenComposer,
-};
+use crate::{config::Config, focus::PointerFocusTarget, shell::FullscreenSurface, ScreenComposer};
 
 #[cfg(feature = "udev")]
 use crate::udev::UdevData;
@@ -102,10 +97,9 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             }
 
             KeyAction::ToggleDecorations => {
-                for element in self.space().elements() {
+                for element in self.workspaces.spaces_elements() {
                     #[allow(irrefutable_let_patterns)]
-                    if let WindowElement(window) = element {
-                        let toplevel = window.toplevel().unwrap();
+                    if let Some(toplevel) = element.toplevel() {
                         let mode_changed = toplevel.with_pending_state(|state| {
                             if let Some(current_mode) = state.decoration_mode {
                                 let new_mode = if current_mode
@@ -163,7 +157,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             if data.keyboard_interactivity == KeyboardInteractivity::Exclusive
                 && (data.layer == WlrLayer::Top || data.layer == WlrLayer::Overlay)
             {
-                let surface = self.space().outputs().find_map(|o| {
+                let surface = self.workspaces.outputs().find_map(|o| {
                     let map = layer_map_for_output(o);
                     let cloned = map.layers().find(|l| l.layer_surface() == &layer).cloned();
                     cloned
@@ -179,7 +173,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         }
 
         let inhibited = self
-            .space()
+            .workspaces
             .element_under(self.pointer.current_location())
             .and_then(|(window, _)| {
                 let surface = window.wl_surface()?;
@@ -242,7 +236,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             if self.workspaces.app_switcher.alive() {
                 self.workspaces.app_switcher.hide();
                 if let Some(app) = self.workspaces.app_switcher.get_current_app() {
-                    self.raise_app_elements(&app.identifier, true, Some(serial));
+                    self.raise_app_elements(&app.identifier);
                 }
             }
         }
@@ -299,12 +293,13 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         // https://gitlab.freedesktop.org/wayland/wayland/-/issues/294
         if !self.pointer.is_grabbed() && (!keyboard.is_grabbed() || input_method.keyboard_grabbed())
         {
-            let output = self.space()
+            let output = self
+                .workspaces
                 .output_under(self.pointer.current_location())
                 .next()
                 .cloned();
             if let Some(output) = output.as_ref() {
-                let output_geo = self.space().output_geometry(output).unwrap();
+                let output_geo = self.workspaces.output_geometry(output).unwrap();
                 if let Some(window) = output
                     .user_data()
                     .get::<FullscreenSurface>()
@@ -351,20 +346,21 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                 .workspaces
                 .is_cursor_over_dock(scaled_position.x as f32, scaled_position.y as f32)
             {
-                let window_under = self.space()
+                let window_under = self
+                    .workspaces
                     .element_under(position)
                     .map(|(w, p)| (w.clone(), p));
 
                 if let Some((window, _)) = window_under {
                     if let Some(id) = window.wl_surface().as_ref().map(|s| s.id()) {
                         if let Some(w) = self.workspaces.get_window_for_surface(&id) {
-                            if w.is_minimized {
+                            if w.is_minimised() {
                                 return;
                             }
                         }
                     }
 
-                    self.raise_app_element(&window, true, Some(serial));
+                    self.workspaces.raise_window_app_elements(&window, true);
 
                     #[cfg(feature = "xwayland")]
                     if let WindowSurface::X11(surf) = &window.underlying_surface() {
@@ -375,7 +371,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             }
 
             if let Some(output) = output.as_ref() {
-                let output_geo = self.space().output_geometry(output).unwrap();
+                let output_geo = self.workspaces.output_geometry(output).unwrap();
                 let layers = layer_map_for_output(output);
                 if let Some(layer) = layers
                     .layer_under(WlrLayer::Bottom, self.pointer.current_location())
@@ -402,11 +398,11 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         &self,
         pos: Point<f64, Logical>,
     ) -> Option<(PointerFocusTarget<BackendData>, Point<f64, Logical>)> {
-        let output = self.space().outputs().find(|o| {
-            let geometry = self.space().output_geometry(o).unwrap();
+        let output = self.workspaces.outputs().find(|o| {
+            let geometry = self.workspaces.output_geometry(o).unwrap();
             geometry.contains(pos.to_i32_round())
         })?;
-        let output_geo = self.space().output_geometry(output).unwrap();
+        let output_geo = self.workspaces.output_geometry(output).unwrap();
         let layers = layer_map_for_output(output);
         let scale = output.current_scale().fractional_scale();
         let physical_pos = pos.to_physical(scale);
@@ -417,28 +413,33 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             let focus = self.workspaces.app_switcher.as_ref().clone().into();
             return Some((focus, (0.0, 0.0).into()));
         }
-        // Window selector check
-        if self.workspaces.get_show_all() {
-            // TODO fix window selection
-            // let focus = self.workspaces.window_selector_view.as_ref().clone().into();
-            // let position = self.workspaces.window_selector_view.layer.render_position();
 
-            // return Some((focus, (position.x as f64, position.y as f64).into()));
-        }
         // Workspace selector
         if self.workspaces.get_show_all() {
-            // TODO fix window selection
             let focus = self
                 .workspaces
                 .workspace_selector_view
                 .as_ref()
                 .clone()
                 .into();
-            let position = self
-                .workspaces
-                .workspace_selector_view
-                .layer
-                .render_position();
+
+            let layer = self.workspaces.workspace_selector_view.layer.clone();
+
+            if layer.cointains_point((physical_pos.x as f32, physical_pos.y as f32)) {
+                let position = self
+                    .workspaces
+                    .workspace_selector_view
+                    .layer
+                    .render_position();
+
+                return Some((focus, (position.x as f64, position.y as f64).into()));
+            }
+        }
+        // Window selector check
+        if self.workspaces.get_show_all() {
+            let workspace = self.workspaces.get_current_workspace();
+            let focus = workspace.window_selector_view.as_ref().clone().into();
+            let position = workspace.window_selector_view.layer.render_position();
 
             return Some((focus, (position.x as f64, position.y as f64).into()));
         }
@@ -463,18 +464,20 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             // Dock
             under = Some((self.workspaces.dock.as_ref().clone().into(), (0, 0).into()));
         } else if let Some((focus, location)) =
-            self.space().element_under(pos).and_then(|(window, loc)| {
-                if let Some(id) = window.wl_surface().as_ref().map(|s| s.id()) {
-                    if let Some(w) = self.workspaces.get_window_for_surface(&id) {
-                        if w.is_minimized {
-                            return None;
+            self.workspaces
+                .element_under(pos)
+                .and_then(|(window, loc)| {
+                    if let Some(id) = window.wl_surface().as_ref().map(|s| s.id()) {
+                        if let Some(w) = self.workspaces.get_window_for_surface(&id) {
+                            if w.is_minimised() {
+                                return None;
+                            }
                         }
                     }
-                }
-                window
-                    .surface_under(pos - loc.to_f64(), WindowSurfaceType::ALL)
-                    .map(|(surface, surf_loc)| (surface, surf_loc + loc))
-            })
+                    window
+                        .surface_under(pos - loc.to_f64(), WindowSurfaceType::ALL)
+                        .map(|(surface, surf_loc)| (surface, surf_loc + loc))
+                })
         {
             under = Some((focus, location));
         } else if let Some(layer) = layers
@@ -540,7 +543,8 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
         match event {
             InputEvent::Keyboard { event } => match self.keyboard_key_to_action::<B>(event) {
                 KeyAction::ScaleUp => {
-                    let output = self.space()
+                    let output = self
+                        .workspaces
                         .outputs()
                         .find(|o| o.name() == output_name)
                         .unwrap()
@@ -556,12 +560,13 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     );
                     let current_location = self.pointer.current_location();
 
-                    crate::shell::fixup_positions(self.space_mut(), current_location);
+                    crate::shell::fixup_positions(&mut self.workspaces, current_location);
                     self.backend_data.reset_buffers(&output);
                 }
 
                 KeyAction::ScaleDown => {
-                    let output = self.space()
+                    let output = self
+                        .workspaces
                         .outputs()
                         .find(|o| o.name() == output_name)
                         .unwrap()
@@ -576,12 +581,13 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                         None,
                     );
                     let current_location = self.pointer.current_location();
-                    crate::shell::fixup_positions(self.space_mut(), current_location);
+                    crate::shell::fixup_positions(&mut self.workspaces, current_location);
                     self.backend_data.reset_buffers(&output);
                 }
 
                 KeyAction::RotateOutput => {
-                    let output = self.space()
+                    let output = self
+                        .workspaces
                         .outputs()
                         .find(|o| o.name() == output_name)
                         .unwrap()
@@ -598,7 +604,7 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     output.change_current_state(None, Some(new_transform), None, None);
                     let current_location = self.pointer.current_location();
 
-                    crate::shell::fixup_positions(self.space_mut(), current_location);
+                    crate::shell::fixup_positions(&mut self.workspaces, current_location);
                     self.backend_data.reset_buffers(&output);
                 }
                 KeyAction::ApplicationSwitchNext => {
@@ -611,24 +617,24 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     self.workspaces.quit_appswitcher_app();
                 }
                 KeyAction::ApplicationSwitchNextWindow => {
-                    self.raise_next_app_window(Some(SCOUNTER.next_serial()));
+                    self.workspaces.raise_next_app_window();
                 }
                 KeyAction::ExposeShowDesktop => {
                     if self.workspaces.get_show_desktop() {
-                        self.expose_show_desktop(-1.0, true);
+                        self.workspaces.expose_show_desktop(-1.0, true);
                     } else {
-                        self.expose_show_desktop(1.0, true);
+                        self.workspaces.expose_show_desktop(1.0, true);
                     }
                 }
                 KeyAction::ExposeShowAll => {
                     if self.workspaces.get_show_all() {
-                        self.expose_show_all(-1.0, true);
+                        self.workspaces.expose_show_all(-1.0, true);
                     } else {
-                        self.expose_show_all(1.0, true);
+                        self.workspaces.expose_show_all(1.0, true);
                     }
                 }
                 KeyAction::WorkspaceNum(n) => {
-                    self.set_workspace_number(n);
+                    self.workspaces.set_current_workspace_index(n);
                 }
 
                 action => match action {
@@ -646,7 +652,8 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
             },
 
             InputEvent::PointerMotionAbsolute { event } => {
-                let output = self.space()
+                let output = self
+                    .workspaces
                     .outputs()
                     .find(|o| o.name() == output_name)
                     .unwrap()
@@ -664,7 +671,7 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
         evt: B::PointerMotionAbsoluteEvent,
         output: &Output,
     ) {
-        let output_geo = self.space().output_geometry(output).unwrap();
+        let output_geo = self.workspaces.output_geometry(output).unwrap();
 
         let pos = evt.position_transformed(output_geo.size) + output_geo.loc.to_f64();
         let serial = SCOUNTER.next_serial();
@@ -721,10 +728,11 @@ impl ScreenComposer<UdevData> {
                     }
                 }
                 KeyAction::Screen(num) => {
-                    let geometry = self.space()
+                    let geometry = self
+                        .workspaces
                         .outputs()
                         .nth(num)
-                        .map(|o| self.space().output_geometry(o).unwrap());
+                        .map(|o| self.workspaces.output_geometry(o).unwrap());
 
                     if let Some(geometry) = geometry {
                         let x = geometry.loc.x as f64 + geometry.size.w as f64 / 2.0;
@@ -746,14 +754,15 @@ impl ScreenComposer<UdevData> {
                 }
                 KeyAction::ScaleUp => {
                     let pos = self.pointer.current_location().to_i32_round();
-                    let output = self.space()
+                    let output = self
+                        .workspaces
                         .outputs()
-                        .find(|o| self.space().output_geometry(o).unwrap().contains(pos))
+                        .find(|o| self.workspaces.output_geometry(o).unwrap().contains(pos))
                         .cloned();
 
                     if let Some(output) = output {
                         let (output_location, scale) = (
-                            self.space().output_geometry(&output).unwrap().loc,
+                            self.workspaces.output_geometry(&output).unwrap().loc,
                             output.current_scale().fractional_scale(),
                         );
                         let new_scale = scale + 0.25;
@@ -771,7 +780,7 @@ impl ScreenComposer<UdevData> {
                         pointer_output_location.x *= rescale;
                         pointer_output_location.y *= rescale;
                         let pointer_location = output_location + pointer_output_location;
-                        crate::shell::fixup_positions(self.space_mut(), pointer_location);
+                        crate::shell::fixup_positions(&mut self.workspaces, pointer_location);
                         let pointer = self.pointer.clone();
                         let under = self.surface_under(pointer_location);
                         pointer.motion(
@@ -789,14 +798,15 @@ impl ScreenComposer<UdevData> {
                 }
                 KeyAction::ScaleDown => {
                     let pos = self.pointer.current_location().to_i32_round();
-                    let output = self.space()
+                    let output = self
+                        .workspaces
                         .outputs()
-                        .find(|o| self.space().output_geometry(o).unwrap().contains(pos))
+                        .find(|o| self.workspaces.output_geometry(o).unwrap().contains(pos))
                         .cloned();
 
                     if let Some(output) = output {
                         let (output_location, scale) = (
-                            self.space().output_geometry(&output).unwrap().loc,
+                            self.workspaces.output_geometry(&output).unwrap().loc,
                             output.current_scale().fractional_scale(),
                         );
                         let new_scale = f64::max(1.0, scale - 0.25);
@@ -815,7 +825,7 @@ impl ScreenComposer<UdevData> {
                         pointer_output_location.y *= rescale;
                         let pointer_location = output_location + pointer_output_location;
 
-                        crate::shell::fixup_positions(self.space_mut(), pointer_location);
+                        crate::shell::fixup_positions(&mut self.workspaces, pointer_location);
                         let pointer = self.pointer.clone();
                         let under = self.surface_under(pointer_location);
                         pointer.motion(
@@ -833,9 +843,10 @@ impl ScreenComposer<UdevData> {
                 }
                 KeyAction::RotateOutput => {
                     let pos = self.pointer.current_location().to_i32_round();
-                    let output = self.space()
+                    let output = self
+                        .workspaces
                         .outputs()
-                        .find(|o| self.space().output_geometry(o).unwrap().contains(pos))
+                        .find(|o| self.workspaces.output_geometry(o).unwrap().contains(pos))
                         .cloned();
 
                     if let Some(output) = output {
@@ -849,10 +860,7 @@ impl ScreenComposer<UdevData> {
                         };
                         output.change_current_state(None, Some(new_transform), None, None);
                         let current_location = self.pointer.current_location();
-                        crate::shell::fixup_positions(
-                            self.space_mut(),
-                            current_location,
-                        );
+                        crate::shell::fixup_positions(&mut self.workspaces, current_location);
                         self.backend_data.reset_buffers(&output);
                     }
                 }
@@ -863,23 +871,23 @@ impl ScreenComposer<UdevData> {
                     self.workspaces.app_switcher.previous();
                 }
                 KeyAction::ApplicationSwitchNextWindow => {
-                    self.raise_next_app_window(Some(SCOUNTER.next_serial()));
+                    self.raise_next_app_window();
                 }
                 KeyAction::ApplicationSwitchQuit => {
-                    self.workspaces.quit_appswitcher_app();
+                    self.quit_appswitcher_app();
                 }
                 KeyAction::ExposeShowDesktop => {
                     if self.workspaces.get_show_desktop() {
-                        self.expose_show_desktop(-1.0, true);
+                        self.workspaces.expose_show_desktop(-1.0, true);
                     } else {
-                        self.expose_show_desktop(1.0, true);
+                        self.workspaces.expose_show_desktop(1.0, true);
                     }
                 }
                 KeyAction::ExposeShowAll => {
                     if self.workspaces.get_show_all() {
-                        self.expose_show_all(-1.0, true);
+                        self.workspaces.expose_show_all(-1.0, true);
                     } else {
-                        self.expose_show_all(1.0, true);
+                        self.workspaces.expose_show_all(1.0, true);
                     }
                 }
                 action => match action {
@@ -1026,7 +1034,7 @@ impl ScreenComposer<UdevData> {
             self,
             under,
             &MotionEvent {
-                location: pointer_location.clone(),
+                location: pointer_location,
                 serial,
                 time: evt.time_msec(),
             },
@@ -1065,17 +1073,23 @@ impl ScreenComposer<UdevData> {
         evt: B::PointerMotionAbsoluteEvent,
     ) {
         let serial = SCOUNTER.next_serial();
-        let max_x = self.space().outputs().fold(0, |acc, o| {
-            acc + self.space().output_geometry(o).unwrap().size.w
+        let max_x = self.workspaces.outputs().fold(0, |acc, o| {
+            acc + self.workspaces.output_geometry(o).unwrap().size.w
         });
 
-        let max_h_output = self.space()
+        let max_h_output = self
+            .workspaces
             .outputs()
-            .max_by_key(|o| self.space().output_geometry(o).unwrap().size.h)
+            .max_by_key(|o| self.workspaces.output_geometry(o).unwrap().size.h)
             .unwrap()
             .clone();
 
-        let max_y = self.space().output_geometry(&max_h_output).unwrap().size.h;
+        let max_y = self
+            .workspaces
+            .output_geometry(&max_h_output)
+            .unwrap()
+            .size
+            .h;
 
         let mut pointer_location = (evt.x_transformed(max_x), evt.y_transformed(max_y)).into();
 
@@ -1099,10 +1113,11 @@ impl ScreenComposer<UdevData> {
     fn on_tablet_tool_axis<B: InputBackend>(&mut self, evt: B::TabletToolAxisEvent) {
         let tablet_seat = self.seat.tablet_seat();
 
-        let output_geometry = self.space()
+        let output_geometry = self
+            .workspaces
             .outputs()
             .next()
-            .map(|o| self.space().output_geometry(o).unwrap());
+            .map(|o| self.workspaces.output_geometry(o).unwrap());
 
         if let Some(rect) = output_geometry {
             let pointer_location = evt.position_transformed(rect.size) + rect.loc.to_f64();
@@ -1162,14 +1177,15 @@ impl ScreenComposer<UdevData> {
     ) {
         let tablet_seat = self.seat.tablet_seat();
 
-        let output_geometry = self.space()
+        let output_geometry = self
+            .workspaces
             .outputs()
             .next()
-            .map(|o| self.space().output_geometry(o).unwrap());
+            .map(|o| self.workspaces.output_geometry(o).unwrap());
 
         if let Some(rect) = output_geometry {
             let tool = evt.tool();
-            // FIXME
+            // FIXME: tablet handling on proximity
             // tablet_seat.add_tool::<Self>(dh, &tool);
 
             let pointer_location = evt.position_transformed(rect.size) + rect.loc.to_f64();
@@ -1266,7 +1282,7 @@ impl ScreenComposer<UdevData> {
         let delta = evt.delta_y() as f32 / multiplier;
 
         if self.is_swiping {
-            self.expose_show_all(-delta, false);
+            self.workspaces.expose_show_all(-delta, false);
         }
         pointer.gesture_swipe_update(
             self,
@@ -1282,7 +1298,7 @@ impl ScreenComposer<UdevData> {
         let pointer = self.pointer.clone();
 
         if self.is_swiping {
-            self.expose_show_all(0.0, true);
+            self.workspaces.expose_show_all(0.0, true);
             self.is_swiping = false;
         }
         pointer.gesture_swipe_end(
@@ -1328,7 +1344,7 @@ impl ScreenComposer<UdevData> {
         // };
         if self.is_pinching {
             // self.background_view.set_debug_text(format!("on_gesture_pinch_update: {:?}", delta));
-            self.expose_show_desktop(delta, false);
+            self.workspaces.expose_show_desktop(delta, false);
         }
         pointer.gesture_pinch_update(
             self,
@@ -1347,7 +1363,7 @@ impl ScreenComposer<UdevData> {
 
         // self.background_view.set_debug_text(format!("on_gesture_pinch_end"));
         if self.is_pinching {
-            self.expose_show_desktop(0.0, true);
+            self.workspaces.expose_show_desktop(0.0, true);
         }
         pointer.gesture_pinch_end(
             self,
@@ -1386,22 +1402,23 @@ impl ScreenComposer<UdevData> {
     }
 
     fn clamp_coords(&self, pos: Point<f64, Logical>) -> Point<f64, Logical> {
-        if self.space().outputs().next().is_none() {
+        if self.workspaces.outputs().next().is_none() {
             return pos;
         }
 
         let (pos_x, pos_y) = pos.into();
-        let max_x = self.space().outputs().fold(0, |acc, o| {
-            acc + self.space().output_geometry(o).unwrap().size.w
+        let max_x = self.workspaces.outputs().fold(0, |acc, o| {
+            acc + self.workspaces.output_geometry(o).unwrap().size.w
         });
         let clamped_x = pos_x.clamp(0.0, max_x as f64);
-        let max_y = self.space()
+        let max_y = self
+            .workspaces
             .outputs()
             .find(|o| {
-                let geo = self.space().output_geometry(o).unwrap();
+                let geo = self.workspaces.output_geometry(o).unwrap();
                 geo.contains((clamped_x as i32, 0))
             })
-            .map(|o| self.space().output_geometry(o).unwrap().size.h);
+            .map(|o| self.workspaces.output_geometry(o).unwrap().size.h);
 
         if let Some(max_y) = max_y {
             let clamped_y = pos_y.clamp(0.0, max_y as f64);

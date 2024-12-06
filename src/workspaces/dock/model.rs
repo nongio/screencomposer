@@ -1,12 +1,14 @@
 use std::hash::{Hash, Hasher};
 
-use crate::workspaces::{Application, Window};
+use smithay::reexports::wayland_server::backend::ObjectId;
+
+use crate::workspaces::Application;
 
 #[derive(Debug, Clone, Default)]
 pub struct DockModel {
     pub launchers: Vec<Application>,
     pub running_apps: Vec<Application>,
-    pub minimized_windows: Vec<Window>,
+    pub minimized_windows: Vec<ObjectId>,
     pub width: i32,
     pub focus: f32,
 }
