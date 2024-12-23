@@ -143,11 +143,11 @@ fn render_workspace_selector_view(
                         .enumerate()
                         .map(|(i, w)| {
                             let current = i == state.current;
-                            // println!("{} is current {}", i, current);
                             let mut border_width = 0.0;
                             if current {
-                                border_width = 10.0;
+                                border_width = 8.0;
                             }
+                            // FIXME: hardcoded values
                             let workspace_width = 1280.0 * 2.0;
                             let workspace_height = 900.0 * 2.0;
                             let preview_width = 300.0;
@@ -194,9 +194,6 @@ fn render_workspace_selector_view(
                                     },
                                     None,
                                 ))
-                                .border_width((border_width, None))
-                                .border_color(theme_colors().accents_blue)
-                                .border_corner_radius(BorderRadius::new_single(10.0))
                                 .children(vec![
                                     LayerTreeBuilder::with_key(format!(
                                         "workspace_desktop_content_preview_{}",
@@ -219,9 +216,32 @@ fn render_workspace_selector_view(
                                     ))
                                     .scale(Point::new(scale, scale))
                                     .replicate_node(w.workspace_node)
-                                    .image_cache(true)
                                     .on_pointer_press(button_press_filter())
                                     .on_pointer_release(button_release_filter())
+                                    .border_corner_radius(BorderRadius::new_single(10.0 / scale))
+                                    .clip_children(true)
+                                    .clip_content(true)
+                                    .build()
+                                    .unwrap(),
+                                    LayerTreeBuilder::with_key(format!(
+                                        "workspace_selector_desktop_border_{}",
+                                        w.index
+                                    ))
+                                    .layout_style(taffy::Style {
+                                        position: taffy::Position::Absolute,
+                                        ..Default::default()
+                                    })
+                                    .position(Point::new(0.0, 0.0))
+                                    .size((
+                                        lay_rs::types::Size {
+                                            width: lay_rs::taffy::style::Dimension::Percent(1.0),
+                                            height: lay_rs::taffy::style::Dimension::Percent(1.0),
+                                        },
+                                        None,
+                                    ))
+                                    .border_width((border_width, None))
+                                    .border_color(theme_colors().accents_blue)
+                                    .border_corner_radius(BorderRadius::new_single(10.0))                        
                                     .build()
                                     .unwrap(),
                                     LayerTreeBuilder::with_key(format!(

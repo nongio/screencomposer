@@ -601,12 +601,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     }
 
     pub fn update_window_view(&mut self, window: &WindowElement) {
-        let output = self.workspaces.outputs_for_element(window);
-        let scale_factor = output
-            .first()
-            .map(|output| output.current_scale())
-            .unwrap_or(smithay::output::Scale::Fractional(1.0))
-            .fractional_scale();
+        let scale_factor = Config::with(|c| c.screen_scale);
         if let Some(window_surface) = window.wl_surface() {
             let id = window_surface.id();
             let location = self

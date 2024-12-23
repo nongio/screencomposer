@@ -126,25 +126,25 @@ impl WorkspaceView {
         self.windows_layer
             .add_sublayer(window_element.base_layer().clone());
 
-        let clone_window = self.layers_engine.new_layer();
-        clone_window.set_key(format!(
-            "clone_window_{}",
+        let mirror_window = self.layers_engine.new_layer();
+        mirror_window.set_key(format!(
+            "mirror_window_{}",
             window_element.base_layer().id().unwrap().0
         ));
-        clone_window.set_layout_style(taffy::Style {
+        mirror_window.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
-        clone_window.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+        mirror_window.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
         self.window_selector_view
             .windows_layer
-            .add_sublayer(clone_window.clone());
-        let clone_id = clone_window.id().unwrap();
+            .add_sublayer(mirror_window.clone());
+        let clone_id = mirror_window.id().unwrap();
         let clone_node = self.layers_engine.scene_get_node(&clone_id).unwrap();
 
         let clone_node = clone_node.get();
         clone_node.replicate_node(&window_element.base_layer().id());
-        self.window_selector_view.map_layer(wid, clone_window);
+        self.window_selector_view.map_layer(wid, mirror_window);
     }
 
     pub fn unmap_window(&self, window_id: &ObjectId) {
