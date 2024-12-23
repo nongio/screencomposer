@@ -115,7 +115,7 @@ pub struct WorkspacesModel {
     pub application_list: VecDeque<String>,
 
     pub windows_list: Vec<ObjectId>,
-    pub minimized_windows: Vec<ObjectId>,
+    pub minimized_windows: Vec<(ObjectId, String)>,
     pub current_application: usize,
 
     pub width: i32,
@@ -618,15 +618,15 @@ impl Workspaces {
 
     /// Minimise a WindowElement
     pub fn minimize_window(&mut self, we: &WindowElement) {
-        let id = we.wl_surface().unwrap().id();
+        let id = we.id();
 
         if let Some(window) = self.windows_map.get_mut(&id) {
             window.set_is_minimised(true);
         }
 
         self.with_model_mut(|model| {
-            // self.windows_cache.insert(id.clone(), window.clone());
-            model.minimized_windows.push(id.clone());
+
+            model.minimized_windows.push((id.clone(), we.title().to_string()));
 
             if let Some(view) = self.get_window_view(&id) {
                 let (drawer, _) = self.dock.add_window_element(we);
@@ -681,75 +681,82 @@ impl Workspaces {
 
     /// Unminimise a WindowElement
     pub fn unminimize_window(&mut self, wid: &ObjectId) {
-        // let we = self.get_window_for_surface(id).unwrap();
-        // if let Some(view) = self.get_window_view(&wid) {
         let event = self.with_model_mut(|model| {
-            model.minimized_windows.retain(|w| w != wid);
+            model.minimized_windows.retain(|(w, _title)| w != wid);
             model.clone()
         });
-        let workspace = self.get_current_workspace();
-        let mut pos_x = 0.0;
-        let mut pos_y = 0.0;
-        if let Some(window) = self.windows_map.get_mut(wid) {
-            window.set_is_minimised(false);
-            let bbox = window.bbox();
-            pos_x = bbox.loc.x as f32;
-            pos_y = bbox.loc.y as f32;
-        }
-        if let Some(view) = self.get_window_view(wid) {
-            if let Some(drawer) = self.dock.remove_window_element(wid) {
-                let engine_ref = self.layers_engine.clone();
+        let scale = Config::with(|c| c.screen_scale) as f32;
+        if let Some((index, space)) = self.spaces.iter().enumerate()
+            .find(|(_, space)| space.elements().any(|e| e.id() == *wid)) {
+                let workspace = event.workspaces[index].clone();
+                let window = self.get_window_for_surface(wid).unwrap();
+                let window_geometry = space.element_geometry(window).unwrap();
+                let pos_x = window_geometry.loc.x;
+                let pos_y = window_geometry.loc.y;
+                let layer_pos_x = pos_x as f32 * scale;
+                let layer_pos_y = pos_y as f32 * scale;
+                if let Some(window) = self.windows_map.get_mut(wid) {
+                    window.set_is_minimised(false);
+                }
+                if let Some(view) = self.get_window_view(wid) {
+                    if let Some(drawer) = self.dock.remove_window_element(wid) {
+                        let engine_ref = self.layers_engine.clone();
+        
+                        let windows_layer_ref = workspace.windows_layer.clone();
+                        let layer_ref = view.window_layer.clone();
+                        self.layers_engine.update(0.0);
+        
+                        let drawer_bounds = drawer.render_bounds_transformed();
 
-                let windows_layer_ref = workspace.windows_layer.clone();
-                let layer_ref = view.window_layer.clone();
-                self.layers_engine.update(0.0);
+                        // close dock drawer animation
+                        // on start animation move the window to the workspace
 
-                let drawer_bounds = drawer.render_bounds_transformed();
-                // let bbox = view.window.bbox();
-                // let pos_x = bbox.loc.x as f32;
-                // let pos_y = bbox.loc.y as f32;
-                drawer
-                    .set_size(
-                        Size::points(0.0, 130.0),
-                        Transition {
-                            delay: 0.2,
-                            timing: TimingFunction::ease_out_quad(0.3),
-                        },
-                    )
-                    .on_start(
-                        move |_layer: &Layer, _| {
-                            layer_ref.remove_draw_content();
-                            engine_ref.scene_add_layer_to_positioned(
-                                layer_ref.clone(),
-                                windows_layer_ref.clone(),
-                            );
-                            layer_ref.set_position((pos_x, pos_y), Transition::ease_out(0.3));
-                        },
-                        true,
-                    )
-                    .then(move |layer: &Layer, _| {
-                        layer.remove();
-                    });
-
-                view.unminimize(drawer_bounds);
+                        drawer
+                            .set_size(
+                                Size::points(0.0, 130.0),
+                                Transition {
+                                    delay: 0.2,
+                                    timing: TimingFunction::ease_out_quad(0.3),
+                                },
+                            )
+                            .on_start(
+                                move |_layer: &Layer, _| {
+                                    layer_ref.remove_draw_content();
+                                    engine_ref.scene_add_layer_to_positioned(
+                                        layer_ref.clone(),
+                                        windows_layer_ref.clone(),
+                                    );
+                                    layer_ref.set_position((layer_pos_x, layer_pos_y), Transition::ease_out(0.3));
+                                },
+                                true,
+                            )
+                            .then(move |layer: &Layer, _| {
+                                layer.remove();
+                            });
+                            
+                            view.unminimize(drawer_bounds);
+                            
+                            
+                            if let Some(window) = self.get_window_for_surface(wid).cloned() {
+                                window.set_activate(true);
+                                //     window.set_activate(true);
+                                //     self.map_element(window.clone(), (pos_x as i32, pos_y as i32), true);
+                                // self.map_element(window.clone(), (pos_x as i32, pos_y as i32), true);
+                            }
+                    }
+                }
+        
+                // let event = model.clone();
+                self.notify_observers(&event);
+        
+                // FIXME seat
+                // self.seat.get_keyboard().unwrap().set_focus(
+                //     self,
+                //     Some(we.clone().into()),
+                //     SERIAL_COUNTER.next_serial(),
+                // );
+                // }
             }
-        }
-
-        // let event = model.clone();
-        self.notify_observers(&event);
-
-        // let pos_x = view.unmaximized_rect.x as i32;
-        // let pos_y = view.unmaximized_rect.y as i32;
-
-        // self.map_element(we.clone(), (pos_x, pos_y), true);
-        // we.set_activate(true);
-        // FIXME seat
-        // self.seat.get_keyboard().unwrap().set_focus(
-        //     self,
-        //     Some(we.clone().into()),
-        //     SERIAL_COUNTER.next_serial(),
-        // );
-        // }
     }
 
     // Helpers / Windows Management
@@ -1225,7 +1232,7 @@ impl Workspaces {
                 let windows_list = model.windows_list.clone();
                 model
                     .minimized_windows
-                    .retain(|id| windows_list.contains(id));
+                    .retain(|(id, _)| windows_list.contains(id));
             }
         }
 
@@ -1397,6 +1404,7 @@ impl Workspaces {
     }
 
     // map the window position, called on every window move / drag
+    // sets the position of the window layer
     pub fn map_element(
         &mut self,
         element: WindowElement,

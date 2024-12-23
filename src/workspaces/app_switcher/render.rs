@@ -137,7 +137,8 @@ pub fn render_appswitcher_view(
             justify_items: Some(taffy::JustifyItems::Center),
             ..Default::default()
         })
-        .children(vec![LayerTreeBuilder::default()
+        .children(vec![
+            LayerTreeBuilder::default()
             .key("apps_container")
             .size((
                 Size {
