@@ -117,7 +117,6 @@ impl WindowSelectorView {
         });
         overlay_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
         overlay_layer.set_pointer_events(false);
-        window_selector_root.add_sublayer(overlay_layer.clone());
 
         let state = WindowSelectorState {
             rects: vec![],
@@ -152,6 +151,8 @@ impl WindowSelectorView {
         });
         windows_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
         window_selector_root.add_sublayer(windows_layer.clone());
+
+        window_selector_root.add_sublayer(overlay_layer.clone());
 
         Self {
             view,
@@ -286,7 +287,7 @@ pub fn view_window_selector(
         },
     );
     LayerTreeBuilder::default()
-        .key(view.key())
+        .key(view.get_key())
         .position(((0.0, 0.0).into(), None))
         .size(lay_rs::types::Size::percent(1.0, 1.0))
         .content(draw_container)
@@ -376,6 +377,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                     && rect.y < location.y as f32
                     && rect.y + rect.h > location.y as f32
                 {
+                    // println!("Found rect {:?}", rect);
                     state.current_selection = Some(rect.index);
                     let cursor = CursorImageStatus::Named(CursorIcon::Pointer);
                     data.set_cursor(&cursor);

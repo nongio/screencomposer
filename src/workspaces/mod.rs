@@ -1025,7 +1025,7 @@ impl Workspaces {
                     {
                         workspace
                             .window_selector_view
-                            .layer
+                            .windows_layer
                             .add_sublayer(layer.clone());
                     }
                 }
