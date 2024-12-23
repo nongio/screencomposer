@@ -8,7 +8,7 @@ use crate::workspaces::Application;
 pub struct DockModel {
     pub launchers: Vec<Application>,
     pub running_apps: Vec<Application>,
-    pub minimized_windows: Vec<ObjectId>,
+    pub minimized_windows: Vec<(ObjectId, String)>,
     pub width: i32,
     pub focus: f32,
 }

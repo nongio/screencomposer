@@ -352,7 +352,7 @@ impl DockView {
         let mut previous_miniwindows = self.get_miniwin_layers();
         let mut miniwindows_layers_map = self.miniwindow_layers.write().unwrap();
         {
-            for win in state.minimized_windows {
+            for (win, title) in state.minimized_windows {
                 let (layer, _, label) =
                     miniwindows_layers_map
                         .entry(win.clone())
@@ -366,7 +366,8 @@ impl DockView {
                             setup_miniwindow_icon(&new_layer, &inner_layer, available_icon_width);
 
                             // FIXME : restore Miniwindow label
-                            // setup_label(&label_layer, win.title.clone());
+
+                            setup_label(&label_layer, title.clone());
                             new_layer.add_sublayer(label_layer.clone());
 
                             (new_layer, inner_layer, label_layer)
@@ -560,7 +561,7 @@ impl DockView {
     pub fn add_window_element(&self, window: &WindowElement) -> (Layer, Layer) {
         let state = self.get_state();
         let mut minimized_windows = state.minimized_windows.clone();
-        minimized_windows.push(window.id());
+        minimized_windows.push((window.id(), window.title().to_string()));
 
         self.update_state(&DockModel {
             minimized_windows,
@@ -619,7 +620,7 @@ impl DockView {
 
         let miniwindow_layers = self.miniwindow_layers.read().unwrap();
 
-        for (index, win) in state.minimized_windows.iter().enumerate() {
+        for (index, (win, _title)) in state.minimized_windows.iter().enumerate() {
             if let Some((layer, ..)) = miniwindow_layers.get(win) {
                 let index = index + state.running_apps.len();
                 let icon_pos = 1.0 / tot_elements * index as f32 + 1.0 / (tot_elements * 2.0);

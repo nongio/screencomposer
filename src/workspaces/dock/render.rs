@@ -3,11 +3,10 @@ use lay_rs::{prelude::*, types::Size};
 use taffy::LengthPercentageAuto;
 
 use crate::{
-    config::Config,
-    workspaces::{
+    config::Config, workspaces::{
         utils::{draw_balloon_rect, FONT_CACHE},
         Application,
-    },
+    }
 };
 
 pub fn setup_app_icon(

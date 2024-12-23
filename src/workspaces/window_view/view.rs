@@ -4,7 +4,7 @@ use lay_rs::{
     skia,
     view::{RenderLayerTree, View},
 };
-use smithay::reexports::wayland_server::backend::ObjectId;
+use smithay::{reexports::wayland_server::backend::ObjectId, utils::Logical};
 
 use crate::{shell::WindowElement, workspaces::utils::view_render_elements};
 
@@ -26,8 +26,9 @@ pub struct WindowView {
     pub shadow_layer: lay_rs::prelude::Layer,
     pub content_layer: lay_rs::prelude::Layer,
 
-    pub unmaximized_rect: lay_rs::prelude::Rectangle,
     pub genie_effect: GenieEffect,
+
+    pub unmaximised_rect: smithay::utils::Rectangle<i32, Logical>,
 }
 
 impl WindowView {
@@ -84,12 +85,8 @@ impl WindowView {
             content_layer,
             shadow_layer,
             genie_effect,
-            unmaximized_rect: lay_rs::prelude::Rectangle {
-                x: 0.0,
-                y: 0.0,
-                width: 0.0,
-                height: 0.0,
-            },
+
+            unmaximised_rect: smithay::utils::Rectangle::default(),
         }
     }
 

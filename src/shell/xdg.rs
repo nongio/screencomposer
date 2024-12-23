@@ -423,12 +423,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             let current_element_geometry = self.workspaces.element_geometry(&window).unwrap();
             let id = surface.wl_surface().id();
             if let Some(mut view) = self.workspaces.get_window_view(&id) {
-                view.unmaximized_rect = lay_rs::prelude::Rectangle {
-                    x: current_element_geometry.loc.x as f32,
-                    y: current_element_geometry.loc.y as f32,
-                    width: current_element_geometry.size.w as f32,
-                    height: current_element_geometry.size.h as f32,
-                };
+                view.unmaximised_rect = current_element_geometry;
                 self.workspaces.set_window_view(&id, view);
             }
             let outputs_for_window = self.workspaces.outputs_for_element(&window);
@@ -487,8 +482,8 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 state.states.unset(xdg_toplevel::State::Maximized);
                 state.size = Some(
                     (
-                        view.unmaximized_rect.width as i32,
-                        view.unmaximized_rect.height as i32,
+                        view.unmaximised_rect.size.w,
+                        view.unmaximised_rect.size.h,
                     )
                         .into(),
                 );
@@ -506,18 +501,15 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
                 self.workspaces.map_element(
                     window,
-                    (
-                        view.unmaximized_rect.x as i32,
-                        view.unmaximized_rect.y as i32,
-                    ),
+                    view.unmaximised_rect.loc,
                     true,
                 );
 
                 if let Some(view) = self.workspaces.get_window_view(&id) {
                     view.window_layer.set_position(
                         lay_rs::types::Point {
-                            x: view.unmaximized_rect.x * scale as f32,
-                            y: view.unmaximized_rect.y * scale as f32,
+                            x: view.unmaximised_rect.loc.x as f32 * scale as f32,
+                            y: view.unmaximised_rect.loc.y as f32 * scale as f32,
                         },
                         Some(Transition::default()),
                     );
@@ -538,12 +530,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             let current_element_geometry = self.workspaces.element_geometry(&window).unwrap();
             let id = surface.wl_surface().id();
             if let Some(mut view) = self.workspaces.get_window_view(&id) {
-                view.unmaximized_rect = lay_rs::prelude::Rectangle {
-                    x: current_element_geometry.loc.x as f32,
-                    y: current_element_geometry.loc.y as f32,
-                    width: current_element_geometry.size.w as f32,
-                    height: current_element_geometry.size.h as f32,
-                };
+                view.unmaximised_rect = current_element_geometry;
                 self.workspaces.set_window_view(&id, view);
             }
 
