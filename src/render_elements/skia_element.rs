@@ -125,9 +125,9 @@ impl RenderElement<SkiaRenderer> for SkiaElement {
             ],
         );
         let background_color = lay_rs::skia::Color4f::new(0.4, 0.4, 0.4, 0.3);
-        let mut background_paint = lay_rs::skia::Paint::new(background_color, None);
-        background_paint.set_anti_alias(true);
-        background_paint.set_style(lay_rs::skia::PaintStyle::Fill);
+        // let mut background_paint = lay_rs::skia::Paint::new(background_color, None);
+        // background_paint.set_anti_alias(true);
+        // background_paint.set_style(lay_rs::skia::PaintStyle::Fill);
 
         // let save_layer_rec = lay_rs::skia::canvas::SaveLayerRec::default();
         // let blur = lay_rs::skia::image_filters::blur(
@@ -142,7 +142,7 @@ impl RenderElement<SkiaRenderer> for SkiaElement {
 
         // save_layer_rec = save_layer_rec.backdrop(&blur).bounds(&bounds);
         // canvas.save_layer(&save_layer_rec);
-        background_paint.set_blend_mode(lay_rs::skia::BlendMode::SrcOver);
+        // background_paint.set_blend_mode(lay_rs::skia::BlendMode::SrcOver);
         canvas.clip_rrect(rrect, None, Some(true));
         for rect in instances.iter() {
             canvas.save();

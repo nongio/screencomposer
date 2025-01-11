@@ -96,7 +96,7 @@ where
 pub fn output_elements<'frame, R>(
     output: &Output,
     space: &Space<WindowElement>,
-    custom_elements: impl IntoIterator<
+    workspace_elements: impl IntoIterator<
         Item = impl Into<OutputRenderElements<'frame, R, WindowRenderElement<R>>>,
     >,
     dnd: Option<&wl_surface::WlSurface>,
@@ -109,54 +109,29 @@ where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + 'static,
 {
-    if let Some(window) = output
-        .user_data()
-        .get::<FullscreenSurface>()
-        .and_then(|f| f.get())
-    {
-        let scale = output.current_scale().fractional_scale().into();
-        let window_render_elements: Vec<WindowRenderElement<R>> =
-            AsRenderElements::<R>::render_elements(&window, renderer, (0, 0).into(), scale, 1.0);
-
-        let elements = custom_elements
-            .into_iter()
-            .map(|e| e.into())
-            .chain(
-                window_render_elements
-                    .into_iter()
-                    .map(|e| OutputRenderElements::Window(Wrap::from(e))),
-            )
-            .collect::<Vec<_>>();
-        (elements, CLEAR_COLOR_FULLSCREEN)
-    } else {
-        let output_render_elements = custom_elements
-            .into_iter()
-            .map(|e| e.into())
-            .collect::<Vec<_>>();
-        let _dnd_element = dnd.map(|dnd| {
-            let location: utils::Point<i32, utils::Physical> = (0_i32, 0_i32).into();
-            let _pointer_element = render_elements_from_surface_tree::<R, PointerRenderElement<R>>(
-                renderer,
-                dnd,
-                location,
-                1.0,
-                1.0,
-                element::Kind::Unspecified,
-            );
-        });
-        let _space_elements =
-            smithay::desktop::space::space_render_elements::<_, WindowElement, _>(
-                renderer,
-                [space],
-                output,
-                1.0,
-            )
-            .expect("Failed to render space elements");
-
-        // output_render_elements.extend(space_elements.into_iter().map(OutputRenderElements::Space));
-
-        (output_render_elements, CLEAR_COLOR)
-    }
+    let output_render_elements = workspace_elements
+        .into_iter()
+        .map(|e| e.into())
+        .collect::<Vec<_>>();
+    let _dnd_element = dnd.map(|dnd| {
+        let location: utils::Point<i32, utils::Physical> = (0_i32, 0_i32).into();
+        let _pointer_element = render_elements_from_surface_tree::<R, PointerRenderElement<R>>(
+            renderer,
+            dnd,
+            location,
+            1.0,
+            1.0,
+            element::Kind::Unspecified,
+        );
+    });
+    let _space_elements = smithay::desktop::space::space_render_elements::<_, WindowElement, _>(
+        renderer,
+        [space],
+        output,
+        1.0,
+    )
+    .expect("Failed to render space elements");
+    (output_render_elements, CLEAR_COLOR)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -174,19 +149,9 @@ pub fn render_output<'frame, R>(
 where
     R: Renderer + ImportAll + ImportMem + 'frame,
     R::TextureId: Clone + 'static,
-    SkiaElement: smithay::backend::renderer::element::RenderElement<R>,
     SceneElement: smithay::backend::renderer::element::RenderElement<R>,
-
-    <R as smithay::backend::renderer::Renderer>::Frame<'frame>: (AsMut<SkiaFrame<'frame>>),
-    <R as smithay::backend::renderer::Renderer>::Error:
-        (From<smithay::backend::renderer::gles::GlesError>),
 {
     let (elements, clear_color) = output_elements(output, space, custom_elements, dnd, renderer);
-
-    // let clear_color: [f32; 4] = [0.8, 0.8, 0.9, 1.0];
-    // let elements: Vec<OutputRenderElements<'frame, R, WindowRenderElement<R>>> = custom_elements
-    // .into_iter()
-    // .map(|el| el.into()).collect::<Vec<_>>();
 
     damage_tracker.render_output(renderer, age, &elements, clear_color)
 }

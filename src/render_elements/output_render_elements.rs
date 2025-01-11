@@ -19,12 +19,7 @@ use super::{
 smithay::backend::renderer::element::render_elements! {
     pub OutputRenderElements<'frame, R, E> where
     R: ImportAll + ImportMem + 'frame,
-    SkiaElement: (RenderElement<R>),
-    SceneElement: (RenderElement<R>),
-    <R as smithay::backend::renderer::Renderer>::Frame<'frame>: (AsMut<SkiaFrame<'frame>>),
-    <R as smithay::backend::renderer::Renderer>::Error: (From<smithay::backend::renderer::gles::GlesError>);
-    Space=SpaceRenderElements<R, E>,
+    SceneElement: (RenderElement<R>);
     Window=Wrap<E>,
-    Custom=WorkspaceRenderElements<'frame, R>,
-    Preview=CropRenderElement<RelocateRenderElement<RescaleRenderElement<WindowRenderElement<R>>>>,
+    Workspace=WorkspaceRenderElements<'frame, R>,
 }

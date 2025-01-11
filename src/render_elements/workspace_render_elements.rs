@@ -17,10 +17,7 @@ use crate::drawing::FpsElement;
 smithay::backend::renderer::element::render_elements! {
     pub WorkspaceRenderElements<'a, R> where
         R: ImportAll + ImportMem + 'a,
-        SkiaElement: (RenderElement<R>),
-        SceneElement: (RenderElement<R>),
-        <R as smithay::backend::renderer::Renderer>::Frame<'a>: (AsMut<SkiaFrame<'a>>),
-        <R as smithay::backend::renderer::Renderer>::Error: (From<smithay::backend::renderer::gles::GlesError>);
+        SceneElement: (RenderElement<R>);
     Pointer=PointerRenderElement<R>,
     Scene=SceneElement,
     // this is needed to make the macro work with a lifetime specifier in the where clauses

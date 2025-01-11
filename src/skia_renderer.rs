@@ -297,24 +297,6 @@ impl std::fmt::Debug for SkiaRenderer {
     }
 }
 
-// #[allow(dead_code)]
-// fn save_surface(surface: &mut skia::Surface, name: &str) {
-//     surface.flush_submit_and_sync_cpu();
-//     let image = surface.image_snapshot();
-
-//     save_image(&image, name);
-// }
-#[allow(dead_code)]
-fn save_image(image: &skia::Image, name: &str) {
-    use std::fs::File;
-    use std::io::Write;
-    #[allow(deprecated)]
-    let data = image.encode_to_data(skia::EncodedImageFormat::PNG).unwrap();
-    let bytes = data.as_bytes();
-    let filename = format!("{}.png", name);
-    let mut file = File::create(filename).unwrap();
-    file.write_all(bytes).unwrap();
-}
 
 impl SkiaRenderer {
     /// # Safety
