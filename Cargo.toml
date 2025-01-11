@@ -22,7 +22,7 @@ tokio = { version = "1", features = ["full"] }
 fps_ticker = { version = "1.0.0", optional = true }
 xdgkit = "3.2.5"
 freedesktop-icons = "0.2.4"
-freedesktop-desktop-entry = "0.5.0"
+freedesktop-desktop-entry = "0.7.5"
 tracing = { version = "0.1.37", features = [
     "max_level_trace",
     "release_max_level_debug",
@@ -67,12 +67,12 @@ optional = true
 version = "0.12.0"
 
 
-# [workspace]
-# members = ["wlcs_screencomposer"]
+[workspace]
+members = ["wlcs_screencomposer"]
 
 
 [features]
-default = ["egl", "winit", "x11", "udev", "debug"]
+default = ["egl", "winit", "x11", "udev", "debug", "profile"]
 debug = ["image/png", "renderdoc", "lay-rs/debugger"] # "fps_ticker", 
 profile = ["profile-with-puffin", "lay-rs/profile-with-puffin"]
 ticker = ["fps_ticker"]

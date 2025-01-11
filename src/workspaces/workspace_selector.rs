@@ -49,7 +49,7 @@ pub struct WorkspaceSelectorView {
 
 /// # WorkspaceSelectorView Layer Structure
 ///
-/// ```
+/// ```diagram
 /// WorkspaceSelectorView
 /// ├── layer (view(render_workspace_selector_view))
 /// │   ├── workspace_selector_view_content
@@ -241,7 +241,7 @@ fn render_workspace_selector_view(
                                     ))
                                     .border_width((border_width, None))
                                     .border_color(theme_colors().accents_blue)
-                                    .border_corner_radius(BorderRadius::new_single(10.0))                        
+                                    .border_corner_radius(BorderRadius::new_single(10.0))
                                     .build()
                                     .unwrap(),
                                     LayerTreeBuilder::with_key(format!(
@@ -319,10 +319,6 @@ fn render_workspace_selector_view(
                     None,
                 ))
                 .content(draw_named_icon("plus-symbolic"))
-                // .background_color(theme_colors().accents_indigo)
-                // .border_width((10.0, None))
-                // .border_color(theme_colors().accents_vibrant_red)
-                // .border_corner_radius(BorderRadius::new_single(50.0))
                 .image_cache(true)
                 .on_pointer_press(button_press_filter())
                 .on_pointer_release(button_release_filter())
@@ -440,7 +436,9 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WorkspaceSele
                         &location,
                     ) {
                         // hover = true;
-                        screencomposer.workspaces.set_current_workspace_index(i);
+                        screencomposer
+                            .workspaces
+                            .set_current_workspace_index(i, None);
                         break;
                     }
                     if self.view.hover_layer(

@@ -16,12 +16,13 @@ pub fn setup_app_icon(
     icon_width: f32,
 ) {
     let app_name = application
-        .desktop_name
+        .desktop_name()
         .clone()
         .unwrap_or(application.identifier.clone());
 
-    let draw_picture = draw_app_icon(&application);
-
+    let draw_picture = application.icon.as_ref().map(|_|
+        draw_app_icon(&application)
+    );
     let container_tree = LayerTreeBuilder::default()
         .key(app_name)
         .layout_style(taffy::Style {
@@ -61,7 +62,7 @@ pub fn setup_app_icon(
         ))
         .pointer_events(false)
         .background_color(Color::new_rgba(1.0, 0.0, 0.0, 0.0))
-        .content(Some(draw_picture))
+        .content(draw_picture)
         .build()
         .unwrap();
     icon_layer.build_layer_tree(&icon_tree);
@@ -225,6 +226,7 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
 
 pub fn draw_app_icon(application: &Application) -> ContentDrawFunction {
     let application = application.clone();
+    println!("draw_app_icon: {:?}", application.identifier);
     let draw_picture = move |canvas: &lay_rs::skia::Canvas, w: f32, h: f32| -> lay_rs::skia::Rect {
         let icon_size = (w).max(0.0);
         let circle_radius = 6.0;
@@ -283,6 +285,11 @@ pub fn draw_app_icon(application: &Application) -> ContentDrawFunction {
             let path_effect = PathEffect::dash(&intervals, 0.0);
             paint.set_path_effect(path_effect);
             canvas.draw_rrect(rrect, &paint);
+
+            if let Some(picure) = &application.picture {
+                // let mut paint = lay_rs::skia::Paint::default();
+                canvas.draw_picture(picure, None, None);
+            }
         }
         let mut paint =
             lay_rs::skia::Paint::new(lay_rs::skia::Color4f::new(0.0, 0.0, 0.0, 0.5), None);

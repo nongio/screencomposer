@@ -22,6 +22,7 @@ pub struct WindowSelection {
     pub window_title: String,
     pub visible: bool,
     pub index: usize,
+    pub window_id: Option<ObjectId>,
 }
 
 #[derive(Debug, Clone)]
@@ -79,7 +80,7 @@ pub struct WindowSelectorView {
 
 /// # WindowSelectorView Layer Structure
 ///
-/// ```
+/// ```diagram
 /// WindowSelectorView
 /// ├── layer
 /// │   ├── background_layer
@@ -109,7 +110,7 @@ impl WindowSelectorView {
         window_selector_root.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
 
         window_selector_root.set_key(format!("window_selector_root_{}", index));
-        layers_engine.scene_add_layer(window_selector_root.clone());
+        layers_engine.add_layer(window_selector_root.clone());
         let overlay_layer = layers_engine.new_layer();
         overlay_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
@@ -167,11 +168,15 @@ impl WindowSelectorView {
         self.windows.read().unwrap().get(window).cloned()
     }
 
-    pub fn map_layer(&self, window_id: ObjectId, layer: Layer) {
-        // self.windows_layer.add_sublayer(layer.clone());
+    /// add a window layer to windows map
+    /// and append the window to the windows_layer
+    pub fn map_window(&self, window_id: ObjectId, layer: Layer) {
+        self.windows_layer.add_sublayer(layer.clone());
         self.windows.write().unwrap().insert(window_id, layer);
     }
-    pub fn unmap_layer(&self, window_id: &ObjectId) {
+    /// remove the window from the windows map
+    /// and remove the layer from windows_layer
+    pub fn unmap_window(&self, window_id: &ObjectId) {
         if let Some(layer) = self.windows.write().unwrap().remove(window_id) {
             layer.remove();
         }
@@ -403,13 +408,10 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
     ) {
         let selector_state = self.view.get_state();
         if let Some(index) = selector_state.current_selection {
-            let wid = screencomposer
-                .workspaces
-                // .get_current_workspace()
-                .with_model(|model| model.windows_list.get(index).unwrap().clone());
+            let wid = selector_state.rects.get(index).unwrap().window_id.clone().unwrap();
 
-            screencomposer.workspaces.raise_element(&wid, true, false);
-            screencomposer.focus_keyboard_on_surface(&wid);
+            screencomposer.workspaces.focus_app_with_window(&wid);
+            screencomposer.set_keyboard_focus_on_surface(&wid);
         }
         screencomposer.workspaces.expose_show_all(-1.0, true);
         screencomposer.set_cursor(&CursorImageStatus::default_named());

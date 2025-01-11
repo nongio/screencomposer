@@ -15,27 +15,27 @@ pub struct DndView {
 
     pub layer: lay_rs::prelude::Layer,
     pub content_layer: lay_rs::prelude::Layer,
-    _parent_layer_noderef: NodeRef,
+    // _parent_layer_noderef: NodeRef,
     pub initial_position: Point,
 }
 
 impl DndView {
-    pub fn new(layers_engine: LayersEngine, parent_layer_noderef: NodeRef) -> Self {
+    pub fn new(layers_engine: LayersEngine) -> Self {
         let layer = layers_engine.new_layer();
         layer.set_key("dnd_view");
         layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
-        layer.set_opacity(0.0, None);
+        // layer.set_opacity(0.0, None);
         let content_layer = layers_engine.new_layer();
         content_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
 
-        layers_engine.scene_add_layer_to(layer.clone(), Some(parent_layer_noderef));
-        layers_engine.scene_add_layer_to(content_layer.clone(), layer.id());
+        layers_engine.add_layer(layer.clone());
+        layers_engine.append_layer_to(content_layer.clone(), layer.id());
 
         let render_elements = Vec::new();
 
@@ -47,7 +47,6 @@ impl DndView {
             _engine: layers_engine,
             layer,
             content_layer,
-            _parent_layer_noderef: parent_layer_noderef,
             initial_position: Point::default(),
         }
     }

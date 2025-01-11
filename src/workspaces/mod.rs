@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     fmt,
     hash::{Hash, Hasher},
     sync::{
@@ -8,11 +8,12 @@ use std::{
     },
 };
 
+use apps_info::{Application, ApplicationsInfo};
 use freedesktop_desktop_entry::{default_paths, DesktopEntry, Iter as DesktopEntryIter};
 use lay_rs::{
     engine::LayersEngine,
     prelude::{taffy, Interpolate, Layer, Spring, TimingFunction, Transition},
-    skia::{self, Contains},
+    skia::{self, Contains, FontMgr},
     types::Size,
 };
 use smithay::{
@@ -23,6 +24,7 @@ use smithay::{
     wayland::shell::xdg::XdgToplevelSurfaceData,
 };
 
+use usvg::TreeParsing;
 use workspace::WorkspaceView;
 
 mod app_switcher;
@@ -36,6 +38,7 @@ pub mod utils;
 mod window_selector;
 mod window_view;
 mod workspace_selector;
+mod apps_info;
 
 pub use background::BackgroundView;
 pub use window_selector::{WindowSelection, WindowSelectorState, WindowSelectorView};
@@ -47,60 +50,11 @@ pub use dock::DockView;
 pub use workspace_selector::WorkspaceSelectorView;
 
 use crate::{
-    config::Config,
-    shell::WindowElement,
-    utils::{
-        acquire_write_lock_with_retry, image_from_path,
-        natural_layout::{natural_layout, LayoutRect},
-        notify_observers, Observable, Observer,
-    },
+    config::Config, focus, shell::WindowElement, utils::{
+        image_from_path, natural_layout::{natural_layout, LayoutRect}, notify_observers, Observable, Observer
+    }
 };
 
-#[derive(Clone, Default)]
-pub struct Application {
-    pub identifier: String,
-    pub desktop_name: Option<String>,
-    pub icon_path: Option<String>,
-    pub icon: Option<skia::Image>,
-}
-
-impl fmt::Debug for Application {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Application")
-            .field("identifier", &self.identifier)
-            .field("desktop_name", &self.desktop_name)
-            .field("icon_path", &self.icon_path)
-            .field("icon", &self.icon.is_some())
-            .finish()
-    }
-}
-
-impl Hash for Application {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.identifier.hash(state);
-        self.icon_path.hash(state);
-        self.desktop_name.hash(state);
-        if let Some(i) = self.icon.as_ref() {
-            i.unique_id().hash(state)
-        }
-    }
-}
-
-impl PartialEq for Application {
-    fn eq(&self, other: &Self) -> bool {
-        self.identifier == other.identifier
-    }
-}
-impl Eq for Application {}
-
-impl Application {
-    pub fn new(app_id: &str) -> Self {
-        Self {
-            identifier: app_id.to_string(),
-            ..Default::default()
-        }
-    }
-}
 
 #[derive(Debug, Default, Clone)]
 pub struct WorkspacesModel {
@@ -108,18 +62,21 @@ pub struct WorkspacesModel {
     pub workspaces: Vec<Arc<WorkspaceView>>,
     pub current_workspace: usize,
 
-    pub applications_cache: HashMap<String, Application>,
-
     pub app_windows_map: HashMap<String, Vec<ObjectId>>,
+    /// list of applications in the order they are visually displayed
+    /// mainly used for the app switcher
     pub zindex_application_list: Vec<String>,
+    /// list of applications in the order they are launched
+    /// mainly used for the dock
     pub application_list: VecDeque<String>,
 
-    pub windows_list: Vec<ObjectId>,
     pub minimized_windows: Vec<(ObjectId, String)>,
     pub current_application: usize,
-
+    /// The physical width of the workspace
     pub width: i32,
+    /// The physical height of the workspace
     pub height: i32,
+    pub scale: f64,
 }
 
 pub struct Workspaces {
@@ -133,6 +90,7 @@ pub struct Workspaces {
     pub dock: Arc<DockView>,
     pub app_switcher: Arc<AppSwitcherView>,
     pub window_views: Arc<RwLock<HashMap<ObjectId, WindowView>>>,
+    pub dnd_view: DndView,
 
     // gestures states
     pub show_all: Arc<AtomicBool>,
@@ -146,13 +104,12 @@ pub struct Workspaces {
     pub overlay_layer: Layer,
     pub workspaces_layer: Layer,
     pub expose_layer: Layer,
-
     observers: Vec<Weak<dyn Observer<WorkspacesModel>>>,
 }
 
 /// # Workspace Layer Structure
 ///
-/// ```
+/// ```diagram
 /// Workspaces
 /// └── root
 ///     ├── workspaces
@@ -182,10 +139,11 @@ impl Workspaces {
             gap: taffy::Size::length(100.0),
             ..Default::default()
         });
+        // workspaces_layer.set_scale((0.2, 0.2), None);
         workspaces_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
         workspaces_layer.set_pointer_events(false);
 
-        layers_engine.scene_add_layer(workspaces_layer.clone());
+        layers_engine.add_layer(workspaces_layer.clone());
 
         let expose_layer = layers_engine.new_layer();
         expose_layer.set_key("expose");
@@ -201,7 +159,7 @@ impl Workspaces {
         expose_layer.set_pointer_events(false);
         expose_layer.set_hidden(true);
 
-        layers_engine.scene_add_layer(expose_layer.clone());
+        layers_engine.add_layer(expose_layer.clone());
 
         let overlay_layer = layers_engine.new_layer();
         overlay_layer.set_key("overlay_view");
@@ -210,17 +168,18 @@ impl Workspaces {
             ..Default::default()
         });
         overlay_layer.set_pointer_events(false);
+        let dnd_view = DndView::new(layers_engine.clone());
 
         let dock = DockView::new(layers_engine.clone());
         let dock = Arc::new(dock);
-        dock.view_layer.set_position((0.0, -20.0), None);
+        dock.show(None);
 
         let app_switcher = AppSwitcherView::new(layers_engine.clone());
         let app_switcher = Arc::new(app_switcher);
 
         let workspace_selector_layer = layers_engine.new_layer();
         workspace_selector_layer.set_pointer_events(false);
-        layers_engine.scene_add_layer(workspace_selector_layer.clone());
+        layers_engine.add_layer(workspace_selector_layer.clone());
 
         let workspace_selector_view = Arc::new(WorkspaceSelectorView::new(
             layers_engine.clone(),
@@ -240,6 +199,7 @@ impl Workspaces {
             app_switcher: app_switcher.clone(),
             workspace_selector_view: workspace_selector_view.clone(),
             dock: dock.clone(),
+            dnd_view,
             overlay_layer,
             show_all: Arc::new(AtomicBool::new(false)),
             show_desktop: Arc::new(AtomicBool::new(false)),
@@ -247,9 +207,7 @@ impl Workspaces {
             show_all_gesture: Arc::new(AtomicI32::new(0)),
             show_desktop_gesture: Arc::new(AtomicI32::new(0)),
             window_views: Arc::new(RwLock::new(HashMap::new())),
-
             observers: Vec::new(),
-
             layers_engine,
         };
         workspaces.add_workspace();
@@ -266,21 +224,35 @@ impl Workspaces {
         &self.spaces[index]
     }
 
-    fn space_mut(&mut self) -> &mut Space<WindowElement> {
+    pub fn space_mut(&mut self) -> &mut Space<WindowElement> {
         let index = self.with_model(|m| m.current_workspace);
 
         &mut self.spaces[index]
     }
-
+    /// Set the workspace screen physical size
     pub fn set_screen_dimension(&self, width: i32, height: i32) {
+        let scale = Config::with(|c| c.screen_scale);
         self.with_model_mut(|model| {
             model.width = width;
             model.height = height;
+            model.scale = scale;
             let event = model.clone();
             self.notify_observers(&event);
         });
     }
 
+    pub fn get_logical_rect(&self) -> smithay::utils::Rectangle<i32, smithay::utils::Logical> {
+        self.with_model(|model| {
+            let scale = model.scale as f32;
+            smithay::utils::Rectangle::from_loc_and_size(
+                (0, 0),
+                (
+                    (model.width as f32 / scale) as i32,
+                    (model.height as f32 / scale) as i32,
+                ),
+            )
+        })
+    }
     // Data model management
 
     pub fn with_model<T>(&self, f: impl FnOnce(&WorkspacesModel) -> T) -> T {
@@ -347,8 +319,6 @@ impl Workspaces {
                     show_all = false;
                 }
             }
-
-            self.set_show_all(show_all);
         }
         if show_all {
             self.expose_layer.set_hidden(false);
@@ -358,7 +328,7 @@ impl Workspaces {
 
         let mut transition = Some(Transition {
             delay: 0.0,
-            timing: TimingFunction::Spring(Spring::new_with_velocity(1.0, 170.0, 30.0, 0.0)),
+            timing: TimingFunction::Spring(Spring::with_duration_and_bounce(0.3, 0.1)),
         });
         if !end_gesture {
             // in the middle of the gesture
@@ -390,7 +360,7 @@ impl Workspaces {
             screen_size_h - offset_y,
         );
         let init_layout = bin.is_empty();
-        self.with_model(|model| {
+        let current_workspace = self.with_model(|model| {
             for (i, workspace) in model.workspaces.iter().enumerate() {
                 let windows_list = workspace.windows_list.read().unwrap();
 
@@ -415,15 +385,15 @@ impl Workspaces {
                 });
 
                 if init_layout {
-                    natural_layout(&mut bin, workspace_windows, &layout_rect, false);
+                    natural_layout(&mut bin, workspace_windows, &layout_rect, true);
                 }
                 let mut state = WindowSelectorState {
                     rects: vec![],
                     current_selection: None,
                 };
                 let mut index = 0;
-
-                for window_id in model.windows_list.iter() {
+                let windows_list = workspace.windows_list.read().unwrap();
+                for window_id in windows_list.iter() {
                     let window = self.get_window_for_surface(window_id).unwrap();
                     if window.is_minimised() {
                         continue;
@@ -448,8 +418,9 @@ impl Workspaces {
                                 w: (window_width * scale),
                                 h: (window_height * scale),
                                 visible: true,
-                                window_title: window.title().to_string(),
+                                window_title: window.xdg_title().to_string(),
                                 index,
+                                window_id: Some(window_id.clone()),
                             };
                             index += 1;
                             state.rects.push(window_rect);
@@ -474,6 +445,9 @@ impl Workspaces {
 
                 workspace.window_selector_view.view.update_state(&state);
             }
+            let current_workspace = model.workspaces.get(model.current_workspace).unwrap();
+
+            current_workspace.clone()
         });
 
         let _transactions = self.layers_engine.add_animated_changes(&changes, animation);
@@ -484,6 +458,9 @@ impl Workspaces {
         let workspace_selector_y = (-200.0).interpolate(&0.0, delta);
         let workspace_opacity = 0.0.interpolate(&1.0, delta);
         let expose_layer = self.expose_layer.clone();
+        let show_all_ref = self.show_all.clone();
+        // disable pointer interactions during the animation
+        self.set_show_all(false);
         self.workspace_selector_view
             .layer
             .set_position(
@@ -496,6 +473,7 @@ impl Workspaces {
             .on_finish(
                 move |_: &Layer, _: f32| {
                     expose_layer.set_hidden(!show_all);
+                    show_all_ref.store(show_all, std::sync::atomic::Ordering::Relaxed);
                 },
                 true,
             );
@@ -504,14 +482,30 @@ impl Workspaces {
             .layer
             .set_opacity(workspace_opacity, transition);
 
-        let dock_y = (-20.0).interpolate(&250.0, delta);
-        self.dock.view_layer.set_position((0.0, dock_y), transition);
+        let mut start_position = 0.0;
+        let mut end_position = 250.0;
+        if current_workspace.get_fullscreen_mode() {
+            start_position = 250.0;
+            end_position = 250.0;
+        }
+        let dock_y = (start_position).interpolate(&end_position, delta);
+        let tr = self.dock.view_layer.set_position((0.0, dock_y), transition);
+
+        
 
         if let Some(a) = animation {
             self.layers_engine.start_animation(a, 0.0);
         }
         if end_gesture {
             *bin = HashMap::new();
+            let dock_ref = self.dock.clone();
+            tr.on_finish(move |_:&Layer, _: f32| {
+                if show_all {
+                    dock_ref.hide(None);
+                } else {
+                    dock_ref.show(None);
+                }
+            }, true);
         }
     }
 
@@ -560,8 +554,9 @@ impl Workspaces {
             // in the middle of the gesture
             transition = None;
         }
-
-        for window in model.windows_list.iter() {
+        let workspace = self.get_current_workspace();
+        let windows_list = workspace.windows_list.read().unwrap();
+        for window in windows_list.iter() {
             let window = self.get_window_for_surface(window).unwrap();
             if window.is_minimised() {
                 continue;
@@ -601,18 +596,15 @@ impl Workspaces {
 
     /// Close all the windows of the current focused App
     pub fn quit_current_app(&self) {
-        let current_app = self.get_current_app();
-        if let Some(app) = current_app {
-            self.quit_app(&app.identifier);
+        if let Some(app_id)= self.get_current_app_id() {
+            self.quit_app(&app_id);
         }
     }
 
     /// Close all the windows of the current focused App in th app switcher
     pub fn quit_appswitcher_app(&self) {
-        let appswitcher_app = self.app_switcher.get_current_app();
-
-        if let Some(app) = appswitcher_app {
-            self.quit_app(&app.identifier);
+        if let Some(app_id) = self.app_switcher.get_current_app_id() {
+            self.quit_app(&app_id);
         }
     }
 
@@ -625,8 +617,9 @@ impl Workspaces {
         }
 
         self.with_model_mut(|model| {
-
-            model.minimized_windows.push((id.clone(), we.title().to_string()));
+            model
+                .minimized_windows
+                .push((id.clone(), we.xdg_title().to_string()));
 
             if let Some(view) = self.get_window_view(&id) {
                 let (drawer, _) = self.dock.add_window_element(we);
@@ -636,7 +629,7 @@ impl Workspaces {
                     ..Default::default()
                 });
                 self.layers_engine
-                    .scene_add_layer_to_positioned(view.window_layer.clone(), drawer.clone());
+                    .add_layer_to_positioned(view.window_layer.clone(), drawer.clone());
                 // bounds are calculate after this call
                 let drawer_bounds = drawer.render_bounds_transformed();
                 view.minimize(skia::Rect::from_xywh(
@@ -686,89 +679,86 @@ impl Workspaces {
             model.clone()
         });
         let scale = Config::with(|c| c.screen_scale) as f32;
-        if let Some((index, space)) = self.spaces.iter().enumerate()
-            .find(|(_, space)| space.elements().any(|e| e.id() == *wid)) {
-                let workspace = event.workspaces[index].clone();
-                let window = self.get_window_for_surface(wid).unwrap();
-                let window_geometry = space.element_geometry(window).unwrap();
-                let pos_x = window_geometry.loc.x;
-                let pos_y = window_geometry.loc.y;
-                let layer_pos_x = pos_x as f32 * scale;
-                let layer_pos_y = pos_y as f32 * scale;
-                if let Some(window) = self.windows_map.get_mut(wid) {
-                    window.set_is_minimised(false);
-                }
-                if let Some(view) = self.get_window_view(wid) {
-                    if let Some(drawer) = self.dock.remove_window_element(wid) {
-                        let engine_ref = self.layers_engine.clone();
-        
-                        let windows_layer_ref = workspace.windows_layer.clone();
-                        let layer_ref = view.window_layer.clone();
-                        self.layers_engine.update(0.0);
-        
-                        let drawer_bounds = drawer.render_bounds_transformed();
+        if let Some((index, space)) = self
+            .spaces
+            .iter()
+            .enumerate()
+            .find(|(_, space)| space.elements().any(|e| e.id() == *wid))
+        {
+            let workspace = event.workspaces[index].clone();
+            let window = self.get_window_for_surface(wid).unwrap();
+            let window_geometry = space.element_geometry(window).unwrap();
+            let pos_x = window_geometry.loc.x;
+            let pos_y = window_geometry.loc.y;
+            let layer_pos_x = pos_x as f32 * scale;
+            let layer_pos_y = pos_y as f32 * scale;
+            if let Some(window) = self.windows_map.get_mut(wid) {
+                window.set_is_minimised(false);
+            }
+            if let Some(view) = self.get_window_view(wid) {
+                if let Some(drawer) = self.dock.remove_window_element(wid) {
+                    let engine_ref = self.layers_engine.clone();
 
-                        // close dock drawer animation
-                        // on start animation move the window to the workspace
+                    let windows_layer_ref = workspace.windows_layer.clone();
+                    let layer_ref = view.window_layer.clone();
+                    self.layers_engine.update(0.0);
 
-                        drawer
-                            .set_size(
-                                Size::points(0.0, 130.0),
-                                Transition {
-                                    delay: 0.2,
-                                    timing: TimingFunction::ease_out_quad(0.3),
-                                },
-                            )
-                            .on_start(
-                                move |_layer: &Layer, _| {
-                                    layer_ref.remove_draw_content();
-                                    engine_ref.scene_add_layer_to_positioned(
-                                        layer_ref.clone(),
-                                        windows_layer_ref.clone(),
-                                    );
-                                    layer_ref.set_position((layer_pos_x, layer_pos_y), Transition::ease_out(0.3));
-                                },
-                                true,
-                            )
-                            .then(move |layer: &Layer, _| {
-                                layer.remove();
-                            });
-                            
-                            view.unminimize(drawer_bounds);
-                            
-                            
-                            if let Some(window) = self.get_window_for_surface(wid).cloned() {
-                                window.set_activate(true);
-                                //     window.set_activate(true);
-                                //     self.map_element(window.clone(), (pos_x as i32, pos_y as i32), true);
-                                // self.map_element(window.clone(), (pos_x as i32, pos_y as i32), true);
-                            }
+                    let drawer_bounds = drawer.render_bounds_transformed();
+
+                    // close dock drawer animation
+                    // on start animation move the window to the workspace
+
+                    drawer
+                        .set_size(
+                            Size::points(0.0, 130.0),
+                            Transition {
+                                delay: 0.2,
+                                timing: TimingFunction::ease_out_quad(0.3),
+                            },
+                        )
+                        .on_start(
+                            move |_layer: &Layer, _| {
+                                layer_ref.remove_draw_content();
+                                engine_ref.add_layer_to_positioned(
+                                    layer_ref.clone(),
+                                    windows_layer_ref.clone(),
+                                );
+                                layer_ref.set_position(
+                                    (layer_pos_x, layer_pos_y),
+                                    Transition::ease_out(0.3),
+                                );
+                            },
+                            true,
+                        )
+                        .then(move |layer: &Layer, _| {
+                            layer.remove();
+                        });
+
+                    view.unminimize(drawer_bounds);
+
+                    if let Some(window) = self.get_window_for_surface(wid).cloned() {
+                        window.set_activate(true);
+                        //     window.set_activate(true);
+                        //     self.map_element(window.clone(), (pos_x as i32, pos_y as i32), true);
+                        // self.map_element(window.clone(), (pos_x as i32, pos_y as i32), true);
                     }
                 }
-        
-                // let event = model.clone();
-                self.notify_observers(&event);
-        
-                // FIXME seat
-                // self.seat.get_keyboard().unwrap().set_focus(
-                //     self,
-                //     Some(we.clone().into()),
-                //     SERIAL_COUNTER.next_serial(),
-                // );
-                // }
             }
+
+            // let event = model.clone();
+            self.notify_observers(&event);
+        }
     }
 
     // Helpers / Windows Management
 
     /// Determine the initial placement of a new window within the workspace.
-    /// It calculates the appropriate position and size for the window based
-    /// on the current pointer location and the available output geometry
-    pub fn place_new_window(
-        &mut self,
-        window: WindowElement,
+    /// It calculates the appropriate position and bounds for the window based
+    /// on the current pointer location and the output geometry under the pointer.
+    pub fn new_window_placement_at(
+        &self,
         pointer_location: smithay::utils::Point<f64, smithay::utils::Logical>,
-    ) {
+    ) -> (smithay::utils::Rectangle<i32, smithay::utils::Logical>, smithay::utils::Point<i32, smithay::utils::Logical>) {
         let output = self
             .output_under(pointer_location)
             .next()
@@ -783,15 +773,7 @@ impl Workspaces {
             })
             .unwrap_or_else(|| Rectangle::from_loc_and_size((0, 0), (800, 800)));
 
-        // set the initial toplevel bounds
-        #[allow(irrefutable_let_patterns)]
-        if let WindowSurface::Wayland(window) = window.underlying_surface() {
-            window.with_pending_state(|state| {
-                state.bounds = Some(output_geometry.size);
-            });
-        }
-
-        let num_open_windows = self.spaces_elements().count();
+            let num_open_windows = self.spaces_elements().count();
         let window_index = num_open_windows + 1; // Index of the new window
 
         let max_x = output_geometry.loc.x + output_geometry.size.w;
@@ -803,28 +785,65 @@ impl Workspaces {
         let x = (output_geometry.loc.x as f32 + factor * max_x as f32) as i32 + 100;
         let y = (output_geometry.loc.y as f32 + factor * max_y as f32) as i32 + 100;
 
-        println!("Placing window at ({}, {})", x, y);
-
-        self.map_element(window, (x, y), true);
+        (output_geometry, (x,y).into())
     }
 
-    pub fn unmap_window(&mut self, window_id: &ObjectId) {
+    /// map the window element, in the position on the current space,
+    /// should be called on every window move / drag
+    /// sets the position of the window layer in the scene
+    pub fn map_window(
+        &mut self,
+        window_element: &WindowElement,
+        location: impl Into<smithay::utils::Point<i32, smithay::utils::Logical>>,
+        activate: bool,
+    ) {
+        self.space_mut()
+            .map_element(window_element.clone(), location, activate);
+        // self.space_mut().refresh();
+
+        if !self.windows_map.contains_key(&window_element.id()) {
+            self.windows_map.insert(window_element.id(), window_element.clone());
+
+            self.update_workspace_model();
+        }
+
+        // append the window to the workspace layer
         {
-            if let Some(view) = self.get_window_view(window_id) {
-                let noderef = view.window_layer.id().unwrap();
-                let scene_layer = self.layers_engine.scene_get_node(&noderef).unwrap();
-                let scene_layer = scene_layer.get().clone();
-                scene_layer.mark_for_deletion();
-                self.remove_window_view(window_id);
+            let location = self
+                .element_location(&window_element)
+                .unwrap_or_default();
+
+            let workspace_view = self.get_current_workspace();
+            
+            
+            workspace_view.map_window(&window_element, location);
+            let _view = self.get_or_add_window_view(&window_element);
+        }
+        self.refresh_space();
+        
+    }
+
+    /// remove a WindowElement from the workspace model, 
+    /// remove the window layer from the scene, 
+    pub fn unmap_window(&mut self, window_id: &ObjectId) {
+        tracing::info!("workspaces::unmap_window: {:?}", window_id);
+        
+        if let Some(element) = self.get_window_for_surface(window_id).cloned() {
+            for space in self.spaces.iter_mut() {
+                space.unmap_elem(&element);
             }
         }
+
         self.with_model(|m| {
-            for workspace in m.workspaces.iter() {
-                workspace.unmap_window(window_id);
+            for workspace_view in m.workspaces.iter() {
+                workspace_view.unmap_window(window_id);
             }
         });
-
         self.windows_map.remove(window_id);
+        self.remove_window_view(window_id);
+
+        self.refresh_space();
+        self.update_workspace_model();
     }
     /// Return if the current coordinates are over the dock
     pub fn is_cursor_over_dock(&self, x: f32, y: f32) -> bool {
@@ -873,23 +892,20 @@ impl Workspaces {
     }
 
     /// Return the current focused Application
-    pub fn get_current_app(&self) -> Option<Application> {
+    pub fn get_current_app_id(&self) -> Option<String> {
         let model = self.model.read().unwrap();
-        let app_id = model.zindex_application_list[model.current_application].clone();
-        model.applications_cache.get(&app_id).cloned()
+        model.zindex_application_list.last().cloned()
     }
 
     /// Return the list of WlSurface ids of the current focused Application
     pub fn get_current_app_windows(&self) -> Vec<ObjectId> {
-        self.get_current_app()
-            .map(|app| self.get_app_windows(&app.identifier))
+        self.get_current_app_id()
+            .map(|app_id| self.get_app_windows(&app_id))
             .unwrap_or_default()
     }
 
     /// Return the Window object of WlSurface by its id
     pub fn get_window_for_surface(&self, id: &ObjectId) -> Option<&WindowElement> {
-        // let model = self.model.read().unwrap();
-        // model.windows_cache.get(id).cloned()
         self.windows_map.get(id)
     }
 
@@ -900,12 +916,13 @@ impl Workspaces {
     ) -> WindowView {
         let mut window_views = self.window_views.write().unwrap();
         let wid = window.id();
-        let insert = window_views
+        let entry = window_views
             .entry(wid.clone())
             .or_insert_with(|| WindowView::new(self.layers_engine.clone(), window));
-        insert.clone()
+        entry.clone()
     }
 
+    /// Remove a WindowView from the scene and delete it from the window_views map
     pub fn remove_window_view(&self, object_id: &ObjectId) {
         let mut window_views = self.window_views.write().unwrap();
         if let Some(view) = window_views.remove(object_id) {
@@ -925,20 +942,41 @@ impl Workspaces {
         window_views.insert(id.clone(), window_view);
     }
 
+    /// unmap the window from the current space and workspaceview
+    /// map the window to the new space and workspaceview
     pub fn move_window_to_workspace(
         &mut self,
         we: &WindowElement,
         workspace_index: usize,
-        location: smithay::utils::Point<i32, smithay::utils::Logical>,
+        location: impl Into<smithay::utils::Point<i32, smithay::utils::Logical>>,
     ) {
+        let location = location.into();
+
+        // unmap from old space
+        if let Some((index, space)) = self
+            .spaces
+            .iter_mut()
+            .enumerate()
+            .find(|(_, s)| s.elements().any(|e| e.id() == we.id()))
+        {
+            space.unmap_elem(we);
+            let id = we.id();
+            let model = self.model.read().unwrap();
+            if let Some(workspace) = model.workspaces.get(index) {
+                workspace.unmap_window(&id);
+            }
+        }
+
+        // map to new space
+
         if let Some(space) = self.spaces.get_mut(workspace_index) {
-            println!("move_window_to_workspace: {:?}", workspace_index);
+            tracing::info!("workspaces::move_window_to_workspace: {:?}", workspace_index);
             space.map_element(we.clone(), location, false);
             let id = we.wl_surface().unwrap().id();
             let model = self.model.read().unwrap();
             if let Some(workspace) = model.workspaces.get(workspace_index) {
                 if let Some(window) = self.windows_map.get(&id) {
-                    workspace.map_window(window);
+                    workspace.map_window(window, location);
                 }
             }
         }
@@ -974,35 +1012,12 @@ impl Workspaces {
         wid
     }
 
-    pub fn focus_app(&mut self, app_id: &str) {
-        self.raise_app_elements(app_id);
-        // scroll to the first workspace where the app is
-        let current_space = self.space();
-        let spaces = self.get_app_spaces(app_id);
-        if spaces.iter().any(|s| *s == current_space) {
-        } else {
-            let first_space = spaces.first().unwrap();
-            let index = self
-                .spaces
-                .iter()
-                .position(|s| s == *first_space)
-                .unwrap_or(0);
-            self.set_current_workspace_index(index);
-        }
-    }
-
-    pub fn raise_window_app_elements(&mut self, we: &WindowElement, activate: bool) {
-        let windows = self.get_app_windows(we.app_id());
-        for window_id in windows.iter() {
-            self.raise_element(window_id, true, false);
-        }
-        if !we.is_minimised() {
-            self.raise_element(&we.id(), activate, true);
-        }
-    }
-
-    pub fn raise_element(&mut self, window_id: &ObjectId, activate: bool, update: bool) {
+    /// Raise thw windowelement on top of all the windows in its space
+    /// activate: will set the window as active
+    /// update: will update the workspace model
+    fn raise_element(&mut self, window_id: &ObjectId, activate: bool, update: bool) {
         // get the space with the window
+        // tracing::info!("workspaces::raise_element: {:?}", window_id);
         if let Some((index, space)) = self
             .spaces
             .iter_mut()
@@ -1010,7 +1025,15 @@ impl Workspaces {
             .find(|(_, s)| s.elements().any(|e| e.id() == *window_id))
         {
             if let Some(window) = self.windows_map.get(window_id) {
+                if space.elements().last().unwrap().id() == *window_id {
+                    return;
+                }
                 if window.is_minimised() && !activate {
+                    return;
+                }
+                // FIXME: this is a hack to prevent raising a window that is already fullscreen
+                // ideally we avoid resort a window already on top
+                if window.is_fullscreen() {
                     return;
                 }
                 space.raise_element(window, activate);
@@ -1033,10 +1056,14 @@ impl Workspaces {
                     self.update_workspace_model();
                 }
             }
+        } else {
+            tracing::warn!("workspaces::raise_element: window not found");
         }
     }
 
-    pub fn raise_app_elements(&mut self, app_id: &str) -> Option<ObjectId> {
+    /// Raise all the windows of a given app
+    /// returns the window id of the last window raised, if any
+    fn raise_app_elements(&mut self, app_id: &str, focus_window: Option<&ObjectId>) -> Option<ObjectId> {
         // for every window in the app, raise it
         let windows = self.get_app_windows(app_id);
         let mut focus_wid = None;
@@ -1049,7 +1076,6 @@ impl Workspaces {
                     } else {
                         self.raise_element(window_id, false, false);
                     }
-                    self.update_workspace_model();
                 } else {
                     // if minimised and there is only one window in the app, unminimize it
                     if windows.len() == 1 {
@@ -1058,168 +1084,115 @@ impl Workspaces {
                 }
             }
         }
-        focus_wid
-    }
-
-    fn load_async_app_info(&self, app_id: &str) {
-        tracing::info!("load_async_app_info: {}", app_id);
-        let app_id = app_id.to_string();
-        let model = self.model.clone();
-        let observers = self.observers.clone();
-        // let ctx = None;//self.direct_context.clone();
-        tokio::spawn(async move {
-            let mut desktop_entry: Option<DesktopEntry<'_>> = None;
-            let bytes;
-            let path;
-            let default_paths = default_paths();
-            let path_result = DesktopEntryIter::new(default_paths)
-                .find(|path| path.to_string_lossy().contains(&app_id));
-
-            if let Some(p) = path_result {
-                path = p.clone();
-                let bytes_result = std::fs::read_to_string(&p);
-                if let Ok(b) = bytes_result {
-                    bytes = b.clone();
-                    if let Ok(entry) = DesktopEntry::decode(&path, &bytes) {
-                        desktop_entry = Some(entry);
-                    }
-                }
-            }
-            if let Some(desktop_entry) = desktop_entry {
-                if let Some(mut model_mut) = acquire_write_lock_with_retry(&model) {
-                    let icon_path = desktop_entry
-                        .icon()
-                        .map(|icon| icon.to_string())
-                        .and_then(|icon_name| xdgkit::icon_finder::find_icon(icon_name, 512, 1))
-                        .map(|icon| icon.to_str().unwrap().to_string());
-                    let icon = icon_path
-                        .as_ref()
-                        .and_then(|icon_path| image_from_path(icon_path, None));
-
-                    let mut app = model_mut
-                        .applications_cache
-                        .get(&app_id)
-                        .unwrap_or(&Application {
-                            identifier: app_id.to_string(),
-                            ..Default::default()
-                        })
-                        .clone();
-                    if app.icon_path != icon_path {
-                        app.desktop_name = desktop_entry.name(None).map(|name| name.to_string());
-                        app.icon_path = icon_path;
-                        app.icon = icon.clone();
-                        tracing::info!("loaded: {:?}", app);
-                        model_mut.applications_cache.insert(app_id, app);
-                        notify_observers(&observers, &model_mut.clone());
-                    }
+        focus_window.map(|wid| {
+            if let Some(we) = self.get_window_for_surface(wid) {
+                if !we.is_minimised() {
+                    self.raise_element(&wid, true, false);
+                    focus_wid = Some(wid.clone());
                 }
             }
         });
+
+        focus_wid
     }
 
-    // updates the workspace model using elemenets from Space
+    /// Raise all the windows of a given app
+    /// returns the window id of the last window raised, and set to active, if any
+    pub fn focus_app(&mut self, app_id: &str) -> Option<ObjectId> {
+        tracing::trace!("workspaces::focus_app: {:?}", app_id);
+        let wid = self.raise_app_elements(app_id, None);
+        if wid.is_none() {
+            // return early
+            return wid;
+        }
+        let wid = wid.unwrap();
+        let current_space_index = self.with_model(|m| m.current_workspace);
+        let index = self
+            .spaces
+            .iter()
+            .position(|s| s.elements().any(|e| e.id() == wid))
+            .unwrap_or(current_space_index);
+
+            self.set_current_workspace_index(index, None);
+
+        Some(wid)
+    }
+
+    pub fn focus_app_with_window(&mut self, wid: &ObjectId) -> Option<ObjectId> {
+
+        let app_id = self.get_window_for_surface(wid).map(|w| w.xdg_app_id()).unwrap_or_default();
+        tracing::info!("workspaces::focus_app_with_window {:?}", app_id);
+        let wid = self.raise_app_elements(&app_id, Some(wid));
+        if wid.is_none() {
+            // return early
+            return wid;
+        }
+        let wid = wid.unwrap();
+        let current_space_index = self.with_model(|m| m.current_workspace);
+        let index = self
+            .spaces
+            .iter()
+            .position(|s| s.elements().any(|e| e.id() == wid))
+            .unwrap_or(current_space_index);
+        
+        self.set_current_workspace_index(index, None);
+    
+        Some(wid)
+    }
+
+    /// Update the workspace model using elements from Space: windows_list, app_windows_map, zindex_application_list
+    /// - app_windows_map: is a map of app_id to a list of toplevel surfaces
+    /// - applications_list: is the list of app_id in the order they are opened
+    /// - zindex_application_list: is the list of app_id in the order they are in the zindex
     pub(crate) fn update_workspace_model(&self) {
-        // FIXME disaster
-        let windows: Vec<_> = self
+        tracing::info!("workspaces::update_workspace_model");
+
+        let windows: Vec<(ObjectId, WindowElement)> = self
             .spaces_elements()
             .map(|we| (we.wl_surface().unwrap().id(), we.clone()))
             .collect();
-
-        let window_views: Vec<_> = windows
-            .iter()
-            .filter_map(|(id, we)| {
-                if let Some(wv) = self.get_window_view(id) {
-                    let state = wv.view_base.get_state();
-                    Some((we.clone(), wv.window_layer.clone(), state))
-                } else {
-                    None
-                }
-            })
-            .collect();
+        
         {
+            // reset the model
             if let Ok(mut model_mut) = self.model.write() {
                 model_mut.zindex_application_list = Vec::new();
-                model_mut.windows_list = Vec::new();
                 model_mut.app_windows_map = HashMap::new();
             } else {
                 return;
             }
         }
-        let mut windows_peek = window_views
-            .iter()
-            .filter(|(w, _l, _state)| w.wl_surface().is_some()) // do we need this?
-            .peekable();
 
-        #[allow(clippy::while_let_on_iterator)]
-        while let Some((w, _, _)) = windows_peek.next() {
-            let surface = w.wl_surface().map(|s| (s.as_ref()).clone()).unwrap();
-            smithay::wayland::compositor::with_states(&surface, |states| {
-                let attributes: std::sync::MutexGuard<
-                    '_,
-                    smithay::wayland::shell::xdg::XdgToplevelSurfaceRoleAttributes,
-                > = states
-                    .data_map
-                    .get::<XdgToplevelSurfaceData>()
-                    .unwrap()
-                    .lock()
-                    .unwrap();
+        let mut app_set = HashSet::new();
+        for (window_id, we) in windows.iter() {
 
-                if let Some(app_id) = attributes.app_id.as_ref() {
-                    let id = w.wl_surface().unwrap().id();
+            let app_id = we.xdg_app_id();
+            if app_id.is_empty() {
+                continue;
+            }
+            if let Ok(mut model_mut) = self.model.write() {
+                
+                
+                
+                
+                model_mut.app_windows_map
+                    .entry(app_id.clone())
+                    .or_default()
+                    .push(window_id.clone());
 
-                    let app_index = {
-                        let mut model = self.model.write().unwrap();
-                        // don't allow duplicates in app switcher
-                        // TODO use config
-                        let app_index = model
-                            .zindex_application_list
-                            .iter()
-                            .position(|id| id == app_id)
-                            .unwrap_or_else(|| {
-                                model.zindex_application_list.push(app_id.clone());
-                                model.zindex_application_list.len() - 1
-                            });
-                        if !model.application_list.contains(app_id) {
-                            model.application_list.push_front(app_id.clone());
-                        }
-
-                        let app = model
-                            .applications_cache
-                            .entry(app_id.to_owned())
-                            .or_insert(Application {
-                                identifier: app_id.to_string(),
-                                ..Default::default()
-                            })
-                            .clone();
-
-                        let windows_for_app =
-                            model.app_windows_map.entry(app_id.clone()).or_default();
-
-                        windows_for_app.push(id.clone());
-                        drop(model);
-                        {
-                            if app.icon.is_none() {
-                                self.load_async_app_info(app_id);
-                            }
-                        }
-                        app_index
-                    };
-
-                    {
-                        let mut model_mut: std::sync::RwLockWriteGuard<'_, WorkspacesModel> =
-                            self.model.write().unwrap();
-                        model_mut.windows_list.push(id.clone());
-
-                        if windows_peek.peek().is_none() {
-                            model_mut.current_application = app_index;
-                        }
-                    }
+                if !model_mut.application_list.contains(&app_id) {
+                    model_mut.application_list.push_front(app_id.clone());
                 }
-            });
+                if app_set.insert(app_id.clone()) {
+                    model_mut.zindex_application_list.push(app_id.clone());
+                }
+            }
         }
+
         // keep only app in application_list that are in zindex_application_list
         {
-            let mut model = self.model.write().unwrap();
+            
+            let mut model: std::sync::RwLockWriteGuard<'_, WorkspacesModel> = self.model.write().unwrap();
+                       
             let app_list = model.zindex_application_list.clone();
             {
                 // update app list
@@ -1227,12 +1200,12 @@ impl Workspaces {
                     .application_list
                     .retain(|app_id| app_list.contains(app_id));
             }
+
             {
                 // update minimized windows
-                let windows_list = model.windows_list.clone();
                 model
                     .minimized_windows
-                    .retain(|(id, _)| windows_list.contains(id));
+                    .retain(|(id, _)| windows.iter().any(|(wid, _)| wid == id));
             }
         }
 
@@ -1242,8 +1215,18 @@ impl Workspaces {
         self.notify_observers(&event);
     }
 
+    /// Returns all the window elements from all the spaces
+    /// starting from current space
     pub fn spaces_elements(&self) -> impl DoubleEndedIterator<Item = &WindowElement> {
-        self.spaces.iter().flat_map(|space| space.elements())
+        let current_space = self.space();
+
+
+        self.spaces.iter()
+            .filter(move |s| s != &current_space)
+            .chain(
+                std::iter::once(current_space)
+            )
+            .flat_map(|space| space.elements())
     }
 
     // Outputs Management
@@ -1279,7 +1262,7 @@ impl Workspaces {
 
     // Workspaces Management
 
-    pub fn add_workspace(&mut self) {
+    pub fn add_workspace(&mut self) -> (usize, Arc<WorkspaceView>) {
         let mut new_space = Space::default();
 
         if !self.spaces.is_empty() {
@@ -1292,7 +1275,7 @@ impl Workspaces {
         }
 
         self.spaces.push(new_space);
-        self.with_model_mut(|m| {
+        let (index, workspace) = self.with_model_mut(|m| {
             m.workspace_counter += 1;
 
             let workspace = Arc::new(WorkspaceView::new(
@@ -1302,9 +1285,23 @@ impl Workspaces {
             ));
             self.expose_layer
                 .add_sublayer(workspace.window_selector_view.layer.clone());
-            m.workspaces.push(workspace);
+            m.workspaces.push(workspace.clone());
             self.notify_observers(m);
+            (m.workspaces.len() - 1, workspace)
         });
+        (index, workspace)
+    }
+
+    pub fn get_next_free_workspace(&mut self) -> (usize, Arc<WorkspaceView>) {
+        let current_workspace = self.get_current_workspace_index();
+        if current_workspace < self.spaces.len() - 1 {
+            for i in current_workspace + 1..self.spaces.len() {
+                if self.spaces[i].elements().count() == 0 {
+                    return (i, self.with_model(|m| m.workspaces[i].clone()));
+                }
+            }
+        }
+        self.add_workspace()
     }
 
     pub fn remove_workspace_at(&mut self, n: usize) {
@@ -1334,46 +1331,54 @@ impl Workspaces {
                 self.move_window_to_workspace(e, workspace_model.current_workspace, location);
             }
         }
-        self.scroll_to_workspace_index(workspace_model.current_workspace);
+        self.scroll_to_workspace_index(workspace_model.current_workspace, None);
         self.notify_observers(&workspace_model);
+    }
+
+    pub fn get_workspace_at(&self, i: usize) -> Option<Arc<WorkspaceView>> {
+        self.with_model(|m| m.workspaces.get(i).cloned())
     }
 
     pub fn get_current_workspace(&self) -> Arc<WorkspaceView> {
         self.with_model(|m| m.workspaces[m.current_workspace].clone())
     }
 
-    pub fn set_current_workspace_index(&mut self, i: usize) {
+    pub fn get_current_workspace_index(&self) -> usize {
+        self.with_model(|m| m.current_workspace)
+    }
+    pub fn set_current_workspace_index(&mut self, i: usize, transition: Option<Transition>) {
         if i > self.spaces.len() - 1 {
             return;
         }
-        println!("bench {}", i);
         self.with_model_mut(|m| {
             if i > m.workspaces.len() - 1 {
                 return;
             }
             m.current_workspace = i;
-            self.scroll_to_workspace_index(i);
-
-            self.notify_observers(m);
         });
+        self.update_workspace_model();
+        self.scroll_to_workspace_index(i, transition);
     }
+    /// Scroll to the workspace at index i, default transition is 1.0s spring
+    fn scroll_to_workspace_index(&self, i: usize, transition: Option<Transition>) {
+        let transition = transition.unwrap_or(Transition {
+            delay: 0.0,
+            timing: TimingFunction::Spring(Spring::with_duration_and_bounce(1.0, 0.1)),
+        });
 
-    fn scroll_to_workspace_index(&self, i: usize) {
+        if let Some(workspace) = self.get_workspace_at(i) {
+            if workspace.get_fullscreen_mode() || self.get_show_all(){
+                self.dock.hide(Some(transition.clone()));
+            } else {
+                self.dock.show(Some(transition.clone()));
+            }
+        }
+
         let width = self.workspaces_layer.render_size().x;
-        self.workspaces_layer.set_position(
-            (-(width + 100.0) * i as f32, 0.0),
-            Some(Transition {
-                delay: 0.0,
-                timing: TimingFunction::Spring(Spring::new_with_velocity(1.0, 60.0, 15.0, 0.0)),
-            }),
-        );
-        self.expose_layer.set_position(
-            (-(width + 100.0) * i as f32, 0.0),
-            Some(Transition {
-                delay: 0.0,
-                timing: TimingFunction::Spring(Spring::new_with_velocity(1.0, 60.0, 15.0, 0.0)),
-            }),
-        );
+        self.workspaces_layer
+            .set_position((-(width + 100.0) * i as f32, 0.0), Some(transition));
+        self.expose_layer
+            .set_position((-(width + 100.0) * i as f32, 0.0), Some(transition));
     }
 
     // Space management
@@ -1401,64 +1406,6 @@ impl Workspaces {
 
     pub fn refresh_space(&mut self) {
         self.space_mut().refresh();
-    }
-
-    // map the window position, called on every window move / drag
-    // sets the position of the window layer
-    pub fn map_element(
-        &mut self,
-        element: WindowElement,
-        location: impl Into<smithay::utils::Point<i32, smithay::utils::Logical>>,
-        activate: bool,
-    ) {
-        self.space_mut()
-            .map_element(element.clone(), location, activate);
-        self.space_mut().refresh();
-
-        // FIXME not the right place
-        self.windows_map.insert(element.id(), element.clone());
-
-        // append the window to the workspace layer
-        {
-            let outputs = self.outputs_for_element(&element);
-            let output = outputs.first().or_else(|| self.outputs().next());
-            let scale = output
-                .map(|o| o.current_scale().fractional_scale())
-                .unwrap_or(1.0);
-            let location = self
-                .element_location(&element)
-                .unwrap_or_default()
-                .to_f64()
-                .to_physical(scale);
-
-            let workspace = self.get_current_workspace();
-            // workspace.windows_layer.add_sublayer(element.base_layer().clone());
-            // if let Some(window_layer_id) = workspace.windows_layer.id() {
-            workspace.map_window(&element);
-            let _view = self.get_or_add_window_view(&element);
-            element.base_layer().set_position(
-                lay_rs::types::Point {
-                    x: location.x as f32,
-                    y: location.y as f32,
-                },
-                None,
-            );
-
-            if let Some(l) = workspace
-                .window_selector_view
-                .layer_for_window(&element.id())
-            {
-                // println!("move clone window");
-                l.set_position(
-                    lay_rs::types::Point {
-                        x: location.x as f32,
-                        y: location.y as f32,
-                    },
-                    None,
-                );
-            }
-            // }
-        }
     }
 
     pub fn element_location(

@@ -7,9 +7,8 @@ use std::{
 
 use lay_rs::{
     prelude::{ContentDrawFunction, Layer, PointerHandlerFunction},
-    skia::{self},
+    skia::{self, FontMgr}, utils::load_svg_image,
 };
-use usvg::TreeParsing;
 
 use crate::{config::Config, workspaces::utils::FONT_CACHE};
 pub mod natural_layout;
@@ -31,57 +30,58 @@ fn icon_cache() -> Arc<RwLock<HashMap<String, skia::Image>>> {
     icon_cache.clone()
 }
 
-pub fn image_from_svg(
-    image_data: &[u8],
-    ctx: Option<skia::gpu::DirectContext>,
-) -> lay_rs::skia::Image {
-    let options = usvg::Options::default();
-    let mut rtree = usvg::Tree::from_data(image_data, &options).unwrap();
-    rtree.size = usvg::Size::from_wh(512.0, 512.0).unwrap();
-    let xml_options = usvg::XmlOptions::default();
-    let xml = usvg::TreeWriting::to_string(&rtree, &xml_options);
-    let font_mgr = lay_rs::skia::FontMgr::new();
-    let svg = lay_rs::skia::svg::Dom::from_bytes(xml.as_bytes(), font_mgr).unwrap();
+// FIXME check why skia_safe svg is broken
+// pub fn image_from_svg(
+//     image_data: &[u8],
+//     ctx: Option<skia::gpu::DirectContext>,
+// ) -> lay_rs::skia::Image {
+//     let options = usvg::Options::default();
+//     let mut rtree = usvg::Tree::from_data(image_data, &options).unwrap();
+//     rtree.size = usvg::Size::from_wh(512.0, 512.0).unwrap();
+//     let xml_options = usvg::XmlOptions::default();
+//     let xml = usvg::TreeWriting::to_string(&rtree, &xml_options);
+//     let font_mgr = lay_rs::skia::FontMgr::new();
+//     let svg = lay_rs::skia::svg::Dom::from_bytes(xml.as_bytes(), font_mgr).unwrap();
 
-    let mut surface = {
-        if let Some(mut ctx) = ctx {
-            let image_info = skia::ImageInfo::new(
-                (512, 512),
-                skia::ColorType::RGBA8888,
-                skia::AlphaType::Premul,
-                None,
-            );
-            skia::gpu::surfaces::render_target(
-                &mut ctx,
-                skia::gpu::Budgeted::No,
-                &image_info,
-                None,
-                skia::gpu::SurfaceOrigin::TopLeft,
-                None,
-                false,
-                false,
-            )
-            .unwrap()
-        } else {
-            skia::surfaces::raster_n32_premul((512, 512)).unwrap()
-        }
-    };
+//     let mut surface = {
+//         if let Some(mut ctx) = ctx {
+//             let image_info = skia::ImageInfo::new(
+//                 (512, 512),
+//                 skia::ColorType::RGBA8888,
+//                 skia::AlphaType::Premul,
+//                 None,
+//             );
+//             skia::gpu::surfaces::render_target(
+//                 &mut ctx,
+//                 skia::gpu::Budgeted::No,
+//                 &image_info,
+//                 None,
+//                 skia::gpu::SurfaceOrigin::TopLeft,
+//                 None,
+//                 false,
+//                 false,
+//             )
+//             .unwrap()
+//         } else {
+//             skia::surfaces::raster_n32_premul((512, 512)).unwrap()
+//         }
+//     };
 
-    let canvas = surface.canvas();
-    svg.render(canvas);
-    surface.image_snapshot()
-}
+//     let canvas = surface.canvas();
+//     svg.render(canvas);
+//     surface.image_snapshot()
+// }
 
 pub fn image_from_path(
-    image_path: &str,
-    ctx: Option<skia::gpu::DirectContext>,
+    path: &str,
+    size: impl Into<skia::ISize>,
 ) -> Option<lay_rs::skia::Image> {
-    let image_path = std::path::Path::new(image_path);
-    let image_data = std::fs::read(image_path).ok()?;
-
+    let image_path = std::path::Path::new(path);
+    
     let image = if image_path.extension().and_then(std::ffi::OsStr::to_str) == Some("svg") {
-        image_from_svg(&image_data, ctx)
+        load_svg_image(path, size).ok()?
     } else {
+        let image_data = std::fs::read(image_path).ok()?;
         lay_rs::skia::Image::from_encoded(lay_rs::skia::Data::new_copy(image_data.as_slice()))
             .unwrap()
     };
@@ -91,7 +91,6 @@ pub fn image_from_path(
 
 pub fn named_icon(
     icon_name: &str,
-    ctx: Option<skia::gpu::DirectContext>,
 ) -> Option<lay_rs::skia::Image> {
     let ic = icon_cache();
     let mut ic = ic.write().unwrap();
@@ -103,14 +102,14 @@ pub fn named_icon(
         .map(|icon| icon.to_str().unwrap().to_string());
     let icon = icon_path
         .as_ref()
-        .and_then(|icon_path| image_from_path(icon_path, ctx));
+        .and_then(|icon_path| image_from_path(icon_path, (512, 512)));
     if let Some(i) = icon.as_ref() {
         ic.insert(icon_name.to_string(), i.clone());
     }
     icon
 }
 pub fn draw_named_icon(icon_name: &str) -> Option<ContentDrawFunction> {
-    let icon = named_icon(icon_name, None);
+    let icon = named_icon(icon_name);
     icon.as_ref().map(|icon| {
         let icon = icon.clone();
         let resampler = skia::CubicResampler::catmull_rom();

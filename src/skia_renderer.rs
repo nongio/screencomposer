@@ -824,6 +824,7 @@ impl<'frame> Frame for SkiaFrame<'frame> {
 
         let semaphores = surface.gr_context.flush(info);
 
+        // FIXME review sync logic
         let syncpoint = if semaphores == skia::gpu::SemaphoresSubmitted::Yes {
             profiling::scope!("FINISHED_PROC_STATE");
             let skia_sync = SkiaSync::create(self.renderer.egl_context().display())
@@ -940,6 +941,17 @@ impl Fence for SkiaSync {
             Interrupted
         })?;
 
+        // FIXME do we need to destroy the sync?
+        // wrap_egl_call(
+        //     || unsafe {
+        //         ffi::egl::DestroySync(**self.0.display_handle, self.0.handle) as i32
+        //     },
+        //     ffi::egl::FALSE as ffi::egl::types::EGLint,
+        // )
+        // .map_err(|err| {
+        //     tracing::warn!(?err, "Waiting for fence was interrupted");
+        //     Interrupted
+        // })?;
         Ok(())
         // while !self.is_signaled() {
         //     if start.elapsed() >=  {

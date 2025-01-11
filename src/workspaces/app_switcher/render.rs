@@ -45,7 +45,7 @@ pub fn render_appswitcher_view(
     let mut app_name = "".to_string();
     if !state.apps.is_empty() && state.current_app < state.apps.len() {
         app_name = state.apps[state.current_app]
-            .desktop_name
+            .desktop_name()
             .clone()
             .unwrap_or("".to_string());
     }
@@ -137,8 +137,7 @@ pub fn render_appswitcher_view(
             justify_items: Some(taffy::JustifyItems::Center),
             ..Default::default()
         })
-        .children(vec![
-            LayerTreeBuilder::default()
+        .children(vec![LayerTreeBuilder::default()
             .key("apps_container")
             .size((
                 Size {

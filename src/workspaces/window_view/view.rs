@@ -52,8 +52,8 @@ impl WindowView {
             ..Default::default()
         });
 
-        layers_engine.scene_add_layer_to(shadow_layer.clone(), layer.id());
-        layers_engine.scene_add_layer_to(content_layer.clone(), layer.id());
+        layers_engine.append_layer_to(shadow_layer.clone(), layer.id());
+        layers_engine.append_layer_to(content_layer.clone(), layer.id());
 
         let render_elements = Vec::new();
         let base_rect = WindowViewBaseModel {
@@ -63,11 +63,12 @@ impl WindowView {
             h: 0.0,
             title: "".to_string(),
             fullscreen: false,
+            active: false,
         };
-        let view_window_shadow =
+        let view_base =
             lay_rs::prelude::View::new("window_shadow", base_rect, Box::new(view_window_shadow));
 
-        view_window_shadow.mount_layer(shadow_layer.clone());
+        view_base.mount_layer(shadow_layer.clone());
 
         let view_content = View::new("window_content", render_elements, view_render_elements);
         view_content.mount_layer(content_layer.clone());
@@ -78,7 +79,7 @@ impl WindowView {
 
         Self {
             window_id,
-            view_base: view_window_shadow,
+            view_base,
             view_content,
             // state,
             window_layer: layer,

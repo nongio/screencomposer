@@ -231,12 +231,16 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             )
             .unwrap_or(KeyAction::None);
 
+        // FIXME this keys handling should be moved into the AppSwitcher
+        // by moving the focus to that view
         if KeyState::Released == state && keycode == 56 {
             // App switcher
             if self.workspaces.app_switcher.alive() {
                 self.workspaces.app_switcher.hide();
-                if let Some(app) = self.workspaces.app_switcher.get_current_app() {
-                    self.raise_app_elements(&app.identifier);
+                if let Some(app_id) = self.workspaces.app_switcher.get_current_app_id() {
+                    self.focus_app(&app_id);
+                    self.workspaces.app_switcher.reset();
+                    
                 }
             }
         }
@@ -252,8 +256,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         let state = wl_pointer::ButtonState::from(evt.state());
 
         if !self.workspaces.get_show_all() && wl_pointer::ButtonState::Pressed == state {
-            // this is messing with the window selector
-            self.update_keyboard_focus(serial);
+            self.focus_window_under_cursor(serial);
         }
         let pointer = self.pointer.clone();
         let button_state = state.try_into().unwrap();
@@ -279,7 +282,9 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         // }
     }
 
-    fn update_keyboard_focus(&mut self, serial: Serial) {
+    /// Update the focus on the topmost surface under the cursor in the current workspace
+    /// The window is raised and the keyboard focus is set to the window.
+    fn focus_window_under_cursor(&mut self, serial: Serial) {
         let keyboard = self.seat.get_keyboard().unwrap();
         let input_method = self.seat.input_method();
         // change the keyboard focus unless the pointer or keyboard is grabbed
@@ -318,23 +323,24 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                     }
                 }
 
-                let layers = layer_map_for_output(output);
-                if let Some(layer) = layers
-                    .layer_under(WlrLayer::Overlay, self.pointer.current_location())
-                    .or_else(|| layers.layer_under(WlrLayer::Top, self.pointer.current_location()))
-                {
-                    if layer.can_receive_keyboard_focus() {
-                        if let Some((_, _)) = layer.surface_under(
-                            self.pointer.current_location()
-                                - output_geo.loc.to_f64()
-                                - layers.layer_geometry(layer).unwrap().loc.to_f64(),
-                            WindowSurfaceType::ALL,
-                        ) {
-                            keyboard.set_focus(self, Some(layer.clone().into()), serial);
-                            return;
-                        }
-                    }
-                }
+                // FIXME add back support for WLR layers
+                // let layers = layer_map_for_output(output);
+                // if let Some(layer) = layers
+                //     .layer_under(WlrLayer::Overlay, self.pointer.current_location())
+                //     .or_else(|| layers.layer_under(WlrLayer::Top, self.pointer.current_location()))
+                // {
+                //     if layer.can_receive_keyboard_focus() {
+                //         if let Some((_, _)) = layer.surface_under(
+                //             self.pointer.current_location()
+                //                 - output_geo.loc.to_f64()
+                //                 - layers.layer_geometry(layer).unwrap().loc.to_f64(),
+                //             WindowSurfaceType::ALL,
+                //         ) {
+                //             keyboard.set_focus(self, Some(layer.clone().into()), serial);
+                //             return;
+                //         }
+                //     }
+                // }
             }
             let scale = output
                 .as_ref()
@@ -357,10 +363,15 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                             if w.is_minimised() {
                                 return;
                             }
+                            if w.is_fullscreen() {
+                                return;
+                            }
+                            self.workspaces.focus_app_with_window(&id);
+                            keyboard.set_focus(self, Some(window.into()), serial);
+                            self.workspaces.update_workspace_model();
                         }
                     }
 
-                    self.workspaces.raise_window_app_elements(&window, true);
 
                     #[cfg(feature = "xwayland")]
                     if let WindowSurface::X11(surf) = &window.underlying_surface() {
@@ -370,27 +381,28 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                 }
             }
 
-            if let Some(output) = output.as_ref() {
-                let output_geo = self.workspaces.output_geometry(output).unwrap();
-                let layers = layer_map_for_output(output);
-                if let Some(layer) = layers
-                    .layer_under(WlrLayer::Bottom, self.pointer.current_location())
-                    .or_else(|| {
-                        layers.layer_under(WlrLayer::Background, self.pointer.current_location())
-                    })
-                {
-                    if layer.can_receive_keyboard_focus() {
-                        if let Some((_, _)) = layer.surface_under(
-                            self.pointer.current_location()
-                                - output_geo.loc.to_f64()
-                                - layers.layer_geometry(layer).unwrap().loc.to_f64(),
-                            WindowSurfaceType::ALL,
-                        ) {
-                            keyboard.set_focus(self, Some(layer.clone().into()), serial);
-                        }
-                    }
-                }
-            };
+            // FIXME add back support for WLR layers
+            // if let Some(output) = output.as_ref() {
+            //     let output_geo = self.workspaces.output_geometry(output).unwrap();
+            //     let layers = layer_map_for_output(output);
+            //     if let Some(layer) = layers
+            //         .layer_under(WlrLayer::Bottom, self.pointer.current_location())
+            //         .or_else(|| {
+            //             layers.layer_under(WlrLayer::Background, self.pointer.current_location())
+            //         })
+            //     {
+            //         if layer.can_receive_keyboard_focus() {
+            //             if let Some((_, _)) = layer.surface_under(
+            //                 self.pointer.current_location()
+            //                     - output_geo.loc.to_f64()
+            //                     - layers.layer_geometry(layer).unwrap().loc.to_f64(),
+            //                 WindowSurfaceType::ALL,
+            //             ) {
+            //                 keyboard.set_focus(self, Some(layer.clone().into()), serial);
+            //             }
+            //         }
+            //     }
+            // };
         }
     }
 
@@ -443,21 +455,23 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
             return Some((focus, (position.x as f64, position.y as f64).into()));
         }
-        // Fullscreen window check
-        if let Some(window) = output
-            .user_data()
-            .get::<FullscreenSurface>()
-            .and_then(|f| f.get())
-        {
-            under = Some((window.into(), output_geo.loc));
-        } else if let Some(layer) = layers
-            .layer_under(WlrLayer::Overlay, pos)
-            .or_else(|| layers.layer_under(WlrLayer::Top, pos))
-        {
-            // WLR Layer
-            let layer_loc = layers.layer_geometry(layer).unwrap().loc;
-            under = Some((layer.clone().into(), output_geo.loc + layer_loc))
-        } else if self
+        // FIXME add back support for WLR layers
+        // if let Some(window) = output
+        //     .user_data()
+        //     .get::<FullscreenSurface>()
+        //     .and_then(|f| f.get())
+        // {
+        //     under = Some((window.into(), output_geo.loc));
+        // } else if let Some(layer) = layers
+        //     .layer_under(WlrLayer::Overlay, pos)
+        //     .or_else(|| layers.layer_under(WlrLayer::Top, pos))
+        // {
+        //     // WLR Layer
+        //     let layer_loc = layers.layer_geometry(layer).unwrap().loc;
+        //     under = Some((layer.clone().into(), output_geo.loc + layer_loc))
+        // } else 
+        
+        if self
             .workspaces
             .is_cursor_over_dock(physical_pos.x as f32, physical_pos.y as f32)
         {
@@ -634,7 +648,7 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     }
                 }
                 KeyAction::WorkspaceNum(n) => {
-                    self.workspaces.set_current_workspace_index(n);
+                    self.workspaces.set_current_workspace_index(n, None);
                 }
 
                 action => match action {
@@ -1234,8 +1248,7 @@ impl ScreenComposer<UdevData> {
                     let serial = SCOUNTER.next_serial();
                     tool.tip_down(serial, evt.time_msec());
 
-                    // change the keyboard focus
-                    self.update_keyboard_focus(serial);
+                    self.focus_window_under_cursor(serial);
                 }
                 TabletToolTipState::Up => {
                     tool.tip_up(evt.time_msec());

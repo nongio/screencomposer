@@ -39,10 +39,13 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
                 if let Some(layer_id) = state.layers_engine.current_hover() {
                     if let Some(identifier) = self.get_appid_from_layer(&layer_id) {
                         // if we click on an app icon, focus the app
-                        state.workspaces.focus_app(&identifier);
+                        if let Some(wid) = state.workspaces.focus_app(&identifier) {
+                            state.set_keyboard_focus_on_surface(&wid);
+                        }
                     } else if let Some(wid) = self.get_window_from_layer(&layer_id) {
                         // if we click on a minimized window, unminimize it
                         state.workspaces.unminimize_window(&wid);
+                        state.set_keyboard_focus_on_surface(&wid);
                     }
                 }
             }

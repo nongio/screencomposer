@@ -14,7 +14,7 @@ use smithay::{
             default_primary_scanout_output_compare, utils::select_dmabuf_feedback,
             RenderElementStates,
         },
-        utils::{RendererSurfaceState, RendererSurfaceStateUserData},
+        utils::{import_surface, RendererSurfaceState, RendererSurfaceStateUserData},
     },
     delegate_compositor, delegate_keyboard_shortcuts_inhibit, delegate_layer_shell,
     delegate_output, delegate_pointer_gestures, delegate_presentation, delegate_relative_pointer,
@@ -45,8 +45,7 @@ use smithay::{
     utils::{self, Clock, Monotonic, SERIAL_COUNTER},
     wayland::{
         compositor::{
-            self, CompositorClientState, CompositorState, SurfaceAttributes, SurfaceData,
-            TraversalAction,
+            self, CompositorClientState, CompositorState, SurfaceAttributes, SurfaceData, TraversalAction
         },
         dmabuf::DmabufFeedback,
         fractional_scale::{with_fractional_scale, FractionalScaleManagerState},
@@ -67,7 +66,7 @@ use smithay::{
         },
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{decoration::XdgDecorationState, SurfaceCachedState, XdgShellState},
+            xdg::{decoration::XdgDecorationState, SurfaceCachedState, XdgShellState, XdgToplevelSurfaceData},
         },
         shm::{ShmHandler, ShmState},
         socket::ListeningSocketSource,
@@ -167,7 +166,6 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
 
     pub scene_element: SceneElement,
 
-    pub dnd_view: DndView,
     // layers
     pub layers_engine: LayersEngine,
 
@@ -244,11 +242,11 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             let socket_name = source.socket_name().to_string_lossy().into_owned();
             handle
                 .insert_source(source, |client_stream, _, data| {
-                    if let Err(err) = data
+                    if let Ok(client) = data
                         .display_handle
                         .insert_client(client_stream, Arc::new(ClientState::default()))
                     {
-                        warn!("Error adding wayland client: {}", err);
+                        // warn!("Error adding wayland client: {}", err);
                     };
                 })
                 .expect("Failed to init wayland socket source");
@@ -331,11 +329,9 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
-        layers_engine.scene_add_layer(root_layer.clone());
+        layers_engine.add_layer(root_layer.clone());
         let scene_element = SceneElement::with_engine(layers_engine.clone());
         let workspaces = Workspaces::new(layers_engine.clone());
-
-        let dnd_view = DndView::new(layers_engine.clone(), root_layer.id().unwrap());
 
         #[cfg(feature = "debug")]
         layers_engine.start_debugger();
@@ -383,7 +379,6 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             workspaces,
             layers_engine,
             scene_element,
-            dnd_view,
 
             show_desktop: false,
             // support variables for gestures
@@ -542,11 +537,13 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
 
             let scale = Config::with(|c| c.screen_scale);
             let render_elements = self.get_render_elements(dnd_surface, scale);
-            self.dnd_view
+            self.workspaces
+                .dnd_view
                 .view_content
                 .update_state(&render_elements.into());
 
-            self.dnd_view
+            self.workspaces
+                .dnd_view
                 .layer
                 .set_position((cursor_position.x as f32, cursor_position.y as f32), None);
         }
@@ -616,8 +613,8 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 .unwrap_or_default()
                 .to_f64()
                 .to_physical(scale_factor);
-            let title = window.title();
-            let fullscreen = window.is_fullscreen();
+            let title = window.xdg_title();
+            let fullscreen = window.xdg_is_fullscreen();
 
             let mut render_elements = VecDeque::new();
             PopupManager::popups_for_surface(&window_surface).for_each(|(popup, popup_offset)| {
@@ -678,6 +675,11 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                     h: window_geometry.size.h as f32,
                     title,
                     fullscreen,
+                    // active: window.toplevel().unwrap().with_pending_state(|state| {
+                    //     state.states.contains(xdg_toplevel::State::Activated)
+                    // }),
+                    // TODO: find a way to get the active state
+                    active: false
                 };
                 window_view.view_base.update_state(&model);
                 window_view
@@ -693,20 +695,20 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     }
     pub fn raise_next_app_window(&mut self) {
         if let Some(wid) = self.workspaces.raise_next_app_window() {
-            self.focus_keyboard_on_surface(&wid);
+            self.set_keyboard_focus_on_surface(&wid);
         }
     }
-    pub fn raise_app_elements(&mut self, app_id: &str) {
-        if let Some(wid) = self.workspaces.raise_app_elements(app_id) {
-            self.focus_keyboard_on_surface(&wid);
+    pub fn focus_app(&mut self, app_id: &str) {
+        if let Some(wid) = self.workspaces.focus_app(app_id) {
+            self.set_keyboard_focus_on_surface(&wid);
         }
     }
     pub fn set_current_workspace_index(&mut self, index: usize) {
-        self.workspaces.set_current_workspace_index(index);
+        self.workspaces.set_current_workspace_index(index, None);
         // FIXME focus the top window of the workspace
     }
 
-    pub fn focus_keyboard_on_surface(&mut self, wid: &ObjectId) {
+    pub fn set_keyboard_focus_on_surface(&mut self, wid: &ObjectId) {
         if let Some(window) = self.workspaces.get_window_for_surface(wid) {
             let keyboard = self.seat.get_keyboard().unwrap();
             let serial = SERIAL_COUNTER.next_serial();

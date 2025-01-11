@@ -7,6 +7,7 @@ cursor_size = 24
 font_family = "Inter"
 cursor_theme = "Notwaita-Black"
 theme_scheme = "Light"
+background_image = "./resources/background.jpg"
 
 # Inputs
 keyboard_repeat_delay = 300
@@ -18,7 +19,7 @@ genie_scale = 0.5
 genie_span = 10.0
 
 # Apps
-terminal_bin = "kitty"
+terminal_bin = "weston-terminal"
 file_manager_bin = "dolphin"
 browser_bin = "google-chrome-stable"
 browser_args = [""]
