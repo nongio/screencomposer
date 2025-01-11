@@ -20,7 +20,7 @@ use tokio::sync::mpsc;
 use crate::{
     interactive_view::ViewInteractions,
     utils::Observer,
-    workspaces::{Application, WorkspacesModel},
+    workspaces::{apps_info::ApplicationsInfo, Application, WorkspacesModel},
 };
 
 use super::render::render_appswitcher_view;
@@ -49,7 +49,7 @@ impl IsAlive for AppSwitcherView {
 
 /// # AppSwitcherView Layer Structure
 ///
-/// ```
+/// ```diagram
 /// AppSwitcherView
 /// └── app_switcher_container `app_switcher_container`
 ///     └── app_switcher `app_switcher`
@@ -62,7 +62,7 @@ impl IsAlive for AppSwitcherView {
 impl AppSwitcherView {
     pub fn new(layers_engine: LayersEngine) -> Self {
         let wrap = layers_engine.new_layer();
-        wrap.set_key("app_switcher_container");
+        wrap.set_key("app_switcher");
         wrap.set_size(Size::percent(1.0, 1.0), None);
         wrap.set_layout_style(Style {
             position: lay_rs::taffy::style::Position::Absolute,
@@ -75,14 +75,14 @@ impl AppSwitcherView {
         wrap.set_opacity(0.0, None);
 
         let layer = layers_engine.new_layer();
-        layers_engine.scene_add_layer(wrap.clone());
+        layers_engine.add_layer(wrap.clone());
         wrap.add_sublayer(layer.clone());
         wrap.set_pointer_events(false);
         layer.set_pointer_events(false);
         let mut initial_state = AppSwitcherModel::new();
         initial_state.width = 1000;
         let view = lay_rs::prelude::View::new(
-            "apps_switcher",
+            "apps_switcher_inner",
             initial_state,
             Box::new(render_appswitcher_view),
         );
@@ -100,12 +100,6 @@ impl AppSwitcherView {
         app_switcher.init_notification_handler(notify_rx);
         app_switcher
     }
-    // pub fn set_width(&self, width: i32) {
-    //     self.view.update_state(AppSwitcherModel {
-    //         width,
-    //         ..self.view.get_state()
-    //     });
-    // }
 
     pub fn next(&self) {
         let app_switcher = self.view.get_state();
@@ -166,13 +160,24 @@ impl AppSwitcherView {
     pub fn hide(&self) -> TransactionRef {
         self.active
             .store(false, std::sync::atomic::Ordering::Relaxed);
+
         self.wrap_layer
             .set_opacity(0.0, Some(Transition::ease_in_quad(0.1)))
     }
 
-    pub fn get_current_app(&self) -> Option<Application> {
+    pub fn reset(&self) {
         let state = self.view.get_state();
-        state.apps.get(state.current_app).cloned()
+        self.view.update_state(&AppSwitcherModel {
+            current_app: 0,
+            ..state
+        });
+    }
+
+    pub fn get_current_app_id(&self) -> Option<String> {
+        let state = self.view.get_state();
+        state.apps
+            .get(state.current_app)
+            .map(|app|app.identifier.clone())
     }
 
     fn init_notification_handler(&self, mut rx: tokio::sync::mpsc::Receiver<WorkspacesModel>) {
@@ -198,20 +203,18 @@ impl AppSwitcherView {
 
                 if let Some(workspace) = event {
                     let mut app_set = HashSet::new();
-                    let apps: Vec<Application> = workspace
+                    let mut apps: Vec<Application> = Vec::new();
+                    
+                    for app_id in workspace
                         .zindex_application_list
                         .iter()
-                        .rev()
-                        .filter_map(|app_id| {
-                            let app = workspace.applications_cache.get(app_id).unwrap().to_owned();
-
-                            if app_set.insert(app.identifier.clone()) {
-                                Some(app)
-                            } else {
-                                None
+                        .rev() {
+                            if app_set.insert(app_id.clone()) {
+                                if let Some(app) = ApplicationsInfo::get_app_info_by_id(app_id).await {
+                                    apps.push(app);
+                                }
                             }
-                        })
-                        .collect();
+                        }
 
                     let switcher_state = view.get_state();
                     let mut current_app = switcher_state.current_app;

@@ -1,10 +1,8 @@
 use smithay::{
-    delegate_fractional_scale,
-    desktop::utils::surface_primary_scanout_output,
-    wayland::{
+    delegate_fractional_scale, desktop::utils::surface_primary_scanout_output, reexports::wayland_server::Resource, wayland::{
         compositor::{get_parent, with_states},
         fractional_scale::{with_fractional_scale, FractionalScaleHandler},
-    },
+    }
 };
 
 use super::{Backend, ScreenComposer};
@@ -37,7 +35,7 @@ impl<BackendData: Backend> FractionalScaleHandler for ScreenComposer<BackendData
                     if root != surface {
                         with_states(&root, |states| {
                             surface_primary_scanout_output(&root, states).or_else(|| {
-                                self.window_for_surface(&root).and_then(|window| {
+                                self.workspaces.get_window_for_surface(&root.id()).and_then(|window| {
                                     self.workspaces
                                         .outputs_for_element(&window)
                                         .first()
@@ -46,7 +44,7 @@ impl<BackendData: Backend> FractionalScaleHandler for ScreenComposer<BackendData
                             })
                         })
                     } else {
-                        self.window_for_surface(&root).and_then(|window| {
+                        self.workspaces.get_window_for_surface(&root.id()).and_then(|window| {
                             self.workspaces
                                 .outputs_for_element(&window)
                                 .first()

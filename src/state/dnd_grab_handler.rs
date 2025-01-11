@@ -18,19 +18,22 @@ impl<BackendData: Backend> ClientDndGrabHandler for ScreenComposer<BackendData> 
         self.dnd_icon = icon;
         let p = self.get_cursor_position();
         let p = (p.x as f32, p.y as f32).into();
-        self.dnd_view.set_initial_position(p);
-        self.dnd_view.layer.set_scale((1.0, 1.0), None);
+        self.workspaces.dnd_view.set_initial_position(p);
+        self.workspaces.dnd_view.layer.set_scale((1.0, 1.0), None);
 
-        self.dnd_view
+        self.workspaces
+            .dnd_view
             .layer
             .set_opacity(0.8, Some(Transition::default()));
     }
     fn dropped(&mut self, _seat: smithay::input::Seat<Self>) {
         self.dnd_icon = None;
-        self.dnd_view
+        self.workspaces
+            .dnd_view
             .layer
             .set_opacity(0.0, Some(Transition::default()));
-        self.dnd_view
+        self.workspaces
+            .dnd_view
             .layer
             .set_scale((1.2, 1.2), Some(Transition::default()));
         // self.dnd_view.layer.set_position(self.dnd_view.initial_position, Some(Transition::default()));

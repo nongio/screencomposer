@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::theme::ThemeScheme;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Config {
     pub screen_scale: f64,
     pub cursor_theme: String,
@@ -20,6 +21,7 @@ pub struct Config {
     pub keyboard_repeat_rate: i32,
     pub theme_scheme: ThemeScheme,
     pub background_image: String,
+    pub locales: Vec<String>,
 }
 thread_local! {
     static CONFIG: Config = Config::init();
@@ -43,7 +45,8 @@ impl Default for Config {
             keyboard_repeat_delay: 300,
             keyboard_repeat_rate: 30,
             theme_scheme: ThemeScheme::Light,
-            background_image: "./resources/zach3.jpg".to_string(),
+            background_image: "./resources/background.jpg".to_string(),
+            locales: vec!["en".to_string()],
         }
     }
 }

@@ -1,6 +1,9 @@
 use std::{
     borrow::Cow,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{
+        atomic::{AtomicBool, AtomicUsize},
+        Arc,
+    },
     time::Duration,
 };
 
@@ -36,13 +39,16 @@ use crate::{focus::PointerFocusTarget, state::Backend};
 #[derive(Debug, Clone)]
 pub struct WindowElement(pub Arc<WindowElementInner>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct WindowElementInner {
     window: Window,
-    pub is_maximized: Arc<AtomicBool>,
-    pub is_minimized: Arc<AtomicBool>,
+    pub is_maximized: AtomicBool,
+    pub is_minimized: AtomicBool,
+    pub is_fullscreen: AtomicBool,
     pub app_id: String,
     pub base_layer: Layer,
+    pub workspace_index: AtomicUsize,
+    pub fullscreen_workspace_index: AtomicUsize,
 }
 
 impl PartialEq for WindowElement {
@@ -55,8 +61,11 @@ impl WindowElement {
     pub fn new(window: Window, layer: Layer) -> Self {
         Self(Arc::new(WindowElementInner {
             window,
-            is_maximized: Arc::new(AtomicBool::new(false)),
-            is_minimized: Arc::new(AtomicBool::new(false)),
+            is_maximized: AtomicBool::new(false),
+            is_minimized: AtomicBool::new(false),
+            is_fullscreen: AtomicBool::new(false),
+            workspace_index: AtomicUsize::new(0),
+            fullscreen_workspace_index: AtomicUsize::new(0),
             app_id: "".to_string(),
             base_layer: layer,
         }))
@@ -192,8 +201,25 @@ impl WindowElement {
         &self.0.base_layer
     }
 
-    pub fn app_id(&self) -> &str {
-        &self.0.app_id
+    pub fn xdg_app_id(&self) -> String {
+        if self.is_wayland() {
+            let surface = self.wl_surface().unwrap();
+            smithay::wayland::compositor::with_states(&surface, |states| {
+                let attributes: std::sync::MutexGuard<
+                    '_,
+                    smithay::wayland::shell::xdg::XdgToplevelSurfaceRoleAttributes,
+                > = states
+                    .data_map
+                    .get::<XdgToplevelSurfaceData>()
+                    .unwrap()
+                    .lock()
+                    .unwrap();
+    
+                attributes.app_id.clone().unwrap_or_default()
+            })
+        } else {
+            "".to_string()
+        }
     }
 
     pub fn is_minimised(&self) -> bool {
@@ -219,8 +245,36 @@ impl WindowElement {
             .is_maximized
             .store(is_maximized, std::sync::atomic::Ordering::Relaxed);
     }
+    pub fn set_workspace(&self, index: usize) {
+        self.0
+            .workspace_index
+            .store(index, std::sync::atomic::Ordering::Relaxed);
+    }
+    pub fn get_workspace(&self) -> usize {
+        self.0
+            .workspace_index
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn get_fullscreen_workspace(&self) -> usize {
+        self.0
+            .fullscreen_workspace_index
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn set_fullscreen(&self, fullscreen: bool, workspace_index: usize) {
+        self.0
+            .is_fullscreen
+            .store(fullscreen, std::sync::atomic::Ordering::Relaxed);
+        self.0.fullscreen_workspace_index.store(workspace_index, std::sync::atomic::Ordering::Relaxed);
+    }
 
     pub fn is_fullscreen(&self) -> bool {
+        self.0
+            .is_fullscreen
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+    pub fn xdg_is_fullscreen(&self) -> bool {
         self.wl_surface()
             .map(|window_surface| {
                 smithay::wayland::compositor::with_states(&window_surface, |states| {
@@ -238,7 +292,7 @@ impl WindowElement {
             .unwrap_or(false)
     }
 
-    pub fn title(&self) -> String {
+    pub fn xdg_title(&self) -> String {
         self.wl_surface()
             .map(|window_surface| {
                 smithay::wayland::compositor::with_states(&window_surface, |states| {

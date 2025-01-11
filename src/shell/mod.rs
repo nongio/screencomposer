@@ -48,28 +48,19 @@ mod xdg;
 pub use self::element::*;
 pub use self::grabs::*;
 
+// the surface size is either output size
+// or the current workspace size
 fn fullscreen_output_geometry(
-    wl_surface: &WlSurface,
+    // wl_surface: &WlSurface,
     wl_output: Option<&wl_output::WlOutput>,
-    workspaces: &mut Workspaces,
-) -> Option<Rectangle<i32, Logical>> {
+    workspaces: &Workspaces,
+) -> Rectangle<i32, Logical> {
     // First test if a specific output has been requested
     // if the requested output is not found ignore the request
     wl_output
         .and_then(Output::from_resource)
-        .or_else(|| {
-            let w = workspaces
-                .spaces_elements()
-                .find(|window| {
-                    window
-                        .wl_surface()
-                        .map(|s| &*s == wl_surface)
-                        .unwrap_or(false)
-                })
-                .cloned();
-            w.and_then(|w| workspaces.outputs_for_element(&w).first().cloned())
-        })
         .and_then(|o| workspaces.output_geometry(&o))
+        .unwrap_or_else(|| workspaces.get_logical_rect())
 }
 
 #[derive(Default)]
@@ -149,7 +140,7 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
             while let Some(parent) = get_parent(&root) {
                 root = parent;
             }
-            if let Some(window) = self.window_for_surface(&root) {
+            if let Some(window) = self.workspaces.get_window_for_surface(&root.id()).cloned() {
                 window.on_commit();
                 self.update_window_view(&window);
             }
@@ -196,15 +187,6 @@ impl<BackendData: Backend> WlrLayerShellHandler for ScreenComposer<BackendData> 
     }
 }
 
-impl<BackendData: Backend> ScreenComposer<BackendData> {
-    pub fn window_for_surface(&self, surface: &WlSurface) -> Option<WindowElement> {
-        self.workspaces
-            .spaces_elements()
-            .find(|window| window.wl_surface().map(|s| &*s == surface).unwrap_or(false))
-            .cloned()
-    }
-}
-
 #[derive(Default)]
 pub struct SurfaceData {
     pub geometry: Option<Rectangle<i32, Logical>>,
@@ -230,8 +212,7 @@ fn ensure_initial_configure<Backend: crate::state::Backend>(
 
     if let Some(window) = state
         .workspaces
-        .spaces_elements()
-        .find(|window| window.wl_surface().map(|s| &*s == surface).unwrap_or(false))
+        .get_window_for_surface(&surface.id())
         .cloned()
     {
         // send the initial configure if relevant
@@ -365,7 +346,10 @@ pub fn fixup_positions(workspaces: &mut Workspaces, pointer_location: Point<f64,
             orphaned_windows.push(window.clone());
         }
     }
-    for window in orphaned_windows.into_iter() {
-        workspaces.place_new_window(window, pointer_location);
+    // FIXME: when is this supposed to happen?
+    // test pluggin / unplugging monitors
+    for window in orphaned_windows.into_iter().as_ref() {
+        let (_bounds, location) = workspaces.new_window_placement_at(pointer_location);
+        workspaces.map_window(window, location, false);
     }
 }

@@ -133,6 +133,7 @@ half4 main(float2 fragCoord) {
 
     half4 color = content.eval(current_point);
     
+    // DEBUG
     // color = mix(half4(1.0, 0.0, 0.0, 1.0), color, 0.5);
     // if(fragCoord.x >= src_bounds.x && fragCoord.x <= (src_bounds.x + src_bounds.z) && fragCoord.y >= src_bounds.y && fragCoord.y <= (src_bounds.y+src_bounds.w)){
     //     color = mix(half4(1.0, 0.0, 0.0, 1.0), color, 0.5);

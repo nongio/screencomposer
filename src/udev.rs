@@ -50,7 +50,7 @@ use smithay::{
             },
             multigpu::{gbm::GbmGlesBackend, GpuManager, MultiRenderer, MultiTexture},
             sync::SyncPoint,
-            utils::RendererSurfaceStateUserData,
+            utils::{import_surface, RendererSurfaceStateUserData},
             Bind, DebugFlags, ExportMem, ImportDma, ImportMemWl, Offscreen, Renderer,
         },
         session::{
@@ -211,8 +211,14 @@ impl Backend for UdevData {
 
     fn early_import(&mut self, surface: &wl_surface::WlSurface) {
         if let Err(err) = self.gpus.early_import(self.primary_gpu, surface) {
-            warn!("Early buffer import failed: {}", err);
+            tracing::warn!("Early buffer import failed: {}", err);
         }
+        let mut r = self.gpus.single_renderer(&self.primary_gpu).unwrap();
+        compositor::with_states(surface, |states| {
+            if let Err(err) = import_surface(&mut r, states) {
+                tracing::warn!("Early buffer import surface failed: {}", err);
+            }
+        });
     }
 
     fn texture_for_surface(
@@ -505,6 +511,7 @@ pub fn run_udev() {
      * And run our loop
      */
 
+     // FIXME: check if we can delay this
     while state.running.load(Ordering::SeqCst) {
         let result = event_loop.dispatch(Some(Duration::from_millis(16)), &mut state);
         if result.is_err() {
@@ -1704,7 +1711,7 @@ fn render_surface<'a, 'b>(
     let output_geometry = space.output_geometry(output).unwrap();
     let scale = Scale::from(output.current_scale().fractional_scale());
 
-    let mut custom_elements: Vec<WorkspaceRenderElements<_>> = Vec::new();
+    let mut workspace_render_elements: Vec<WorkspaceRenderElements<_>> = Vec::new();
 
     let output_scale = output.current_scale().fractional_scale();
 
@@ -1795,7 +1802,7 @@ fn render_surface<'a, 'b>(
 
             pointer_element.set_status(cursor_status.clone());
         }
-        custom_elements.extend(pointer_element.render_elements(
+        workspace_render_elements.extend(pointer_element.render_elements(
             renderer,
             cursor_pos_scaled,
             cursor_rescale.into(),
@@ -1824,13 +1831,13 @@ fn render_surface<'a, 'b>(
         surface.fps.tick();
         custom_elements.push(WorkspaceRenderElements::Fps(element.clone()));
     }
-    custom_elements.push(WorkspaceRenderElements::Scene(scene_element));
+    workspace_render_elements.push(WorkspaceRenderElements::Scene(scene_element));
 
-    let elements: Vec<OutputRenderElements<'a, _, WindowRenderElement<_>>> = custom_elements
+    let output_render_elements: Vec<OutputRenderElements<'a, _, WindowRenderElement<_>>> = workspace_render_elements
         .into_iter()
         .map(OutputRenderElements::from)
         .collect::<Vec<_>>();
-    let (elements, clear_color) = output_elements(output, space, elements, dnd_icon, renderer);
+    let (output_elements, clear_color) = output_elements(output, space, output_render_elements, dnd_icon, renderer);
 
     let SurfaceCompositorRenderResult {
         rendered,
@@ -1839,7 +1846,7 @@ fn render_surface<'a, 'b>(
         damage,
     } = surface
         .compositor
-        .render_frame::<_, _, SkiaGLesFbo>(renderer, &elements, clear_color)?;
+        .render_frame::<_, _, SkiaGLesFbo>(renderer, &output_elements, clear_color)?;
 
     post_repaint(
         output,

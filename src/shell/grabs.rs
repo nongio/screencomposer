@@ -63,19 +63,17 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
 
         state
             .workspaces
-            .map_element(self.window.clone(), new_location.to_i32_round(), true);
+            .map_window(&self.window, new_location.to_i32_round(), true);
 
-        if let Some(id) = self.window.wl_surface().map(|s| s.id()) {
-            if let Some(view) = state.workspaces.get_window_view(&id) {
-                let location = new_location.to_physical(scale);
-                view.window_layer.set_position(
-                    lay_rs::types::Point {
-                        x: location.x as f32,
-                        y: location.y as f32,
-                    },
-                    None,
-                );
-            }
+        if let Some(view) = state.workspaces.get_window_view(&self.window.id()) {
+            let location = new_location.to_physical(scale);
+            view.window_layer.set_position(
+                lay_rs::types::Point {
+                    x: location.x as f32,
+                    y: location.y as f32,
+                },
+                None,
+            );
         }
     }
 
@@ -252,7 +250,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
         data.workspaces
-            .map_element(self.window.clone(), new_location.to_i32_round(), true);
+            .map_window(&self.window, new_location.to_i32_round(), true);
     }
 
     fn frame(
@@ -509,7 +507,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
 
                         state
                             .workspaces
-                            .map_element(self.window.clone(), location, true);
+                            .map_window(&self.window, location, true);
                     }
 
                     with_states(&self.window.wl_surface().unwrap(), |states| {
@@ -730,7 +728,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
 
                     state
                         .workspaces
-                        .map_element(self.window.clone(), location, true);
+                        .map_window(&self.window, location, true);
                 }
 
                 with_states(&self.window.wl_surface().unwrap(), |states| {

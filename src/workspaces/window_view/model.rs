@@ -52,12 +52,14 @@ pub struct WindowViewBaseModel {
     pub h: f32,
     pub title: String,
     pub fullscreen: bool,
+    pub active: bool,
 }
 
 impl Hash for WindowViewBaseModel {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.w.to_bits().hash(state);
         self.h.to_bits().hash(state);
+        self.active.hash(state);
     }
 }
 impl Hash for WindowViewSurface {
