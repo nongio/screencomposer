@@ -49,8 +49,7 @@ use crate::{
     config::Config,
     shell::WindowElement,
     utils::{
-        natural_layout::{natural_layout, LayoutRect},
-        Observable, Observer,
+        natural_layout::{natural_layout, LayoutRect}, Observable, Observer,
     },
 };
 
@@ -836,9 +835,7 @@ impl Workspaces {
             .map_element(window_element.clone(), location, activate);
         // self.space_mut().refresh();
 
-        if let std::collections::hash_map::Entry::Vacant(e) =
-            self.windows_map.entry(window_element.id())
-        {
+        if let std::collections::hash_map::Entry::Vacant(e) = self.windows_map.entry(window_element.id()) {
             e.insert(window_element.clone());
 
             self.update_workspace_model();

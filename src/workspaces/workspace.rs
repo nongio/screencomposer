@@ -103,6 +103,9 @@ impl WorkspaceView {
 
         let background_view = BackgroundView::new(index, background_layer.clone());
         let background_path = Config::with(|c| c.background_image.clone());
+        if let Some(background_image) = image_from_path(&background_path, (2048, 2048)) {
+            background_view.set_image(background_image);
+        }
         let background_view = Arc::new(background_view);
 
         let window_selector_view = WindowSelectorView::new(

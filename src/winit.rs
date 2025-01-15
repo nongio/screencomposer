@@ -339,7 +339,7 @@ pub fn run_winit() {
     state
         .layers_engine
         .scene_set_size(scene_size.w as f32, scene_size.h as f32);
-    root.set_size(
+    root.layer.set_size(
         lay_rs::types::Size::points(scene_size.w as f32, scene_size.h as f32),
         None,
     );
@@ -366,6 +366,7 @@ pub fn run_winit() {
         state.backend_data.fps.tick();
 
         state.update_dnd();
+        state.scene_element.update();
 
         let status = winit.dispatch_new_events(|event| match event {
             WinitEvent::Resized { size, .. } => {
