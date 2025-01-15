@@ -100,7 +100,12 @@ pub fn natural_layout<'a>(
     area: &LayoutRect,
     use_more_screen: bool,
 ) {
-    let area_rect = area.copy();
+    let padding = 20.0;
+    let mut area_rect = area.copy();
+    area_rect.x += padding;
+    area_rect.y += padding;
+    area_rect.width -= padding * 2.0;
+    area_rect.height -= padding * 2.0;
     let mut bounds = area_rect.copy();
 
     let mut direction = 0;
