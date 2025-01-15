@@ -6,7 +6,7 @@ use std::{
 };
 
 use lay_rs::{engine::LayersEngine, prelude::taffy};
-use tracing::{info, warn};
+use tracing::info;
 
 use smithay::{
     backend::renderer::{
@@ -14,7 +14,7 @@ use smithay::{
             default_primary_scanout_output_compare, utils::select_dmabuf_feedback,
             RenderElementStates,
         },
-        utils::{import_surface, RendererSurfaceState, RendererSurfaceStateUserData},
+        utils::{RendererSurfaceState, RendererSurfaceStateUserData},
     },
     delegate_compositor, delegate_keyboard_shortcuts_inhibit, delegate_layer_shell,
     delegate_output, delegate_pointer_gestures, delegate_presentation, delegate_relative_pointer,
@@ -45,7 +45,8 @@ use smithay::{
     utils::{self, Clock, Monotonic, SERIAL_COUNTER},
     wayland::{
         compositor::{
-            self, CompositorClientState, CompositorState, SurfaceAttributes, SurfaceData, TraversalAction
+            self, CompositorClientState, CompositorState, SurfaceAttributes, SurfaceData,
+            TraversalAction,
         },
         dmabuf::DmabufFeedback,
         fractional_scale::{with_fractional_scale, FractionalScaleManagerState},
@@ -66,7 +67,9 @@ use smithay::{
         },
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{decoration::XdgDecorationState, SurfaceCachedState, XdgShellState, XdgToplevelSurfaceData},
+            xdg::{
+                decoration::XdgDecorationState, SurfaceCachedState, XdgShellState,
+            },
         },
         shm::{ShmHandler, ShmState},
         socket::ListeningSocketSource,
@@ -86,7 +89,7 @@ use crate::{
     render_elements::scene_element::SceneElement,
     shell::WindowElement,
     skia_renderer::SkiaTextureImage,
-    workspaces::{DndView, WindowViewBaseModel, WindowViewSurface, Workspaces},
+    workspaces::{WindowViewBaseModel, WindowViewSurface, Workspaces},
 };
 #[cfg(feature = "xwayland")]
 use smithay::{
@@ -679,7 +682,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                     //     state.states.contains(xdg_toplevel::State::Activated)
                     // }),
                     // TODO: find a way to get the active state
-                    active: false
+                    active: false,
                 };
                 window_view.view_base.update_state(&model);
                 window_view

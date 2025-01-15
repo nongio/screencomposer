@@ -322,7 +322,6 @@ impl DockView {
                     (new_layer, icon_layer, label_layer, icon_id)
                 });
 
-
             if app_copy.icon.as_ref().map(|i| i.unique_id()) != *icon_id {
                 let draw_picture = draw_app_icon(&app_copy);
                 icon_layer.set_draw_content(draw_picture);
@@ -362,23 +361,22 @@ impl DockView {
         let mut miniwindows_layers_map = self.miniwindow_layers.write().unwrap();
         {
             for (win, title) in state.minimized_windows {
-                let (layer, _, label, ..) =
-                    miniwindows_layers_map
-                        .entry(win.clone())
-                        .or_insert_with(|| {
-                            let new_layer = self.layers_engine.new_layer();
-                            let inner_layer = self.layers_engine.new_layer();
-                            let label_layer = self.layers_engine.new_layer();
+                let (layer, _, label, ..) = miniwindows_layers_map
+                    .entry(win.clone())
+                    .or_insert_with(|| {
+                        let new_layer = self.layers_engine.new_layer();
+                        let inner_layer = self.layers_engine.new_layer();
+                        let label_layer = self.layers_engine.new_layer();
 
-                            self.dock_windows_container.add_sublayer(new_layer.clone());
+                        self.dock_windows_container.add_sublayer(new_layer.clone());
 
-                            setup_miniwindow_icon(&new_layer, &inner_layer, available_icon_width);
+                        setup_miniwindow_icon(&new_layer, &inner_layer, available_icon_width);
 
-                            setup_label(&label_layer, title.clone());
-                            new_layer.add_sublayer(label_layer.clone());
+                        setup_label(&label_layer, title.clone());
+                        new_layer.add_sublayer(label_layer.clone());
 
-                            (new_layer, inner_layer, label_layer, None)
-                        });
+                        (new_layer, inner_layer, label_layer, None)
+                    });
 
                 layer.remove_all_pointer_handlers();
 
@@ -504,18 +502,15 @@ impl DockView {
                 if let Some(workspace) = event {
                     let mut app_set = HashSet::new();
                     let mut apps: Vec<Application> = Vec::new();
-                    
-                    for app_id in workspace
-                        .application_list
-                        .iter()
-                        .rev() {
-                            if app_set.insert(app_id.clone()) {
-                                if let Some(app) = ApplicationsInfo::get_app_info_by_id(app_id).await {
-                                    apps.push(app);
-                                }
+
+                    for app_id in workspace.application_list.iter().rev() {
+                        if app_set.insert(app_id.clone()) {
+                            if let Some(app) = ApplicationsInfo::get_app_info_by_id(app_id).await {
+                                apps.push(app);
                             }
                         }
-                    
+                    }
+
                     let minimized_windows = workspace.minimized_windows.clone();
 
                     let state = dock.get_state();

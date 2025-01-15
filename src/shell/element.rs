@@ -214,7 +214,7 @@ impl WindowElement {
                     .unwrap()
                     .lock()
                     .unwrap();
-    
+
                 attributes.app_id.clone().unwrap_or_default()
             })
         } else {
@@ -266,7 +266,9 @@ impl WindowElement {
         self.0
             .is_fullscreen
             .store(fullscreen, std::sync::atomic::Ordering::Relaxed);
-        self.0.fullscreen_workspace_index.store(workspace_index, std::sync::atomic::Ordering::Relaxed);
+        self.0
+            .fullscreen_workspace_index
+            .store(workspace_index, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub fn is_fullscreen(&self) -> bool {

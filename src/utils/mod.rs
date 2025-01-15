@@ -7,7 +7,8 @@ use std::{
 
 use lay_rs::{
     prelude::{ContentDrawFunction, Layer, PointerHandlerFunction},
-    skia::{self, FontMgr}, utils::load_svg_image,
+    skia::{self},
+    utils::load_svg_image,
 };
 
 use crate::{config::Config, workspaces::utils::FONT_CACHE};
@@ -72,12 +73,9 @@ fn icon_cache() -> Arc<RwLock<HashMap<String, skia::Image>>> {
 //     surface.image_snapshot()
 // }
 
-pub fn image_from_path(
-    path: &str,
-    size: impl Into<skia::ISize>,
-) -> Option<lay_rs::skia::Image> {
+pub fn image_from_path(path: &str, size: impl Into<skia::ISize>) -> Option<lay_rs::skia::Image> {
     let image_path = std::path::Path::new(path);
-    
+
     let image = if image_path.extension().and_then(std::ffi::OsStr::to_str) == Some("svg") {
         load_svg_image(path, size).ok()?
     } else {
@@ -89,9 +87,7 @@ pub fn image_from_path(
     Some(image)
 }
 
-pub fn named_icon(
-    icon_name: &str,
-) -> Option<lay_rs::skia::Image> {
+pub fn named_icon(icon_name: &str) -> Option<lay_rs::skia::Image> {
     let ic = icon_cache();
     let mut ic = ic.write().unwrap();
     if let Some(icon) = ic.get(icon_name) {

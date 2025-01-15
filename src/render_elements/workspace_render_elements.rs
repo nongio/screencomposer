@@ -7,9 +7,9 @@ use smithay::{
     utils::{Physical, Rectangle, Scale},
 };
 
-use crate::{drawing::PointerRenderElement, skia_renderer::SkiaFrame};
+use crate::drawing::PointerRenderElement;
 
-use super::{scene_element::SceneElement, skia_element::SkiaElement};
+use super::scene_element::SceneElement;
 
 #[cfg(feature = "fps_ticker")]
 use crate::drawing::FpsElement;

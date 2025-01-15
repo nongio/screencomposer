@@ -3,10 +3,11 @@ use lay_rs::{prelude::*, types::Size};
 use taffy::LengthPercentageAuto;
 
 use crate::{
-    config::Config, workspaces::{
+    config::Config,
+    workspaces::{
         utils::{draw_balloon_rect, FONT_CACHE},
         Application,
-    }
+    },
 };
 
 pub fn setup_app_icon(
@@ -20,9 +21,10 @@ pub fn setup_app_icon(
         .clone()
         .unwrap_or(application.identifier.clone());
 
-    let draw_picture = application.icon.as_ref().map(|_|
-        draw_app_icon(&application)
-    );
+    let draw_picture = application
+        .icon
+        .as_ref()
+        .map(|_| draw_app_icon(&application));
     let container_tree = LayerTreeBuilder::default()
         .key(app_name)
         .layout_style(taffy::Style {
