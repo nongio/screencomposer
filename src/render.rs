@@ -8,7 +8,6 @@ use smithay::{
                 ConstrainAlign, ConstrainScaleBehavior, CropRenderElement, RelocateRenderElement,
                 RescaleRenderElement,
             },
-            AsRenderElements, Wrap,
         },
         ImportAll, ImportMem, Renderer,
     },
@@ -19,13 +18,11 @@ use smithay::{
 };
 
 use crate::{
-    drawing::{PointerRenderElement, CLEAR_COLOR, CLEAR_COLOR_FULLSCREEN},
+    drawing::{PointerRenderElement, CLEAR_COLOR},
     render_elements::{
         output_render_elements::OutputRenderElements, scene_element::SceneElement,
-        skia_element::SkiaElement,
     },
-    shell::{FullscreenSurface, WindowElement, WindowRenderElement},
-    skia_renderer::SkiaFrame,
+    shell::{WindowElement, WindowRenderElement},
 };
 
 pub fn space_preview_elements<'a, R, C>(

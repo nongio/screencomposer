@@ -1,18 +1,13 @@
-use smithay::{
-    backend::renderer::{
+use smithay::backend::renderer::{
         element::{
-            utils::{CropRenderElement, RelocateRenderElement, RescaleRenderElement},
             RenderElement, Wrap,
         },
         ImportAll, ImportMem,
-    },
-    desktop::space::SpaceRenderElements,
-};
+    };
 
-use crate::{shell::WindowRenderElement, skia_renderer::SkiaFrame};
 
 use super::{
-    scene_element::SceneElement, skia_element::SkiaElement,
+    scene_element::SceneElement,
     workspace_render_elements::WorkspaceRenderElements,
 };
 

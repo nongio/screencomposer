@@ -24,7 +24,6 @@ pub struct WorkspaceView {
     pub windows_layer: Layer,
 
     fullscreen_mode: Arc<AtomicBool>,
-
 }
 
 impl fmt::Debug for WorkspaceView {
@@ -92,7 +91,7 @@ impl WorkspaceView {
 
         let background_view = BackgroundView::new(index, background_layer.clone());
         let background_path = Config::with(|c| c.background_image.clone());
-        if let Some(background_image) = image_from_path(&background_path, (2048,2048)) {
+        if let Some(background_image) = image_from_path(&background_path, (2048, 2048)) {
             background_view.set_image(background_image);
         }
         let background_view = Arc::new(background_view);
@@ -121,16 +120,19 @@ impl WorkspaceView {
     /// and append the window to the windows list
     /// and creates a clone of the window layer to be used in the window selector view
     /// (if the window is already in the windows list, it will not be added)
-    pub fn map_window(&self, window_element: &WindowElement, location: smithay::utils::Point<i32, smithay::utils::Logical>) {
+    pub fn map_window(
+        &self,
+        window_element: &WindowElement,
+        location: smithay::utils::Point<i32, smithay::utils::Logical>,
+    ) {
         let mut window_list = self.windows_list.write().unwrap();
         let wid = window_element.id();
         if !window_list.contains(&wid) {
             window_list.push(wid.clone());
-            
+
             self.windows_layer
-            .add_sublayer(window_element.base_layer().clone());
-        
-            
+                .add_sublayer(window_element.base_layer().clone());
+
             let mirror_window = self.layers_engine.new_layer();
             mirror_window.set_key(format!(
                 "mirror_window_{}",
@@ -154,12 +156,8 @@ impl WorkspaceView {
             self.window_selector_view.map_window(wid, mirror_window);
         }
 
-        
         let scale = Config::with(|c| c.screen_scale);
-        let location = location
-            .to_f64()
-            .to_physical(scale);
-
+        let location = location.to_f64().to_physical(scale);
 
         window_element.base_layer().set_position(
             lay_rs::types::Point {
@@ -181,7 +179,6 @@ impl WorkspaceView {
                 None,
             );
         }
-        
     }
 
     /// remove the window from the windows list
@@ -192,7 +189,7 @@ impl WorkspaceView {
         if let Some(index) = window_list.iter().position(|x| x == window_id) {
             window_list.remove(index);
         }
-        
+
         self.window_selector_view.unmap_window(window_id);
     }
 

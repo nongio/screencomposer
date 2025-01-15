@@ -175,9 +175,10 @@ impl AppSwitcherView {
 
     pub fn get_current_app_id(&self) -> Option<String> {
         let state = self.view.get_state();
-        state.apps
+        state
+            .apps
             .get(state.current_app)
-            .map(|app|app.identifier.clone())
+            .map(|app| app.identifier.clone())
     }
 
     fn init_notification_handler(&self, mut rx: tokio::sync::mpsc::Receiver<WorkspacesModel>) {
@@ -204,17 +205,14 @@ impl AppSwitcherView {
                 if let Some(workspace) = event {
                     let mut app_set = HashSet::new();
                     let mut apps: Vec<Application> = Vec::new();
-                    
-                    for app_id in workspace
-                        .zindex_application_list
-                        .iter()
-                        .rev() {
-                            if app_set.insert(app_id.clone()) {
-                                if let Some(app) = ApplicationsInfo::get_app_info_by_id(app_id).await {
-                                    apps.push(app);
-                                }
+
+                    for app_id in workspace.zindex_application_list.iter().rev() {
+                        if app_set.insert(app_id.clone()) {
+                            if let Some(app) = ApplicationsInfo::get_app_info_by_id(app_id).await {
+                                apps.push(app);
                             }
                         }
+                    }
 
                     let switcher_state = view.get_state();
                     let mut current_app = switcher_state.current_app;

@@ -408,7 +408,13 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
     ) {
         let selector_state = self.view.get_state();
         if let Some(index) = selector_state.current_selection {
-            let wid = selector_state.rects.get(index).unwrap().window_id.clone().unwrap();
+            let wid = selector_state
+                .rects
+                .get(index)
+                .unwrap()
+                .window_id
+                .clone()
+                .unwrap();
 
             screencomposer.workspaces.focus_app_with_window(&wid);
             screencomposer.set_keyboard_focus_on_surface(&wid);

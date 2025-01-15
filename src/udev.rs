@@ -511,7 +511,7 @@ pub fn run_udev() {
      * And run our loop
      */
 
-     // FIXME: check if we can delay this
+    // FIXME: check if we can delay this
     while state.running.load(Ordering::SeqCst) {
         let result = event_loop.dispatch(Some(Duration::from_millis(16)), &mut state);
         if result.is_err() {
@@ -1833,20 +1833,24 @@ fn render_surface<'a, 'b>(
     }
     workspace_render_elements.push(WorkspaceRenderElements::Scene(scene_element));
 
-    let output_render_elements: Vec<OutputRenderElements<'a, _, WindowRenderElement<_>>> = workspace_render_elements
-        .into_iter()
-        .map(OutputRenderElements::from)
-        .collect::<Vec<_>>();
-    let (output_elements, clear_color) = output_elements(output, space, output_render_elements, dnd_icon, renderer);
+    let output_render_elements: Vec<OutputRenderElements<'a, _, WindowRenderElement<_>>> =
+        workspace_render_elements
+            .into_iter()
+            .map(OutputRenderElements::from)
+            .collect::<Vec<_>>();
+    let (output_elements, clear_color) =
+        output_elements(output, space, output_render_elements, dnd_icon, renderer);
 
     let SurfaceCompositorRenderResult {
         rendered,
         states,
         sync,
         damage,
-    } = surface
-        .compositor
-        .render_frame::<_, _, SkiaGLesFbo>(renderer, &output_elements, clear_color)?;
+    } = surface.compositor.render_frame::<_, _, SkiaGLesFbo>(
+        renderer,
+        &output_elements,
+        clear_color,
+    )?;
 
     post_repaint(
         output,

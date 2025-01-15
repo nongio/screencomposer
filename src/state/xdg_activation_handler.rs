@@ -33,7 +33,6 @@ impl<BackendData: Backend> XdgActivationHandler for ScreenComposer<BackendData> 
         surface: WlSurface,
     ) {
         if token_data.timestamp.elapsed().as_secs() < 10 {
-
             self.workspaces.focus_app_with_window(&surface.id());
             self.set_keyboard_focus_on_surface(&surface.id());
         }

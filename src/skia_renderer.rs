@@ -297,7 +297,6 @@ impl std::fmt::Debug for SkiaRenderer {
     }
 }
 
-
 impl SkiaRenderer {
     /// # Safety
     ///

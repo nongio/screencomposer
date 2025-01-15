@@ -505,9 +505,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
                                 + (self.initial_window_size.h - geometry.size.h);
                         }
 
-                        state
-                            .workspaces
-                            .map_window(&self.window, location, true);
+                        state.workspaces.map_window(&self.window, location, true);
                     }
 
                     with_states(&self.window.wl_surface().unwrap(), |states| {
@@ -726,9 +724,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
                             + (self.initial_window_size.h - geometry.size.h);
                     }
 
-                    state
-                        .workspaces
-                        .map_window(&self.window, location, true);
+                    state.workspaces.map_window(&self.window, location, true);
                 }
 
                 with_states(&self.window.wl_surface().unwrap(), |states| {

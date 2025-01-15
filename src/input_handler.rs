@@ -240,7 +240,6 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                 if let Some(app_id) = self.workspaces.app_switcher.get_current_app_id() {
                     self.focus_app(&app_id);
                     self.workspaces.app_switcher.reset();
-                    
                 }
             }
         }
@@ -372,12 +371,10 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                         }
                     }
 
-
                     #[cfg(feature = "xwayland")]
                     if let WindowSurface::X11(surf) = &window.underlying_surface() {
                         self.xwm.as_mut().unwrap().raise_window(surf).unwrap();
                     }
-                    return;
                 }
             }
 
@@ -469,8 +466,8 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         //     // WLR Layer
         //     let layer_loc = layers.layer_geometry(layer).unwrap().loc;
         //     under = Some((layer.clone().into(), output_geo.loc + layer_loc))
-        // } else 
-        
+        // } else
+
         if self
             .workspaces
             .is_cursor_over_dock(physical_pos.x as f32, physical_pos.y as f32)

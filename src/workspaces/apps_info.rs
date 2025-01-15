@@ -1,5 +1,9 @@
-use std::{collections::HashMap, hash::{Hash, Hasher}, sync::Once};
-use std::sync::{Arc};
+use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    hash::{Hash, Hasher},
+    sync::Once,
+};
 
 use freedesktop_desktop_entry::DesktopEntry;
 use smithay::reexports::rustix::path::Arg;
@@ -20,8 +24,9 @@ pub struct Application {
 impl Application {
     pub fn desktop_name(&self) -> Option<String> {
         Config::with(|c| {
-            self.desktop_entry.name(&c.locales)
-            .map(|name| name.to_string())
+            self.desktop_entry
+                .name(&c.locales)
+                .map(|name| name.to_string())
         })
     }
 }
@@ -58,7 +63,7 @@ type AppsInfoStorage = HashMap<String, Application>;
 
 fn applications_info() -> &'static Arc<tokio::sync::RwLock<AppsInfoStorage>> {
     static mut INSTANCE: Option<Arc<tokio::sync::RwLock<AppsInfoStorage>>> = None;
-    
+
     static INIT: Once = Once::new();
 
     unsafe {
@@ -76,35 +81,29 @@ impl ApplicationsInfo {
     pub async fn get_app_info_by_id(app_id: impl Into<String>) -> Option<Application> {
         let app_id = app_id.into();
         let mut applications = applications_info().write().await;
-        let mut app = {
-            applications
-            .get(&app_id).cloned()
-        };
+        let mut app = { applications.get(&app_id).cloned() };
         if app.is_none() {
             if let Some(new_app) = ApplicationsInfo::load_app_info(&app_id).await {
                 applications.insert(app_id.clone(), new_app.clone());
                 app = Some(new_app);
             }
         }
-    
+
         app
     }
 
-    async fn get_desktop_entry<'a>(app_id: &'a str) -> Option<DesktopEntry<'static>>{
-        let entry_path = freedesktop_desktop_entry::Iter::new(freedesktop_desktop_entry::default_paths())
-            .find(|path| path.to_string_lossy().contains(&app_id));
+    async fn get_desktop_entry<'a>(app_id: &'a str) -> Option<DesktopEntry<'static>> {
+        let entry_path =
+            freedesktop_desktop_entry::Iter::new(freedesktop_desktop_entry::default_paths())
+                .find(|path| path.to_string_lossy().contains(app_id));
 
-        if entry_path.is_none() {
-            return None;
-        }
+        entry_path.as_ref()?;
         let entry_path = entry_path.unwrap();
         let locales = &["en"];
         DesktopEntry::from_path(entry_path, Some(locales)).ok()
-
     }
 
-    async fn load_app_info(app_id: impl Into<String>) -> Option<Application>{
-        
+    async fn load_app_info(app_id: impl Into<String>) -> Option<Application> {
         let app_id = app_id.into();
 
         tracing::info!("load_app_info: {}", app_id);
@@ -118,13 +117,10 @@ impl ApplicationsInfo {
                 .and_then(|icon_name| xdgkit::icon_finder::find_icon(icon_name, 512, 1))
                 .map(|icon| icon.to_str().unwrap().to_string());
 
-
-            let icon = icon_path
-                .as_ref()
-                .and_then(|icon_path| {
-                    // let icon_path = "/home/riccardo/.local/share/icons/WhiteSur/apps/scalable/org.gnome.gedit.svg";
-                    image_from_path(icon_path, (512, 512))
-                });
+            let icon = icon_path.as_ref().and_then(|icon_path| {
+                // let icon_path = "/home/riccardo/.local/share/icons/WhiteSur/apps/scalable/org.gnome.gedit.svg";
+                image_from_path(icon_path, (512, 512))
+            });
             if icon.is_none() {
                 tracing::warn!("icon loading failed: {:?}", icon_path);
             } else {
@@ -154,7 +150,7 @@ impl ApplicationsInfo {
                 picture: None,
                 desktop_entry,
             };
-            
+
             return Some(app);
         }
         None
@@ -162,11 +158,13 @@ impl ApplicationsInfo {
 }
 
 #[tokio::test]
-async fn async_load_app_information() {    
-    let app_info = ApplicationsInfo::get_app_info_by_id("org.kde.dolphin").await.unwrap();
+async fn async_load_app_information() {
+    let app_info = ApplicationsInfo::get_app_info_by_id("org.kde.dolphin")
+        .await
+        .unwrap();
 
     assert_eq!(app_info.identifier, "org.kde.dolphin");
-    assert_eq!(app_info.desktop_name().is_some(), true);
-    assert_eq!(app_info.icon_path.is_some(), true);
+    assert!(app_info.desktop_name().is_some());
+    assert!(app_info.icon_path.is_some());
     println!("{:?}", app_info);
 }

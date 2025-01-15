@@ -1,19 +1,17 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    fmt,
-    hash::{Hash, Hasher},
+    hash::Hasher,
     sync::{
         atomic::{AtomicBool, AtomicI32},
         Arc, RwLock, Weak,
     },
 };
 
-use apps_info::{Application, ApplicationsInfo};
-use freedesktop_desktop_entry::{default_paths, DesktopEntry, Iter as DesktopEntryIter};
+use apps_info::Application;
 use lay_rs::{
     engine::LayersEngine,
     prelude::{taffy, Interpolate, Layer, Spring, TimingFunction, Transition},
-    skia::{self, Contains, FontMgr},
+    skia::{self, Contains},
     types::Size,
 };
 use smithay::{
@@ -21,10 +19,8 @@ use smithay::{
     output::Output,
     reexports::wayland_server::{backend::ObjectId, Resource},
     utils::{IsAlive, Rectangle},
-    wayland::shell::xdg::XdgToplevelSurfaceData,
 };
 
-use usvg::TreeParsing;
 use workspace::WorkspaceView;
 
 mod app_switcher;
@@ -35,10 +31,10 @@ pub mod workspace;
 
 pub mod utils;
 
+mod apps_info;
 mod window_selector;
 mod window_view;
 mod workspace_selector;
-mod apps_info;
 
 pub use background::BackgroundView;
 pub use window_selector::{WindowSelection, WindowSelectorState, WindowSelectorView};
@@ -50,11 +46,12 @@ pub use dock::DockView;
 pub use workspace_selector::WorkspaceSelectorView;
 
 use crate::{
-    config::Config, focus, shell::WindowElement, utils::{
-        image_from_path, natural_layout::{natural_layout, LayoutRect}, notify_observers, Observable, Observer
-    }
+    config::Config,
+    shell::WindowElement,
+    utils::{
+        natural_layout::{natural_layout, LayoutRect}, Observable, Observer,
+    },
 };
-
 
 #[derive(Debug, Default, Clone)]
 pub struct WorkspacesModel {
@@ -491,21 +488,22 @@ impl Workspaces {
         let dock_y = (start_position).interpolate(&end_position, delta);
         let tr = self.dock.view_layer.set_position((0.0, dock_y), transition);
 
-        
-
         if let Some(a) = animation {
             self.layers_engine.start_animation(a, 0.0);
         }
         if end_gesture {
             *bin = HashMap::new();
             let dock_ref = self.dock.clone();
-            tr.on_finish(move |_:&Layer, _: f32| {
-                if show_all {
-                    dock_ref.hide(None);
-                } else {
-                    dock_ref.show(None);
-                }
-            }, true);
+            tr.on_finish(
+                move |_: &Layer, _: f32| {
+                    if show_all {
+                        dock_ref.hide(None);
+                    } else {
+                        dock_ref.show(None);
+                    }
+                },
+                true,
+            );
         }
     }
 
@@ -596,7 +594,7 @@ impl Workspaces {
 
     /// Close all the windows of the current focused App
     pub fn quit_current_app(&self) {
-        if let Some(app_id)= self.get_current_app_id() {
+        if let Some(app_id) = self.get_current_app_id() {
             self.quit_app(&app_id);
         }
     }
@@ -758,7 +756,10 @@ impl Workspaces {
     pub fn new_window_placement_at(
         &self,
         pointer_location: smithay::utils::Point<f64, smithay::utils::Logical>,
-    ) -> (smithay::utils::Rectangle<i32, smithay::utils::Logical>, smithay::utils::Point<i32, smithay::utils::Logical>) {
+    ) -> (
+        smithay::utils::Rectangle<i32, smithay::utils::Logical>,
+        smithay::utils::Point<i32, smithay::utils::Logical>,
+    ) {
         let output = self
             .output_under(pointer_location)
             .next()
@@ -773,7 +774,7 @@ impl Workspaces {
             })
             .unwrap_or_else(|| Rectangle::from_loc_and_size((0, 0), (800, 800)));
 
-            let num_open_windows = self.spaces_elements().count();
+        let num_open_windows = self.spaces_elements().count();
         let window_index = num_open_windows + 1; // Index of the new window
 
         let max_x = output_geometry.loc.x + output_geometry.size.w;
@@ -785,7 +786,7 @@ impl Workspaces {
         let x = (output_geometry.loc.x as f32 + factor * max_x as f32) as i32 + 100;
         let y = (output_geometry.loc.y as f32 + factor * max_y as f32) as i32 + 100;
 
-        (output_geometry, (x,y).into())
+        (output_geometry, (x, y).into())
     }
 
     /// map the window element, in the position on the current space,
@@ -801,33 +802,29 @@ impl Workspaces {
             .map_element(window_element.clone(), location, activate);
         // self.space_mut().refresh();
 
-        if !self.windows_map.contains_key(&window_element.id()) {
-            self.windows_map.insert(window_element.id(), window_element.clone());
+        if let std::collections::hash_map::Entry::Vacant(e) = self.windows_map.entry(window_element.id()) {
+            e.insert(window_element.clone());
 
             self.update_workspace_model();
         }
 
         // append the window to the workspace layer
         {
-            let location = self
-                .element_location(&window_element)
-                .unwrap_or_default();
+            let location = self.element_location(window_element).unwrap_or_default();
 
             let workspace_view = self.get_current_workspace();
-            
-            
-            workspace_view.map_window(&window_element, location);
-            let _view = self.get_or_add_window_view(&window_element);
+
+            workspace_view.map_window(window_element, location);
+            let _view = self.get_or_add_window_view(window_element);
         }
         self.refresh_space();
-        
     }
 
-    /// remove a WindowElement from the workspace model, 
-    /// remove the window layer from the scene, 
+    /// remove a WindowElement from the workspace model,
+    /// remove the window layer from the scene,
     pub fn unmap_window(&mut self, window_id: &ObjectId) {
         tracing::info!("workspaces::unmap_window: {:?}", window_id);
-        
+
         if let Some(element) = self.get_window_for_surface(window_id).cloned() {
             for space in self.spaces.iter_mut() {
                 space.unmap_elem(&element);
@@ -970,7 +967,10 @@ impl Workspaces {
         // map to new space
 
         if let Some(space) = self.spaces.get_mut(workspace_index) {
-            tracing::info!("workspaces::move_window_to_workspace: {:?}", workspace_index);
+            tracing::info!(
+                "workspaces::move_window_to_workspace: {:?}",
+                workspace_index
+            );
             space.map_element(we.clone(), location, false);
             let id = we.wl_surface().unwrap().id();
             let model = self.model.read().unwrap();
@@ -1063,7 +1063,11 @@ impl Workspaces {
 
     /// Raise all the windows of a given app
     /// returns the window id of the last window raised, if any
-    fn raise_app_elements(&mut self, app_id: &str, focus_window: Option<&ObjectId>) -> Option<ObjectId> {
+    fn raise_app_elements(
+        &mut self,
+        app_id: &str,
+        focus_window: Option<&ObjectId>,
+    ) -> Option<ObjectId> {
         // for every window in the app, raise it
         let windows = self.get_app_windows(app_id);
         let mut focus_wid = None;
@@ -1087,7 +1091,7 @@ impl Workspaces {
         focus_window.map(|wid| {
             if let Some(we) = self.get_window_for_surface(wid) {
                 if !we.is_minimised() {
-                    self.raise_element(&wid, true, false);
+                    self.raise_element(wid, true, false);
                     focus_wid = Some(wid.clone());
                 }
             }
@@ -1113,14 +1117,16 @@ impl Workspaces {
             .position(|s| s.elements().any(|e| e.id() == wid))
             .unwrap_or(current_space_index);
 
-            self.set_current_workspace_index(index, None);
+        self.set_current_workspace_index(index, None);
 
         Some(wid)
     }
 
     pub fn focus_app_with_window(&mut self, wid: &ObjectId) -> Option<ObjectId> {
-
-        let app_id = self.get_window_for_surface(wid).map(|w| w.xdg_app_id()).unwrap_or_default();
+        let app_id = self
+            .get_window_for_surface(wid)
+            .map(|w| w.xdg_app_id())
+            .unwrap_or_default();
         tracing::info!("workspaces::focus_app_with_window {:?}", app_id);
         let wid = self.raise_app_elements(&app_id, Some(wid));
         if wid.is_none() {
@@ -1134,9 +1140,9 @@ impl Workspaces {
             .iter()
             .position(|s| s.elements().any(|e| e.id() == wid))
             .unwrap_or(current_space_index);
-        
+
         self.set_current_workspace_index(index, None);
-    
+
         Some(wid)
     }
 
@@ -1151,7 +1157,7 @@ impl Workspaces {
             .spaces_elements()
             .map(|we| (we.wl_surface().unwrap().id(), we.clone()))
             .collect();
-        
+
         {
             // reset the model
             if let Ok(mut model_mut) = self.model.write() {
@@ -1164,17 +1170,13 @@ impl Workspaces {
 
         let mut app_set = HashSet::new();
         for (window_id, we) in windows.iter() {
-
             let app_id = we.xdg_app_id();
             if app_id.is_empty() {
                 continue;
             }
             if let Ok(mut model_mut) = self.model.write() {
-                
-                
-                
-                
-                model_mut.app_windows_map
+                model_mut
+                    .app_windows_map
                     .entry(app_id.clone())
                     .or_default()
                     .push(window_id.clone());
@@ -1190,9 +1192,9 @@ impl Workspaces {
 
         // keep only app in application_list that are in zindex_application_list
         {
-            
-            let mut model: std::sync::RwLockWriteGuard<'_, WorkspacesModel> = self.model.write().unwrap();
-                       
+            let mut model: std::sync::RwLockWriteGuard<'_, WorkspacesModel> =
+                self.model.write().unwrap();
+
             let app_list = model.zindex_application_list.clone();
             {
                 // update app list
@@ -1220,12 +1222,10 @@ impl Workspaces {
     pub fn spaces_elements(&self) -> impl DoubleEndedIterator<Item = &WindowElement> {
         let current_space = self.space();
 
-
-        self.spaces.iter()
+        self.spaces
+            .iter()
             .filter(move |s| s != &current_space)
-            .chain(
-                std::iter::once(current_space)
-            )
+            .chain(std::iter::once(current_space))
             .flat_map(|space| space.elements())
     }
 
@@ -1367,10 +1367,10 @@ impl Workspaces {
         });
 
         if let Some(workspace) = self.get_workspace_at(i) {
-            if workspace.get_fullscreen_mode() || self.get_show_all(){
-                self.dock.hide(Some(transition.clone()));
+            if workspace.get_fullscreen_mode() || self.get_show_all() {
+                self.dock.hide(Some(transition));
             } else {
-                self.dock.show(Some(transition.clone()));
+                self.dock.show(Some(transition));
             }
         }
 
