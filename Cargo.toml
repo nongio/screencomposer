@@ -67,8 +67,8 @@ optional = true
 version = "0.12.0"
 
 
-[workspace]
-members = ["wlcs_screencomposer"]
+# [workspace]
+# members = ["wlcs_screencomposer"]
 
 
 [features]

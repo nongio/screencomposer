@@ -385,7 +385,7 @@ impl Workspaces {
                 });
 
                 if init_layout {
-                    natural_layout(&mut bin, workspace_windows, &layout_rect, true);
+                    natural_layout(&mut bin, workspace_windows, &layout_rect, false);
                 }
                 let mut state = WindowSelectorState {
                     rects: vec![],

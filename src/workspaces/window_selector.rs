@@ -223,7 +223,7 @@ pub fn view_window_selector(
 ) -> LayerTree {
     let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
 
-    let font_size: f32 = 24.0 * draw_scale;
+    let font_size: f32 = 20.0 * draw_scale;
     let current = state
         .current_selection
         .map(|x| state.rects.get(x).unwrap().clone())
@@ -312,7 +312,7 @@ pub fn view_window_selector(
             ))
             .size((text_layer_size, None))
             .blend_mode(lay_rs::prelude::BlendMode::BackgroundBlur)
-            .border_corner_radius((BorderRadius::new_single(10.0 * draw_scale), None))
+            .border_corner_radius((BorderRadius::new_single(8.0 * draw_scale), None))
             .background_color((
                 PaintColor::Solid {
                     color: Color::new_rgba(1.0, 1.0, 1.0, 0.4),
