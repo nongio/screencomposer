@@ -252,7 +252,7 @@ pub fn run_winit() {
     let scene_size = size;
     state
         .layers_engine
-        .set_scene_size(scene_size.w as f32, scene_size.h as f32);
+        .scene_set_size(scene_size.w as f32, scene_size.h as f32);
     root.layer.set_size(
         lay_rs::types::Size::points(scene_size.w as f32, scene_size.h as f32),
         None,
@@ -279,16 +279,8 @@ pub fn run_winit() {
         #[cfg(feature = "fps_ticker")]
         state.backend_data.fps.tick();
 
-        {
-            #[cfg(feature = "profile-with-puffin")]
-            profiling::puffin::profile_scope!("update_windows");
-            state.update_dnd();
-        }
-        {
-            #[cfg(feature = "profile-with-puffin")]
-            profiling::puffin::profile_scope!("engine_update");
-            state.scene_element.update();
-        }
+        state.update_dnd();
+        state.scene_element.update();
 
         let status = winit.dispatch_new_events(|event| match event {
             WinitEvent::Resized { size, .. } => {

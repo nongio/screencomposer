@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use lay_rs::{engine::LayersEngine, prelude::taffy};
+use lay_rs::{engine::Engine, prelude::taffy};
 use tracing::info;
 
 use smithay::{
@@ -170,7 +170,7 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub scene_element: SceneElement,
 
     // layers
-    pub layers_engine: LayersEngine,
+    pub layers_engine: Arc<Engine>,
 
     pub show_desktop: bool,
     pub is_swiping: bool,
@@ -325,7 +325,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         #[cfg(feature = "xwayland")]
         XWaylandKeyboardGrabState::new::<Self>(&dh.clone());
 
-        let layers_engine = LayersEngine::new(500.0, 500.0);
+        let layers_engine = Engine::create(500.0, 500.0);
         let root_layer = layers_engine.new_layer();
         root_layer.set_key("screen_composer_root");
         root_layer.set_layout_style(taffy::Style {
@@ -336,7 +336,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         let scene_element = SceneElement::with_engine(layers_engine.clone());
         let workspaces = Workspaces::new(layers_engine.clone());
 
-        #[cfg(feature = "debug")]
+        #[cfg(feature = "debugger")]
         layers_engine.start_debugger();
 
         ScreenComposer {
