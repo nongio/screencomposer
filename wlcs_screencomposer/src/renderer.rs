@@ -1,11 +1,12 @@
 use std::cell::Cell;
 
+use screen_composer::{render_elements::scene_element::SceneElement, skia_renderer::SkiaFrame};
 use smithay::{
     backend::{
         allocator::{dmabuf::Dmabuf, Fourcc},
         renderer::{
-            sync::SyncPoint, DebugFlags, Frame, ImportDma, ImportDmaWl, ImportEgl, ImportMem, ImportMemWl,
-            Renderer, Texture, TextureFilter,
+            element::RenderElement, sync::SyncPoint, DebugFlags, Frame, ImportDma, ImportDmaWl,
+            ImportEgl, ImportMem, ImportMemWl, Renderer, Texture, TextureFilter,
         },
         SwapBuffersError,
     },
@@ -52,6 +53,15 @@ impl Renderer for DummyRenderer {
 
     fn debug_flags(&self) -> DebugFlags {
         DebugFlags::empty()
+    }
+    fn wait(
+        &mut self,
+        sync: &smithay::backend::renderer::sync::SyncPoint,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn cleanup_texture_cache(&mut self) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 
@@ -167,27 +177,19 @@ impl Frame for DummyFrame {
         0
     }
 
-    fn clear(&mut self, _color: [f32; 4], _damage: &[Rectangle<i32, Physical>]) -> Result<(), Self::Error> {
+    fn clear(
+        &mut self,
+        color: smithay::backend::renderer::Color32F,
+        at: &[Rectangle<i32, Physical>],
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 
     fn draw_solid(
         &mut self,
-        _dst: Rectangle<i32, Physical>,
-        _damage: &[Rectangle<i32, Physical>],
-        _color: [f32; 4],
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    fn render_texture_from_to(
-        &mut self,
-        _texture: &Self::TextureId,
-        _src: Rectangle<f64, Buffer>,
-        _dst: Rectangle<i32, Physical>,
-        _damage: &[Rectangle<i32, Physical>],
-        _src_transform: Transform,
-        _alpha: f32,
+        dst: Rectangle<i32, Physical>,
+        damage: &[Rectangle<i32, Physical>],
+        color: smithay::backend::renderer::Color32F,
     ) -> Result<(), Self::Error> {
         Ok(())
     }
@@ -199,9 +201,40 @@ impl Frame for DummyFrame {
     fn finish(self) -> Result<SyncPoint, Self::Error> {
         Ok(SyncPoint::default())
     }
+    fn wait(
+        &mut self,
+        sync: &smithay::backend::renderer::sync::SyncPoint,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn render_texture_at(
+        &mut self,
+        texture: &Self::TextureId,
+        pos: smithay::utils::Point<i32, Physical>,
+        texture_scale: i32,
+        output_scale: impl Into<smithay::utils::Scale<f64>>,
+        src_transform: Transform,
+        damage: &[Rectangle<i32, Physical>],
+        opaque_regions: &[Rectangle<i32, Physical>],
+        alpha: f32,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn render_texture_from_to(
+        &mut self,
+        texture: &Self::TextureId,
+        src: Rectangle<f64, Buffer>,
+        dst: Rectangle<i32, Physical>,
+        damage: &[Rectangle<i32, Physical>],
+        opaque_regions: &[Rectangle<i32, Physical>],
+        src_transform: Transform,
+        alpha: f32,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct DummyTexture {
     width: u32,
     height: u32,
@@ -218,5 +251,18 @@ impl Texture for DummyTexture {
 
     fn format(&self) -> Option<Fourcc> {
         None
+    }
+}
+
+impl RenderElement<DummyRenderer> for SceneElement {
+    fn draw(
+        &self,
+        frame: &mut <DummyRenderer as Renderer>::Frame<'_>,
+        src: Rectangle<f64, Buffer>,
+        dst: Rectangle<i32, Physical>,
+        damage: &[Rectangle<i32, Physical>],
+        opaque_regions: &[Rectangle<i32, Physical>],
+    ) -> Result<(), <DummyRenderer as Renderer>::Error> {
+        Ok(())
     }
 }

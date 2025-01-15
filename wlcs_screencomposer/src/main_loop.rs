@@ -24,7 +24,11 @@ use smithay::{
     wayland::compositor,
 };
 
-use screen_composer::{drawing::PointerElement, render::*, state::Backend, ScreenComposer, ClientState};
+use screen_composer::{
+    drawing::PointerElement, render::*,
+    render_elements::workspace_render_elements::WorkspaceRenderElements, state::Backend,
+    ClientState, ScreenComposer,
+};
 
 use crate::{renderer::DummyRenderer, WlcsEvent};
 
@@ -41,9 +45,16 @@ impl Backend for TestState {
 
     fn reset_buffers(&mut self, _output: &Output) {}
     fn early_import(&mut self, _surface: &wl_surface::WlSurface) {}
-    fn texture_for_surface(&self, surface: &smithay::backend::renderer::utils::RendererSurfaceState) -> Option<screen_composer::skia_renderer::SkiaTexture> {
+    fn texture_for_surface(
+        &self,
+        surface: &smithay::backend::renderer::utils::RendererSurfaceState,
+    ) -> Option<screen_composer::skia_renderer::SkiaTextureImage> {
         None
     }
+    fn renderer_context(&mut self) -> Option<lay_rs::skia::gpu::DirectContext> {
+        None
+    }
+    fn set_cursor(&mut self, image: &CursorImageStatus) {}
 }
 
 pub fn run(channel: Channel<WlcsEvent>) {
@@ -79,14 +90,14 @@ pub fn run(channel: Channel<WlcsEvent>) {
         PhysicalProperties {
             size: (0, 0).into(),
             subpixel: Subpixel::Unknown,
-            make: "Smithay".into(),
+            make: "ScreenComposer".into(),
             model: "WLCS".into(),
         },
     );
     let _global = output.create_global::<ScreenComposer<TestState>>(&state.display_handle);
     output.change_current_state(Some(mode), None, None, Some((0, 0).into()));
     output.set_preferred(mode);
-    state.space().map_output(&output, (0, 0));
+    state.workspaces.map_output(&output, (0, 0));
 
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
     let mut pointer_element = PointerElement::default();
@@ -95,19 +106,20 @@ pub fn run(channel: Channel<WlcsEvent>) {
         // pretend to draw something
         {
             let scale = Scale::from(output.current_scale().fractional_scale());
-            let mut elements: Vec<CustomRenderElements<_>> = Vec::new();
+            let mut elements: Vec<WorkspaceRenderElements<_>> = Vec::new();
 
             // draw the cursor as relevant
             // reset the cursor if the surface is no longer alive
             let mut reset = false;
-            if let CursorImageStatus::Surface(ref surface) = state.cursor_status {
+            let mut cursor_status = state.cursor_status.lock().unwrap();
+            if let CursorImageStatus::Surface(ref surface) = &*cursor_status {
                 reset = !surface.alive();
             }
             if reset {
-                state.cursor_status = CursorImageStatus::default_named();
+                *cursor_status = CursorImageStatus::default_named();
             }
 
-            let cursor_hotspot = if let CursorImageStatus::Surface(ref surface) = state.cursor_status {
+            let cursor_hotspot = if let CursorImageStatus::Surface(ref surface) = &*cursor_status {
                 compositor::with_states(surface, |states| {
                     states
                         .data_map
@@ -123,35 +135,40 @@ pub fn run(channel: Channel<WlcsEvent>) {
             let cursor_pos = state.pointer.current_location() - cursor_hotspot.to_f64();
             let cursor_pos_scaled = cursor_pos.to_physical(scale).to_i32_round();
 
-            pointer_element.set_status(state.cursor_status.clone());
-            elements.extend(pointer_element.render_elements(&mut renderer, cursor_pos_scaled, scale, 1.0));
+            pointer_element.set_status(cursor_status.clone());
+            elements.extend(pointer_element.render_elements(
+                &mut renderer,
+                cursor_pos_scaled,
+                scale,
+                1.0,
+            ));
 
             // draw the dnd icon if any
-            if let Some(surface) = state.dnd_icon.as_ref() {
-                if surface.alive() {
-                    elements.extend(AsRenderElements::<DummyRenderer>::render_elements(
-                        &smithay::desktop::space::SurfaceTree::from_surface(surface),
-                        &mut renderer,
-                        cursor_pos_scaled,
-                        scale,
-                        1.0,
-                    ));
-                }
-            }
+            // if let Some(surface) = state.dnd_icon.as_ref() {
+            //     if surface.alive() {
+            //         elements.extend(AsRenderElements::<DummyRenderer>::render_elements(
+            //             &smithay::desktop::space::SurfaceTree::from_surface(surface),
+            //             &mut renderer,
+            //             cursor_pos_scaled,
+            //             scale,
+            //             1.0,
+            //         ));
+            //     }
+            // }
 
             let _ = render_output(
                 &output,
-                &state.space,
+                &state.workspaces.space(),
                 elements,
+                state.dnd_icon.as_ref(),
                 &mut renderer,
                 &mut damage_tracker,
                 0,
-                false,
             );
         }
 
         // Send frame events so that client start drawing their next frame
-        state.space().elements().for_each(|window| {
+        state.workspaces.space().elements().for_each(|window| {
             window.send_frame(&output, state.clock.now(), Some(Duration::ZERO), |_, _| {
                 Some(output.clone())
             })
@@ -163,9 +180,11 @@ pub fn run(channel: Channel<WlcsEvent>) {
         {
             state.running.store(false, Ordering::SeqCst);
         } else {
-            state.space().refresh();
+            state.workspaces.refresh_space();
             state.popups.cleanup();
             state.display_handle.flush_clients().unwrap();
+            state.scene_element.update();
+            state.update_dnd();
         }
     }
 }
@@ -187,7 +206,7 @@ fn handle_event(event: WlcsEvent, state: &mut ScreenComposer<TestState>) {
         } => {
             // find the surface
             let client = state.backend_data.clients.get(&client_id);
-            let toplevel = state.space().elements().find(|w| {
+            let toplevel = state.workspaces.space().elements().find(|w| {
                 if let Some(surface) = w.wl_surface() {
                     state.display_handle.get_client(surface.id()).ok().as_ref() == client
                         && surface.id().protocol_id() == surface_id
@@ -197,7 +216,7 @@ fn handle_event(event: WlcsEvent, state: &mut ScreenComposer<TestState>) {
             });
             if let Some(toplevel) = toplevel.cloned() {
                 // set its location
-                state.space().write().map_element(toplevel, location, false);
+                state.workspaces.map_window(&toplevel, location, false);
             }
         }
         // pointer inputs
@@ -250,11 +269,11 @@ fn handle_event(event: WlcsEvent, state: &mut ScreenComposer<TestState>) {
             let ptr = state.seat.get_pointer().unwrap();
             if !ptr.is_grabbed() {
                 let under = state
-                    .space
+                    .workspaces
                     .element_under(ptr.current_location())
                     .map(|(w, _)| w.clone());
                 if let Some(window) = under.as_ref() {
-                    state.space().raise_element(window, true);
+                    state.workspaces.focus_app_with_window(&window.id());
                 }
                 state
                     .seat

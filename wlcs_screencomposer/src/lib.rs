@@ -107,6 +107,9 @@ pub enum WlcsEvent {
     },
 }
 
-fn start_anvil(channel: calloop::channel::Channel<WlcsEvent>) -> JoinHandle<()> {
-    std::thread::spawn(move || main_loop::run(channel))
+fn start_screencomposer(channel: calloop::channel::Channel<WlcsEvent>) {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    // Run an async function using the runtime
+    rt.block_on(async { main_loop::run(channel) });
 }

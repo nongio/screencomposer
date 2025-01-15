@@ -1,27 +1,48 @@
 [package]
 name = "wlcs_screencomposer"
+authors = ["Riccardo Canalicchio <riccardo.canalicchio@gmail.com>"]
 version = "0.0.1"
+edition = "2021"
 license = "MIT"
-publish = false
-edition = "2018"
-
+rust-version = "1.82.0"
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-smithay = { path = "../../smithay", default-features = false, features = [
-    "wayland_frontend",
-    "backend_egl",
-    "use_system_lib",
-] }
 screen-composer = { path = "../", default-features = false,  features = [
     "udev",
     "winit",
     "debug",
 ] }
-layers = { path = "../../layers", features = ["export-taffy"] }
 wayland-sys = { version = "0.30.1", features = ["client", "server"] }
 libc = "0.2"
 memoffset = "0.6"
 cgmath = "0.18"
 nix = "0.24"
+tokio = { version = "1", features = ["full"] }
+
+
+[dependencies.smithay]
+git = "https://github.com/Smithay/smithay"
+rev= "3070a0954e8c1dffea94896a547a3d87afc817e6"
+default-features = false
+features = [
+    "wayland_frontend",
+    "backend_egl",
+    "use_system_lib",
+]
+
+
+# [dependencies.skia-safe]
+# # git = "https://github.com/rust-skia/rust-skia"
+# # path = "../rust-skia/skia-safe"
+# version = "=0.80"
+# features = ["binary-cache", "egl","gl","svg","textlayout","vulkan","wayland","x11"]
+
+# [dependencies.skia-bindings]
+# version = "=0.80"
+
+[dependencies.lay-rs]
+path = "../../layers"
+# git = "https://github.com/nongio/layers"
+features = ["export-taffy"]

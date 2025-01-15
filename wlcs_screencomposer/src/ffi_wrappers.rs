@@ -31,7 +31,10 @@ pub static wlcs_server_integration: WlcsServerIntegration = WlcsServerIntegratio
     destroy_server,
 };
 
-unsafe extern "C" fn create_server(_argc: c_int, _argv: *mut *const c_char) -> *mut WlcsDisplayServer {
+unsafe extern "C" fn create_server(
+    _argc: c_int,
+    _argv: *mut *const c_char,
+) -> *mut WlcsDisplayServer {
     // block the SIGPIPE signal here, we are a cdylib so Rust does not do it for us
     match std::panic::catch_unwind(|| {
         use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
@@ -72,7 +75,7 @@ unsafe extern "C" fn destroy_server(ptr: *mut WlcsDisplayServer) {
 
 struct DisplayServerHandle {
     wlcs_display_server: WlcsDisplayServer,
-    server: Option<(Sender<WlcsEvent>, JoinHandle<()>)>,
+    server: Option<(Sender<WlcsEvent>)>,
     next_device_id: u32,
 }
 
@@ -99,8 +102,8 @@ impl DisplayServerHandle {
         match std::panic::catch_unwind(|| {
             let me = &mut *container_of!(ptr, DisplayServerHandle, wlcs_display_server);
             let (tx, rx) = channel();
-            let join = crate::start_anvil(rx);
-            me.server = Some((tx, join));
+            crate::start_screencomposer(rx);
+            me.server = Some(tx);
         }) {
             Ok(()) => {}
             Err(err) => {
@@ -114,28 +117,32 @@ impl DisplayServerHandle {
     }
 
     unsafe extern "C" fn stop(ptr: *mut WlcsDisplayServer) {
-        match std::panic::catch_unwind(|| {
-            let me = &mut *container_of!(ptr, DisplayServerHandle, wlcs_display_server);
-            if let Some((sender, join)) = me.server.take() {
-                let _ = sender.send(WlcsEvent::Exit);
-                let _ = join.join();
+        // match std::panic::catch_unwind(|| {
+        let me = &mut *container_of!(ptr, DisplayServerHandle, wlcs_display_server);
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            if let Some(sender) = me.server.take() {
+                let result = sender.send(WlcsEvent::Exit);
+                match result {
+                    Ok(()) => {}
+                    Err(err) => {
+                        println!(
+                            "panic in wlcs_display_server::stop on ptr: " //{:p} (type {:?})",
+                                                                          // err.as_ref() as *const _,
+                                                                          // err.type_id()
+                        );
+                    }
+                }
             }
-        }) {
-            Ok(()) => {}
-            Err(err) => {
-                println!(
-                    "panic in wlcs_display_server::stop on ptr: {:p} (type {:?})",
-                    err.as_ref() as *const _,
-                    err.type_id()
-                );
-            }
-        }
+        });
+        // }) {
+        // }
     }
 
     unsafe extern "C" fn create_client_socket(ptr: *mut WlcsDisplayServer) -> c_int {
         match std::panic::catch_unwind(|| {
             let me = &mut *container_of!(ptr, DisplayServerHandle, wlcs_display_server);
-            if let Some((ref sender, _)) = me.server {
+            if let Some((ref sender)) = me.server {
                 if let Ok((client_side, server_side)) = UnixStream::pair() {
                     if sender
                         .send(WlcsEvent::NewClient {
@@ -174,7 +181,7 @@ impl DisplayServerHandle {
             let me = &mut *container_of!(ptr, DisplayServerHandle, wlcs_display_server);
             let client_id = ffi_dispatch!(WAYLAND_CLIENT_HANDLE, wl_display_get_fd, display);
             let surface_id = ffi_dispatch!(WAYLAND_CLIENT_HANDLE, wl_proxy_get_id, surface);
-            if let Some((ref sender, _)) = me.server {
+            if let Some((ref sender)) = me.server {
                 let _ = sender.send(WlcsEvent::PositionWindow {
                     client_id,
                     surface_id,
@@ -196,8 +203,11 @@ impl DisplayServerHandle {
     unsafe extern "C" fn create_pointer(ptr: *mut WlcsDisplayServer) -> *mut WlcsPointer {
         match std::panic::catch_unwind(|| {
             let me = &mut *container_of!(ptr, DisplayServerHandle, wlcs_display_server);
-            if let Some((ref sender, _)) = me.server {
-                let pointer = Box::into_raw(Box::new(PointerHandle::new(me.next_device_id, sender.clone())));
+            if let Some((ref sender)) = me.server {
+                let pointer = Box::into_raw(Box::new(PointerHandle::new(
+                    me.next_device_id,
+                    sender.clone(),
+                )));
                 me.next_device_id += 1;
                 &mut (*pointer).wlcs_pointer
             } else {
@@ -219,8 +229,11 @@ impl DisplayServerHandle {
     unsafe extern "C" fn create_touch(ptr: *mut WlcsDisplayServer) -> *mut WlcsTouch {
         match std::panic::catch_unwind(|| {
             let me = &mut *container_of!(ptr, DisplayServerHandle, wlcs_display_server);
-            if let Some((ref sender, _)) = me.server {
-                let pointer = Box::into_raw(Box::new(TouchHandle::new(me.next_device_id, sender.clone())));
+            if let Some((ref sender)) = me.server {
+                let pointer = Box::into_raw(Box::new(TouchHandle::new(
+                    me.next_device_id,
+                    sender.clone(),
+                )));
                 me.next_device_id += 1;
                 &mut (*pointer).wlcs_touch
             } else {
@@ -239,7 +252,9 @@ impl DisplayServerHandle {
         }
     }
 
-    unsafe extern "C" fn get_descriptor(_: *const WlcsDisplayServer) -> *const WlcsIntegrationDescriptor {
+    unsafe extern "C" fn get_descriptor(
+        _: *const WlcsDisplayServer,
+    ) -> *const WlcsIntegrationDescriptor {
         &crate::DESCRIPTOR
     }
 }

@@ -31,8 +31,10 @@ pub struct WlcsDisplayServer {
         unsafe extern "C" fn(*mut WlcsDisplayServer, *mut wl_display, *mut wl_proxy, c_int, c_int),
     pub create_pointer: unsafe extern "C" fn(*mut WlcsDisplayServer) -> *mut WlcsPointer,
     pub create_touch: unsafe extern "C" fn(*mut WlcsDisplayServer) -> *mut WlcsTouch,
-    pub get_descriptor: unsafe extern "C" fn(*const WlcsDisplayServer) -> *const WlcsIntegrationDescriptor,
-    pub start_on_this_thread: Option<unsafe extern "C" fn(*mut WlcsDisplayServer, *mut ssys::wl_event_loop)>,
+    pub get_descriptor:
+        unsafe extern "C" fn(*const WlcsDisplayServer) -> *const WlcsIntegrationDescriptor,
+    pub start_on_this_thread:
+        Option<unsafe extern "C" fn(*mut WlcsDisplayServer, *mut ssys::wl_event_loop)>,
 }
 
 #[repr(C)]
