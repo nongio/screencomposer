@@ -5,7 +5,7 @@ use std::{
 };
 
 use lay_rs::{
-    engine::{animation::Transition, LayersEngine, NodeRef, TransactionRef},
+    engine::{animation::Transition, Engine, NodeRef, TransactionRef},
     prelude::{taffy, Color, Layer, Point},
     skia,
     taffy::{prelude::FromLength, style::Style},
@@ -31,7 +31,7 @@ type AppLayers = (Layer, Layer, Layer, Option<u32>);
 
 #[derive(Debug, Clone)]
 pub struct DockView {
-    layers_engine: LayersEngine,
+    layers_engine: Arc<Engine>,
     // layers
     pub wrap_layer: lay_rs::prelude::Layer,
     pub view_layer: lay_rs::prelude::Layer,
@@ -83,7 +83,7 @@ impl IsAlive for DockView {
 ///
 ///
 impl DockView {
-    pub fn new(layers_engine: LayersEngine) -> Self {
+    pub fn new(layers_engine: Arc<Engine>) -> Self {
         let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
         let wrap_layer = layers_engine.new_layer();
         wrap_layer.set_key("dock");
@@ -98,11 +98,11 @@ impl DockView {
             ..Default::default()
         });
 
-        layers_engine.add_layer(wrap_layer.clone());
+        layers_engine.add_layer(&wrap_layer);
 
         let view_layer = layers_engine.new_layer();
 
-        wrap_layer.add_sublayer(view_layer.clone());
+        wrap_layer.add_sublayer(&view_layer);
         // FIXME: initial dock position
         view_layer.set_position((0.0, 1000.0), None);
         let view_tree = LayerTreeBuilder::default()
@@ -130,7 +130,7 @@ impl DockView {
         view_layer.build_layer_tree(&view_tree);
 
         let bar_layer = layers_engine.new_layer();
-        view_layer.add_sublayer(bar_layer.clone());
+        view_layer.add_sublayer(&bar_layer);
         const DOCK_BAR_HEIGHT: f32 = 100.0;
         let bar_tree = LayerTreeBuilder::default()
             .key("dock-bar")
@@ -156,7 +156,7 @@ impl DockView {
         bar_layer.build_layer_tree(&bar_tree);
 
         let dock_apps_container = layers_engine.new_layer();
-        view_layer.add_sublayer(dock_apps_container.clone());
+        view_layer.add_sublayer(&dock_apps_container);
 
         let container_tree = LayerTreeBuilder::default()
             .key("dock_app_container")
@@ -175,7 +175,7 @@ impl DockView {
         dock_apps_container.build_layer_tree(&container_tree);
 
         let dock_handle = layers_engine.new_layer();
-        view_layer.add_sublayer(dock_handle.clone());
+        view_layer.add_sublayer(&dock_handle);
 
         let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
         let handle_tree = LayerTreeBuilder::default()
@@ -207,7 +207,7 @@ impl DockView {
         dock_handle.build_layer_tree(&handle_tree);
 
         let dock_windows_container = layers_engine.new_layer();
-        view_layer.add_sublayer(dock_windows_container.clone());
+        view_layer.add_sublayer(&dock_windows_container);
 
         let container_tree = LayerTreeBuilder::default()
             .key("dock_windows_container")
@@ -310,14 +310,14 @@ impl DockView {
                     let new_layer = self.layers_engine.new_layer();
                     let icon_layer = self.layers_engine.new_layer();
                     setup_app_icon(&new_layer, &icon_layer, app.clone(), available_icon_width);
-                    icon_layer.set_image_cache(true);
+                    icon_layer.set_image_cached(true);
 
-                    self.dock_apps_container.add_sublayer(new_layer.clone());
+                    self.dock_apps_container.add_sublayer(&new_layer);
                     let label_layer = self.layers_engine.new_layer();
 
                     setup_label(&label_layer, app_name);
-                    new_layer.add_sublayer(icon_layer.clone());
-                    new_layer.add_sublayer(label_layer.clone());
+                    new_layer.add_sublayer(&icon_layer);
+                    new_layer.add_sublayer(&label_layer);
                     let icon_id = app.icon.map(|i| i.unique_id());
                     (new_layer, icon_layer, label_layer, icon_id)
                 });
@@ -335,22 +335,22 @@ impl DockView {
             let icon_ref = icon_layer.clone();
             layer.remove_all_pointer_handlers();
 
-            layer.add_on_pointer_press(move |_, _, _| {
+            layer.add_on_pointer_press(move |_:&Layer, _, _| {
                 icon_ref.set_color_filter(filter.clone());
             });
 
             let icon_ref = icon_layer.clone();
-            layer.add_on_pointer_release(move |_, _, _| {
+            layer.add_on_pointer_release(move |_:&Layer, _, _| {
                 icon_ref.set_color_filter(None);
             });
 
             let label_ref = label.clone();
-            layer.add_on_pointer_in(move |_, _, _| {
+            layer.add_on_pointer_in(move |_:&Layer, _, _| {
                 label_ref.set_opacity(1.0, Some(Transition::ease_in_quad(0.1)));
             });
             let label_ref = label.clone();
             let icon_ref = icon_layer.clone();
-            layer.add_on_pointer_out(move |_, _, _| {
+            layer.add_on_pointer_out(move |_:&Layer, _, _| {
                 label_ref.set_opacity(0.0, Some(Transition::ease_in_quad(0.1)));
                 icon_ref.set_color_filter(None);
             });
@@ -368,12 +368,12 @@ impl DockView {
                         let inner_layer = self.layers_engine.new_layer();
                         let label_layer = self.layers_engine.new_layer();
 
-                        self.dock_windows_container.add_sublayer(new_layer.clone());
+                        self.dock_windows_container.add_sublayer(&new_layer);
 
                         setup_miniwindow_icon(&new_layer, &inner_layer, available_icon_width);
 
                         setup_label(&label_layer, title.clone());
-                        new_layer.add_sublayer(label_layer.clone());
+                        new_layer.add_sublayer(&label_layer);
 
                         (new_layer, inner_layer, label_layer, None)
                     });
@@ -386,25 +386,25 @@ impl DockView {
 
                 layer.remove_all_pointer_handlers();
 
-                layer.add_on_pointer_press(move |l: Layer, _: f32, _: f32| {
+                layer.add_on_pointer_press(move |l: &Layer, _: f32, _: f32| {
                     l.children().iter().for_each(|child| {
                         child.set_color_filter(filter.clone());
                     });
                 });
                 // let inner_ref = inner.clone();
-                layer.add_on_pointer_release(move |l: Layer, _: f32, _: f32| {
+                layer.add_on_pointer_release(move |l: &Layer, _: f32, _: f32| {
                     l.children().iter().for_each(|child| {
                         child.set_color_filter(None);
                     });
                 });
 
                 let label_ref = label.clone();
-                layer.add_on_pointer_in(move |_, _, _| {
+                layer.add_on_pointer_in(move |_:&Layer, _, _| {
                     label_ref.set_opacity(1.0, Some(Transition::ease_in_quad(0.1)));
                 });
                 let label_ref = label.clone();
 
-                layer.add_on_pointer_out(move |l: Layer, _: f32, _: f32| {
+                layer.add_on_pointer_out(move |l: &Layer, _: f32, _: f32| {
                     label_ref.set_opacity(0.0, Some(Transition::ease_in_out_quad(0.1)));
                     l.children().iter().for_each(|child| {
                         child.set_color_filter(None);
@@ -544,14 +544,14 @@ impl DockView {
         let layers_map = self.app_layers.read().unwrap();
         layers_map
             .iter()
-            .find(|(_, (app_layer, ..))| app_layer.id() == Some(*layer))
+            .find(|(_, (app_layer, ..))| app_layer.id() == *layer)
             .map(|(key, _)| key.clone())
     }
     pub fn get_window_from_layer(&self, layer: &NodeRef) -> Option<ObjectId> {
         let miniwindow_layers = self.miniwindow_layers.read().unwrap();
         if let Some((window, ..)) = miniwindow_layers
             .iter()
-            .find(|(_win, (l, ..))| l.id() == Some(*layer))
+            .find(|(_win, (l, ..))| l.id() == *layer)
         {
             return Some(window.clone());
         }
@@ -601,7 +601,7 @@ impl DockView {
         let tot_elements = apps_len + windows_len;
         let animation = self
             .layers_engine
-            .new_animation(Transition::ease_out_quad(0.08), false);
+            .add_animation_from_transition(Transition::ease_out_quad(0.08), false);
         let mut changes = Vec::new();
         let genie_scale = Config::with(|c| c.genie_scale);
         for (index, app) in state.running_apps.iter().enumerate() {
@@ -633,7 +633,7 @@ impl DockView {
             }
         }
 
-        self.layers_engine.add_animated_changes(&changes, animation);
+        self.layers_engine.schedule_changes(&changes, animation);
 
         self.layers_engine.start_animation(animation, 0.0);
     }

@@ -398,7 +398,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 self.workspaces
                     .dnd_view
                     .layer
-                    .add_sublayer(view.window_layer.clone());
+                    .add_sublayer(&view.window_layer);
 
                 view.window_layer
                     .set_position(
@@ -413,7 +413,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                                 state.fullscreen_output = wl_output_ref.clone();
                             });
                             // println!("append window layer to workspace");
-                            next_workspace_layer.add_sublayer(l.clone());
+                            next_workspace_layer.add_sublayer(l);
                             // The protocol demands us to always reply with a configure,
                             // regardless of we fulfilled the request or not
                             surface.send_configure();
@@ -481,7 +481,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     self.workspaces
                         .dnd_view
                         .layer
-                        .add_sublayer(view.window_layer.clone());
+                        .add_sublayer(&view.window_layer);
 
                     view.window_layer
                         .set_position(
@@ -492,7 +492,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                             Some(transition),
                         )
                         .then(move |l: &Layer, _| {
-                            workspace_layer.add_sublayer(l.clone());
+                            workspace_layer.add_sublayer(l);
                         });
                 }
             }

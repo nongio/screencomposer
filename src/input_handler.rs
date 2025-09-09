@@ -704,7 +704,7 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
         let scale = output.current_scale().fractional_scale();
         let pos = pos.to_physical(scale);
         self.layers_engine
-            .pointer_move((pos.x as f32, pos.y as f32), None);
+            .pointer_move(&(pos.x as f32, pos.y as f32).into(), None);
     }
 
     pub fn release_all_keys(&mut self) {
@@ -1056,7 +1056,7 @@ impl ScreenComposer<UdevData> {
         let pos = pointer_location.to_physical(scale);
 
         self.layers_engine
-            .pointer_move((pos.x as f32, pos.y as f32), None);
+            .pointer_move(&(pos.x as f32, pos.y as f32).into(), None);
 
         // If pointer is now in a constraint region, activate it
         // TODO Anywhere else pointer is moved needs to do this

@@ -193,14 +193,14 @@ pub fn button_press_filter() -> PointerHandlerFunction {
     let add = skia::Color::from_argb(0, 0, 0, 0);
     let filter = skia::color_filters::lighting(darken_color, add);
 
-    let f = move |layer: Layer, _x: f32, _y: f32| {
+    let f = move |layer: &Layer, _x: f32, _y: f32| {
         layer.set_color_filter(filter.clone());
     };
     f.into()
 }
 
 pub fn button_release_filter() -> PointerHandlerFunction {
-    let f = |layer: Layer, _x: f32, _y: f32| {
+    let f = |layer: &Layer, _x: f32, _y: f32| {
         layer.set_color_filter(None);
     };
     f.into()

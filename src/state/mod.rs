@@ -332,7 +332,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
-        layers_engine.add_layer(root_layer.clone());
+        layers_engine.add_layer(&root_layer);
         let scene_element = SceneElement::with_engine(layers_engine.clone());
         let workspaces = Workspaces::new(layers_engine.clone());
 

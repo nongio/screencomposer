@@ -7,7 +7,7 @@ use super::DockView;
 // Dock view interactions
 impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
     fn id(&self) -> Option<usize> {
-        self.wrap_layer.id().map(|id| id.0.into())
+        Some(self.wrap_layer.id.0.into())
     }
     fn is_alive(&self) -> bool {
         self.alive()

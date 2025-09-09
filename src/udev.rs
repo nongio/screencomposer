@@ -1068,7 +1068,7 @@ impl ScreenComposer<UdevData> {
             self.workspaces
                 .set_screen_dimension(wl_mode.size.w, wl_mode.size.h);
             let scene_size = lay_rs::types::Size::points(w, h);
-            root.layer.set_size(scene_size, None);
+            root.set_size(scene_size, None);
             self.scene_element.set_size(w, h);
             self.layers_engine.scene_set_size(w, h);
 

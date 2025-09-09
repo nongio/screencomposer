@@ -135,8 +135,7 @@ where
             .read()
             .unwrap()
             .as_ref()
-            .and_then(|l| l.id())
-            .map(|id| id.0.into())
+            .and_then(|l| Some(l.id.0.into()))
     }
 
     fn is_alive(&self) -> bool {

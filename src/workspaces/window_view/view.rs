@@ -1,9 +1,10 @@
 use lay_rs::{
-    engine::{LayersEngine, TransactionRef},
+    engine::{Engine, TransactionRef},
     prelude::{taffy, Layer, Transition},
     skia,
     view::{RenderLayerTree, View},
 };
+use std::sync::Arc;
 use smithay::{reexports::wayland_server::backend::ObjectId, utils::Logical};
 
 use crate::{shell::WindowElement, workspaces::utils::view_render_elements};
@@ -32,7 +33,7 @@ pub struct WindowView {
 }
 
 impl WindowView {
-    pub fn new(layers_engine: LayersEngine, window: &WindowElement) -> Self {
+    pub fn new(layers_engine: Arc<Engine>, window: &WindowElement) -> Self {
         let window_id = window.id();
         let layer = window.base_layer().clone();
         layer.set_key("window");
@@ -52,8 +53,8 @@ impl WindowView {
             ..Default::default()
         });
 
-        layers_engine.append_layer_to(shadow_layer.clone(), layer.id());
-        layers_engine.append_layer_to(content_layer.clone(), layer.id());
+        layers_engine.append_layer(&shadow_layer, layer.id());
+        layers_engine.append_layer(&content_layer, layer.id());
 
         let render_elements = Vec::new();
         let base_rect = WindowViewBaseModel {
@@ -73,7 +74,7 @@ impl WindowView {
         let view_content = View::new("window_content", render_elements, view_render_elements);
         view_content.mount_layer(content_layer.clone());
 
-        layer.set_image_cache(true);
+        layer.set_image_cached(true);
 
         let genie_effect = GenieEffect::new();
 

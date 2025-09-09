@@ -6,8 +6,7 @@ use std::{
 
 use lay_rs::{
     engine::{
-        animation::{TimingFunction, Transition},
-        LayersEngine, TransactionRef,
+        animation::{TimingFunction, Transition}, Engine, TransactionRef
     },
     prelude::taffy,
     taffy::style::Style,
@@ -60,7 +59,7 @@ impl IsAlive for AppSwitcherView {
 ///
 
 impl AppSwitcherView {
-    pub fn new(layers_engine: LayersEngine) -> Self {
+    pub fn new(layers_engine: Arc<Engine>) -> Self {
         let wrap = layers_engine.new_layer();
         wrap.set_key("app_switcher");
         wrap.set_size(Size::percent(1.0, 1.0), None);
@@ -75,8 +74,8 @@ impl AppSwitcherView {
         wrap.set_opacity(0.0, None);
 
         let layer = layers_engine.new_layer();
-        layers_engine.add_layer(wrap.clone());
-        wrap.add_sublayer(layer.clone());
+        layers_engine.add_layer(&wrap);
+        wrap.add_sublayer(&layer);
         wrap.set_pointer_events(false);
         layer.set_pointer_events(false);
         let mut initial_state = AppSwitcherModel::new();
@@ -241,7 +240,7 @@ impl Observer<WorkspacesModel> for AppSwitcherView {
 
 impl<Backend: crate::state::Backend> ViewInteractions<Backend> for AppSwitcherView {
     fn id(&self) -> Option<usize> {
-        self.wrap_layer.id().map(|id| id.0.into())
+        Some(self.wrap_layer.id.0.into())
     }
     fn is_alive(&self) -> bool {
         self.alive()

@@ -9,10 +9,7 @@ use std::{
 
 use apps_info::Application;
 use lay_rs::{
-    engine::LayersEngine,
-    prelude::{taffy, Interpolate, Layer, Spring, TimingFunction, Transition},
-    skia::{self, Contains},
-    types::Size,
+    engine::Engine, prelude::{taffy, Interpolate, Layer, Spring, TimingFunction, Transition}, skia::{self, Contains}, types::Size
 };
 use smithay::{
     desktop::{layer_map_for_output, space::SpaceElement, Space, WindowSurface},
@@ -97,32 +94,57 @@ pub struct Workspaces {
     pub show_desktop_gesture: Arc<AtomicI32>,
 
     // layers
-    pub layers_engine: LayersEngine,
+    pub layers_engine: Arc<Engine>,
     pub overlay_layer: Layer,
     pub workspaces_layer: Layer,
     pub expose_layer: Layer,
     observers: Vec<Weak<dyn Observer<WorkspacesModel>>>,
 }
 
-/// # Workspace Layer Structure
+/// # Workspaces Layer Structure
 ///
 /// ```diagram
 /// Workspaces
-/// └── root
-///     ├── workspaces
-///         ├── workspace_view
-///         ├── workspace_view
-///     ├── expose
-///         ├── expose_view
-///         ├── expose_view
-///     ├── app_switcher
-///     └── dock
+/// root
+/// ├── workspaces
+/// │   ├── workspace_view_1
+/// │   │   ├── background_view (mirrored)
+/// │   │   └── workwspace_windows_container_1
+/// │   │       ├── window_view_1
+/// │   │       ├── window_view_2
+/// │   │       ...
+/// │   ├── workspace_view_2
+/// │   ...
+/// ├── expose
+/// │   ├── windows_selector_root_1
+/// │   │   ├── window_selector_background_1 (mirror: background_view)
+/// │   │   ├── window_selector_windows_container_1
+/// │   │   │   ├── mirror_window_1
+/// │   │   │   ├── mirror_window_2
+/// │   │   │   ...
+/// │   │   ├── window_selector_view_1
+/// │   ├── expose_view
+/// │   ├── app_switcher
+/// │
+/// ├── dnd_view
+/// ├── dock
+/// ├── app_switcher
+/// ├── workspace_selector_view
+/// │   ├── workspace_selector_view_content
+/// │   │   ├── workspace_selector_desktop_1
+/// │   │   │   ├── workspace_selector_desktop_content_1
+/// │   │   │   │   ├── workspace_selector_desktop_content_1 (mirror: workspace_view_1)
+/// │   │   │   │   ├── workspace_selector_desktop_border_1
+/// │   │   │   │   ├── workspace_selector_desktop_remove_1
+/// │   │   │   ├── workspace_selector_desktop_label_1
+/// │   │   ├── workspace_selector_desktop_2
+/// │   │   │   ├── ...
+/// │   │   ...
+/// │   ├── workspace_selector_workspace_add
 /// ```
 ///
-///
-///
 impl Workspaces {
-    pub fn new(layers_engine: LayersEngine) -> Self {
+    pub fn new(layers_engine: Arc<Engine>) -> Self {
         let model = WorkspacesModel::default();
         let spaces = Vec::new();
 
@@ -136,11 +158,11 @@ impl Workspaces {
             gap: taffy::Size::length(100.0),
             ..Default::default()
         });
-        // workspaces_layer.set_scale((0.2, 0.2), None);
+
         workspaces_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
         workspaces_layer.set_pointer_events(false);
 
-        layers_engine.add_layer(workspaces_layer.clone());
+        layers_engine.add_layer(&workspaces_layer);
 
         let expose_layer = layers_engine.new_layer();
         expose_layer.set_key("expose");
@@ -156,7 +178,7 @@ impl Workspaces {
         expose_layer.set_pointer_events(false);
         expose_layer.set_hidden(true);
 
-        layers_engine.add_layer(expose_layer.clone());
+        layers_engine.add_layer(&expose_layer);
 
         let overlay_layer = layers_engine.new_layer();
         overlay_layer.set_key("overlay_view");
@@ -176,7 +198,7 @@ impl Workspaces {
 
         let workspace_selector_layer = layers_engine.new_layer();
         workspace_selector_layer.set_pointer_events(false);
-        layers_engine.add_layer(workspace_selector_layer.clone());
+        layers_engine.add_layer(&workspace_selector_layer);
 
         let workspace_selector_view = Arc::new(WorkspaceSelectorView::new(
             layers_engine.clone(),
@@ -207,6 +229,8 @@ impl Workspaces {
             observers: Vec::new(),
             layers_engine,
         };
+        workspaces.add_workspace();
+        workspaces.add_workspace();
         workspaces.add_workspace();
         workspaces.add_workspace();
 
@@ -331,7 +355,7 @@ impl Workspaces {
             // in the middle of the gesture
             transition = None;
         }
-        let animation = transition.map(|t| self.layers_engine.new_animation(t, false));
+        let animation = transition.map(|t| self.layers_engine.add_animation_from_transition(t, false));
 
         self.show_all_gesture
             .store(new_gesture, std::sync::atomic::Ordering::Relaxed);
@@ -447,12 +471,13 @@ impl Workspaces {
             current_workspace.clone()
         });
 
-        let _transactions = self.layers_engine.add_animated_changes(&changes, animation);
+        let _transactions = self.layers_engine.schedule_changes(&changes, animation);
 
         let mut delta = delta.max(0.0);
         delta = delta.powf(0.65);
 
-        let workspace_selector_y = (-200.0).interpolate(&0.0, delta);
+        let workspace_selector_y = (-400.0).interpolate(&0.0, delta);
+        // let workspace_selector_y = -400.0;
         let workspace_opacity = 0.0.interpolate(&1.0, delta);
         let expose_layer = self.expose_layer.clone();
         let show_all_ref = self.show_all.clone();
@@ -627,7 +652,7 @@ impl Workspaces {
                     ..Default::default()
                 });
                 self.layers_engine
-                    .add_layer_to_positioned(view.window_layer.clone(), drawer.clone());
+                    .add_layer_to_positioned(view.window_layer.clone(), Some(drawer.id));
                 // bounds are calculate after this call
                 let drawer_bounds = drawer.render_bounds_transformed();
                 view.minimize(skia::Rect::from_xywh(
@@ -719,7 +744,7 @@ impl Workspaces {
                                 layer_ref.remove_draw_content();
                                 engine_ref.add_layer_to_positioned(
                                     layer_ref.clone(),
-                                    windows_layer_ref.clone(),
+                                    Some(windows_layer_ref.id),
                                 );
                                 layer_ref.set_position(
                                     (layer_pos_x, layer_pos_y),
@@ -1042,14 +1067,14 @@ impl Workspaces {
                     if let Some(view) = self.get_window_view(window_id) {
                         workspace
                             .windows_layer
-                            .add_sublayer(view.window_layer.clone());
+                            .add_sublayer(&view.window_layer);
                     }
                     if let Some(layer) = workspace.window_selector_view.layer_for_window(window_id)
                     {
                         workspace
                             .window_selector_view
                             .windows_layer
-                            .add_sublayer(layer.clone());
+                            .add_sublayer(&layer);
                     }
                 }
                 if update {
@@ -1284,7 +1309,8 @@ impl Workspaces {
                 &self.workspaces_layer,
             ));
             self.expose_layer
-                .add_sublayer(workspace.window_selector_view.layer.clone());
+                .add_sublayer(&workspace.window_selector_view.layer);
+
             m.workspaces.push(workspace.clone());
             self.notify_observers(m);
             (m.workspaces.len() - 1, workspace)
