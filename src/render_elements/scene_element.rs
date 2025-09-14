@@ -1,15 +1,13 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use lay_rs::{
     drawing::render_node_tree,
-    engine::{LayersEngine, SceneNode},
+    engine::Engine, prelude::Layer,
 };
 
 use smithay::{
     backend::renderer::{
-        element::{Element, Id, RenderElement},
-        utils::{CommitCounter, DamageBag},
-        Renderer,
+        Renderer, element::{Element, Id, RenderElement}, utils::{CommitCounter, DamageBag, DamageSet}
     },
     utils::{Buffer, Physical, Point, Rectangle, Scale},
 };
@@ -20,14 +18,14 @@ use crate::{skia_renderer::SkiaRenderer, udev::UdevRenderer};
 pub struct SceneElement {
     id: Id,
     commit_counter: CommitCounter,
-    engine: LayersEngine,
+    engine: Arc<Engine>,
     last_update: std::time::Instant,
     pub size: (f32, f32),
     damage: Rc<RefCell<DamageBag<i32, Physical>>>,
 }
 
 impl SceneElement {
-    pub fn with_engine(engine: LayersEngine) -> Self {
+    pub fn with_engine(engine: Arc<Engine>) -> Self {
         Self {
             id: Id::new(),
             commit_counter: CommitCounter::default(),
@@ -64,11 +62,15 @@ impl SceneElement {
             }
         }
     }
-    pub fn root_layer(&self) -> Option<SceneNode> {
-        self.engine.scene_root_layer()
+    pub fn root_layer(&self) -> Option<Layer> {
+        self.engine.scene_root()
+            .map(|id| 
+                self.engine.get_layer(&id)
+            )
+            .flatten()
     }
     pub fn set_size(&mut self, width: f32, height: f32) {
-        self.engine.set_scene_size(width, height);
+        self.engine.scene_set_size(width, height);
         self.size = (width, height);
     }
 }
@@ -80,7 +82,7 @@ impl Element for SceneElement {
 
     fn location(&self, _scale: Scale<f64>) -> Point<i32, Physical> {
         if let Some(root) = self.root_layer() {
-            let bounds = root.bounds();
+            let bounds = root.render_bounds_transformed();
             (bounds.x() as i32, bounds.y() as i32).into()
         } else {
             (0, 0).into()
@@ -93,7 +95,7 @@ impl Element for SceneElement {
 
     fn geometry(&self, scale: Scale<f64>) -> Rectangle<i32, Physical> {
         if let Some(root) = self.root_layer() {
-            let bounds = root.bounds();
+            let bounds = root.render_bounds_transformed();
             Rectangle::from_loc_and_size(
                 self.location(scale),
                 (bounds.width() as i32, bounds.height() as i32),
@@ -141,7 +143,7 @@ impl RenderElement<SkiaRenderer> for SceneElement {
         &self,
         frame: &mut <SkiaRenderer as Renderer>::Frame<'_>,
         _src: Rectangle<f64, Buffer>,
-        _dst: Rectangle<i32, Physical>,
+        dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
         _opaque_regions: &[Rectangle<i32, Physical>],
     ) -> Result<(), <SkiaRenderer as Renderer>::Error> {
@@ -150,7 +152,7 @@ impl RenderElement<SkiaRenderer> for SceneElement {
         let mut surface = frame.skia_surface.clone();
 
         let canvas = surface.canvas();
-
+        // FIXME
         // if self.engine.damage().is_empty() {
         // return Ok(());
         // } else {
@@ -161,39 +163,53 @@ impl RenderElement<SkiaRenderer> for SceneElement {
 
         let scene = self.engine.scene();
         let root_id = self.engine.scene_root();
+        let save_point = canvas.save();
 
         scene.with_arena(|arena| {
+        scene.with_renderable_arena(|renderable_arena| {
             // let scene_damage = self.engine.damage();
             // let damage_rect = lay_rs::skia::Rect::from_xywh(scene_damage.x, scene_damage.y, scene_damage.width, scene_damage.height);
-            let mut damage_rect = lay_rs::skia::Rect::default();
-            damage.iter().for_each(|d| {
-                damage_rect.join(lay_rs::skia::Rect::from_xywh(
-                    d.loc.x as f32,
-                    d.loc.y as f32,
-                    d.size.w as f32,
-                    d.size.h as f32,
-                ));
-            });
+            // let mut damage_rect = lay_rs::skia::Rect::default();
+            // damage.iter().for_each(|d| {
+                // damage_rect.join(lay_rs::skia::Rect::from_xywh(
+                //     d.loc.x as f32,
+                //     d.loc.y as f32,
+                //     d.size.w as f32,
+                //     d.size.h as f32,
+                // ));
+                // canvas.clip_rect(
+                //     lay_rs::skia::Rect::from_xywh(
+                //         d.loc.x as f32,
+                //         d.loc.y as f32,
+                //         d.size.w as f32,
+                //         d.size.h as f32,
+                //     ),
+                //     Some(lay_rs::skia::ClipOp::Intersect),
+                //     None,
+                // );
+            // });
             if let Some(root_id) = root_id {
-                let save_point = canvas.save();
-
                 // canvas.clear(lay_rs::skia::Color::TRANSPARENT);
-                canvas.clip_rect(damage_rect, None, None);
-                render_node_tree(root_id, arena, canvas, 1.0);
+                // canvas.clip_rect(damage_rect, None, None);
+                render_node_tree(root_id, arena, renderable_arena, canvas, 1.0);
 
                 // draw damage rect
                 let mut paint = lay_rs::skia::Paint::default();
                 paint.set_color(lay_rs::skia::Color::from_argb(255, 255, 0, 0));
-                // paint.set_stroke(true);
-                // paint.set_stroke_width(5.0);
-                // // damage.iter().for_each(|d| {
-                // //     canvas.draw_rect(lay_rs::skia::Rect::from_xywh(
-                // //         d.loc.x as f32,
-                // //         d.loc.y as f32,
-                // //         d.size.w as f32,
-                // //         d.size.h as f32,
-                // //     ), &paint);
-                // // });
+                paint.set_stroke(true);
+                paint.set_stroke_width(5.0);
+                // damage.iter().for_each(|d| {
+                //     canvas.draw_rect(
+                //         lay_rs::skia::Rect::from_xywh(
+                //             d.loc.x as f32,
+                //             d.loc.y as f32,
+                //             d.size.w as f32,
+                //             d.size.h as f32,
+                //         ),
+                //         &paint,
+                //     );
+                // });
+                // FIXME
                 // canvas.draw_rect(damage_rect, &paint);
                 // let typeface = crate::workspace::utils::FONT_CACHE
                 // .with(|font_cache| {
@@ -205,12 +221,11 @@ impl RenderElement<SkiaRenderer> for SceneElement {
                 // let font = lay_rs::skia::Font::from_typeface_with_params(typeface, 22.0, 1.0, 0.0);
                 // let pos = self.engine.get_pointer_position();
                 // canvas.draw_str(format!("{},{}", pos.x, pos.y), (50.0, 50.0), &font, &paint);
-                // println!("scene draw damage: {},{} {}x{}", damage_rect.x(), damage_rect.y(), damage_rect.width(), damage_rect.height());
-
-                canvas.restore_to_count(save_point);
             }
             self.engine.clear_damage();
         });
+        });
+        canvas.restore_to_count(save_point);
         Ok(())
     }
 }

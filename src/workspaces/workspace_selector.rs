@@ -64,7 +64,7 @@ pub struct WorkspaceSelectorView {
 ///
 ///
 impl WorkspaceSelectorView {
-    pub fn new(_layers_engine: LayersEngine, layer: Layer) -> Self {
+    pub fn new(_layers_engine: Arc<Engine>, layer: Layer) -> Self {
         let state = WorkspaceSelectorViewState {
             workspaces: Vec::new(),
             current: 0,
@@ -196,7 +196,7 @@ fn render_workspace_selector_view(
                                 ))
                                 .children(vec![
                                     LayerTreeBuilder::with_key(format!(
-                                        "workspace_desktop_content_preview_{}",
+                                        "workspace_selector_desktop_content_mirror_{}",
                                         w.index
                                     ))
                                     .layout_style(taffy::Style {
@@ -267,7 +267,7 @@ fn render_workspace_selector_view(
                                     .shadow_color((Color::new_rgba(0.0, 0.0, 0.0, 0.2), None))
                                     .shadow_offset(((0.0, 0.0).into(), None))
                                     .shadow_radius((5.0, None))
-                                    .image_cache(true)
+                                    // .image_cache(true)
                                     .on_pointer_press(button_press_filter())
                                     .on_pointer_release(button_release_filter())
                                     .build()
@@ -339,7 +339,7 @@ impl Observer<WorkspacesModel> for WorkspaceSelectorView {
             .map(|(i, w)| WorkspaceViewState {
                 name: format!("Bench {}", i),
                 index: w.index,
-                workspace_node: w.workspace_layer.id(),
+                workspace_node: Some(w.workspace_layer.id()),
             })
             .collect();
         state.current = model.current_workspace;
@@ -354,8 +354,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WorkspaceSele
             .read()
             .unwrap()
             .as_ref()
-            .and_then(|l| l.id())
-            .map(|id| id.0.into())
+            .and_then(|l| Some(l.id.0.into()))
     }
 
     fn is_alive(&self) -> bool {

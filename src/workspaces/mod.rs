@@ -168,10 +168,10 @@ impl Workspaces {
         expose_layer.set_key("expose");
         expose_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
-            display: taffy::Display::Flex,
-            flex_direction: taffy::FlexDirection::Row,
-            flex_wrap: taffy::FlexWrap::NoWrap,
-            gap: taffy::Size::length(100.0),
+            // display: taffy::Display::Flex,
+            // flex_direction: taffy::FlexDirection::Row,
+            // flex_wrap: taffy::FlexWrap::NoWrap,
+            // gap: taffy::Size::length(100.0),
             ..Default::default()
         });
         expose_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
@@ -230,9 +230,9 @@ impl Workspaces {
             layers_engine,
         };
         workspaces.add_workspace();
-        workspaces.add_workspace();
-        workspaces.add_workspace();
-        workspaces.add_workspace();
+        // workspaces.add_workspace();
+        // workspaces.add_workspace();
+        // workspaces.add_workspace();
 
         workspaces.add_listener(dock.clone());
         workspaces.add_listener(app_switcher.clone());

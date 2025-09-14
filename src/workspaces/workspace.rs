@@ -1,9 +1,9 @@
 use super::{BackgroundView, WindowSelectorView};
-use crate::{config::Config, shell::WindowElement, utils::image_from_path};
+use crate::{config::Config, shell::WindowElement, utils::{image_from_path, named_icon}};
 use core::fmt;
 
 use lay_rs::{
-    engine::LayersEngine,
+    engine::Engine,
     prelude::{taffy, Layer},
 };
 use smithay::reexports::wayland_server::backend::ObjectId;
@@ -19,7 +19,7 @@ pub struct WorkspaceView {
     pub background_view: Arc<BackgroundView>,
 
     // scene
-    pub layers_engine: LayersEngine,
+    pub layers_engine: Arc<Engine>,
     pub workspace_layer: Layer,
     pub windows_layer: Layer,
 
@@ -54,7 +54,7 @@ impl fmt::Debug for WorkspaceView {
 /// ```
 ///
 impl WorkspaceView {
-    pub fn new(index: usize, layers_engine: LayersEngine, parent: &Layer) -> Self {
+    pub fn new(index: usize, layers_engine: Arc<Engine>, parent: &Layer) -> Self {
         println!("add_workspace {}", index);
 
         let workspace_layer = layers_engine.new_layer();
@@ -65,7 +65,7 @@ impl WorkspaceView {
             flex_basis: taffy::Dimension::Percent(1.0),
             ..Default::default()
         });
-        workspace_layer.set_size(lay_rs::types::Size::percent(0.7, 1.0), None);
+        workspace_layer.set_size(lay_rs::types::Size::points(2560.0, 1810.0), None);
         workspace_layer.set_pointer_events(false);
 
         let background_layer = layers_engine.new_layer();
@@ -80,20 +80,21 @@ impl WorkspaceView {
         windows_layer.set_key(format!("workspace_windows_container_{}", index));
         windows_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
+            size: taffy::Size {
+                width: taffy::Dimension::Percent(1.0),
+                height: taffy::Dimension::Percent(1.0),
+            },
             ..Default::default()
         });
         windows_layer.set_pointer_events(false);
 
-        let workspace_id = layers_engine.append_layer_to(workspace_layer.clone(), parent.id());
+        layers_engine.append_layer(&workspace_layer, parent.id);
 
-        layers_engine.append_layer_to(background_layer.clone(), Some(workspace_id));
-        layers_engine.append_layer_to(windows_layer.clone(), Some(workspace_id));
+        layers_engine.append_layer(&background_layer, Some(workspace_layer.id));
+        layers_engine.append_layer(&windows_layer, Some(workspace_layer.id));
 
         let background_view = BackgroundView::new(index, background_layer.clone());
         let background_path = Config::with(|c| c.background_image.clone());
-        if let Some(background_image) = image_from_path(&background_path, (2048, 2048)) {
-            background_view.set_image(background_image);
-        }
         let background_view = Arc::new(background_view);
 
         let window_selector_view = WindowSelectorView::new(
@@ -104,6 +105,11 @@ impl WorkspaceView {
 
         let window_selector_view = Arc::new(window_selector_view);
 
+        if let Some(background_image) = image_from_path(&background_path, (2048, 2048)) {
+            background_view.set_image(background_image);
+        } else {
+            tracing::warn!("Failed to load background image from path: {}", background_path);
+        }
         Self {
             index,
             windows_list: Arc::new(RwLock::new(Vec::new())),
@@ -131,28 +137,32 @@ impl WorkspaceView {
             window_list.push(wid.clone());
 
             self.windows_layer
-                .add_sublayer(window_element.base_layer().clone());
+                .add_sublayer(&window_element.base_layer().id);
 
             let mirror_window = self.layers_engine.new_layer();
             mirror_window.set_key(format!(
                 "mirror_window_{}",
-                window_element.base_layer().id().unwrap().0
+                window_element.base_layer().id.0
             ));
             mirror_window.set_layout_style(taffy::Style {
                 position: taffy::Position::Absolute,
                 ..Default::default()
             });
+            // FIXME this is ruining the damage tracking
             mirror_window.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
             self.window_selector_view
                 .windows_layer
-                .add_sublayer(mirror_window.clone());
-            let mirror_window_id = mirror_window.id().unwrap();
-            let mirror_window_node = self
+                .add_sublayer(&mirror_window);
+
+            let window_base = window_element.base_layer();
+            mirror_window.set_draw_content(mirror_window.engine.layer_as_content(window_base));
+
+            let mut node = self
                 .layers_engine
-                .scene_get_node(&mirror_window_id)
+                .scene_get_node(mirror_window.id)
                 .unwrap();
-            let mirror_window_node = mirror_window_node.get();
-            mirror_window_node.replicate_node(&window_element.base_layer().id());
+            let node = node.get_mut();
+            node.set_follow_node(window_base.id());
             self.window_selector_view.map_window(wid, mirror_window);
         }
 
@@ -206,11 +216,8 @@ impl WorkspaceView {
 
 impl Drop for WorkspaceView {
     fn drop(&mut self) {
-        self.layers_engine
-            .scene_remove_layer(self.windows_layer.id());
-        self.layers_engine
-            .scene_remove_layer(self.workspace_layer.id());
-        self.layers_engine
-            .scene_remove_layer(self.window_selector_view.layer.id());
+        self.windows_layer.remove();
+        self.workspace_layer.remove();
+        self.window_selector_view.layer.remove();
     }
 }

@@ -6,7 +6,7 @@ use smithay::{
 use std::{
     collections::HashMap,
     hash::{Hash, Hasher},
-    sync::RwLock,
+    sync::{RwLock, Arc},
 };
 
 use crate::{config::Config, interactive_view::ViewInteractions, utils::Observer};
@@ -97,20 +97,20 @@ pub struct WindowSelectorView {
 ///
 
 impl WindowSelectorView {
-    pub fn new(index: usize, layers_engine: LayersEngine, background_layer: Layer) -> Self {
+    pub fn new(index: usize, layers_engine: Arc<Engine>, background_layer: Layer) -> Self {
         let window_selector_root = layers_engine.new_layer();
         window_selector_root.set_layout_style(taffy::Style {
-            // position: taffy::Position::Absolute,
-            flex_grow: 1.0,
-            flex_shrink: 0.0,
-            flex_basis: taffy::Dimension::Percent(1.0),
+            position: taffy::Position::Absolute,
+            // flex_grow: 1.0,
+            // flex_shrink: 0.0,
+            // flex_basis: taffy::Dimension::Percent(1.0),
             ..Default::default()
         });
 
         window_selector_root.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
 
         window_selector_root.set_key(format!("window_selector_root_{}", index));
-        layers_engine.add_layer(window_selector_root.clone());
+        layers_engine.add_layer(&window_selector_root);
         let overlay_layer = layers_engine.new_layer();
         overlay_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
@@ -137,13 +137,12 @@ impl WindowSelectorView {
             ..Default::default()
         });
         clone_background_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
-        window_selector_root.add_sublayer(clone_background_layer.clone());
+        window_selector_root.add_sublayer(&clone_background_layer);
 
-        let clone_id = clone_background_layer.id().unwrap();
-        let clone_node = layers_engine.scene_get_node(&clone_id).unwrap();
-        let clone_node = clone_node.get();
-        clone_node.replicate_node(&background_layer.id());
-
+        clone_background_layer.set_draw_content(layers_engine.layer_as_content(&background_layer));
+        let mut node = layers_engine.scene_get_node(clone_background_layer.id).unwrap();
+        let node = node.get_mut();
+        node.set_follow_node(background_layer);        
         let windows_layer = layers_engine.new_layer();
         windows_layer.set_key(format!("window_selector_windows_container_{}", index));
         windows_layer.set_layout_style(taffy::Style {
@@ -151,9 +150,9 @@ impl WindowSelectorView {
             ..Default::default()
         });
         windows_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
-        window_selector_root.add_sublayer(windows_layer.clone());
+        window_selector_root.add_sublayer(&windows_layer);
 
-        window_selector_root.add_sublayer(overlay_layer.clone());
+        window_selector_root.add_sublayer(&overlay_layer);
 
         Self {
             view,
@@ -171,7 +170,7 @@ impl WindowSelectorView {
     /// add a window layer to windows map
     /// and append the window to the windows_layer
     pub fn map_window(&self, window_id: ObjectId, layer: Layer) {
-        self.windows_layer.add_sublayer(layer.clone());
+        self.windows_layer.add_sublayer(&layer);
         self.windows.write().unwrap().insert(window_id, layer);
     }
     /// remove the window from the windows map
@@ -348,8 +347,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
             .read()
             .unwrap()
             .as_ref()
-            .and_then(|l| l.id())
-            .map(|id| id.0.into())
+            .and_then(|l| Some(l.id.0.into()))
     }
 
     fn is_alive(&self) -> bool {
