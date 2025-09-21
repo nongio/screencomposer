@@ -1,13 +1,16 @@
-use std::{cell::RefCell, rc::Rc, sync::Arc};
-
-use lay_rs::{
-    drawing::render_node_tree,
-    engine::Engine, prelude::Layer,
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    sync::Arc,
 };
+
+use lay_rs::{drawing::render_node_tree, engine::Engine, prelude::Layer};
 
 use smithay::{
     backend::renderer::{
-        Renderer, element::{Element, Id, RenderElement}, utils::{CommitCounter, DamageBag, DamageSet}
+        element::{Element, Id, RenderElement},
+        utils::{CommitCounter, DamageBag},
+        Renderer,
     },
     utils::{Buffer, Physical, Point, Rectangle, Scale},
 };
@@ -63,10 +66,9 @@ impl SceneElement {
         }
     }
     pub fn root_layer(&self) -> Option<Layer> {
-        self.engine.scene_root()
-            .map(|id| 
-                self.engine.get_layer(&id)
-            )
+        self.engine
+            .scene_root()
+            .map(|id| self.engine.get_layer(&id))
             .flatten()
     }
     pub fn set_size(&mut self, width: f32, height: f32) {
@@ -166,64 +168,46 @@ impl RenderElement<SkiaRenderer> for SceneElement {
         let save_point = canvas.save();
 
         scene.with_arena(|arena| {
-        scene.with_renderable_arena(|renderable_arena| {
-            // let scene_damage = self.engine.damage();
-            // let damage_rect = lay_rs::skia::Rect::from_xywh(scene_damage.x, scene_damage.y, scene_damage.width, scene_damage.height);
-            // let mut damage_rect = lay_rs::skia::Rect::default();
-            // damage.iter().for_each(|d| {
-                // damage_rect.join(lay_rs::skia::Rect::from_xywh(
-                //     d.loc.x as f32,
-                //     d.loc.y as f32,
-                //     d.size.w as f32,
-                //     d.size.h as f32,
-                // ));
-                // canvas.clip_rect(
-                //     lay_rs::skia::Rect::from_xywh(
-                //         d.loc.x as f32,
-                //         d.loc.y as f32,
-                //         d.size.w as f32,
-                //         d.size.h as f32,
-                //     ),
-                //     Some(lay_rs::skia::ClipOp::Intersect),
-                //     None,
-                // );
-            // });
-            if let Some(root_id) = root_id {
-                // canvas.clear(lay_rs::skia::Color::TRANSPARENT);
-                // canvas.clip_rect(damage_rect, None, None);
-                render_node_tree(root_id, arena, renderable_arena, canvas, 1.0);
-
-                // draw damage rect
-                let mut paint = lay_rs::skia::Paint::default();
-                paint.set_color(lay_rs::skia::Color::from_argb(255, 255, 0, 0));
-                paint.set_stroke(true);
-                paint.set_stroke_width(5.0);
-                // damage.iter().for_each(|d| {
-                //     canvas.draw_rect(
-                //         lay_rs::skia::Rect::from_xywh(
-                //             d.loc.x as f32,
-                //             d.loc.y as f32,
-                //             d.size.w as f32,
-                //             d.size.h as f32,
-                //         ),
-                //         &paint,
-                //     );
-                // });
-                // FIXME
-                // canvas.draw_rect(damage_rect, &paint);
-                // let typeface = crate::workspace::utils::FONT_CACHE
-                // .with(|font_cache| {
-                //     font_cache
-                //         .font_mgr
-                //         .match_family_style("Inter", lay_rs::skia::FontStyle::default())
-                // })
-                // .unwrap();
-                // let font = lay_rs::skia::Font::from_typeface_with_params(typeface, 22.0, 1.0, 0.0);
-                // let pos = self.engine.get_pointer_position();
-                // canvas.draw_str(format!("{},{}", pos.x, pos.y), (50.0, 50.0), &font, &paint);
-            }
-            self.engine.clear_damage();
-        });
+            scene.with_renderable_arena(|renderable_arena| {
+                // Clip drawing to the damaged region to avoid full-scene redraws
+                let mut damage_rect = lay_rs::skia::Rect::default();
+                for d in damage.iter() {
+                    let r = lay_rs::skia::Rect::from_xywh(
+                        d.loc.x as f32,
+                        d.loc.y as f32,
+                        d.size.w as f32,
+                        d.size.h as f32,
+                    );
+                    damage_rect.join(r);
+                }
+                // if !damage_rect.is_empty() {
+                //     canvas.clip_rect(damage_rect, Some(lay_rs::skia::ClipOp::Intersect), None);
+                // }
+                if let Some(root_id) = root_id {
+                    // canvas.clear(lay_rs::skia::Color::TRANSPARENT);
+                    // canvas.clip_rect(damage_rect, None, None);
+                    render_node_tree(root_id, arena, renderable_arena, canvas, 1.0);
+                    // Optional debug: outline damage rect
+                    // let mut paint = lay_rs::skia::Paint::default();
+                    // paint.set_color(lay_rs::skia::Color::from_argb(255, 255, 0, 0));
+                    // paint.set_stroke(true);
+                    // paint.set_stroke_width(2.0);
+                    // if !damage_rect.is_empty() {
+                    //     canvas.draw_rect(damage_rect, &paint);
+                    // }
+                    // let typeface = crate::workspace::utils::FONT_CACHE
+                    // .with(|font_cache| {
+                    //     font_cache
+                    //         .font_mgr
+                    //         .match_family_style("Inter", lay_rs::skia::FontStyle::default())
+                    // })
+                    // .unwrap();
+                    // let font = lay_rs::skia::Font::from_typeface_with_params(typeface, 22.0, 1.0, 0.0);
+                    // let pos = self.engine.get_pointer_position();
+                    // canvas.draw_str(format!("{},{}", pos.x, pos.y), (50.0, 50.0), &font, &paint);
+                }
+                self.engine.clear_damage();
+            });
         });
         canvas.restore_to_count(save_point);
         Ok(())

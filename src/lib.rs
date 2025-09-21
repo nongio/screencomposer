@@ -7,6 +7,7 @@
 
 #[cfg(any(feature = "udev", feature = "xwayland"))]
 pub mod cursor;
+pub mod textures_storage;
 pub mod drawing;
 pub mod focus;
 pub mod input_handler;

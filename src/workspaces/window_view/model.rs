@@ -5,8 +5,6 @@ use smithay::{
 };
 use std::hash::{Hash, Hasher};
 
-use crate::skia_renderer::SkiaTextureImage;
-
 #[derive(Clone)]
 pub struct WindowViewSurface {
     pub(crate) id: ObjectId,
@@ -20,7 +18,7 @@ pub struct WindowViewSurface {
     pub(crate) phy_dst_h: f32,
     pub(crate) log_offset_x: f32,
     pub(crate) log_offset_y: f32,
-    pub(crate) texture: Option<SkiaTextureImage>,
+    pub(crate) texture_id: Option<u32>,
     pub(crate) commit: CommitCounter,
     pub(crate) transform: Transform,
 }
@@ -68,8 +66,8 @@ impl Hash for WindowViewSurface {
             .commit
             .distance(Some(CommitCounter::default()))
             .unwrap_or(0);
-        if let Some(image) = self.texture.as_ref().map(|t| t.image.as_ref()) {
-            image.unique_id().hash(state);
+        if let Some(tid) = self.texture_id {
+            tid.hash(state);
             distance.hash(state);
         }
         self.id.hash(state);

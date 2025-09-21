@@ -108,8 +108,6 @@ pub fn view_render_elements(
     render_elements: &Vec<WindowViewSurface>,
     _view: &View<Vec<WindowViewSurface>>,
 ) -> LayerTree {
-    let resampler = lay_rs::skia::CubicResampler::catmull_rom();
-
     LayerTreeBuilder::default()
         .key("window_content")
         .size((
@@ -122,106 +120,76 @@ pub fn view_render_elements(
         .children(
             render_elements
                 .iter()
-                .enumerate()
-                .filter(|(_, render_element)| {
-                    render_element.phy_dst_w > 0.0 && render_element.phy_dst_h > 0.0
+                .filter_map(|render_element| {
+                    if render_element.phy_dst_w <= 0.0 || render_element.phy_dst_h <= 0.0 {
+                        return None;
+                    }
+                    Some(render_element)
                 })
-                .map(|(index, render_element)| {
-                    let wvs = render_element.clone();
-                    let mut font = lay_rs::skia::Font::default();
-                    let font_size = 26.0;
-                    font.set_size(font_size);
+                .enumerate()
+                .map(|(index, wvs)| {
 
-                    let texture = wvs.texture.as_ref();
-                    let image = texture.map(|t| t.image.clone());
-                    // let image = image.as_ref();
-                    let mut damage = lay_rs::skia::Rect::default();
-                    let buffer_damages = texture.and_then(|t| t.damage.clone()).unwrap_or_default();
+                    let draw_wvs = wvs.clone();
 
-                    buffer_damages.iter().for_each(|bd| {
-                        let r = lay_rs::skia::Rect::from_xywh(
-                            bd.loc.x as f32,
-                            bd.loc.y as f32,
-                            bd.size.w as f32,
-                            bd.size.h as f32,
-                        );
-                        damage.join(r);
-                    });
-                    let draw_container = move |canvas: &lay_rs::skia::Canvas, w, h| {
+                    let draw_container = move |canvas: &lay_rs::skia::Canvas, w: f32, h: f32| {
                         if w == 0.0 || h == 0.0 {
-                            return damage;
+                            return lay_rs::skia::Rect::default();
                         }
-                        // let rect = lay_rs::skia::Rect::from_xywh(0.0, 0.0, w, h);
-
-                        if let Some(image) = image.as_ref() {
-                            // let image_h = image.height() as f32;
-                            // let image_w = image.width() as f32;
-                            let src_h = wvs.phy_src_h - wvs.phy_src_y;
-                            let src_w = wvs.phy_src_w - wvs.phy_src_x;
-                            let scale_y = wvs.phy_dst_h / src_h;
-                            let scale_x = wvs.phy_dst_w / src_w;
-                            let mut matrix = lay_rs::skia::Matrix::new_identity();
-                            // if scale_x != 1.0 || scale_y != 1.0 {
-                            match wvs.transform {
-                                Transform::Normal => {
-                                    // println!("Normal");
-                                    matrix.pre_translate((-wvs.phy_src_x, -wvs.phy_src_y));
-                                    matrix.pre_scale((scale_x, scale_y), None);
-                                }
-                                Transform::Flipped180 => {
-                                    // println!("Flipped180");
-                                    matrix.pre_translate((wvs.phy_src_x, wvs.phy_src_y));
-                                    matrix.pre_scale((scale_x, -scale_y), None);
-                                }
-                                Transform::_90 => {}
-                                Transform::_180 => {}
-                                Transform::_270 => {}
-                                Transform::Flipped => {}
-                                Transform::Flipped90 => {}
-                                Transform::Flipped270 => {}
-                            }
-                            // }
-                            // println!("texture size ({}x{}) scale: {} from:[{}, {} - {}x{}] to:[{}, {} - {}x{}] -> scale: {}x{}", image.width(), image.height(), wvs.scale, wvs.src_x, wvs.src_y, wvs.src_w, wvs.src_h, wvs.offset_x, wvs.offset_x, wvs.dst_w, wvs.dst_h, scale_x, scale_y);
-                            // println!("Matrix {:?}", matrix);
-                            let mut paint = lay_rs::skia::Paint::new(
-                                lay_rs::skia::Color4f::new(1.0, 1.0, 1.0, 1.0),
-                                None,
-                            );
-                            paint.set_shader(image.to_shader(
-                                (lay_rs::skia::TileMode::Clamp, lay_rs::skia::TileMode::Clamp),
-                                lay_rs::skia::SamplingOptions::from(resampler),
-                                // lay_rs::skia::SamplingOptions::default(),
-                                &matrix,
-                            ));
-
-                            let split = 1;
-                            let rect_size_w = wvs.phy_dst_w / split as f32;
-                            let rect_size_h = wvs.phy_dst_h / split as f32;
-
-                            canvas.save();
-                            // canvas.clip_rect(damage, None, None);
-                            for i in 0..split {
-                                for j in 0..split {
-                                    let rect = lay_rs::skia::Rect::from_xywh(
-                                        i as f32 * rect_size_w,
-                                        j as f32 * rect_size_h,
-                                        rect_size_w,
-                                        rect_size_h,
-                                    );
-                                    // if rect.intersect(damage) {
-                                    canvas.draw_rect(rect, &paint);
-                                    // }
-                                }
-                            }
-                            // canvas.restore();
-                            // canvas.draw_rect(rect, &paint);
-                            // canvas.concat(&matrix);
-                            // canvas.draw_image(image, (0, 0), Some(&paint));
+                        let tex = crate::textures_storage::get(&draw_wvs.id);
+                        if tex.is_none() {
+                            return lay_rs::skia::Rect::default();
+                        }
+                        let tex = tex.unwrap();
+                        let mut damage = lay_rs::skia::Rect::default();
+                        if let Some(tex_damage) = tex.damage {
+                            tex_damage.iter().for_each(|bd| {
+                                let r = lay_rs::skia::Rect::from_xywh(
+                                    bd.loc.x as f32,
+                                    bd.loc.y as f32,
+                                    bd.size.w as f32,
+                                    bd.size.h as f32,
+                                );
+                                damage.join(r);
+                            });
                         }
 
-                        // let mut paint = lay_rs::skia::Paint::new(lay_rs::skia::Color4f::new(1.0, 0.0, 0.0, 1.0), None);
-                        // paint.set_stroke(true);
-                        // canvas.draw_rrect(rrect, &paint);
+                        let src_h = (draw_wvs.phy_src_h - draw_wvs.phy_src_y).max(1.0);
+                        let src_w = (draw_wvs.phy_src_w - draw_wvs.phy_src_x).max(1.0);
+                        let scale_y = draw_wvs.phy_dst_h / src_h;
+                        let scale_x = draw_wvs.phy_dst_w / src_w;
+                        let mut matrix = lay_rs::skia::Matrix::new_identity();
+                        match draw_wvs.transform {
+                            Transform::Normal => {
+                                matrix.pre_translate((-draw_wvs.phy_src_x, -draw_wvs.phy_src_y));
+                                matrix.pre_scale((scale_x, scale_y), None);
+                            }
+                            Transform::Flipped180 => {
+                                matrix.pre_translate((draw_wvs.phy_src_x, draw_wvs.phy_src_y));
+                                matrix.pre_scale((scale_x, -scale_y), None);
+                            }
+                            Transform::_90 => {}
+                            Transform::_180 => {}
+                            Transform::_270 => {}
+                            Transform::Flipped => {}
+                            Transform::Flipped90 => {}
+                            Transform::Flipped270 => {}
+                        }
+
+                        let sampling = lay_rs::skia::SamplingOptions::from(
+                            lay_rs::skia::CubicResampler::catmull_rom(),
+                        );
+                        let mut paint = lay_rs::skia::Paint::new(
+                            lay_rs::skia::Color4f::new(1.0, 1.0, 1.0, 1.0),
+                            None,
+                        );
+                        paint.set_shader(tex.image.to_shader(
+                            (lay_rs::skia::TileMode::Clamp, lay_rs::skia::TileMode::Clamp),
+                            sampling,
+                            &matrix,
+                        ));
+
+                        let rect = lay_rs::skia::Rect::from_xywh(0.0, 0.0, w, h);
+                        canvas.draw_rect(rect, &paint);
                         damage
                     };
                     LayerTreeBuilder::default()
@@ -237,11 +205,6 @@ pub fn view_render_elements(
                             },
                             None,
                         ))
-                        // .border_width((1.0, None))
-                        // .border_color((
-                        //     Color::new_rgba(1.0, 0.0, 0.0, 1.0),
-                        //     None,
-                        // ))
                         .size((
                             Size {
                                 width: taffy::Dimension::Length(wvs.phy_dst_w),
@@ -251,6 +214,7 @@ pub fn view_render_elements(
                         ))
                         .content(Some(draw_container))
                         .pointer_events(false)
+                        .picture_cached(false)
                         .build()
                         .unwrap()
                 })

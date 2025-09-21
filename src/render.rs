@@ -19,9 +19,7 @@ use smithay::{
 
 use crate::{
     drawing::{PointerRenderElement, CLEAR_COLOR},
-    render_elements::{
-        output_render_elements::OutputRenderElements, scene_element::SceneElement,
-    },
+    render_elements::{output_render_elements::OutputRenderElements, scene_element::SceneElement},
     shell::{WindowElement, WindowRenderElement},
 };
 
@@ -106,10 +104,7 @@ where
     R: Renderer + ImportAll + ImportMem,
     R::TextureId: Clone + 'static,
 {
-    let output_render_elements = workspace_elements
-        .into_iter()
-        .map(|e| e.into())
-        .collect::<Vec<_>>();
+    let mut output_render_elements = Vec::new();
     let _dnd_element = dnd.map(|dnd| {
         let location: utils::Point<i32, utils::Physical> = (0_i32, 0_i32).into();
         let _pointer_element = render_elements_from_surface_tree::<R, PointerRenderElement<R>>(
@@ -128,6 +123,10 @@ where
         1.0,
     )
     .expect("Failed to render space elements");
+
+    output_render_elements.extend(workspace_elements.into_iter().map(|e| e.into()));
+
+    // output_render_elements.extend(space_windows);
     (output_render_elements, CLEAR_COLOR)
 }
 

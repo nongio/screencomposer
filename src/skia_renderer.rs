@@ -67,11 +67,12 @@ impl SkiaSurface {
         color_type: skia::ColorType,
         context: Option<&skia::gpu::DirectContext>,
         origin: skia::gpu::SurfaceOrigin,
+        gl_internal_format: u32,
     ) -> Self {
         let fb_info = {
             skia::gpu::gl::FramebufferInfo {
                 fboid: fboid.into(),
-                format: skia::gpu::gl::Format::RGBA8.into(),
+                format: gl_internal_format,
                 ..Default::default()
             }
         };
@@ -232,6 +233,7 @@ unsafe impl Send for SkiaTexture {}
 
 #[derive(Debug, Clone)]
 pub struct SkiaTextureImage {
+    pub tid: u32,
     pub image: skia::Image,
     pub has_alpha: bool,
     pub format: Option<Fourcc>,
@@ -241,6 +243,7 @@ pub struct SkiaTextureImage {
 impl From<SkiaTexture> for SkiaTextureImage {
     fn from(value: SkiaTexture) -> Self {
         SkiaTextureImage {
+            tid: value.texture.tex_id(),
             image: value.image,
             has_alpha: value.has_alpha,
             format: value.format,
@@ -509,9 +512,7 @@ impl SkiaRenderer {
         damage: Option<&[Rectangle<i32, Buffer>]>,
     ) -> Result<<Self as Renderer>::TextureId, <Self as Renderer>::Error> {
         use smithay::backend::allocator::Buffer;
-        // if !self.extensions.iter().any(|ext| ext == "GL_OES_EGL_image") {
-        //     return Err(GlesError::GLExtensionNotSupported(&["GL_OES_EGL_image"]));
-        // }
+        let damage = damage.map(|damage| damage.to_vec());
 
         // self.make_current()?;
 
@@ -519,7 +520,6 @@ impl SkiaRenderer {
             .existing_dmabuf_texture(dmabuf)?
             .map(Ok)
             .unwrap_or_else(|| {
-                // println!("importing dmabuf {:?}", dmabuf);
                 let is_external = !self
                     .egl_context()
                     .dmabuf_render_formats()
@@ -531,23 +531,36 @@ impl SkiaRenderer {
                     .create_image_from_dmabuf(dmabuf)
                     .map_err(GlesError::BindBufferEGLError)?;
 
-                let tex = self.import_egl_image(egl_image, is_external, None)?;
                 let format = fourcc_to_gl_formats(dmabuf.format().code)
                     .map(|(internal, _, _)| internal)
                     .unwrap_or(ffi::RGBA8);
                 let has_alpha = has_alpha(dmabuf.format().code);
+
+                // If external, resolve/blit into a TEXTURE_2D so Skia can sample it reliably.
+                let (tex_id, skia_external_flag) = if is_external {
+                    let dst = self.create_texture_and_framebuffer(
+                        dmabuf.size().w,
+                        dmabuf.size().h,
+                        dmabuf.format().code,
+                    );
+                    self.blit_eglimage_to_2d_texture(egl_image, dst.tex_id, dmabuf.size())?;
+                    (dst.tex_id, false)
+                } else {
+                    let tex = self.import_egl_image(egl_image, is_external, None)?;
+                    (tex, false)
+                };
 
                 let gles_texture = unsafe {
                     GlesTexture::from_raw(
                         &self.gl_renderer,
                         Some(format),
                         !has_alpha,
-                        tex,
+                        tex_id,
                         dmabuf.size(),
                     )
                 };
                 let image = self
-                    .import_skia_image_from_texture(&gles_texture)
+                    .import_skia_image_from_texture(&gles_texture, skia_external_flag)
                     .ok_or("")
                     .map_err(|_| GlesError::MappingError)?;
 
@@ -557,22 +570,25 @@ impl SkiaRenderer {
                     has_alpha,
                     format: Some(dmabuf.format().code),
                     egl_images: Some(vec![egl_image]),
+                    // Preserve original is_external to drive update path in reuse
                     is_external,
-                    damage: damage.map(|damage| damage.to_vec()),
+                    damage: damage.clone(),
                 };
 
                 self.dmabuf_cache.insert(dmabuf.weak(), texture.clone());
-                // println!("importing dmabuf {} {:?}", image_id, damage);
                 Ok(texture)
             });
         texture.map(|mut tex| {
-            tex.damage = damage.map(|damage| damage.to_vec());
+            tex.image = self
+                .import_skia_image_from_texture(&tex.texture, false)
+                .unwrap();
+            tex.damage = damage.clone();
+            // println!("SkiaRenderer: import_dmabuf_internal END");
             tex
         })
     }
     #[profiling::function]
     fn existing_dmabuf_texture(&self, buffer: &Dmabuf) -> Result<Option<SkiaTexture>, GlesError> {
-        // self.gl_renderer.import_dmabuf(dmabuf, damage)
         let existing_texture = self
             .dmabuf_cache
             .iter()
@@ -584,13 +600,26 @@ impl SkiaRenderer {
             .map(|(_, tex)| tex.clone());
 
         if let Some(texture) = existing_texture {
-            // tracing::trace!("Re-using texture {:?} for {:?}", texture.0.texture, buffer);
             if let Some(egl_images) = texture.egl_images.as_ref() {
                 if egl_images[0] == smithay::backend::egl::ffi::egl::NO_IMAGE_KHR {
                     return Ok(None);
                 }
-                let tex = Some(texture.texture.tex_id());
-                self.import_egl_image(egl_images[0], texture.is_external, tex)?;
+                if texture.is_external {
+                    // For external sources, refresh the 2D texture by blitting from the EGLImage.
+                    let size = Size::<i32, Buffer>::from((
+                        texture.image.width() as i32,
+                        texture.image.height() as i32,
+                    ));
+                    self.blit_eglimage_to_2d_texture(
+                        egl_images[0],
+                        texture.texture.tex_id(),
+                        size,
+                    )?;
+                } else {
+                    // For non-external, rebind the EGLImage to the existing 2D texture.
+                    let tex = Some(texture.texture.tex_id());
+                    self.import_egl_image(egl_images[0], texture.is_external, tex)?;
+                }
             }
             Ok(Some(texture))
         } else {
@@ -617,6 +646,19 @@ impl SkiaRenderer {
         };
         unsafe {
             self.gl.BindTexture(target, tex);
+            // External textures only support a subset of params; ensure valid defaults.
+            // Use linear filtering and clamp-to-edge, and restrict to base level 0.
+            self.gl
+                .TexParameteri(target, ffi::TEXTURE_MIN_FILTER, ffi::LINEAR as GLint);
+            self.gl
+                .TexParameteri(target, ffi::TEXTURE_MAG_FILTER, ffi::LINEAR as GLint);
+            self.gl
+                .TexParameteri(target, ffi::TEXTURE_WRAP_S, ffi::CLAMP_TO_EDGE as GLint);
+            self.gl
+                .TexParameteri(target, ffi::TEXTURE_WRAP_T, ffi::CLAMP_TO_EDGE as GLint);
+            self.gl.TexParameteri(target, ffi::TEXTURE_BASE_LEVEL, 0);
+            self.gl.TexParameteri(target, ffi::TEXTURE_MAX_LEVEL, 0);
+
             self.gl.EGLImageTargetTexture2DOES(target, image);
             self.gl.BindTexture(target, 0);
         }
@@ -805,12 +847,14 @@ impl<'frame> Frame for SkiaFrame<'frame> {
         let mut surface = self.skia_surface;
 
         let info = FlushInfo2 {
-            num_semaphores: 0,
-            signal_semaphores: std::ptr::null_mut(),
-            finished_proc: Some(finished_proc),
-            finished_context: std::ptr::null_mut(),
-            submitted_proc: None,
-            submitted_context: std::ptr::null_mut(),
+            fNumSemaphores: 0,
+            fGpuStatsFlags: 0,
+            fSignalSemaphores: std::ptr::null_mut(),
+            fFinishedProc: Some(finished_proc),
+            fFinishedWithStatsProc: None,
+            fFinishedContext: std::ptr::null_mut(),
+            fSubmittedProc: None,
+            fSubmittedContext: std::ptr::null_mut(),
         };
 
         // Transmute flushinfo2 into flushinfo
@@ -859,15 +903,17 @@ impl<'frame> Frame for SkiaFrame<'frame> {
 use lay_rs::sb;
 
 #[repr(C)]
-#[allow(dead_code)]
+#[allow(dead_code, non_snake_case)]
 #[derive(Debug)]
 pub struct FlushInfo2 {
-    num_semaphores: usize,
-    signal_semaphores: *mut sb::GrBackendSemaphore,
-    pub finished_proc: sb::GrGpuFinishedProc,
-    finished_context: sb::GrGpuFinishedContext,
-    pub submitted_proc: sb::GrGpuSubmittedProc,
-    submitted_context: sb::GrGpuSubmittedContext,
+    pub fNumSemaphores: usize,
+    pub fGpuStatsFlags: sb::skgpu_GpuStatsFlags,
+    pub fSignalSemaphores: *mut sb::GrBackendSemaphore,
+    pub fFinishedProc: sb::GrGpuFinishedProc,
+    pub fFinishedWithStatsProc: sb::GrGpuFinishedWithStatsProc,
+    pub fFinishedContext: sb::GrGpuFinishedContext,
+    pub fSubmittedProc: sb::GrGpuSubmittedProc,
+    pub fSubmittedContext: sb::GrGpuSubmittedContext,
 }
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -904,6 +950,17 @@ impl SkiaSync {
             handle,
             // native: false,
         })))
+    }
+}
+impl Drop for InnerSkiaFence {
+    fn drop(&mut self) {
+        // Best-effort destroy of the EGLSync fence to avoid leaking kernel objects/FDs.
+        // Safe if called once at last Arc drop; ignored by drivers if already destroyed.
+        unsafe {
+            // Use the raw egl ffi to destroy the sync; ignore errors.
+            let _ =
+                smithay::backend::egl::ffi::egl::DestroySync(**self.display_handle, self.handle);
+        }
     }
 }
 impl Fence for SkiaSync {
@@ -1000,9 +1057,12 @@ impl Renderer for SkiaRenderer {
                 let context = self.context.as_ref();
                 let color_type = match buffer.format {
                     Fourcc::Argb8888 => skia::ColorType::RGBA8888,
-                    Fourcc::Abgr2101010 => skia::ColorType::RGBA8888,
+                    Fourcc::Abgr2101010 => skia::ColorType::RGBA1010102,
                     _ => skia::ColorType::RGBA8888,
                 };
+                let gl_internal = fourcc_to_gl_formats(buffer.format)
+                    .map(|(internal, _, _)| internal)
+                    .unwrap_or(ffi::RGBA8);
                 SkiaSurface::new_with_fbo(
                     output_size.w,
                     output_size.h,
@@ -1012,6 +1072,7 @@ impl Renderer for SkiaRenderer {
                     color_type,
                     context,
                     buffer.origin,
+                    gl_internal as u32,
                 )
                 // SkiaSurface::new_with_texture(
                 //     output_size.w,
@@ -1086,12 +1147,20 @@ impl Renderer for SkiaRenderer {
 
 impl SkiaRenderer {
     #[profiling::function]
-    fn import_skia_image_from_texture(&mut self, texture: &GlesTexture) -> Option<skia::Image> {
+    fn import_skia_image_from_texture(
+        &mut self,
+        texture: &GlesTexture,
+        is_external: bool,
+    ) -> Option<skia::Image> {
         #[cfg(feature = "profile-with-puffin")]
         profiling::scope!("import_skia_image_from_texture");
         let context = self.context.as_mut().unwrap();
 
-        let target = ffi::TEXTURE_2D;
+        let target = if is_external {
+            ffi::TEXTURE_EXTERNAL_OES
+        } else {
+            ffi::TEXTURE_2D
+        };
 
         let size = skia::Point {
             x: texture.width() as f32,
@@ -1150,6 +1219,69 @@ impl SkiaRenderer {
         }
     }
 }
+
+impl SkiaRenderer {
+    #[profiling::function]
+    fn blit_eglimage_to_2d_texture(
+        &self,
+        image: smithay::backend::egl::ffi::egl::types::EGLImage,
+        dst_tex: u32,
+        size: smithay::utils::Size<i32, Buffer>,
+    ) -> Result<(), GlesError> {
+        unsafe {
+            // Create source renderbuffer and FBO from EGLImage
+            let mut src_rbo = 0;
+            self.gl.GenRenderbuffers(1, &mut src_rbo);
+            self.gl.BindRenderbuffer(ffi::RENDERBUFFER, src_rbo);
+            self.gl
+                .EGLImageTargetRenderbufferStorageOES(ffi::RENDERBUFFER, image);
+            let mut src_fbo = 0;
+            self.gl.GenFramebuffers(1, &mut src_fbo);
+            self.gl.BindFramebuffer(ffi::READ_FRAMEBUFFER, src_fbo);
+            self.gl.FramebufferRenderbuffer(
+                ffi::READ_FRAMEBUFFER,
+                ffi::COLOR_ATTACHMENT0,
+                ffi::RENDERBUFFER,
+                src_rbo,
+            );
+
+            // Create destination FBO and attach the 2D destination texture
+            let mut dst_fbo = 0;
+            self.gl.GenFramebuffers(1, &mut dst_fbo);
+            self.gl.BindFramebuffer(ffi::DRAW_FRAMEBUFFER, dst_fbo);
+            self.gl.FramebufferTexture2D(
+                ffi::DRAW_FRAMEBUFFER,
+                ffi::COLOR_ATTACHMENT0,
+                ffi::TEXTURE_2D,
+                dst_tex,
+                0,
+            );
+
+            // Blit from src (READ) to dst (DRAW)
+            self.gl.BlitFramebuffer(
+                0,
+                0,
+                size.w,
+                size.h,
+                0,
+                0,
+                size.w,
+                size.h,
+                ffi::COLOR_BUFFER_BIT,
+                ffi::NEAREST,
+            );
+
+            // Cleanup bindings and temp objects
+            self.gl.BindFramebuffer(ffi::READ_FRAMEBUFFER, 0);
+            self.gl.BindFramebuffer(ffi::DRAW_FRAMEBUFFER, 0);
+            self.gl.DeleteFramebuffers(1, &src_fbo);
+            self.gl.DeleteFramebuffers(1, &dst_fbo);
+            self.gl.BindRenderbuffer(ffi::RENDERBUFFER, 0);
+            self.gl.DeleteRenderbuffers(1, &src_rbo);
+        }
+        Ok(())
+    }
+}
 impl ImportMemWl for SkiaRenderer {
     #[profiling::function]
     fn import_shm_buffer(
@@ -1165,7 +1297,7 @@ impl ImportMemWl for SkiaRenderer {
             .format()
             .map_or(false, |fourcc: Fourcc| has_alpha(fourcc));
         let image = self
-            .import_skia_image_from_texture(&texture)
+            .import_skia_image_from_texture(&texture, false)
             .ok_or("")
             .map_err(|_| GlesError::MappingError)?;
 
@@ -1214,7 +1346,7 @@ impl ImportEgl for SkiaRenderer {
             .format()
             .map_or(false, |fourcc: Fourcc| has_alpha(fourcc));
         let image = self
-            .import_skia_image_from_texture(&texture)
+            .import_skia_image_from_texture(&texture, false)
             .ok_or("")
             .map_err(|_| GlesError::MappingError)?;
 
@@ -1282,7 +1414,7 @@ impl ImportMem for SkiaRenderer {
             .gl_renderer
             .import_memory(data, format, size, flipped)?;
         let image = self
-            .import_skia_image_from_texture(&texture)
+            .import_skia_image_from_texture(&texture, false)
             .ok_or("")
             .map_err(|_| GlesError::MappingError)?;
         let has_alpha = has_alpha(format);
@@ -1361,8 +1493,6 @@ impl ExportMem for SkiaRenderer {
         region: Rectangle<i32, Buffer>,
         fourcc: Fourcc,
     ) -> Result<Self::TextureMapping, <Self as Renderer>::Error> {
-        tracing::trace!("copy_framebuffer {:?} {:?}", region, fourcc);
-
         let renderer = self.current_skia_renderer().unwrap();
 
         let mut surface = renderer.surface();
@@ -1417,8 +1547,6 @@ impl ExportMem for SkiaRenderer {
         region: Rectangle<i32, Buffer>,
         fourcc: Fourcc,
     ) -> Result<Self::TextureMapping, Self::Error> {
-        tracing::trace!("copy_texture {:?} {:?}", region, fourcc);
-
         unimplemented!("copy_texture")
     }
 
@@ -1507,7 +1635,6 @@ impl Bind<Dmabuf> for SkiaRenderer {
         buffers
             .entry(SkiaTarget::Dmabuf(dmabuf.clone()))
             .or_insert_with(|| {
-                tracing::trace!("Creating EGLImage for Dmabuf: {:?}", dmabuf);
                 let image = egl_display.create_image_from_dmabuf(&dmabuf).unwrap();
                 let mut texture = 0;
                 // .map_err(GlesError::BindBufferEGLError)?;

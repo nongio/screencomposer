@@ -575,7 +575,12 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 render_surface.lock().unwrap();
 
             if let Some(view) = render_surface.view() {
-                let texture = self.backend_data.texture_for_surface(&render_surface);
+                let mut texture_id = None;
+                if let Some(t) = self.backend_data.texture_for_surface(&render_surface) {
+                    // Store for debug comparison rendering (unique per surface id)
+                    texture_id = Some(t.tid);
+                    crate::textures_storage::set(&id, t);
+                }
                 let wvs = WindowViewSurface {
                     id: id.clone(),
                     log_offset_x: location.x as f32,
@@ -590,7 +595,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                     phy_dst_y: view.offset.y as f32 * scale as f32 - surface_geometry.loc.y as f32,
                     phy_dst_w: view.dst.w as f32 * scale as f32,
                     phy_dst_h: view.dst.h as f32 * scale as f32,
-                    texture,
+                    texture_id,
                     commit: render_surface.current_commit(),
                     transform: surface_attributes.buffer_transform.into(),
                 };
