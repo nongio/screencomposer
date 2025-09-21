@@ -343,6 +343,7 @@ impl Workspaces {
         }
         if show_all {
             self.expose_layer.set_hidden(false);
+            self.get_current_workspace().windows_layer.set_hidden(true);
         }
 
         let delta = new_gesture as f32 / 1000.0;
@@ -355,7 +356,8 @@ impl Workspaces {
             // in the middle of the gesture
             transition = None;
         }
-        let animation = transition.map(|t| self.layers_engine.add_animation_from_transition(t, false));
+        let animation =
+            transition.map(|t| self.layers_engine.add_animation_from_transition(t, false));
 
         self.show_all_gesture
             .store(new_gesture, std::sync::atomic::Ordering::Relaxed);
@@ -480,6 +482,7 @@ impl Workspaces {
         // let workspace_selector_y = -400.0;
         let workspace_opacity = 0.0.interpolate(&1.0, delta);
         let expose_layer = self.expose_layer.clone();
+        let windows_layer = self.get_current_workspace().windows_layer.clone();
         let show_all_ref = self.show_all.clone();
         // disable pointer interactions during the animation
         self.set_show_all(false);
@@ -495,6 +498,7 @@ impl Workspaces {
             .on_finish(
                 move |_: &Layer, _: f32| {
                     expose_layer.set_hidden(!show_all);
+                    windows_layer.set_hidden(show_all);
                     show_all_ref.store(show_all, std::sync::atomic::Ordering::Relaxed);
                 },
                 true,
@@ -862,6 +866,8 @@ impl Workspaces {
             }
         });
         self.windows_map.remove(window_id);
+        // Remove debug texture snapshot for this surface
+        crate::textures_storage::remove(window_id);
         self.remove_window_view(window_id);
 
         self.refresh_space();

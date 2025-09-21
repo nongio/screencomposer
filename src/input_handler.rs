@@ -1514,9 +1514,10 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
     } else if modifiers.alt && keysym == Keysym::f {
         Some(KeyAction::ExposeShowAll)
     // } else if (xkb::KEY_1..=xkb::KEY_9).contains(&keysym.raw()) {
-        // Some(KeyAction::WorkspaceNum(
-            // (keysym.raw() - xkb::KEY_1) as usize,
-        // ))
+    // TODO: disable workspace switching until dynamic keybinding is implemented
+    // Some(KeyAction::WorkspaceNum(
+    // (keysym.raw() - xkb::KEY_1) as usize,
+    // ))
     } else {
         None
     }
