@@ -601,7 +601,7 @@ impl DockView {
         let tot_elements = apps_len + windows_len;
         let animation = self
             .layers_engine
-            .add_animation_from_transition(Transition::ease_out_quad(0.08), false);
+            .add_animation_from_transition(&Transition::ease_out_quad(0.08), false);
         let mut changes = Vec::new();
         let genie_scale = Config::with(|c| c.genie_scale);
         for (index, app) in state.running_apps.iter().enumerate() {

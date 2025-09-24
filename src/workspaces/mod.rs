@@ -361,7 +361,7 @@ impl Workspaces {
             transition = None;
         }
         let animation =
-            transition.map(|t| self.layers_engine.add_animation_from_transition(t, false));
+            transition.map(|t| self.layers_engine.add_animation_from_transition(&t, false));
 
         self.show_all_gesture
             .store(new_gesture, std::sync::atomic::Ordering::Relaxed);
