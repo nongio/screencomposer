@@ -26,7 +26,7 @@ use smithay::{
             update_surface_primary_scanout_output, with_surfaces_surface_tree,
             OutputPresentationFeedback,
         },
-        PopupManager, Space,
+        PopupManager,
     },
     input::{
         keyboard::{Keysym, XkbConfig},
@@ -733,14 +733,14 @@ pub struct SurfaceDmabufFeedback<'a> {
 pub fn post_repaint<'a>(
     output: &Output,
     render_element_states: &RenderElementStates,
-    space: &Space<WindowElement>,
+    window_elements: &[&WindowElement],
     dmabuf_feedback: Option<SurfaceDmabufFeedback<'_>>,
     time: impl Into<Duration>,
 ) {
     let time = time.into();
     let throttle = Some(Duration::from_secs(1));
 
-    space.elements().for_each(|window| {
+    window_elements.iter().for_each(|window| {
         window.with_surfaces(|surface, states| {
             let primary_scanout_output = update_surface_primary_scanout_output(
                 surface,
@@ -759,22 +759,21 @@ pub fn post_repaint<'a>(
         window.send_frame(output, time, Some(Duration::ZERO), |_, _| {
             Some(output.clone())
         });
-        if space.outputs_for_element(window).contains(output) {
-            window.send_frame(output, time, throttle, surface_primary_scanout_output);
-            if let Some(dmabuf_feedback) = dmabuf_feedback {
-                window.send_dmabuf_feedback(
-                    output,
-                    surface_primary_scanout_output,
-                    |surface, _| {
-                        select_dmabuf_feedback(
-                            surface,
-                            render_element_states,
-                            dmabuf_feedback.render_feedback,
-                            dmabuf_feedback.scanout_feedback,
-                        )
-                    },
-                );
-            }
+        // Send frame to all windows since we're processing all workspaces
+        window.send_frame(output, time, throttle, surface_primary_scanout_output);
+        if let Some(dmabuf_feedback) = dmabuf_feedback {
+            window.send_dmabuf_feedback(
+                output,
+                surface_primary_scanout_output,
+                |surface, _| {
+                    select_dmabuf_feedback(
+                        surface,
+                        render_element_states,
+                        dmabuf_feedback.render_feedback,
+                        dmabuf_feedback.scanout_feedback,
+                    )
+                },
+            );
         }
     });
     let map = smithay::desktop::layer_map_for_output(output);
@@ -816,21 +815,20 @@ pub fn post_repaint<'a>(
 #[profiling::function]
 pub fn take_presentation_feedback<'a>(
     output: &Output,
-    space: &Space<WindowElement>,
+    window_elements: &[&WindowElement],
     render_element_states: &RenderElementStates,
 ) -> OutputPresentationFeedback {
     let mut output_presentation_feedback = OutputPresentationFeedback::new(output);
 
-    space.elements().for_each(|window| {
-        if space.outputs_for_element(window).contains(output) {
-            window.take_presentation_feedback(
-                &mut output_presentation_feedback,
-                surface_primary_scanout_output,
-                |surface, _| {
-                    surface_presentation_feedback_flags_from_states(surface, render_element_states)
-                },
-            );
-        }
+    window_elements.iter().for_each(|window| {
+        // Process all windows since we're handling all workspaces
+        window.take_presentation_feedback(
+            &mut output_presentation_feedback,
+            surface_primary_scanout_output,
+            |surface, _| {
+                surface_presentation_feedback_flags_from_states(surface, render_element_states)
+            },
+        );
     });
 
     // space.elements().for_each(|window| {

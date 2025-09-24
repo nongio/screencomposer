@@ -88,9 +88,9 @@ where
 }
 
 #[profiling::function]
-pub fn output_elements<'frame, R>(
+pub fn output_elements<'a, 'frame, R>(
     output: &Output,
-    space: &Space<WindowElement>,
+    window_elements: impl IntoIterator<Item = &'a WindowElement>,
     workspace_elements: impl IntoIterator<
         Item = impl Into<OutputRenderElements<'frame, R, WindowRenderElement<R>>>,
     >,
@@ -116,24 +116,20 @@ where
             element::Kind::Unspecified,
         );
     });
-    let _space_elements = smithay::desktop::space::space_render_elements::<_, WindowElement, _>(
-        renderer,
-        [space],
-        output,
-        1.0,
-    )
-    .expect("Failed to render space elements");
+    
+    // Render window elements from all workspaces - but skip rendering for now
+    // as this needs to be handled by the workspace scene elements
+    let _window_count = window_elements.into_iter().count();
 
     output_render_elements.extend(workspace_elements.into_iter().map(|e| e.into()));
 
-    // output_render_elements.extend(space_windows);
     (output_render_elements, CLEAR_COLOR)
 }
 
 #[allow(clippy::too_many_arguments)]
 pub fn render_output<'frame, R>(
     output: &Output,
-    space: &Space<WindowElement>,
+    window_elements: &[&WindowElement],
     custom_elements: impl IntoIterator<
         Item = impl Into<OutputRenderElements<'frame, R, WindowRenderElement<R>>>,
     >,
@@ -147,7 +143,7 @@ where
     R::TextureId: Clone + 'static,
     SceneElement: smithay::backend::renderer::element::RenderElement<R>,
 {
-    let (elements, clear_color) = output_elements(output, space, custom_elements, dnd, renderer);
+    let (elements, clear_color) = output_elements(output, window_elements.iter().copied(), custom_elements, dnd, renderer);
 
     damage_tracker.render_output(renderer, age, &elements, clear_color)
 }

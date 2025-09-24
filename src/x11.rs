@@ -8,6 +8,7 @@ use crate::{
     drawing::*,
     render::*,
     render_elements::workspace_render_elements::WorkspaceRenderElements,
+    shell::WindowElement,
     skia_renderer::{SkiaRenderer, SkiaTextureImage},
     state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
 };
@@ -428,9 +429,10 @@ pub fn run_x11() {
             #[cfg(feature = "fps_ticker")]
             elements.push(WorkspaceRenderElements::Fps(fps_element.clone()));
 
+            let all_window_elements: Vec<&WindowElement> = state.workspaces.spaces_elements().collect();
             let render_res = render_output(
                 &output,
-                state.workspaces.space(),
+                &all_window_elements,
                 elements,
                 state.dnd_icon.as_ref(),
                 &mut backend_data.renderer,
@@ -451,18 +453,20 @@ pub fn run_x11() {
 
                     // Send frame events so that client start drawing their next frame
                     let time = state.clock.now();
+                    let all_window_elements: Vec<&WindowElement> = state.workspaces.spaces_elements().collect();
                     post_repaint(
                         &output,
                         &render_output_result.states,
-                        state.workspaces.space(),
+                        &all_window_elements,
                         None,
                         time,
                     );
 
                     if render_output_result.damage.is_some() {
+                        let all_window_elements: Vec<&WindowElement> = state.workspaces.spaces_elements().collect();
                         let mut output_presentation_feedback = take_presentation_feedback(
                             &output,
-                            state.workspaces.space(),
+                            &all_window_elements,
                             &render_output_result.states,
                         );
                         output_presentation_feedback.presented(

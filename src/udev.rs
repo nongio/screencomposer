@@ -61,7 +61,7 @@ use smithay::{
         SwapBuffersError,
     },
     delegate_dmabuf, delegate_drm_lease,
-    desktop::{space::Space, utils::OutputPresentationFeedback},
+    desktop::utils::OutputPresentationFeedback,
     input::pointer::{CursorImageAttributes, CursorImageStatus},
     output::{Mode as WlMode, Output, PhysicalProperties, Subpixel},
     reexports::{
@@ -1585,10 +1585,11 @@ impl ScreenComposer<UdevData> {
             .pointer_element
             .set_texture(pointer_image.clone());
         let pointer_scale = pointer_width as f64 / self.backend_data.cursor_manager.size as f64;
+        let all_window_elements: Vec<&WindowElement> = self.workspaces.spaces_elements().collect();
         let result = render_surface(
             surface,
             &mut renderer,
-            self.workspaces.space(),
+            &all_window_elements,
             &output,
             self.pointer.current_location(),
             // &pointer_image,
@@ -1713,7 +1714,7 @@ impl RenderOutcome {
 fn render_surface<'a, 'b>(
     surface: &'a mut SurfaceData,
     renderer: &mut UdevRenderer<'a>,
-    space: &Space<WindowElement>,
+    window_elements: &[&WindowElement],
     output: &Output,
     pointer_location: Point<f64, Logical>,
     pointer_element: &mut PointerElement<MultiTexture>,
@@ -1724,7 +1725,7 @@ fn render_surface<'a, 'b>(
     scene_element: SceneElement,
     scene_has_damage: bool,
 ) -> Result<RenderOutcome, SwapBuffersError> {
-    let output_geometry = space.output_geometry(output).unwrap();
+    let output_geometry = Rectangle::from_loc_and_size((0, 0), output.current_mode().unwrap().size);
     let scale = Scale::from(output.current_scale().fractional_scale());
 
     let mut workspace_render_elements: Vec<WorkspaceRenderElements<_>> = Vec::new();
@@ -1736,7 +1737,7 @@ fn render_surface<'a, 'b>(
     let dnd_needs_draw = dnd_icon.map(|surface| surface.alive()).unwrap_or(false);
     let mut pointer_needs_draw = false;
 
-    if output_geometry.to_f64().contains(pointer_location) {
+    if output_geometry.to_f64().contains(pointer_location.to_physical(scale)) {
         pointer_needs_draw = true;
         let (cursor_phy_size, cursor_hotspot) = match cursor_status {
             CursorImageStatus::Surface(ref surface) => {
@@ -1799,8 +1800,8 @@ fn render_surface<'a, 'b>(
                 (0.0, 0.0).into(),
             ),
         };
-        let cursor_pos = pointer_location - output_geometry.loc.to_f64();
-        let cursor_pos_scaled = (cursor_pos.to_physical(scale) - cursor_hotspot).to_i32_round();
+        let cursor_pos = pointer_location.to_physical(scale) - output_geometry.loc.to_f64();
+        let cursor_pos_scaled = (cursor_pos - cursor_hotspot).to_i32_round();
 
         let cursor_rescale = cursor_config_physical_size / cursor_phy_size.w;
         // // set cursor
@@ -1863,7 +1864,7 @@ fn render_surface<'a, 'b>(
             .map(OutputRenderElements::from)
             .collect::<Vec<_>>();
     let (output_elements, clear_color) =
-        output_elements(output, space, output_render_elements, dnd_icon, renderer);
+        output_elements(output, window_elements.iter().copied(), output_render_elements, dnd_icon, renderer);
 
     let SurfaceCompositorRenderResult {
         rendered,
@@ -1879,7 +1880,7 @@ fn render_surface<'a, 'b>(
     post_repaint(
         output,
         &states,
-        space,
+        window_elements,
         surface
             .dmabuf_feedback
             .as_ref()
@@ -1891,7 +1892,7 @@ fn render_surface<'a, 'b>(
     );
 
     if rendered {
-        let output_presentation_feedback = take_presentation_feedback(output, space, &states);
+        let output_presentation_feedback = take_presentation_feedback(output, window_elements, &states);
         let damage = damage.cloned();
         surface
             .compositor

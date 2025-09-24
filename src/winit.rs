@@ -54,6 +54,7 @@ use crate::{
     drawing::*,
     render::*,
     render_elements::workspace_render_elements::WorkspaceRenderElements,
+    shell::WindowElement,
     skia_renderer::{SkiaRenderer, SkiaTexture, SkiaTextureImage},
     state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
 };
@@ -559,9 +560,12 @@ pub fn run_winit() {
                     #[cfg(feature = "profile-with-puffin")]
                     profiling::puffin::profile_scope!("render_output");
 
+                    // Get all window elements from all workspaces
+                    let all_window_elements: Vec<&WindowElement> = state.workspaces.spaces_elements().collect();
+
                     render_output(
                         &output,
-                        state.workspaces.space(),
+                        &all_window_elements,
                         elements,
                         state.dnd_icon.as_ref(),
                         renderer,
@@ -608,10 +612,11 @@ pub fn run_winit() {
                         backend.window().set_cursor_visible(cursor_visible);
 
                         let time = state.clock.now();
+                        let all_window_elements: Vec<&WindowElement> = state.workspaces.spaces_elements().collect();
                         post_repaint(
                             &output,
                             &render_output_result.states,
-                            state.workspaces.space(),
+                            &all_window_elements,
                             None,
                             time,
                         );
@@ -622,9 +627,10 @@ pub fn run_winit() {
                         }
 
                         if has_rendered {
+                            let all_window_elements: Vec<&WindowElement> = state.workspaces.spaces_elements().collect();
                             let mut output_presentation_feedback = take_presentation_feedback(
                                 &output,
-                                state.workspaces.space(),
+                                &all_window_elements,
                                 &render_output_result.states,
                             );
                             output_presentation_feedback.presented(
