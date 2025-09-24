@@ -65,17 +65,14 @@ impl WorkspaceView {
         workspace_layer.set_key(format!("workspace_view_{}", index));
         workspace_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
-            // flex_grow: 1.0,
-            // flex_shrink: 0.0,
-            // flex_basis: taffy::Dimension::Percent(1.0),
             ..Default::default()
         });
-        let width = 2560.0;
-        workspace_layer.set_size(lay_rs::types::Size::points(2560.0, 1810.0), None);
+        workspace_layer.set_size(lay_rs::types::Size::auto(), None);
 
-        workspace_layer.set_position((((index - 1) as f32) * (width as f32 + 100.0), 0.0), None);
+        workspace_layer.set_position((0.0, 0.0), None);
         workspace_layer.set_pointer_events(false);
-
+        workspace_layer.set_image_cached(true);
+        
         let background_layer = layers_engine.new_layer();
         background_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
@@ -134,6 +131,13 @@ impl WorkspaceView {
             workspace_layer,
             fullscreen_mode: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    pub fn update_layout(&self, logical_index: usize, width: f32, height: f32) {
+        self.workspace_layer
+            .set_size(lay_rs::types::Size::points(width, height), None);
+        let x = logical_index as f32 * width;
+        self.workspace_layer.set_position((x, 0.0), None);
     }
 
     /// add a window layer to the workspace windows container

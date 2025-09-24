@@ -100,7 +100,7 @@ pub struct Workspaces {
     pub layers_engine: Arc<Engine>,
     pub overlay_layer: Layer,
     pub workspaces_layer: Layer,
-    pub expose_layer: Layer,
+    expose_layer: Layer,
     observers: Vec<Weak<dyn Observer<WorkspacesModel>>>,
 }
 
@@ -257,13 +257,17 @@ impl Workspaces {
     /// Set the workspace screen physical size
     pub fn set_screen_dimension(&self, width: i32, height: i32) {
         let scale = Config::with(|c| c.screen_scale);
-        self.with_model_mut(|model| {
+        let current_workspace = self.with_model_mut(|model| {
             model.width = width;
             model.height = height;
             model.scale = scale;
             let event = model.clone();
             self.notify_observers(&event);
+            model.current_workspace
         });
+
+        self.update_workspaces_layout();
+        self.scroll_to_workspace_index(current_workspace, Some(Transition::ease_out_quad(0.0)));
     }
 
     pub fn get_logical_rect(&self) -> smithay::utils::Rectangle<i32, smithay::utils::Logical> {
@@ -283,6 +287,32 @@ impl Workspaces {
     pub fn with_model<T>(&self, f: impl FnOnce(&WorkspacesModel) -> T) -> T {
         let model = self.model.read().unwrap();
         f(&model)
+    }
+
+    fn update_workspaces_layout(&self) {
+        let (width, height, workspaces) = self.with_model(|model| {
+            (
+                model.width as f32,
+                model.height as f32,
+                model.workspaces.clone(),
+            )
+        });
+
+        if width <= 0.0 || height <= 0.0 {
+            return;
+        }
+
+        self.workspaces_layer
+            .set_size(Size::points(width, height), None);
+        self.expose_layer
+            .set_size(Size::points(width, height), None);
+
+        for (logical_index, workspace) in workspaces.iter().enumerate() {
+            workspace.update_layout(logical_index, width, height);
+            let selector_layer = workspace.window_selector_view.layer.clone();
+            selector_layer.set_size(Size::points(width, height), None);
+            selector_layer.set_position((logical_index as f32 * width, 0.0), None);
+        }
     }
 
     pub fn with_model_mut<T>(&self, f: impl FnOnce(&mut WorkspacesModel) -> T) -> T {
@@ -1184,8 +1214,6 @@ impl Workspaces {
     /// - applications_list: is the list of app_id in the order they are opened
     /// - zindex_application_list: is the list of app_id in the order they are in the zindex
     pub(crate) fn update_workspace_model(&self) {
-        tracing::info!("workspaces::update_workspace_model");
-
         let windows: Vec<(ObjectId, WindowElement)> = self
             .spaces_elements()
             .map(|we| (we.wl_surface().unwrap().id(), we.clone()))
@@ -1323,6 +1351,7 @@ impl Workspaces {
             self.notify_observers(m);
             (m.workspaces.len() - 1, workspace)
         });
+        self.update_workspaces_layout();
         (index, workspace)
     }
 
@@ -1365,6 +1394,7 @@ impl Workspaces {
                 self.move_window_to_workspace(e, workspace_model.current_workspace, location);
             }
         }
+        self.update_workspaces_layout();
         self.scroll_to_workspace_index(workspace_model.current_workspace, None);
         self.notify_observers(&workspace_model);
     }
@@ -1406,22 +1436,39 @@ impl Workspaces {
             } else {
                 self.dock.show(Some(transition));
             }
-            x = workspace
-                .workspace_layer
-                .render_layer()
-                .local_transformed_bounds
-                .left();
+
+            let workspace_width = self.with_model(|m| m.width as f32);
+            if workspace_width > 0.0 {
+                x = i as f32 * workspace_width;
+            } else {
+                x = workspace
+                    .workspace_layer
+                    .render_layer()
+                    .local_transformed_bounds
+                    .left();
+            }
         }
 
-        self.workspaces_layer
-            .set_position((-x, 0.0), Some(transition));
-        self.expose_layer.set_position((-x, 0.0), Some(transition));
+        self.apply_scroll_offset(x, Some(transition));
     }
 
     // Space management
 
     pub fn outputs_for_element(&self, element: &WindowElement) -> Vec<Output> {
         self.space().outputs_for_element(element)
+    }
+
+    fn apply_scroll_offset(&self, offset: f32, transition: Option<Transition>) {
+        if !offset.is_finite() {
+            return;
+        }
+        if let Some(transition) = &transition {
+            let animation = self.workspaces_layer.engine.add_animation_from_transition(transition, true);
+            let change1 = self.workspaces_layer.change_position((-offset, 0.0));
+            let change2 = self.expose_layer.change_position((-offset, 0.0));
+            let changes = vec![change1, change2];
+            self.workspaces_layer.engine.schedule_changes(&changes, animation);
+        }
     }
 
     pub fn element_under(
@@ -1464,6 +1511,15 @@ impl Workspaces {
         we: &WindowElement,
     ) -> Option<smithay::utils::Rectangle<i32, smithay::utils::Logical>> {
         self.space().element_geometry(we)
+    }
+
+    // Add these helper methods
+    fn find_space_for_element(&self, element: &WindowElement) -> Option<&Space<WindowElement>> {
+        self.spaces.iter().find(|space| space.elements().any(|e| e.id() == element.id()))
+    }
+    
+    fn find_space_index_for_element(&self, element: &WindowElement) -> Option<usize> {
+        self.spaces.iter().position(|space| space.elements().any(|e| e.id() == element.id()))
     }
 }
 
