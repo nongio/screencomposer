@@ -1,4 +1,4 @@
-use std::{convert::TryInto, process::Command, sync::atomic::Ordering};
+use std::{convert::TryInto, fs, process::Command, sync::atomic::Ordering};
 
 use crate::{config::Config, focus::PointerFocusTarget, shell::FullscreenSurface, ScreenComposer};
 
@@ -128,6 +128,21 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                             toplevel.send_pending_configure();
                         }
                     }
+                }
+            }
+
+            KeyAction::SceneSnapshot => {
+                let scene = self.layers_engine.scene();
+
+                match scene.serialize_state_pretty() {
+                    Ok(json) => {
+                        if let Err(err) = fs::write("scene.json", json) {
+                            error!(?err, "Failed to write scene snapshot");
+                        } else {
+                            info!("Scene snapshot saved to scene.json");
+                        }
+                    }
+                    Err(err) => error!(?err, "Failed to serialize scene snapshot"),
                 }
             }
 
@@ -652,7 +667,8 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     KeyAction::None
                     | KeyAction::Quit
                     | KeyAction::Run(_)
-                    | KeyAction::ToggleDecorations => self.process_common_key_action(action),
+                    | KeyAction::ToggleDecorations
+                    | KeyAction::SceneSnapshot => self.process_common_key_action(action),
 
                     _ => tracing::warn!(
                         ?action,
@@ -905,7 +921,8 @@ impl ScreenComposer<UdevData> {
                     KeyAction::None
                     | KeyAction::Quit
                     | KeyAction::Run(_)
-                    | KeyAction::ToggleDecorations => self.process_common_key_action(action),
+                    | KeyAction::ToggleDecorations
+                    | KeyAction::SceneSnapshot => self.process_common_key_action(action),
 
                     _ => unreachable!(),
                 },
@@ -1462,6 +1479,7 @@ enum KeyAction {
     ExposeShowDesktop,
     ExposeShowAll,
     WorkspaceNum(usize),
+    SceneSnapshot,
     /// Do nothing more
     None,
 }
@@ -1513,6 +1531,8 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::ExposeShowDesktop)
     } else if modifiers.alt && keysym == Keysym::f {
         Some(KeyAction::ExposeShowAll)
+    } else if modifiers.alt && keysym == Keysym::j {
+        Some(KeyAction::SceneSnapshot)
     // } else if (xkb::KEY_1..=xkb::KEY_9).contains(&keysym.raw()) {
     // TODO: disable workspace switching until dynamic keybinding is implemented
     // Some(KeyAction::WorkspaceNum(
