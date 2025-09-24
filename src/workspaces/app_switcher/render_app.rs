@@ -72,7 +72,7 @@ pub fn render_app_view(
         ))
         .border_corner_radius((BorderRadius::new_single(20.0), None))
         .content(Some(draw_picture))
-        .on_pointer_in(move |_:&Layer, _x, _y| {
+        .on_pointer_in(move |_: &Layer, _x, _y| {
             view.update_state(&AppSwitcherModel {
                 current_app: index,
                 ..view.get_state()

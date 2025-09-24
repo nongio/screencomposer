@@ -335,22 +335,22 @@ impl DockView {
             let icon_ref = icon_layer.clone();
             layer.remove_all_pointer_handlers();
 
-            layer.add_on_pointer_press(move |_:&Layer, _, _| {
+            layer.add_on_pointer_press(move |_: &Layer, _, _| {
                 icon_ref.set_color_filter(filter.clone());
             });
 
             let icon_ref = icon_layer.clone();
-            layer.add_on_pointer_release(move |_:&Layer, _, _| {
+            layer.add_on_pointer_release(move |_: &Layer, _, _| {
                 icon_ref.set_color_filter(None);
             });
 
             let label_ref = label.clone();
-            layer.add_on_pointer_in(move |_:&Layer, _, _| {
+            layer.add_on_pointer_in(move |_: &Layer, _, _| {
                 label_ref.set_opacity(1.0, Some(Transition::ease_in_quad(0.1)));
             });
             let label_ref = label.clone();
             let icon_ref = icon_layer.clone();
-            layer.add_on_pointer_out(move |_:&Layer, _, _| {
+            layer.add_on_pointer_out(move |_: &Layer, _, _| {
                 label_ref.set_opacity(0.0, Some(Transition::ease_in_quad(0.1)));
                 icon_ref.set_color_filter(None);
             });
@@ -399,7 +399,7 @@ impl DockView {
                 });
 
                 let label_ref = label.clone();
-                layer.add_on_pointer_in(move |_:&Layer, _, _| {
+                layer.add_on_pointer_in(move |_: &Layer, _, _| {
                     label_ref.set_opacity(1.0, Some(Transition::ease_in_quad(0.1)));
                 });
                 let label_ref = label.clone();

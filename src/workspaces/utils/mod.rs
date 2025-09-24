@@ -128,7 +128,6 @@ pub fn view_render_elements(
                 })
                 .enumerate()
                 .map(|(index, wvs)| {
-
                     let draw_wvs = wvs.clone();
 
                     let draw_container = move |canvas: &lay_rs::skia::Canvas, w: f32, h: f32| {

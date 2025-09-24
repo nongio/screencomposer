@@ -98,7 +98,9 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 if focus.same_client_as(&id) {
                     let current_space_elements = self.workspaces.space().elements();
                     let top_element = current_space_elements.last().cloned();
-                    if let Some(window_element) = top_element { keyboard.set_focus(self, Some(window_element.into()), Serial::from(0)); }
+                    if let Some(window_element) = top_element {
+                        keyboard.set_focus(self, Some(window_element.into()), Serial::from(0));
+                    }
                 }
             }
         }
@@ -401,10 +403,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     .add_sublayer(&view.window_layer);
 
                 view.window_layer
-                    .set_position(
-                        lay_rs::types::Point { x: 0.0, y: 0.0 },
-                        Some(transition),
-                    )
+                    .set_position(lay_rs::types::Point { x: 0.0, y: 0.0 }, Some(transition))
                     .on_finish(
                         move |l: &Layer, _| {
                             surface.with_pending_state(|state| {
@@ -682,8 +681,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                     return;
                 }
 
-                let mut initial_window_location =
-                    self.workspaces.element_location(window).unwrap();
+                let mut initial_window_location = self.workspaces.element_location(window).unwrap();
 
                 // If surface is maximized then unmaximize it
                 let current_state = surface.current_state();

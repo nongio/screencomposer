@@ -9,7 +9,10 @@ use std::{
 
 use apps_info::Application;
 use lay_rs::{
-    engine::Engine, prelude::{taffy, Interpolate, Layer, Spring, TimingFunction, Transition}, skia::{self, Contains}, types::Size
+    engine::Engine,
+    prelude::{taffy, Interpolate, Layer, Spring, TimingFunction, Transition},
+    skia::{self, Contains},
+    types::Size,
 };
 use smithay::{
     desktop::{layer_map_for_output, space::SpaceElement, Space, WindowSurface},
@@ -46,7 +49,8 @@ use crate::{
     config::Config,
     shell::WindowElement,
     utils::{
-        natural_layout::{natural_layout, LayoutRect}, Observable, Observer,
+        natural_layout::{natural_layout, LayoutRect},
+        Observable, Observer,
     },
 };
 
@@ -153,13 +157,14 @@ impl Workspaces {
         workspaces_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
             display: taffy::Display::Flex,
-            flex_direction: taffy::FlexDirection::Row,
-            flex_wrap: taffy::FlexWrap::NoWrap,
-            gap: taffy::Size::length(100.0),
+            // flex_direction: taffy::FlexDirection::Row,
+            // flex_wrap: taffy::FlexWrap::NoWrap,
+            // gap: taffy::Size::length(100.0),
             ..Default::default()
         });
 
-        workspaces_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+        // workspaces_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+        workspaces_layer.set_size(lay_rs::types::Size::auto(), None);
         workspaces_layer.set_pointer_events(false);
 
         layers_engine.add_layer(&workspaces_layer);
@@ -343,7 +348,7 @@ impl Workspaces {
         }
         if show_all {
             self.expose_layer.set_hidden(false);
-            self.get_current_workspace().windows_layer.set_hidden(true);
+            self.get_current_workspace().windows_layer.set_hidden(false);
         }
 
         let delta = new_gesture as f32 / 1000.0;
@@ -498,7 +503,7 @@ impl Workspaces {
             .on_finish(
                 move |_: &Layer, _: f32| {
                     expose_layer.set_hidden(!show_all);
-                    windows_layer.set_hidden(show_all);
+                    // windows_layer.set_hidden(show_all);
                     show_all_ref.store(show_all, std::sync::atomic::Ordering::Relaxed);
                 },
                 true,
@@ -831,7 +836,9 @@ impl Workspaces {
             .map_element(window_element.clone(), location, activate);
         // self.space_mut().refresh();
 
-        if let std::collections::hash_map::Entry::Vacant(e) = self.windows_map.entry(window_element.id()) {
+        if let std::collections::hash_map::Entry::Vacant(e) =
+            self.windows_map.entry(window_element.id())
+        {
             e.insert(window_element.clone());
 
             self.update_workspace_model();
@@ -1071,9 +1078,7 @@ impl Workspaces {
                 let workspace = self.with_model(|m| m.workspaces[index].clone());
                 {
                     if let Some(view) = self.get_window_view(window_id) {
-                        workspace
-                            .windows_layer
-                            .add_sublayer(&view.window_layer);
+                        workspace.windows_layer.add_sublayer(&view.window_layer);
                     }
                     if let Some(layer) = workspace.window_selector_view.layer_for_window(window_id)
                     {
@@ -1397,20 +1402,23 @@ impl Workspaces {
             delay: 0.0,
             timing: TimingFunction::Spring(Spring::with_duration_and_bounce(1.0, 0.1)),
         });
-
+        let mut x = 0.0;
         if let Some(workspace) = self.get_workspace_at(i) {
             if workspace.get_fullscreen_mode() || self.get_show_all() {
                 self.dock.hide(Some(transition));
             } else {
                 self.dock.show(Some(transition));
             }
+            x = workspace
+                .workspace_layer
+                .render_layer()
+                .local_transformed_bounds
+                .left();
         }
 
-        let width = self.workspaces_layer.render_size().x;
         self.workspaces_layer
-            .set_position((-(width + 100.0) * i as f32, 0.0), Some(transition));
-        self.expose_layer
-            .set_position((-(width + 100.0) * i as f32, 0.0), Some(transition));
+            .set_position((-x, 0.0), Some(transition));
+        self.expose_layer.set_position((-x, 0.0), Some(transition));
     }
 
     // Space management

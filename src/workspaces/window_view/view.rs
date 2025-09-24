@@ -4,8 +4,8 @@ use lay_rs::{
     skia,
     view::{RenderLayerTree, View},
 };
-use std::sync::Arc;
 use smithay::{reexports::wayland_server::backend::ObjectId, utils::Logical};
+use std::sync::Arc;
 
 use crate::{shell::WindowElement, workspaces::utils::view_render_elements};
 

@@ -66,9 +66,9 @@ impl Hash for WindowViewSurface {
             .commit
             .distance(Some(CommitCounter::default()))
             .unwrap_or(0);
+        distance.hash(state);
         if let Some(tid) = self.texture_id {
             tid.hash(state);
-            distance.hash(state);
         }
         self.id.hash(state);
         self.phy_src_x.to_bits().hash(state);

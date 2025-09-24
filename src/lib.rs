@@ -7,7 +7,6 @@
 
 #[cfg(any(feature = "udev", feature = "xwayland"))]
 pub mod cursor;
-pub mod textures_storage;
 pub mod drawing;
 pub mod focus;
 pub mod input_handler;
@@ -17,6 +16,7 @@ pub mod render_elements;
 pub mod shell;
 pub mod skia_renderer;
 pub mod state;
+pub mod textures_storage;
 #[cfg(feature = "udev")]
 pub mod udev;
 #[cfg(feature = "winit")]

@@ -6,7 +6,8 @@ use std::{
 
 use lay_rs::{
     engine::{
-        animation::{TimingFunction, Transition}, Engine, TransactionRef
+        animation::{TimingFunction, Transition},
+        Engine, TransactionRef,
     },
     prelude::taffy,
     taffy::style::Style,

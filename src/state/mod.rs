@@ -67,9 +67,7 @@ use smithay::{
         },
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{
-                decoration::XdgDecorationState, SurfaceCachedState, XdgShellState,
-            },
+            xdg::{decoration::XdgDecorationState, SurfaceCachedState, XdgShellState},
         },
         shm::{ShmHandler, ShmState},
         socket::ListeningSocketSource,

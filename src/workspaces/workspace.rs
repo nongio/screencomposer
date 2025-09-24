@@ -1,5 +1,9 @@
 use super::{BackgroundView, WindowSelectorView};
-use crate::{config::Config, shell::WindowElement, utils::{image_from_path, named_icon}};
+use crate::{
+    config::Config,
+    shell::WindowElement,
+    utils::{image_from_path, named_icon},
+};
 use core::fmt;
 
 use lay_rs::{
@@ -60,12 +64,16 @@ impl WorkspaceView {
         let workspace_layer = layers_engine.new_layer();
         workspace_layer.set_key(format!("workspace_view_{}", index));
         workspace_layer.set_layout_style(taffy::Style {
-            flex_grow: 1.0,
-            flex_shrink: 0.0,
-            flex_basis: taffy::Dimension::Percent(1.0),
+            position: taffy::Position::Absolute,
+            // flex_grow: 1.0,
+            // flex_shrink: 0.0,
+            // flex_basis: taffy::Dimension::Percent(1.0),
             ..Default::default()
         });
+        let width = 2560.0;
         workspace_layer.set_size(lay_rs::types::Size::points(2560.0, 1810.0), None);
+
+        workspace_layer.set_position((((index - 1) as f32) * (width as f32 + 100.0), 0.0), None);
         workspace_layer.set_pointer_events(false);
 
         let background_layer = layers_engine.new_layer();
@@ -108,7 +116,10 @@ impl WorkspaceView {
         if let Some(background_image) = image_from_path(&background_path, (2048, 2048)) {
             background_view.set_image(background_image);
         } else {
-            tracing::warn!("Failed to load background image from path: {}", background_path);
+            tracing::warn!(
+                "Failed to load background image from path: {}",
+                background_path
+            );
         }
         Self {
             index,
@@ -157,10 +168,7 @@ impl WorkspaceView {
             let window_base = window_element.base_layer();
             mirror_window.set_draw_content(mirror_window.engine.layer_as_content(window_base));
 
-            let mut node = self
-                .layers_engine
-                .scene_get_node(mirror_window.id)
-                .unwrap();
+            let mut node = self.layers_engine.scene_get_node(mirror_window.id).unwrap();
             let node = node.get_mut();
             node.set_follow_node(window_base.id());
             self.window_selector_view.map_window(wid, mirror_window);

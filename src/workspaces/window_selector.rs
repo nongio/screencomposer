@@ -6,7 +6,7 @@ use smithay::{
 use std::{
     collections::HashMap,
     hash::{Hash, Hasher},
-    sync::{RwLock, Arc},
+    sync::{Arc, RwLock},
 };
 
 use crate::{config::Config, interactive_view::ViewInteractions, utils::Observer};
@@ -140,9 +140,11 @@ impl WindowSelectorView {
         window_selector_root.add_sublayer(&clone_background_layer);
 
         clone_background_layer.set_draw_content(layers_engine.layer_as_content(&background_layer));
-        let mut node = layers_engine.scene_get_node(clone_background_layer.id).unwrap();
+        let mut node = layers_engine
+            .scene_get_node(clone_background_layer.id)
+            .unwrap();
         let node = node.get_mut();
-        node.set_follow_node(background_layer);        
+        node.set_follow_node(background_layer);
         let windows_layer = layers_engine.new_layer();
         windows_layer.set_key(format!("window_selector_windows_container_{}", index));
         windows_layer.set_layout_style(taffy::Style {
