@@ -104,7 +104,7 @@ pub fn setup_miniwindow_icon(layer: &Layer, inner_layer: &Layer, _icon_width: f3
             None,
         ))
         // fixme
-        // .image_cache(true)
+        .image_cache(true)
         .pointer_events(false)
         // .background_color(Color::new_rgba(0.0, 0.5, 0.0, 0.5))
         .build()

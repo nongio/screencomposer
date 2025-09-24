@@ -127,7 +127,7 @@ pub fn view_background(
         ))
         .border_corner_radius(BorderRadius::new_single(24.0))
         .content(Some(draw_container))
-        .image_cache(true)
+        // .image_cache(true)
         .background_color(lay_rs::prelude::Color::new_rgba(0.0, 0.0, 0.0, 1.0))
         .pointer_events(false)
         .build()
