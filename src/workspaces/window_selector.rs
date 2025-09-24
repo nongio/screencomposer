@@ -185,6 +185,7 @@ impl WindowSelectorView {
 }
 
 pub fn get_paragraph_for_text(text: &str, font_size: f32) -> skia::textlayout::Paragraph {
+    #[allow(unsafe_code)]
     let mut text_style = skia::textlayout::TextStyle::new();
 
     text_style.set_font_size(font_size);
