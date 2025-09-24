@@ -1552,6 +1552,7 @@ impl ScreenComposer<UdevData> {
             .cursor_manager
             .get_image(config_scale as f32, self.clock.now().into());
 
+        let scene_has_damage = self.scene_element.update();
         let pointer_width = cursor_frame.width as i32;
 
         let pointer_images = &mut self.backend_data.pointer_images;
@@ -1597,15 +1598,15 @@ impl ScreenComposer<UdevData> {
             &mut self.cursor_status.lock().unwrap(),
             &self.clock,
             self.scene_element.clone(),
+            scene_has_damage,
         );
         {
             self.workspaces.refresh_space();
             self.popups.cleanup();
             self.update_dnd();
-            self.scene_element.update();
         }
         let reschedule = match &result {
-            Ok(has_rendered) => !has_rendered,
+            Ok(outcome) => !outcome.rendered,
             Err(err) => {
                 warn!("Error during rendering: {:?}", err);
                 match err {
@@ -1693,6 +1694,20 @@ impl ScreenComposer<UdevData> {
     }
 }
 
+struct RenderOutcome {
+    rendered: bool,
+}
+
+impl RenderOutcome {
+    fn skipped() -> Self {
+        Self { rendered: false }
+    }
+
+    fn drawn(rendered: bool) -> Self {
+        Self { rendered }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 #[profiling::function]
 fn render_surface<'a, 'b>(
@@ -1707,7 +1722,8 @@ fn render_surface<'a, 'b>(
     cursor_status: &mut CursorImageStatus,
     clock: &Clock<Monotonic>,
     scene_element: SceneElement,
-) -> Result<bool, SwapBuffersError> {
+    scene_has_damage: bool,
+) -> Result<RenderOutcome, SwapBuffersError> {
     let output_geometry = space.output_geometry(output).unwrap();
     let scale = Scale::from(output.current_scale().fractional_scale());
 
@@ -1717,8 +1733,11 @@ fn render_surface<'a, 'b>(
 
     let cursor_config_size = Config::with(|c| c.cursor_size);
     let cursor_config_physical_size = cursor_config_size as f64 * output_scale;
+    let dnd_needs_draw = dnd_icon.map(|surface| surface.alive()).unwrap_or(false);
+    let mut pointer_needs_draw = false;
 
     if output_geometry.to_f64().contains(pointer_location) {
+        pointer_needs_draw = true;
         let (cursor_phy_size, cursor_hotspot) = match cursor_status {
             CursorImageStatus::Surface(ref surface) => {
                 compositor::with_states(surface, |states| {
@@ -1833,6 +1852,11 @@ fn render_surface<'a, 'b>(
     }
     workspace_render_elements.push(WorkspaceRenderElements::Scene(scene_element));
 
+    let should_draw = scene_has_damage || pointer_needs_draw || dnd_needs_draw;
+    if !should_draw {
+        return Ok(RenderOutcome::skipped());
+    }
+
     let output_render_elements: Vec<OutputRenderElements<'a, _, WindowRenderElement<_>>> =
         workspace_render_elements
             .into_iter()
@@ -1875,7 +1899,7 @@ fn render_surface<'a, 'b>(
             .map_err(Into::<SwapBuffersError>::into)?;
     }
 
-    Ok(rendered)
+    Ok(RenderOutcome::drawn(rendered))
 }
 
 fn initial_render(

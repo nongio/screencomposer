@@ -3,6 +3,13 @@ use std::{
     time::Duration,
 };
 
+#[cfg(feature = "perf-counters")]
+use once_cell::sync::Lazy;
+#[cfg(feature = "perf-counters")]
+use std::sync::atomic::AtomicU64;
+#[cfg(feature = "perf-counters")]
+use std::time::Instant;
+
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;
 
@@ -55,6 +62,85 @@ use crate::{
 use smithay::reexports::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 pub const OUTPUT_NAME: &str = "winit";
+
+#[cfg(feature = "perf-counters")]
+static FRAME_TOTAL: AtomicU64 = AtomicU64::new(0);
+#[cfg(feature = "perf-counters")]
+static FRAME_RENDERED: AtomicU64 = AtomicU64::new(0);
+#[cfg(feature = "perf-counters")]
+static FRAME_SUBMITTED: AtomicU64 = AtomicU64::new(0);
+#[cfg(feature = "perf-counters")]
+static FRAME_LOG_STATE: Lazy<Mutex<FrameLogState>> = Lazy::new(|| Mutex::new(FrameLogState::new()));
+
+#[cfg(feature = "perf-counters")]
+struct FrameLogState {
+    last_log: Instant,
+    prev_total: u64,
+    prev_rendered: u64,
+    prev_submitted: u64,
+}
+
+#[cfg(feature = "perf-counters")]
+impl FrameLogState {
+    fn new() -> Self {
+        Self {
+            last_log: Instant::now(),
+            prev_total: 0,
+            prev_rendered: 0,
+            prev_submitted: 0,
+        }
+    }
+}
+
+#[cfg(feature = "perf-counters")]
+fn record_frame_result(has_rendered: bool, frame_submitted: bool) {
+    FRAME_TOTAL.fetch_add(1, Ordering::Relaxed);
+    if has_rendered {
+        FRAME_RENDERED.fetch_add(1, Ordering::Relaxed);
+    }
+    if frame_submitted {
+        FRAME_SUBMITTED.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+#[cfg(not(feature = "perf-counters"))]
+#[inline]
+fn record_frame_result(_has_rendered: bool, _frame_submitted: bool) {}
+
+#[cfg(not(feature = "perf-counters"))]
+#[inline]
+fn log_frame_stats() {}
+
+#[cfg(feature = "perf-counters")]
+fn log_frame_stats() {
+    let mut state = FRAME_LOG_STATE.lock().unwrap();
+    if state.last_log.elapsed() < Duration::from_secs(1) {
+        return;
+    }
+
+    let total = FRAME_TOTAL.load(Ordering::Relaxed);
+    let rendered = FRAME_RENDERED.load(Ordering::Relaxed);
+    let submitted = FRAME_SUBMITTED.load(Ordering::Relaxed);
+
+    let delta_total = total - state.prev_total;
+    let delta_rendered = rendered - state.prev_rendered;
+    let delta_submitted = submitted - state.prev_submitted;
+    let delta_without_damage = delta_total.saturating_sub(delta_rendered);
+
+    info!(
+        target: "screen_composer::perf.frame",
+        total_frames = total,
+        frames_per_sec = delta_total,
+        frames_with_damage = delta_rendered,
+        frames_without_damage = delta_without_damage,
+        frames_submitted = delta_submitted,
+    );
+
+    state.prev_total = total;
+    state.prev_rendered = rendered;
+    state.prev_submitted = submitted;
+    state.last_log = Instant::now();
+}
 
 pub struct WinitData {
     backend: WinitGraphicsBackend<SkiaRenderer>,
@@ -280,7 +366,6 @@ pub fn run_winit() {
         state.backend_data.fps.tick();
 
         state.update_dnd();
-        state.scene_element.update();
 
         let status = winit.dispatch_new_events(|event| match event {
             WinitEvent::Resized { size, .. } => {
@@ -317,6 +402,8 @@ pub fn run_winit() {
             break;
         }
 
+        let scene_has_damage = state.scene_element.update();
+        let mut needs_redraw_soon;
         // drawing logic
         {
             #[cfg(feature = "profile-with-puffin")]
@@ -349,6 +436,7 @@ pub fn run_winit() {
 
             let full_redraw = &mut state.backend_data.full_redraw;
             *full_redraw = full_redraw.saturating_sub(1);
+            needs_redraw_soon = *full_redraw > 0;
 
             let damage_tracker = &mut state.backend_data.damage_tracker;
 
@@ -416,156 +504,178 @@ pub fn run_winit() {
                 (cursor_pos.to_physical(output_scale) - cursor_hotspot).to_i32_round();
 
             // println!("cursor phy size: {:?}, config_phy {:?} should_scale: {}", cursor_phy_size, cursor_config_physical_size, cursor_rescale);
+            let pointer_uses_surface = !cursor_visible;
+            let should_draw = scene_has_damage
+                || needs_redraw_soon
+                || pointer_uses_surface
+                || state.dnd_icon.is_some();
+
             #[cfg(feature = "debug")]
             let mut renderdoc = state.renderdoc.as_mut();
-            // Rendering
-            let render_res = backend.bind().and_then(|_| {
-                // Start RenderDoc capture
-                #[cfg(feature = "debug")]
-                if let Some(renderdoc) = renderdoc.as_mut() {
-                    renderdoc.start_frame_capture(
-                        backend.renderer().egl_context().get_context_handle(),
-                        backend
-                            .window()
-                            .window_handle()
-                            .map(|handle| {
-                                if let RawWindowHandle::Wayland(handle) = handle.as_raw() {
-                                    handle.surface.as_ptr()
-                                } else {
-                                    std::ptr::null_mut()
+
+            if should_draw {
+                let render_res = backend.bind().and_then(|_| {
+                    #[cfg(feature = "debug")]
+                    if let Some(renderdoc) = renderdoc.as_mut() {
+                        renderdoc.start_frame_capture(
+                            backend.renderer().egl_context().get_context_handle(),
+                            backend
+                                .window()
+                                .window_handle()
+                                .map(|handle| {
+                                    if let RawWindowHandle::Wayland(handle) = handle.as_raw() {
+                                        handle.surface.as_ptr()
+                                    } else {
+                                        std::ptr::null_mut()
+                                    }
+                                })
+                                .unwrap_or_else(|_| std::ptr::null_mut()),
+                        );
+                    }
+                    let age = if *full_redraw > 0 {
+                        0
+                    } else {
+                        backend.buffer_age().unwrap_or(0)
+                    };
+
+                    let renderer = backend.renderer();
+
+                    let mut elements = Vec::<WorkspaceRenderElements<_>>::new();
+
+                    // Collect render elements
+                    elements.extend(pointer_element.render_elements(
+                        renderer,
+                        cursor_pos_scaled,
+                        (cursor_rescale).into(),
+                        1.0,
+                    ));
+                    #[cfg(feature = "fps_ticker")]
+                    elements.push(WorkspaceRenderElements::Fps(fps_element.clone()));
+
+                    let scene_element = state.scene_element.clone();
+                    elements.push(WorkspaceRenderElements::Scene(scene_element));
+
+                    #[cfg(feature = "profile-with-puffin")]
+                    profiling::puffin::profile_scope!("render_output");
+
+                    render_output(
+                        &output,
+                        state.workspaces.space(),
+                        elements,
+                        state.dnd_icon.as_ref(),
+                        renderer,
+                        damage_tracker,
+                        age,
+                    )
+                    .map_err(|err| match err {
+                        OutputDamageTrackerError::Rendering(err) => err.into(),
+                        _ => unreachable!(),
+                    })
+                });
+
+                match render_res {
+                    Ok(render_output_result) => {
+                        let has_rendered = render_output_result.damage.is_some();
+                        let mut frame_submitted = false;
+                        if let Some(damage) = render_output_result.damage {
+                            match backend.submit(Some(damage)) {
+                                Ok(_) => {
+                                    frame_submitted = true;
                                 }
-                            })
-                            .unwrap_or_else(|_| std::ptr::null_mut()),
-                    );
-                }
-                let age = if *full_redraw > 0 {
-                    0
-                } else {
-                    backend.buffer_age().unwrap_or(0)
-                };
+                                Err(err) => warn!("Failed to submit buffer: {}", err),
+                            }
+                        }
 
-                let renderer = backend.renderer();
+                        #[cfg(feature = "debug")]
+                        if let Some(renderdoc) = renderdoc.as_mut() {
+                            renderdoc.end_frame_capture(
+                                backend.renderer().egl_context().get_context_handle(),
+                                backend
+                                    .window()
+                                    .window_handle()
+                                    .map(|handle| {
+                                        if let RawWindowHandle::Wayland(handle) = handle.as_raw() {
+                                            handle.surface.as_ptr()
+                                        } else {
+                                            std::ptr::null_mut()
+                                        }
+                                    })
+                                    .unwrap_or_else(|_| std::ptr::null_mut()),
+                            );
+                        }
 
-                let mut elements = Vec::<WorkspaceRenderElements<_>>::new();
+                        backend.window().set_cursor_visible(cursor_visible);
 
-                // Collect render elements
-                elements.extend(pointer_element.render_elements(
-                    renderer,
-                    cursor_pos_scaled,
-                    (cursor_rescale).into(),
-                    1.0,
-                ));
-                #[cfg(feature = "fps_ticker")]
-                elements.push(WorkspaceRenderElements::Fps(fps_element.clone()));
+                        let time = state.clock.now();
+                        post_repaint(
+                            &output,
+                            &render_output_result.states,
+                            state.workspaces.space(),
+                            None,
+                            time,
+                        );
 
-                let scene_element = state.scene_element.clone();
-                elements.push(WorkspaceRenderElements::Scene(scene_element));
+                        record_frame_result(has_rendered, frame_submitted);
+                        if has_rendered || frame_submitted {
+                            needs_redraw_soon = true;
+                        }
 
-                #[cfg(feature = "profile-with-puffin")]
-                profiling::puffin::profile_scope!("render_output");
-
-                // Render elements
-
-                render_output(
-                    &output,
-                    state.workspaces.space(),
-                    elements,
-                    state.dnd_icon.as_ref(),
-                    renderer,
-                    damage_tracker,
-                    age,
-                )
-                .map_err(|err| match err {
-                    OutputDamageTrackerError::Rendering(err) => err.into(),
-                    _ => unreachable!(),
-                })
-            });
-
-            match render_res {
-                Ok(render_output_result) => {
-                    let has_rendered = render_output_result.damage.is_some();
-                    if let Some(damage) = render_output_result.damage {
-                        if let Err(err) = backend.submit(Some(damage)) {
-                            warn!("Failed to submit buffer: {}", err);
+                        if has_rendered {
+                            let mut output_presentation_feedback = take_presentation_feedback(
+                                &output,
+                                state.workspaces.space(),
+                                &render_output_result.states,
+                            );
+                            output_presentation_feedback.presented(
+                                time,
+                                output
+                                    .current_mode()
+                                    .map(|mode| {
+                                        Duration::from_secs_f64(1_000f64 / mode.refresh as f64)
+                                    })
+                                    .unwrap_or_default(),
+                                0,
+                                wp_presentation_feedback::Kind::Vsync,
+                            );
                         }
                     }
+                    Err(SwapBuffersError::ContextLost(err)) => {
+                        #[cfg(feature = "debug")]
+                        if let Some(renderdoc) = renderdoc.as_mut() {
+                            renderdoc.discard_frame_capture(
+                                backend.renderer().egl_context().get_context_handle(),
+                                backend
+                                    .window()
+                                    .window_handle()
+                                    .map(|handle| {
+                                        if let RawWindowHandle::Wayland(handle) = handle.as_raw() {
+                                            handle.surface.as_ptr()
+                                        } else {
+                                            std::ptr::null_mut()
+                                        }
+                                    })
+                                    .unwrap_or_else(|_| std::ptr::null_mut()),
+                            );
+                        }
 
-                    // RenderDoc
-                    #[cfg(feature = "debug")]
-                    if let Some(renderdoc) = renderdoc.as_mut() {
-                        renderdoc.end_frame_capture(
-                            backend.renderer().egl_context().get_context_handle(),
-                            backend
-                                .window()
-                                .window_handle()
-                                .map(|handle| {
-                                    if let RawWindowHandle::Wayland(handle) = handle.as_raw() {
-                                        handle.surface.as_ptr()
-                                    } else {
-                                        std::ptr::null_mut()
-                                    }
-                                })
-                                .unwrap_or_else(|_| std::ptr::null_mut()),
-                        );
+                        error!("Critical Rendering Error: {}", err);
+                        state.running.store(false, Ordering::SeqCst);
                     }
-
-                    backend.window().set_cursor_visible(cursor_visible);
-
-                    // Send frame events so that client start drawing their next frame
-                    let time = state.clock.now();
-                    post_repaint(
-                        &output,
-                        &render_output_result.states,
-                        state.workspaces.space(),
-                        None,
-                        time,
-                    );
-
-                    // Output presenation feedback
-                    if has_rendered {
-                        let mut output_presentation_feedback = take_presentation_feedback(
-                            &output,
-                            state.workspaces.space(),
-                            &render_output_result.states,
-                        );
-                        output_presentation_feedback.presented(
-                            time,
-                            output
-                                .current_mode()
-                                .map(|mode| Duration::from_secs_f64(1_000f64 / mode.refresh as f64))
-                                .unwrap_or_default(),
-                            0,
-                            wp_presentation_feedback::Kind::Vsync,
-                        )
-                    }
+                    Err(err) => warn!("Rendering error: {}", err),
                 }
-                Err(SwapBuffersError::ContextLost(err)) => {
-                    #[cfg(feature = "debug")]
-                    if let Some(renderdoc) = renderdoc.as_mut() {
-                        renderdoc.discard_frame_capture(
-                            backend.renderer().egl_context().get_context_handle(),
-                            backend
-                                .window()
-                                .window_handle()
-                                .map(|handle| {
-                                    if let RawWindowHandle::Wayland(handle) = handle.as_raw() {
-                                        handle.surface.as_ptr()
-                                    } else {
-                                        std::ptr::null_mut()
-                                    }
-                                })
-                                .unwrap_or_else(|_| std::ptr::null_mut()),
-                        );
-                    }
-
-                    error!("Critical Rendering Error: {}", err);
-                    state.running.store(false, Ordering::SeqCst);
-                }
-                Err(err) => warn!("Rendering error: {}", err),
+            } else {
+                backend.window().set_cursor_visible(cursor_visible);
+                record_frame_result(false, false);
             }
         }
+        log_frame_stats();
         // Rendering Done, prepare loop
-        let result = event_loop.dispatch(Some(Duration::from_millis(1)), &mut state);
+        let wait_timeout = if needs_redraw_soon {
+            Some(Duration::from_millis(1))
+        } else {
+            Some(Duration::from_millis(16))
+        };
+        let result = event_loop.dispatch(wait_timeout, &mut state);
         if result.is_err() {
             state.running.store(false, Ordering::SeqCst);
         } else {

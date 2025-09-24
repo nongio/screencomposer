@@ -1,8 +1,7 @@
-use std::{
-    cell::RefCell,
-    rc::Rc,
-    sync::Arc,
-};
+use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
+
+#[cfg(feature = "perf-counters")]
+use std::time::Duration;
 
 use lay_rs::{drawing::render_node_tree, engine::Engine, prelude::Layer};
 
@@ -22,9 +21,11 @@ pub struct SceneElement {
     id: Id,
     commit_counter: CommitCounter,
     engine: Arc<Engine>,
-    last_update: std::time::Instant,
+    last_update: Instant,
     pub size: (f32, f32),
     damage: Rc<RefCell<DamageBag<i32, Physical>>>,
+    #[cfg(feature = "perf-counters")]
+    perf_stats: Rc<RefCell<ScenePerfStats>>,
 }
 
 impl SceneElement {
@@ -33,37 +34,69 @@ impl SceneElement {
             id: Id::new(),
             commit_counter: CommitCounter::default(),
             engine,
-            last_update: std::time::Instant::now(),
+            last_update: Instant::now(),
             size: (0.0, 0.0),
             damage: Rc::new(RefCell::new(DamageBag::new(5))),
+            #[cfg(feature = "perf-counters")]
+            perf_stats: Rc::new(RefCell::new(ScenePerfStats::new())),
         }
     }
     #[profiling::function]
-    pub fn update(&mut self) {
+    pub fn update(&mut self) -> bool {
         let dt = self.last_update.elapsed().as_secs_f32();
         if dt <= 0.01 {
-            return;
+            return false;
         }
-        self.last_update = std::time::Instant::now();
-        if self.engine.update(dt) {
-            self.commit_counter.increment();
-            let scene_damage = self.engine.damage();
-            if !scene_damage.is_empty() {
-                self.commit_counter.increment();
-                let safe = 0;
-                let damage = Rectangle::from_loc_and_size(
-                    (
-                        scene_damage.x() as i32 - safe,
-                        scene_damage.y() as i32 - safe,
-                    ),
-                    (
-                        scene_damage.width() as i32 + safe * 2,
-                        scene_damage.height() as i32 + safe * 2,
-                    ),
-                );
-                self.damage.borrow_mut().add(vec![damage]);
+        self.last_update = Instant::now();
+
+        #[cfg(feature = "perf-counters")]
+        let mut stats = self.perf_stats.borrow_mut();
+        #[cfg(feature = "perf-counters")]
+        {
+            stats.total_updates += 1;
+        }
+
+        let updated = self.engine.update(dt);
+        if !updated {
+            #[cfg(feature = "perf-counters")]
+            stats.log_if_due();
+            return false;
+        }
+
+        #[cfg(feature = "perf-counters")]
+        {
+            stats.updates_with_changes += 1;
+        }
+
+        self.commit_counter.increment();
+        let scene_damage = self.engine.damage();
+        let has_damage = !scene_damage.is_empty();
+
+        #[cfg(feature = "perf-counters")]
+        {
+            if has_damage {
+                stats.updates_with_damage += 1;
             }
+            stats.log_if_due();
         }
+
+        if has_damage {
+            self.commit_counter.increment();
+            let safe = 0;
+            let damage = Rectangle::from_loc_and_size(
+                (
+                    scene_damage.x() as i32 - safe,
+                    scene_damage.y() as i32 - safe,
+                ),
+                (
+                    scene_damage.width() as i32 + safe * 2,
+                    scene_damage.height() as i32 + safe * 2,
+                ),
+            );
+            self.damage.borrow_mut().add(vec![damage]);
+        }
+
+        has_damage
     }
     pub fn root_layer(&self) -> Option<Layer> {
         self.engine
@@ -74,6 +107,58 @@ impl SceneElement {
     pub fn set_size(&mut self, width: f32, height: f32) {
         self.engine.scene_set_size(width, height);
         self.size = (width, height);
+    }
+}
+
+#[cfg(feature = "perf-counters")]
+#[derive(Debug)]
+struct ScenePerfStats {
+    total_updates: u64,
+    updates_with_changes: u64,
+    updates_with_damage: u64,
+    last_log: Instant,
+    prev_logged_updates: u64,
+    prev_logged_changes: u64,
+    prev_logged_damage: u64,
+}
+
+#[cfg(feature = "perf-counters")]
+impl ScenePerfStats {
+    fn new() -> Self {
+        Self {
+            total_updates: 0,
+            updates_with_changes: 0,
+            updates_with_damage: 0,
+            last_log: Instant::now(),
+            prev_logged_updates: 0,
+            prev_logged_changes: 0,
+            prev_logged_damage: 0,
+        }
+    }
+
+    fn log_if_due(&mut self) {
+        if self.last_log.elapsed() < Duration::from_secs(1) {
+            return;
+        }
+
+        let delta_updates = self.total_updates - self.prev_logged_updates;
+        let delta_changes = self.updates_with_changes - self.prev_logged_changes;
+        let delta_damage = self.updates_with_damage - self.prev_logged_damage;
+        let delta_no_change = delta_updates.saturating_sub(delta_changes);
+
+        tracing::info!(
+            target: "screen_composer::perf.scene",
+            total_updates = self.total_updates,
+            updates_per_sec = delta_updates,
+            updates_with_scene_changes = delta_changes,
+            updates_with_damage = delta_damage,
+            updates_without_changes = delta_no_change,
+        );
+
+        self.prev_logged_updates = self.total_updates;
+        self.prev_logged_changes = self.updates_with_changes;
+        self.prev_logged_damage = self.updates_with_damage;
+        self.last_log = Instant::now();
     }
 }
 
@@ -154,14 +239,6 @@ impl RenderElement<SkiaRenderer> for SceneElement {
         let mut surface = frame.skia_surface.clone();
 
         let canvas = surface.canvas();
-        // FIXME
-        // if self.engine.damage().is_empty() {
-        // return Ok(());
-        // } else {
-        // println!("scene damage: {:?}", self.engine.damage());
-        // }
-        // println!("scene draw");
-        // canvas.clear(lay_rs::skia::Color::from_argb(255, 0, 0, 0));
 
         let scene = self.engine.scene();
         let root_id = self.engine.scene_root();
@@ -191,7 +268,7 @@ impl RenderElement<SkiaRenderer> for SceneElement {
                     // let mut paint = lay_rs::skia::Paint::default();
                     // paint.set_color(lay_rs::skia::Color::from_argb(255, 255, 0, 0));
                     // paint.set_stroke(true);
-                    // paint.set_stroke_width(2.0);
+                    // paint.set_stroke_width(5.0);
                     // if !damage_rect.is_empty() {
                     //     canvas.draw_rect(damage_rect, &paint);
                     // }

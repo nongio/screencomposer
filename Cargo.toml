@@ -72,6 +72,7 @@ version = "0.12.0"
 
 
 [features]
+perf-counters = []
 default = ["egl", "winit", "x11", "udev", "debug", "profile"]
 debug = ["image/png", "renderdoc"] # "fps_ticker", 
 debugger = ["lay-rs/debugger"]
