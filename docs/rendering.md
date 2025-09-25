@@ -11,6 +11,7 @@ This document explains at a high level how ScreenComposer renders frames and whe
 Integration points for screenshare:
 - After `damage_tracker.render_output(...)` returns (in `udev.rs` Surface path), the composed frame is available before queuing. This is where a FrameTap can read/export pixels (dmabuf preferred, SHM fallback) for screencopy or streaming.
 - Screencopy protocol can source frames from the same point, respecting damage and cursor flags.
+- The Phase 0 scaffolding introduces a `FrameTap` trait in `src/screenshare/frame_tap.rs`; future phases will replace the no-op implementation with real export logic.
 
 Notes:
 - Output transforms and fractional scaling are already handled in `render.rs` and element building.

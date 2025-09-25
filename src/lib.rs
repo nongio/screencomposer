@@ -13,6 +13,10 @@ pub mod input_handler;
 pub mod interactive_view;
 pub mod render;
 pub mod render_elements;
+#[cfg(feature = "screencopy")]
+pub mod screencopy;
+#[cfg(feature = "screenshare")]
+pub mod screenshare;
 pub mod shell;
 pub mod skia_renderer;
 pub mod state;
