@@ -11,10 +11,10 @@ Top-level (selected):
   - `shell/` — XDG/Layer shell handlers and window management glue
   - `state/` — Wayland globals, seats, data device, and compositor state
   - `sc_layer_shell/` — custom protocol example integration
-  - `screenshare/` — (new, feature-gated) screenshare modules: frame_tap, policy, screenshot, optional pipewire
-  - `protocols/` — (planned) screencopy module, generated protocol code, and XML
-- `docs/` — documentation for configuration, design, and features
-- `assets/`, `resources/` — images and UI resources
+  - `screenshare/` — (new, feature-gated) screenshare modules: frame_tap, policy, headless screenshot helpers, optional PipeWire
+  - `screencopy/` — (new) screencopy server scaffolding and generated protocol bindings
+  - `docs/` — documentation for configuration, design, and features
+  - `assets/`, `resources/` — images and UI resources
 
 Features:
 - `winit`, `x11`, `udev`, `egl` — backends/capabilities
