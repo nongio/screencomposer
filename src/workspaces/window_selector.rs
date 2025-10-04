@@ -137,14 +137,13 @@ impl WindowSelectorView {
             ..Default::default()
         });
         clone_background_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
-        window_selector_root.add_sublayer(&clone_background_layer);
 
-        clone_background_layer.set_draw_content(layers_engine.layer_as_content(&background_layer));
-        let mut node = layers_engine
-            .scene_get_node(clone_background_layer.id)
-            .unwrap();
-        let node = node.get_mut();
-        node.set_follow_node(background_layer);
+        clone_background_layer.set_draw_content(background_layer.as_content());
+        clone_background_layer.set_picture_cached(false);
+        background_layer.add_follower_node(&clone_background_layer);
+        clone_background_layer.set_opacity(1.0, None);
+
+
         let windows_layer = layers_engine.new_layer();
         windows_layer.set_key(format!("window_selector_windows_container_{}", index));
         windows_layer.set_layout_style(taffy::Style {
@@ -152,6 +151,9 @@ impl WindowSelectorView {
             ..Default::default()
         });
         windows_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+        
+        window_selector_root.add_sublayer(&clone_background_layer);
+
         window_selector_root.add_sublayer(&windows_layer);
 
         window_selector_root.add_sublayer(&overlay_layer);
@@ -177,10 +179,8 @@ impl WindowSelectorView {
     }
     /// remove the window from the windows map
     /// and remove the layer from windows_layer
-    pub fn unmap_window(&self, window_id: &ObjectId) {
-        if let Some(layer) = self.windows.write().unwrap().remove(window_id) {
-            layer.remove();
-        }
+    pub fn unmap_window(&self, window_id: &ObjectId) -> Option<Layer> {
+        self.windows.write().unwrap().remove(window_id)
     }
 }
 

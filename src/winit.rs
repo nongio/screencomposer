@@ -202,6 +202,9 @@ impl Backend for WinitData {
         let r = self.backend.renderer();
         r.context.clone()
     }
+    fn request_redraw(&mut self) {
+        self.full_redraw = self.full_redraw.max(2);
+    }
 }
 
 pub fn run_winit() {
@@ -340,7 +343,7 @@ pub fn run_winit() {
     state
         .layers_engine
         .scene_set_size(scene_size.w as f32, scene_size.h as f32);
-    root.layer.set_size(
+    root.set_size(
         lay_rs::types::Size::points(scene_size.w as f32, scene_size.h as f32),
         None,
     );
@@ -367,7 +370,6 @@ pub fn run_winit() {
         state.backend_data.fps.tick();
 
         state.update_dnd();
-        state.scene_element.update();
 
         let status = winit.dispatch_new_events(|event| match event {
             WinitEvent::Resized { size, .. } => {
@@ -405,7 +407,9 @@ pub fn run_winit() {
         }
 
         let scene_has_damage = state.scene_element.update();
+        // let scene_has_damage = true; // TEMPORARY OVERRIDE
         let mut needs_redraw_soon;
+        let pointer_active;
         // drawing logic
         {
             #[cfg(feature = "profile-with-puffin")]
@@ -511,6 +515,7 @@ pub fn run_winit() {
                 || needs_redraw_soon
                 || pointer_uses_surface
                 || state.dnd_icon.is_some();
+            pointer_active = pointer_uses_surface || state.dnd_icon.is_some();
 
             #[cfg(feature = "debug")]
             let mut renderdoc = state.renderdoc.as_mut();
@@ -679,8 +684,10 @@ pub fn run_winit() {
         // Rendering Done, prepare loop
         let wait_timeout = if needs_redraw_soon {
             Some(Duration::from_millis(1))
+        } else if scene_has_damage || pointer_active {
+            Some(Duration::from_millis(1))
         } else {
-            Some(Duration::from_millis(16))
+            Some(Duration::from_millis(32))
         };
         let result = event_loop.dispatch(wait_timeout, &mut state);
         if result.is_err() {

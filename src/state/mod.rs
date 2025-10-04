@@ -1,7 +1,7 @@
 use std::{
     collections::VecDeque,
     fmt::Debug,
-    sync::{atomic::AtomicBool, Arc, Mutex},
+    sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex},
     time::Duration,
 };
 
@@ -35,7 +35,14 @@ use smithay::{
     },
     output::Output,
     reexports::{
-        calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
+        calloop::{
+            channel::{channel, Event as ChannelEvent, Sender as ChannelSender},
+            generic::Generic,
+            Interest,
+            LoopHandle,
+            Mode,
+            PostAction,
+        },
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason, ObjectId},
             protocol::{wl_data_device_manager::DndAction, wl_surface::WlSurface},
@@ -121,6 +128,8 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub display_handle: DisplayHandle,
     pub running: Arc<AtomicBool>,
     pub handle: LoopHandle<'static, ScreenComposer<BackendData>>,
+    pub loop_wakeup_sender: ChannelSender<()>,
+    pub loop_wakeup_pending: Arc<AtomicBool>,
 
     // desktop
     pub popups: PopupManager,
@@ -270,6 +279,17 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             )
             .expect("Failed to init wayland server source");
 
+            let (loop_wakeup_sender, loop_wakeup_channel) = channel::<()>();
+            let loop_wakeup_pending = Arc::new(AtomicBool::new(false));
+            let pending_flag = loop_wakeup_pending.clone();
+            handle
+                .insert_source(loop_wakeup_channel, move |event, _, _| {
+                    if matches!(event, ChannelEvent::Msg(_) | ChannelEvent::Closed) {
+                        pending_flag.store(false, Ordering::Release);
+                    }
+                })
+                .expect("Failed to insert loop wake channel");
+
         // init globals
         let compositor_state = CompositorState::new::<Self>(&dh);
         let data_device_state = DataDeviceState::new::<Self>(&dh);
@@ -343,6 +363,8 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             socket_name,
             running: Arc::new(AtomicBool::new(true)),
             handle,
+            loop_wakeup_sender,
+            loop_wakeup_pending,
 
             popups: PopupManager::default(),
             compositor_state,
@@ -386,6 +408,14 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             is_swiping: false,
             is_pinching: false,
             is_resizing: false,
+        }
+    }
+
+    pub fn schedule_event_loop_dispatch(&self) {
+        if !self.loop_wakeup_pending.swap(true, Ordering::AcqRel) {
+            if self.loop_wakeup_sender.send(()).is_err() {
+                self.loop_wakeup_pending.store(false, Ordering::Release);
+            }
         }
     }
 
@@ -866,4 +896,5 @@ pub trait Backend {
     fn texture_for_surface(&self, surface: &RendererSurfaceState) -> Option<SkiaTextureImage>;
     fn set_cursor(&mut self, image: &CursorImageStatus); //, renderer: &mut SkiaRenderer);
     fn renderer_context(&mut self) -> Option<lay_rs::skia::gpu::DirectContext>;
+    fn request_redraw(&mut self) {}
 }

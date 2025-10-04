@@ -75,7 +75,7 @@ impl WindowView {
         let view_content = View::new("window_content", render_elements, view_render_elements);
         view_content.mount_layer(content_layer.clone());
 
-        layer.set_image_cached(true);
+        // layer.set_image_cached(true);
 
         let genie_effect = GenieEffect::new();
 
