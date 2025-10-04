@@ -45,7 +45,25 @@ impl SceneElement {
     pub fn update(&mut self) -> bool {
         let dt = self.last_update.elapsed().as_secs_f32();
         if dt <= 0.01 {
-            return false;
+            let scene_damage = self.engine.damage();
+            if scene_damage.is_empty() {
+                return false;
+            }
+
+            self.commit_counter.increment();
+            let safe = 0;
+            let damage = Rectangle::from_loc_and_size(
+                (
+                    scene_damage.x() as i32 - safe,
+                    scene_damage.y() as i32 - safe,
+                ),
+                (
+                    scene_damage.width() as i32 + safe * 2,
+                    scene_damage.height() as i32 + safe * 2,
+                ),
+            );
+            self.damage.borrow_mut().add(vec![damage]);
+            return true;
         }
         self.last_update = Instant::now();
 
@@ -248,14 +266,23 @@ impl RenderElement<SkiaRenderer> for SceneElement {
             scene.with_renderable_arena(|renderable_arena| {
                 // Clip drawing to the damaged region to avoid full-scene redraws
                 let mut damage_rect = lay_rs::skia::Rect::default();
+                let mut clear_paint = lay_rs::skia::Paint::default();
+                clear_paint.set_color(lay_rs::skia::Color::TRANSPARENT);
+                clear_paint.set_blend_mode(lay_rs::skia::BlendMode::Src);
+
                 for d in damage.iter() {
-                    let r = lay_rs::skia::Rect::from_xywh(
+                    if d.size.w <= 0 || d.size.h <= 0 {
+                        continue;
+                    }
+
+                    let rect = lay_rs::skia::Rect::from_xywh(
                         d.loc.x as f32,
                         d.loc.y as f32,
                         d.size.w as f32,
                         d.size.h as f32,
                     );
-                    damage_rect.join(r);
+                    canvas.draw_rect(rect, &clear_paint);
+                    damage_rect.join(rect);
                 }
                 // if !damage_rect.is_empty() {
                 //     canvas.clip_rect(damage_rect, Some(lay_rs::skia::ClipOp::Intersect), None);
@@ -265,13 +292,13 @@ impl RenderElement<SkiaRenderer> for SceneElement {
                     // canvas.clip_rect(damage_rect, None, None);
                     render_node_tree(root_id, arena, renderable_arena, canvas, 1.0);
                     // Optional debug: outline damage rect
-                    // let mut paint = lay_rs::skia::Paint::default();
-                    // paint.set_color(lay_rs::skia::Color::from_argb(255, 255, 0, 0));
-                    // paint.set_stroke(true);
-                    // paint.set_stroke_width(5.0);
-                    // if !damage_rect.is_empty() {
-                    //     canvas.draw_rect(damage_rect, &paint);
-                    // }
+                    let mut paint = lay_rs::skia::Paint::default();
+                    paint.set_color(lay_rs::skia::Color::from_argb(255, 255, 0, 0));
+                    paint.set_stroke(true);
+                    paint.set_stroke_width(5.0);
+                    if !damage_rect.is_empty() {
+                        canvas.draw_rect(damage_rect, &paint);
+                    }
                     // let typeface = crate::workspace::utils::FONT_CACHE
                     // .with(|font_cache| {
                     //     font_cache

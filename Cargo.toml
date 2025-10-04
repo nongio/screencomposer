@@ -111,3 +111,8 @@ profile-with-puffin = ["profiling/profile-with-puffin", "puffin_http"]
 profile-with-tracy = ["profiling/profile-with-tracy"]
 profile-with-tracy-mem = ["profile-with-tracy"]
 renderer_sync = []
+
+[workspace]
+members = [
+    "projects/client-rainbow"
+]

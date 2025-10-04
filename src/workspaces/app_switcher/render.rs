@@ -137,6 +137,7 @@ pub fn render_appswitcher_view(
             justify_items: Some(taffy::JustifyItems::Center),
             ..Default::default()
         })
+        .picture_cached(false)
         .children(vec![LayerTreeBuilder::default()
             .key("apps_container")
             .size((
@@ -155,6 +156,7 @@ pub fn render_appswitcher_view(
                 gap: taffy::Size::<taffy::LengthPercentage>::from_length(GAP),
                 ..Default::default()
             })
+            .picture_cached(false)
             .children(
                 state
                     .apps

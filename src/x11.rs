@@ -130,6 +130,9 @@ impl Backend for X11Data {
     fn renderer_context(&mut self) -> Option<lay_rs::skia::gpu::DirectContext> {
         None
     }
+    fn request_redraw(&mut self) {
+        self.render = true;
+    }
 }
 
 pub fn run_x11() {

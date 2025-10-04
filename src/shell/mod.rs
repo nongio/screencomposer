@@ -149,6 +149,8 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
 
         // ensure_initial_configure(surface, self.space(), &mut self.popups)
         ensure_initial_configure(surface, self);
+        self.backend_data.request_redraw();
+        self.schedule_event_loop_dispatch();
     }
 }
 
