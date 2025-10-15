@@ -8,7 +8,7 @@ use lay_rs::{drawing::render_node_tree, engine::Engine, prelude::Layer};
 use smithay::{
     backend::renderer::{
         element::{Element, Id, RenderElement},
-        utils::{CommitCounter, DamageBag},
+        utils::{CommitCounter, DamageBag, DamageSet},
         Renderer,
     },
     utils::{Buffer, Physical, Point, Rectangle, Scale},
@@ -44,9 +44,6 @@ impl SceneElement {
     #[profiling::function]
     pub fn update(&mut self) -> bool {
         let dt = self.last_update.elapsed().as_secs_f32();
-        if dt <= 0.01 {
-            return false;
-        }
         self.last_update = Instant::now();
 
         #[cfg(feature = "perf-counters")]
@@ -198,13 +195,20 @@ impl Element for SceneElement {
     /// Get the damage since the provided commit relative to the element
     fn damage_since(
         &self,
-        _scale: Scale<f64>,
+        scale: Scale<f64>,
         commit: Option<CommitCounter>,
     ) -> smithay::backend::renderer::utils::DamageSet<i32, Physical> {
-        self.damage
-            .borrow()
-            .damage_since(commit)
-            .unwrap_or_default()
+        let geometry_size = self.geometry(scale).size;
+        let damage = self.damage.borrow().damage_since(commit);
+
+        match damage {
+            Some(rects) if !rects.is_empty() => DamageSet::from_slice(&rects),
+            None if geometry_size.w > 0 && geometry_size.h > 0 => {
+                let full_damage = Rectangle::from_loc_and_size((0, 0), geometry_size);
+                DamageSet::from_slice(&[full_damage])
+            }
+            _ => DamageSet::default(),
+        }
     }
     fn alpha(&self) -> f32 {
         1.0
@@ -249,6 +253,10 @@ impl RenderElement<SkiaRenderer> for SceneElement {
                 // Clip drawing to the damaged region to avoid full-scene redraws
                 let mut damage_rect = lay_rs::skia::Rect::default();
                 for d in damage.iter() {
+                    if d.size.w <= 0 || d.size.h <= 0 {
+                        continue;
+                    }
+
                     let r = lay_rs::skia::Rect::from_xywh(
                         d.loc.x as f32,
                         d.loc.y as f32,

@@ -181,7 +181,9 @@ impl Workspaces {
         expose_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
         expose_layer.set_pointer_events(false);
         expose_layer.set_hidden(true);
-
+        expose_layer.set_picture_cached(false);
+        expose_layer.set_image_cached(false);
+        
         layers_engine.add_layer(&expose_layer);
 
         let overlay_layer = layers_engine.new_layer();
@@ -234,7 +236,7 @@ impl Workspaces {
             layers_engine,
         };
         workspaces.add_workspace();
-        // workspaces.add_workspace();
+        workspaces.add_workspace();
         // workspaces.add_workspace();
         // workspaces.add_workspace();
 

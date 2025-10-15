@@ -1737,7 +1737,10 @@ fn render_surface<'a, 'b>(
     let dnd_needs_draw = dnd_icon.map(|surface| surface.alive()).unwrap_or(false);
     let mut pointer_needs_draw = false;
 
-    if output_geometry.to_f64().contains(pointer_location.to_physical(scale)) {
+    if output_geometry
+        .to_f64()
+        .contains(pointer_location.to_physical(scale))
+    {
         pointer_needs_draw = true;
         let (cursor_phy_size, cursor_hotspot) = match cursor_status {
             CursorImageStatus::Surface(ref surface) => {
@@ -1863,8 +1866,13 @@ fn render_surface<'a, 'b>(
             .into_iter()
             .map(OutputRenderElements::from)
             .collect::<Vec<_>>();
-    let (output_elements, clear_color) =
-        output_elements(output, window_elements.iter().copied(), output_render_elements, dnd_icon, renderer);
+    let (output_elements, clear_color) = output_elements(
+        output,
+        window_elements.iter().copied(),
+        output_render_elements,
+        dnd_icon,
+        renderer,
+    );
 
     let SurfaceCompositorRenderResult {
         rendered,
@@ -1892,7 +1900,8 @@ fn render_surface<'a, 'b>(
     );
 
     if rendered {
-        let output_presentation_feedback = take_presentation_feedback(output, window_elements, &states);
+        let output_presentation_feedback =
+            take_presentation_feedback(output, window_elements, &states);
         let damage = damage.cloned();
         surface
             .compositor

@@ -11,7 +11,10 @@ use lay_rs::{
     prelude::{taffy, Layer},
 };
 use smithay::reexports::wayland_server::backend::ObjectId;
-use std::sync::{atomic::AtomicBool, Arc, RwLock};
+use std::{
+    collections::HashMap,
+    sync::{atomic::AtomicBool, Arc, RwLock},
+};
 
 #[derive(Clone)]
 pub struct WorkspaceView {
@@ -28,6 +31,7 @@ pub struct WorkspaceView {
     pub windows_layer: Layer,
 
     fullscreen_mode: Arc<AtomicBool>,
+    window_base_layers: Arc<RwLock<HashMap<ObjectId, Layer>>>,
 }
 
 impl fmt::Debug for WorkspaceView {
@@ -71,8 +75,6 @@ impl WorkspaceView {
 
         workspace_layer.set_position((0.0, 0.0), None);
         workspace_layer.set_pointer_events(false);
-        workspace_layer.set_image_cached(true);
-        
         let background_layer = layers_engine.new_layer();
         background_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
@@ -130,6 +132,7 @@ impl WorkspaceView {
             windows_layer,
             workspace_layer,
             fullscreen_mode: Arc::new(AtomicBool::new(false)),
+            window_base_layers: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -173,12 +176,16 @@ impl WorkspaceView {
                 .add_sublayer(&mirror_window);
 
             let window_base = window_element.base_layer();
-            mirror_window.set_draw_content(mirror_window.engine.layer_as_content(window_base));
+            mirror_window.set_draw_content(window_base.as_content());
+            window_base.add_follower_node(&mirror_window);
+            mirror_window.set_picture_cached(false);
+            self.window_selector_view
+                .map_window(wid.clone(), mirror_window);
 
-            let mut node = self.layers_engine.scene_get_node(mirror_window.id).unwrap();
-            let node = node.get_mut();
-            node.set_follow_node(window_base.id());
-            self.window_selector_view.map_window(wid, mirror_window);
+            self.window_base_layers
+                .write()
+                .unwrap()
+                .insert(wid.clone(), window_base.clone());
         }
 
         let scale = Config::with(|c| c.screen_scale);
@@ -215,7 +222,14 @@ impl WorkspaceView {
             window_list.remove(index);
         }
 
-        self.window_selector_view.unmap_window(window_id);
+        if let Some(mirror_layer) = self.window_selector_view.unmap_window(window_id) {
+            if let Some(base_layer) = self.window_base_layers.write().unwrap().remove(window_id) {
+                base_layer.remove_follower_node(&mirror_layer);
+            }
+            mirror_layer.remove();
+        } else {
+            self.window_base_layers.write().unwrap().remove(window_id);
+        }
     }
 
     pub fn set_fullscreen_mode(&self, fullscreen: bool) {

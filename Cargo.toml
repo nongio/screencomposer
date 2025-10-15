@@ -73,7 +73,7 @@ version = "0.12.0"
 
 [features]
 perf-counters = []
-default = ["egl", "winit", "x11", "udev", "debug", "profile"]
+default = ["egl", "winit", "x11", "udev", "debug", "profile", "debugger"]
 debug = ["image/png", "renderdoc", "debugger"] # "fps_ticker", 
 debugger = ["lay-rs/debugger"]
 profile = ["profile-with-puffin", "lay-rs/profile-with-puffin"]
@@ -111,3 +111,8 @@ profile-with-puffin = ["profiling/profile-with-puffin", "puffin_http"]
 profile-with-tracy = ["profiling/profile-with-tracy"]
 profile-with-tracy-mem = ["profile-with-tracy"]
 renderer_sync = []
+
+[workspace]
+members = [
+    "projects/client-rainbow"
+]

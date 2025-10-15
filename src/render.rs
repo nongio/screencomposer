@@ -143,7 +143,13 @@ where
     R::TextureId: Clone + 'static,
     SceneElement: smithay::backend::renderer::element::RenderElement<R>,
 {
-    let (elements, clear_color) = output_elements(output, window_elements.iter().copied(), custom_elements, dnd, renderer);
+    let (elements, clear_color) = output_elements(
+        output,
+        window_elements.iter().copied(),
+        custom_elements,
+        dnd,
+        renderer,
+    );
 
     damage_tracker.render_output(renderer, age, &elements, clear_color)
 }

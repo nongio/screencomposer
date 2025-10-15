@@ -130,6 +130,9 @@ impl Backend for X11Data {
     fn renderer_context(&mut self) -> Option<lay_rs::skia::gpu::DirectContext> {
         None
     }
+    fn request_redraw(&mut self) {
+        self.render = true;
+    }
 }
 
 pub fn run_x11() {
@@ -429,7 +432,8 @@ pub fn run_x11() {
             #[cfg(feature = "fps_ticker")]
             elements.push(WorkspaceRenderElements::Fps(fps_element.clone()));
 
-            let all_window_elements: Vec<&WindowElement> = state.workspaces.spaces_elements().collect();
+            let all_window_elements: Vec<&WindowElement> =
+                state.workspaces.spaces_elements().collect();
             let render_res = render_output(
                 &output,
                 &all_window_elements,
@@ -453,7 +457,8 @@ pub fn run_x11() {
 
                     // Send frame events so that client start drawing their next frame
                     let time = state.clock.now();
-                    let all_window_elements: Vec<&WindowElement> = state.workspaces.spaces_elements().collect();
+                    let all_window_elements: Vec<&WindowElement> =
+                        state.workspaces.spaces_elements().collect();
                     post_repaint(
                         &output,
                         &render_output_result.states,
@@ -463,7 +468,8 @@ pub fn run_x11() {
                     );
 
                     if render_output_result.damage.is_some() {
-                        let all_window_elements: Vec<&WindowElement> = state.workspaces.spaces_elements().collect();
+                        let all_window_elements: Vec<&WindowElement> =
+                            state.workspaces.spaces_elements().collect();
                         let mut output_presentation_feedback = take_presentation_feedback(
                             &output,
                             &all_window_elements,
