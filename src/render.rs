@@ -116,7 +116,7 @@ where
             element::Kind::Unspecified,
         );
     });
-    
+
     // Render window elements from all workspaces - but skip rendering for now
     // as this needs to be handled by the workspace scene elements
     let _window_count = window_elements.into_iter().count();

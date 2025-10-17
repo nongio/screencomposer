@@ -18,7 +18,7 @@ pub struct Application {
     pub icon_path: Option<String>,
     pub icon: Option<skia::Image>,
     pub picture: Option<skia::Picture>,
-    desktop_entry: DesktopEntry<'static>,
+    desktop_entry: DesktopEntry,
 }
 
 impl Application {
@@ -92,7 +92,7 @@ impl ApplicationsInfo {
         app
     }
 
-    async fn get_desktop_entry<'a>(app_id: &'a str) -> Option<DesktopEntry<'static>> {
+    async fn get_desktop_entry<'a>(app_id: &'a str) -> Option<DesktopEntry> {
         let entry_path =
             freedesktop_desktop_entry::Iter::new(freedesktop_desktop_entry::default_paths())
                 .find(|path| path.to_string_lossy().contains(app_id));

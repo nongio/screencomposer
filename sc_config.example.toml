@@ -23,3 +23,31 @@ terminal_bin = "weston-terminal"
 file_manager_bin = "dolphin"
 browser_bin = "google-chrome-stable"
 browser_args = [""]
+
+# Keyboard shortcuts
+[keyboard_shortcuts]
+"Ctrl+Alt+BackSpace" = "Quit"
+"Logo+Q" = "Quit"
+"Logo+Shift+Return" = { open_default = "terminal" }
+"Logo+Shift+Space" = { open_default = "file_manager" }
+"Logo+Shift+B" = { open_default = "browser" }
+"Logo+1" = { builtin = "Screen", index = 0 }
+"Logo+2" = { builtin = "Screen", index = 1 }
+"Logo+3" = { builtin = "Screen", index = 2 }
+"Logo+4" = { builtin = "Screen", index = 3 }
+"Logo+5" = { builtin = "Screen", index = 4 }
+"Logo+6" = { builtin = "Screen", index = 5 }
+"Logo+7" = { builtin = "Screen", index = 6 }
+"Logo+8" = { builtin = "Screen", index = 7 }
+"Logo+9" = { builtin = "Screen", index = 8 }
+"Logo+Shift+M" = "ScaleDown"
+"Logo+Shift+P" = "ScaleUp"
+"Logo+Shift+R" = "RotateOutput"
+"Logo+Shift+I" = "RunLayersDebug"
+"Alt+Tab" = "ApplicationSwitchNext"
+"Alt+Shift+Tab" = "ApplicationSwitchPrev"
+"Alt+R" = "ApplicationSwitchNextWindow"
+"Alt+W" = "ApplicationSwitchQuit"
+"Alt+D" = "ExposeShowDesktop"
+"Alt+F" = "ExposeShowAll"
+"Alt+J" = "SceneSnapshot"

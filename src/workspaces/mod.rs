@@ -49,7 +49,8 @@ use crate::{
     config::Config,
     shell::WindowElement,
     utils::{
-        natural_layout::{natural_layout, LayoutRect}, Observable, Observer,
+        natural_layout::{natural_layout, LayoutRect},
+        Observable, Observer,
     },
 };
 
@@ -183,7 +184,7 @@ impl Workspaces {
         expose_layer.set_hidden(true);
         expose_layer.set_picture_cached(false);
         expose_layer.set_image_cached(false);
-        
+
         layers_engine.add_layer(&expose_layer);
 
         let overlay_layer = layers_engine.new_layer();
@@ -867,7 +868,9 @@ impl Workspaces {
             .map_element(window_element.clone(), location, activate);
         // self.space_mut().refresh();
 
-        if let std::collections::hash_map::Entry::Vacant(e) = self.windows_map.entry(window_element.id()) {
+        if let std::collections::hash_map::Entry::Vacant(e) =
+            self.windows_map.entry(window_element.id())
+        {
             e.insert(window_element.clone());
 
             self.update_workspace_model();
@@ -1465,11 +1468,16 @@ impl Workspaces {
             return;
         }
         if let Some(transition) = &transition {
-            let animation = self.workspaces_layer.engine.add_animation_from_transition(transition, true);
+            let animation = self
+                .workspaces_layer
+                .engine
+                .add_animation_from_transition(transition, true);
             let change1 = self.workspaces_layer.change_position((-offset, 0.0));
             let change2 = self.expose_layer.change_position((-offset, 0.0));
             let changes = vec![change1, change2];
-            self.workspaces_layer.engine.schedule_changes(&changes, animation);
+            self.workspaces_layer
+                .engine
+                .schedule_changes(&changes, animation);
         }
     }
 
@@ -1517,11 +1525,15 @@ impl Workspaces {
 
     // Add these helper methods
     fn find_space_for_element(&self, element: &WindowElement) -> Option<&Space<WindowElement>> {
-        self.spaces.iter().find(|space| space.elements().any(|e| e.id() == element.id()))
+        self.spaces
+            .iter()
+            .find(|space| space.elements().any(|e| e.id() == element.id()))
     }
-    
+
     fn find_space_index_for_element(&self, element: &WindowElement) -> Option<usize> {
-        self.spaces.iter().position(|space| space.elements().any(|e| e.id() == element.id()))
+        self.spaces
+            .iter()
+            .position(|space| space.elements().any(|e| e.id() == element.id()))
     }
 }
 
