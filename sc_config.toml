@@ -19,7 +19,7 @@ genie_scale = 0.5
 genie_span = 10.0
 
 # Apps
-terminal_bin = "weston-terminal"
+terminal_bin = "terminator"
 file_manager_bin = "dolphin"
 browser_bin = "google-chrome-stable"
 browser_args = [""] 
@@ -27,6 +27,6 @@ browser_args = [""]
 [dock]
 bookmarks = [
   { desktop_id = "org.kde.dolphin.desktop" },
-  { desktop_id = "org.mozilla.firefox.desktop", label = "Web", exec_args = ["--private-window"] },
+  { desktop_id = "google-chrome.desktop", label = "Web", exec_args = ["--incognito"] },
   { desktop_id = "code.desktop" }
 ]

@@ -64,6 +64,28 @@ use smithay::{
 };
 
 impl<BackendData: Backend> ScreenComposer<BackendData> {
+    pub fn launch_program(&mut self, cmd: String, args: Vec<String>) {
+        info!(program = %cmd, args = ?args, "Starting program");
+
+        if let Err(e) = Command::new(&cmd)
+            .args(&args)
+            .envs(
+                self.socket_name
+                    .clone()
+                    .map(|v| ("WAYLAND_DISPLAY", v))
+                    .into_iter()
+                    .chain(
+                        #[cfg(feature = "xwayland")]
+                        self.xdisplay.map(|v| ("DISPLAY", format!(":{}", v))),
+                        #[cfg(not(feature = "xwayland"))]
+                        None,
+                    ),
+            )
+            .spawn()
+        {
+            error!(program = %cmd, err = %e, "Failed to start program");
+        }
+    }
     fn process_common_key_action(&mut self, action: KeyAction) {
         match action {
             KeyAction::None => (),
@@ -74,26 +96,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             }
 
             KeyAction::Run((cmd, args)) => {
-                info!(cmd, "Starting program");
-
-                if let Err(e) = Command::new(&cmd)
-                    .args(args)
-                    .envs(
-                        self.socket_name
-                            .clone()
-                            .map(|v| ("WAYLAND_DISPLAY", v))
-                            .into_iter()
-                            .chain(
-                                #[cfg(feature = "xwayland")]
-                                self.xdisplay.map(|v| ("DISPLAY", format!(":{}", v))),
-                                #[cfg(not(feature = "xwayland"))]
-                                None,
-                            ),
-                    )
-                    .spawn()
-                {
-                    error!(cmd, err = %e, "Failed to start program");
-                }
+                self.launch_program(cmd, args);
             }
 
             KeyAction::ToggleDecorations => {

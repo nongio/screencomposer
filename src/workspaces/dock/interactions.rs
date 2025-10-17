@@ -2,6 +2,8 @@ use smithay::{backend::input::ButtonState, utils::IsAlive};
 
 use crate::{config::Config, interactive_view::ViewInteractions};
 
+use tracing::warn;
+
 use super::DockView;
 
 // Dock view interactions
@@ -37,10 +39,20 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
             }
             ButtonState::Released => {
                 if let Some(layer_id) = state.layers_engine.current_hover() {
-                    if let Some(identifier) = self.get_appid_from_layer(&layer_id) {
+                    if let Some((identifier, match_id)) = self.get_app_from_layer(&layer_id) {
                         // if we click on an app icon, focus the app
                         if let Some(wid) = state.workspaces.focus_app(&identifier) {
                             state.set_keyboard_focus_on_surface(&wid);
+                        } else if let Some(bookmark) = self.bookmark_config_for(&match_id) {
+                            if let Some(app) = self.bookmark_application(&match_id) {
+                                if let Some((cmd, args)) = app.command(&bookmark.exec_args) {
+                                    state.launch_program(cmd, args);
+                                } else {
+                                    warn!("bookmark {} has no executable command", identifier);
+                                }
+                            } else {
+                                warn!("bookmark {} not loaded into dock", identifier);
+                            }
                         }
                     } else if let Some(wid) = self.get_window_from_layer(&layer_id) {
                         // if we click on a minimized window, unminimize it
