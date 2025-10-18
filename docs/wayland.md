@@ -50,4 +50,5 @@ Most globals are initialized in `ScreenComposer::init` within `src/state/mod.rs`
 - Shortcut bindings are configured via the `[keyboard_shortcuts]` table in `sc_config.toml`. Each key is a modifier combo like `Logo+Shift+Return`.
 - Actions accept simple strings for built-in behaviors (`Quit`, `ScaleUp`, `RunLayersDebug`), inline tables for indexed variants (`{ builtin = "Screen", index = 0 }`), or command definitions (`{ run = { cmd = "layers_debug" } }`).
 - Use `{ open_default = "browser" }` (or `terminal`, `file_manager`, custom MIME IDs) to launch the system default from XDG `mimeapps.list`, with optional fallbacks.
-- Defaults cover the previous hard-coded shortcuts; add or override entries in `sc_config.toml` to customize behavior per deployment.
+- Supply every binding you care about; the compositor no longer seeds default shortcuts, so an empty map disables them entirely.
+- Optional `modifier_remap` and `[key_remap]` settings let you swap modifiers (e.g. map `logo` to `ctrl`) or translate individual keysyms (`"BackSpace" = "Delete"`) before the compositor processes shortcuts.

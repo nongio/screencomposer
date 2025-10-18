@@ -14,6 +14,9 @@ keyboard_repeat_delay = 300
 keyboard_repeat_rate = 30
 natural_scroll = true
 
+# Keyboard remapping
+modifier_remap = { logo = "ctrl" }
+
 # Dock
 genie_scale = 0.5
 genie_span = 10.0
@@ -23,6 +26,11 @@ terminal_bin = "weston-terminal"
 file_manager_bin = "dolphin"
 browser_bin = "google-chrome-stable"
 browser_args = [""]
+
+
+[key_remap]
+"BackSpace" = "Delete"
+
 
 # Keyboard shortcuts
 [keyboard_shortcuts]
@@ -52,7 +60,6 @@ browser_args = [""]
 "Alt+D" = "ExposeShowDesktop"
 "Alt+F" = "ExposeShowAll"
 "Alt+J" = "SceneSnapshot"
-browser_args = [""] 
 
 [dock]
 bookmarks = [

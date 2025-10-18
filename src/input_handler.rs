@@ -1504,18 +1504,33 @@ enum KeyAction {
 }
 
 fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Option<KeyAction> {
-    if (xkb::KEY_XF86Switch_VT_1..=xkb::KEY_XF86Switch_VT_12).contains(&keysym.raw()) {
-        return Some(KeyAction::VtSwitch(
-            (keysym.raw() - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
-        ));
-    }
-
     Config::with(|config| {
+        let modifiers = config.apply_modifier_remap(modifiers);
+        let keysym = config.apply_key_remap(keysym);
+
+        if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace
+            || modifiers.logo && keysym == Keysym::q
+        {
+            // ctrl+alt+backspace = quit
+            // logo + q = quit
+            info!("keyboard shortcut activated");
+            return Some(KeyAction::Quit);
+        }
+
+        if (xkb::KEY_XF86Switch_VT_1..=xkb::KEY_XF86Switch_VT_12).contains(&keysym.raw()) {
+            return Some(KeyAction::VtSwitch(
+                (keysym.raw() - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
+            ));
+        }
+
         config
             .shortcut_bindings()
             .iter()
             .find(|binding| binding.trigger.matches(&modifiers, keysym))
-            .and_then(|binding| resolve_shortcut_action(config, &binding.action))
+            .and_then(|binding| {
+                let result = resolve_shortcut_action(config, &binding.action);
+                result
+            })
     })
 }
 
