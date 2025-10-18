@@ -31,13 +31,11 @@ browser_args = [""]
 [key_remap]
 "BackSpace" = "Delete"
 
-
-# Keyboard shortcuts
 [keyboard_shortcuts]
 "Ctrl+Alt+BackSpace" = "Quit"
 "Logo+Q" = "Quit"
-"Logo+Shift+Return" = { open_default = "terminal" }
-"Logo+Shift+Space" = { open_default = "file_manager" }
+"Logo+Return" = { run = { cmd = "terminator", args = [] } }
+"Logo+Space" = { run = { cmd = "dolphin", args = [] } }
 "Logo+Shift+B" = { open_default = "browser" }
 "Logo+1" = { builtin = "Screen", index = 0 }
 "Logo+2" = { builtin = "Screen", index = 1 }
@@ -55,8 +53,8 @@ browser_args = [""]
 "Alt+Tab" = "ApplicationSwitchNext"
 "Alt+Shift+Tab" = "ApplicationSwitchPrev"
 "Alt+R" = "ApplicationSwitchNextWindow"
-"Alt+W" = "ApplicationSwitchQuit"
-"Alt+Shift+W" = "CloseWindow"
+"Alt+Q" = "ApplicationSwitchQuit"
+"Alt+W" = "CloseWindow"
 "Alt+D" = "ExposeShowDesktop"
 "Alt+F" = "ExposeShowAll"
 "Alt+J" = "SceneSnapshot"
