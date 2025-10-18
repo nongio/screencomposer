@@ -33,7 +33,7 @@ pub struct PhantomElement<'a> {
     phantom: std::marker::PhantomData<&'a ()>,
 }
 
-impl<'a> Element for PhantomElement<'a> {
+impl Element for PhantomElement<'_> {
     fn id(&self) -> &Id {
         &self.id
     }

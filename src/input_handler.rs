@@ -1000,7 +1000,7 @@ impl ScreenComposer<UdevData> {
             with_pointer_constraint(&surface, &pointer, |constraint| match constraint {
                 Some(constraint) if constraint.is_active() => {
                     // Constraint does not apply if not within region
-                    if !constraint.region().map_or(true, |x| {
+                    if !constraint.region().is_none_or(|x| {
                         x.contains((pointer_location - *surface_loc).to_i32_round())
                     }) {
                         return;
@@ -1088,7 +1088,7 @@ impl ScreenComposer<UdevData> {
                     let point = (pointer_location - surface_location).to_i32_round();
                     if constraint
                         .region()
-                        .map_or(true, |region| region.contains(point))
+                        .is_none_or(|region| region.contains(point))
                     {
                         constraint.activate();
                     }
