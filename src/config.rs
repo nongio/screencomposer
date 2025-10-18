@@ -9,6 +9,8 @@ pub struct Config {
     pub cursor_theme: String,
     pub cursor_size: u32,
     pub natural_scroll: bool,
+    #[serde(default)]
+    pub dock: DockConfig,
     pub terminal_bin: String,
     pub file_manager_bin: String,
     pub browser_bin: String,
@@ -34,6 +36,7 @@ impl Default for Config {
             cursor_theme: "Notwaita-Black".to_string(),
             cursor_size: 24,
             natural_scroll: true,
+            dock: DockConfig::default(),
             terminal_bin: "kitty".to_string(),
             file_manager_bin: "dolphin".to_string(),
             browser_bin: "firefox".to_string(),
@@ -66,4 +69,19 @@ impl Config {
         // std::env::set_var("GDK_DPI_SCALE", (config.screen_scale).to_string());
         config
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DockConfig {
+    #[serde(default)]
+    pub bookmarks: Vec<DockBookmark>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DockBookmark {
+    pub desktop_id: String,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub exec_args: Vec<String>,
 }

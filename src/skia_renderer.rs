@@ -606,10 +606,8 @@ impl SkiaRenderer {
                 }
                 if texture.is_external {
                     // For external sources, refresh the 2D texture by blitting from the EGLImage.
-                    let size = Size::<i32, Buffer>::from((
-                        texture.image.width() as i32,
-                        texture.image.height() as i32,
-                    ));
+                    let size =
+                        Size::<i32, Buffer>::from((texture.image.width(), texture.image.height()));
                     self.blit_eglimage_to_2d_texture(
                         egl_images[0],
                         texture.texture.tex_id(),
@@ -678,7 +676,7 @@ impl Texture for SkiaTexture {
     }
 }
 
-impl<'frame> Frame for SkiaFrame<'frame> {
+impl Frame for SkiaFrame<'_> {
     type Error = GlesError;
     type TextureId = SkiaTexture;
 
@@ -1295,7 +1293,7 @@ impl ImportMemWl for SkiaRenderer {
             .import_shm_buffer(buffer, surface, damage)?;
         let has_alpha = texture
             .format()
-            .map_or(false, |fourcc: Fourcc| has_alpha(fourcc));
+            .is_some_and(|fourcc: Fourcc| has_alpha(fourcc));
         let image = self
             .import_skia_image_from_texture(&texture, false)
             .ok_or("")
@@ -1344,7 +1342,7 @@ impl ImportEgl for SkiaRenderer {
             .import_egl_buffer(buffer, surface, damage)?;
         let has_alpha = texture
             .format()
-            .map_or(false, |fourcc: Fourcc| has_alpha(fourcc));
+            .is_some_and(|fourcc: Fourcc| has_alpha(fourcc));
         let image = self
             .import_skia_image_from_texture(&texture, false)
             .ok_or("")

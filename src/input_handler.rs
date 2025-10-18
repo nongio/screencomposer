@@ -64,6 +64,28 @@ use smithay::{
 };
 
 impl<BackendData: Backend> ScreenComposer<BackendData> {
+    pub fn launch_program(&mut self, cmd: String, args: Vec<String>) {
+        info!(program = %cmd, args = ?args, "Starting program");
+
+        if let Err(e) = Command::new(&cmd)
+            .args(&args)
+            .envs(
+                self.socket_name
+                    .clone()
+                    .map(|v| ("WAYLAND_DISPLAY", v))
+                    .into_iter()
+                    .chain(
+                        #[cfg(feature = "xwayland")]
+                        self.xdisplay.map(|v| ("DISPLAY", format!(":{}", v))),
+                        #[cfg(not(feature = "xwayland"))]
+                        None,
+                    ),
+            )
+            .spawn()
+        {
+            error!(program = %cmd, err = %e, "Failed to start program");
+        }
+    }
     fn process_common_key_action(&mut self, action: KeyAction) {
         match action {
             KeyAction::None => (),
@@ -74,26 +96,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             }
 
             KeyAction::Run((cmd, args)) => {
-                info!(cmd, "Starting program");
-
-                if let Err(e) = Command::new(&cmd)
-                    .args(args)
-                    .envs(
-                        self.socket_name
-                            .clone()
-                            .map(|v| ("WAYLAND_DISPLAY", v))
-                            .into_iter()
-                            .chain(
-                                #[cfg(feature = "xwayland")]
-                                self.xdisplay.map(|v| ("DISPLAY", format!(":{}", v))),
-                                #[cfg(not(feature = "xwayland"))]
-                                None,
-                            ),
-                    )
-                    .spawn()
-                {
-                    error!(cmd, err = %e, "Failed to start program");
-                }
+                self.launch_program(cmd, args);
             }
 
             KeyAction::ToggleDecorations => {
@@ -997,7 +1000,7 @@ impl ScreenComposer<UdevData> {
             with_pointer_constraint(&surface, &pointer, |constraint| match constraint {
                 Some(constraint) if constraint.is_active() => {
                     // Constraint does not apply if not within region
-                    if !constraint.region().map_or(true, |x| {
+                    if !constraint.region().is_none_or(|x| {
                         x.contains((pointer_location - *surface_loc).to_i32_round())
                     }) {
                         return;
@@ -1085,7 +1088,7 @@ impl ScreenComposer<UdevData> {
                     let point = (pointer_location - surface_location).to_i32_round();
                     if constraint
                         .region()
-                        .map_or(true, |region| region.contains(point))
+                        .is_none_or(|region| region.contains(point))
                     {
                         constraint.activate();
                     }

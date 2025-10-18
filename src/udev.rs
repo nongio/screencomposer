@@ -1352,11 +1352,7 @@ impl ScreenComposer<UdevData> {
             return;
         };
 
-        let schedule_render = match surface
-            .compositor
-            .frame_submitted()
-            .map_err(Into::<SwapBuffersError>::into)
-        {
+        let schedule_render = match surface.compositor.frame_submitted() {
             Ok(user_data) => {
                 if let Some(mut feedback) = user_data.flatten() {
                     let tp = metadata.as_ref().and_then(|metadata| match metadata.time {
@@ -1905,8 +1901,7 @@ fn render_surface<'a, 'b>(
         let damage = damage.cloned();
         surface
             .compositor
-            .queue_frame(sync, damage, Some(output_presentation_feedback))
-            .map_err(Into::<SwapBuffersError>::into)?;
+            .queue_frame(sync, damage, Some(output_presentation_feedback))?;
     }
 
     Ok(RenderOutcome::drawn(rendered))

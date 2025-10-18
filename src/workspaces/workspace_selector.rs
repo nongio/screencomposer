@@ -354,7 +354,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WorkspaceSele
             .read()
             .unwrap()
             .as_ref()
-            .and_then(|l| Some(l.id.0.into()))
+            .map(|l| l.id.0.into())
     }
 
     fn is_alive(&self) -> bool {

@@ -1,8 +1,6 @@
 use std::{
     collections::HashMap,
     sync::{Arc, Once, RwLock},
-    thread,
-    time::Duration,
 };
 
 use lay_rs::{

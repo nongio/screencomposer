@@ -347,7 +347,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
             .read()
             .unwrap()
             .as_ref()
-            .and_then(|l| Some(l.id.0.into()))
+            .map(|l| l.id.0.into())
     }
 
     fn is_alive(&self) -> bool {

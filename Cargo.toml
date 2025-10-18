@@ -23,6 +23,7 @@ fps_ticker = { version = "1.0.0", optional = true }
 xdgkit = "3.2.5"
 freedesktop-icons = "0.2.4"
 freedesktop-desktop-entry = "0.7.5"
+shell-words = "1.1"
 tracing = { version = "0.1.37", features = [
     "max_level_trace",
     "release_max_level_debug",
@@ -37,8 +38,8 @@ once_cell = "1.20"
 paste = "1.0.15"
 
 [dependencies.lay-rs]
-path = "../layers"
-# git = "https://github.com/nongio/layers"
+# path = "../layers"
+git = "https://github.com/nongio/layers"
 features = ["export-taffy"]
 
 [dependencies.smithay-drm-extras]

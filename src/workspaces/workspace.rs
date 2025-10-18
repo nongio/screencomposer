@@ -1,9 +1,5 @@
 use super::{BackgroundView, WindowSelectorView};
-use crate::{
-    config::Config,
-    shell::WindowElement,
-    utils::{image_from_path, named_icon},
-};
+use crate::{config::Config, shell::WindowElement, utils::image_from_path};
 use core::fmt;
 
 use lay_rs::{
