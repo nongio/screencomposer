@@ -1,5 +1,5 @@
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     fmt::Debug,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -9,7 +9,7 @@ use std::{
 };
 
 use lay_rs::{engine::Engine, prelude::taffy};
-use tracing::info;
+use tracing::{info, warn};
 
 use smithay::{
     backend::renderer::{
@@ -32,7 +32,7 @@ use smithay::{
         PopupManager,
     },
     input::{
-        keyboard::{Keysym, XkbConfig},
+        keyboard::{xkb, Keysym, XkbConfig, XkbContextHandler},
         pointer::{CursorIcon, CursorImageAttributes, CursorImageStatus, PointerHandle},
         Seat, SeatState,
     },
@@ -161,6 +161,7 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
 
     // input-related fields
     pub suppressed_keys: Vec<Keysym>,
+    pub keycode_remap: HashMap<u32, u32>,
     pub cursor_status: Arc<Mutex<CursorImageStatus>>,
     pub seat_name: String,
     pub seat: Seat<ScreenComposer<BackendData>>,
@@ -358,7 +359,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         #[cfg(feature = "debugger")]
         layers_engine.start_debugger();
 
-        ScreenComposer {
+        let mut composer = ScreenComposer {
             backend_data,
             display_handle: dh,
             socket_name,
@@ -386,6 +387,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             xdg_foreign_state,
             dnd_icon: None,
             suppressed_keys: Vec::new(),
+            keycode_remap: HashMap::new(),
             cursor_status,
             seat_name,
             seat,
@@ -409,7 +411,11 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             is_swiping: false,
             is_pinching: false,
             is_resizing: false,
-        }
+        };
+
+        composer.rebuild_keycode_remap();
+
+        composer
     }
 
     pub fn schedule_event_loop_dispatch(&self) {
@@ -418,6 +424,24 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         {
             self.loop_wakeup_pending.store(false, Ordering::Release);
         }
+    }
+
+    fn rebuild_keycode_remap(&mut self) {
+        self.keycode_remap.clear();
+
+        let remaps = Config::with(|config| config.parsed_key_remaps());
+        if remaps.is_empty() {
+            return;
+        }
+
+        let Some(keyboard) = self.seat.get_keyboard() else {
+            return;
+        };
+
+        let mapping =
+            keyboard.with_xkb_state(self, |ctx| build_keycode_remap_map(ctx.keymap(), &remaps));
+
+        self.keycode_remap = mapping;
     }
 
     #[cfg(feature = "xwayland")]
@@ -765,6 +789,55 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             keyboard.set_focus(self, Some(window.clone().into()), serial);
         }
     }
+}
+
+fn build_keycode_remap_map(keymap: &xkb::Keymap, remaps: &[(Keysym, Keysym)]) -> HashMap<u32, u32> {
+    let mut result = HashMap::new();
+
+    for &(from_sym, to_sym) in remaps {
+        let from_code = find_keycode_for_keysym(keymap, from_sym);
+        let to_code = find_keycode_for_keysym(keymap, to_sym);
+
+        match (from_code, to_code) {
+            (Some(src), Some(dst)) => {
+                if src != dst {
+                    result.insert(src, dst);
+                }
+            }
+            (None, _) => warn!(
+                source = xkb::keysym_get_name(from_sym),
+                "no keycode found for source keysym"
+            ),
+            (_, None) => warn!(
+                target = xkb::keysym_get_name(to_sym),
+                "no keycode found for target keysym"
+            ),
+        }
+    }
+
+    result
+}
+
+fn find_keycode_for_keysym(keymap: &xkb::Keymap, target: Keysym) -> Option<u32> {
+    let mut result = None;
+
+    keymap.key_for_each(|km, keycode| {
+        if result.is_some() {
+            return;
+        }
+
+        let layout_count = km.num_layouts_for_key(keycode);
+        for layout in 0..layout_count {
+            let syms = km.key_get_syms_by_level(keycode, layout, 0);
+            if syms.iter().any(|sym| *sym == target) {
+                let raw = keycode.raw();
+                result = Some(raw.saturating_sub(8));
+                break;
+            }
+        }
+    });
+
+    result
 }
 
 #[derive(Debug, Copy, Clone)]
