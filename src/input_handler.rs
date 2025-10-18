@@ -166,7 +166,12 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
     }
 
     fn keyboard_key_to_action<B: InputBackend>(&mut self, evt: B::KeyboardKeyEvent) -> KeyAction {
-        let keycode = evt.key_code();
+        let original_keycode = evt.key_code();
+        let keycode = self
+            .keycode_remap
+            .get(&original_keycode)
+            .copied()
+            .unwrap_or(original_keycode);
         let state = evt.state();
         debug!(keycode, ?state, "key");
         let serial = SCOUNTER.next_serial();
@@ -260,7 +265,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
         // FIXME this keys handling should be moved into the AppSwitcher
         // by moving the focus to that view
-        if KeyState::Released == state && keycode == 56 {
+        if KeyState::Released == state && original_keycode == 56 {
             // App switcher
             if self.workspaces.app_switcher.alive() {
                 self.workspaces.app_switcher.hide();
@@ -1506,8 +1511,6 @@ enum KeyAction {
 fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Option<KeyAction> {
     Config::with(|config| {
         let modifiers = config.apply_modifier_remap(modifiers);
-        let keysym = config.apply_key_remap(keysym);
-
         if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace
             || modifiers.logo && keysym == Keysym::q
         {
@@ -1528,8 +1531,8 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
             .iter()
             .find(|binding| binding.trigger.matches(&modifiers, keysym))
             .and_then(|binding| {
-                let result = resolve_shortcut_action(config, &binding.action);
-                result
+                
+                resolve_shortcut_action(config, &binding.action)
             })
     })
 }

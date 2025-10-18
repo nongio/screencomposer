@@ -51,4 +51,4 @@ Most globals are initialized in `ScreenComposer::init` within `src/state/mod.rs`
 - Actions accept simple strings for built-in behaviors (`Quit`, `ScaleUp`, `RunLayersDebug`), inline tables for indexed variants (`{ builtin = "Screen", index = 0 }`), or command definitions (`{ run = { cmd = "layers_debug" } }`).
 - Use `{ open_default = "browser" }` (or `terminal`, `file_manager`, custom MIME IDs) to launch the system default from XDG `mimeapps.list`, with optional fallbacks.
 - Supply every binding you care about; the compositor no longer seeds default shortcuts, so an empty map disables them entirely.
-- Optional `modifier_remap` and `[key_remap]` settings let you swap modifiers (e.g. map `logo` to `ctrl`) or translate individual keysyms (`"BackSpace" = "Delete"`) before the compositor processes shortcuts.
+- Optional `modifier_remap` and `[key_remap]` settings let you swap modifiers (e.g. map `logo` to `ctrl`) or translate individual keysyms (`"BackSpace" = "Delete"`) before shortcuts run, and remapped keycodes are also forwarded to clients.

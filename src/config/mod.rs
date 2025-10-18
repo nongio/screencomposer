@@ -46,9 +46,6 @@ pub struct Config {
     #[serde(skip)]
     #[serde(default)]
     modifier_lookup: HashMap<ModifierKind, ModifierKind>,
-    #[serde(skip)]
-    #[serde(default)]
-    key_lookup: HashMap<Keysym, Keysym>,
 }
 thread_local! {
     static CONFIG: Config = Config::init();
@@ -80,7 +77,6 @@ impl Default for Config {
             modifier_remap: BTreeMap::new(),
             key_remap: BTreeMap::new(),
             modifier_lookup: HashMap::new(),
-            key_lookup: HashMap::new(),
         };
         config.rebuild_shortcut_bindings();
         config.rebuild_remap_tables();
@@ -92,7 +88,6 @@ impl Config {
         CONFIG.with(f)
     }
     fn init() -> Self {
-        println!("Loading configuration...");
         let mut merged =
             toml::Value::try_from(Self::default()).expect("default config is always valid toml");
 
@@ -140,11 +135,6 @@ impl Config {
     }
 
     fn rebuild_shortcut_bindings(&mut self) {
-        println!(
-            "Rebuilding shortcut bindings... {:?}",
-            self.keyboard_shortcuts
-        );
-
         self.shortcut_bindings = build_bindings(&self.keyboard_shortcuts);
     }
 
@@ -175,8 +165,25 @@ impl Config {
         result
     }
 
-    pub fn apply_key_remap(&self, keysym: Keysym) -> Keysym {
-        self.key_lookup.get(&keysym).copied().unwrap_or(keysym)
+    pub fn parsed_key_remaps(&self) -> Vec<(Keysym, Keysym)> {
+        self.key_remap
+            .iter()
+            .filter_map(|(from, to)| {
+                let from_sym = parse_keysym_name(from);
+                let to_sym = parse_keysym_name(to);
+                match (from_sym, to_sym) {
+                    (Some(src), Some(dst)) => Some((src, dst)),
+                    (None, _) => {
+                        warn!(from = %from, "unknown keysym in key_remap entry");
+                        None
+                    }
+                    (_, None) => {
+                        warn!(to = %to, "unknown target keysym in key_remap entry");
+                        None
+                    }
+                }
+            })
+            .collect()
     }
 
     fn rebuild_remap_tables(&mut self) {
@@ -190,19 +197,6 @@ impl Config {
                 }
                 (None, _) => warn!(from = %from, "unknown modifier in remap entry"),
                 (_, None) => warn!(to = %to, "unknown modifier target in remap entry"),
-            }
-        }
-
-        self.key_lookup.clear();
-        for (from, to) in &self.key_remap {
-            match (parse_keysym_name(from), parse_keysym_name(to)) {
-                (Some(from_sym), Some(to_sym)) => {
-                    if self.key_lookup.insert(from_sym, to_sym).is_some() {
-                        warn!(from = %from, "duplicate key remap entry; last value wins");
-                    }
-                }
-                (None, _) => warn!(from = %from, "unknown key symbol in key_remap entry"),
-                (_, None) => warn!(to = %to, "unknown key symbol target in key_remap entry"),
             }
         }
     }
@@ -392,7 +386,8 @@ mod tests {
         let backspace = xkb::keysym_from_name("BackSpace", xkb::KEYSYM_NO_FLAGS);
         let delete = xkb::keysym_from_name("Delete", xkb::KEYSYM_NO_FLAGS);
 
-        assert_eq!(config.apply_key_remap(backspace), delete);
+        let entries = config.parsed_key_remaps();
+        assert!(entries.contains(&(backspace, delete)));
     }
 
     #[test]
@@ -416,19 +411,17 @@ mod tests {
         config.rebuild_shortcut_bindings();
         config.rebuild_remap_tables();
 
-        // shortcut binding should be present
         assert_eq!(config.shortcut_bindings().len(), 1);
         assert!(config
             .shortcut_bindings()
             .iter()
             .any(|binding| binding.trigger_repr == "Logo+Q"));
 
-        // valid key remap still applied
         let backspace = xkb::keysym_from_name("BackSpace", xkb::KEYSYM_NO_FLAGS);
         let delete = xkb::keysym_from_name("Delete", xkb::KEYSYM_NO_FLAGS);
-        assert_eq!(config.apply_key_remap(backspace), delete);
+        let entries = config.parsed_key_remaps();
+        assert!(entries.contains(&(backspace, delete)));
 
-        // invalid entry should have been dropped during sanitization
         assert!(config.key_remap.keys().all(|key| key != "BadEntry"));
     }
 }

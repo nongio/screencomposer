@@ -14,8 +14,6 @@ keyboard_repeat_delay = 300
 keyboard_repeat_rate = 30
 natural_scroll = true
 
-# Keyboard remapping
-modifier_remap = { logo = "ctrl" }
 
 # Dock
 genie_scale = 0.5
@@ -27,6 +25,9 @@ file_manager_bin = "dolphin"
 browser_bin = "google-chrome-stable"
 browser_args = [""]
 
+# Keyboard remapping
+[modifier_remap]
+logo = "ctrl"
 
 [key_remap]
 "BackSpace" = "Delete"
