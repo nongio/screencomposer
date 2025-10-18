@@ -1,6 +1,15 @@
 use std::{convert::TryInto, fs, process::Command, sync::atomic::Ordering};
 
-use crate::{config::Config, focus::PointerFocusTarget, shell::FullscreenSurface, ScreenComposer};
+use crate::{
+    config::{
+        default_apps,
+        shortcuts::{BuiltinAction, ShortcutAction},
+        Config,
+    },
+    focus::PointerFocusTarget,
+    shell::FullscreenSurface,
+    ScreenComposer,
+};
 
 #[cfg(feature = "udev")]
 use crate::udev::UdevData;
@@ -37,7 +46,7 @@ use smithay::backend::input::AbsolutePositionEvent;
 
 #[cfg(any(feature = "winit", feature = "x11"))]
 use smithay::output::Output;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::state::Backend;
 #[cfg(feature = "udev")]
@@ -1488,60 +1497,119 @@ enum KeyAction {
 }
 
 fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Option<KeyAction> {
-    let config = Config::with(|c| c.clone());
-    if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace
-        || modifiers.logo && keysym == Keysym::q
-    {
-        // ctrl+alt+backspace = quit
-        // logo + q = quit
-        Some(KeyAction::Quit)
-    } else if (xkb::KEY_XF86Switch_VT_1..=xkb::KEY_XF86Switch_VT_12).contains(&keysym.raw()) {
-        // VTSwitch
-        Some(KeyAction::VtSwitch(
+    if (xkb::KEY_XF86Switch_VT_1..=xkb::KEY_XF86Switch_VT_12).contains(&keysym.raw()) {
+        return Some(KeyAction::VtSwitch(
             (keysym.raw() - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
-        ))
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::Return {
-        // run terminal
-        let terminal_bin = config.terminal_bin.clone();
-        Some(KeyAction::Run((terminal_bin, vec![])))
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::space {
-        let file_manager_bin = config.file_manager_bin.clone();
-        Some(KeyAction::Run((file_manager_bin, vec![])))
-        // run terminal
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::B {
-        let browser_bin = config.browser_bin.clone();
-        let browser_args = config.browser_args.clone();
-        Some(KeyAction::Run((browser_bin, browser_args)))
-    } else if modifiers.logo && (xkb::KEY_1..=xkb::KEY_9).contains(&keysym.raw()) {
-        Some(KeyAction::Screen((keysym.raw() - xkb::KEY_1) as usize))
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::M {
-        Some(KeyAction::ScaleDown)
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::P {
-        Some(KeyAction::ScaleUp)
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::R {
-        Some(KeyAction::RotateOutput)
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::I {
-        Some(KeyAction::Run(("layers_debug".to_string(), vec![])))
-    } else if modifiers.alt && keysym == Keysym::Tab {
-        Some(KeyAction::ApplicationSwitchNext)
-    } else if modifiers.alt && modifiers.shift && keysym == Keysym::Tab {
-        Some(KeyAction::ApplicationSwitchPrev)
-    } else if modifiers.alt && keysym == Keysym::r {
-        Some(KeyAction::ApplicationSwitchNextWindow)
-    } else if modifiers.alt && keysym == Keysym::w {
-        Some(KeyAction::ApplicationSwitchQuit)
-    } else if modifiers.alt && keysym == Keysym::d {
-        Some(KeyAction::ExposeShowDesktop)
-    } else if modifiers.alt && keysym == Keysym::f {
-        Some(KeyAction::ExposeShowAll)
-    } else if modifiers.alt && keysym == Keysym::j {
-        Some(KeyAction::SceneSnapshot)
-    // } else if (xkb::KEY_1..=xkb::KEY_9).contains(&keysym.raw()) {
-    // TODO: disable workspace switching until dynamic keybinding is implemented
-    // Some(KeyAction::WorkspaceNum(
-    // (keysym.raw() - xkb::KEY_1) as usize,
-    // ))
-    } else {
-        None
+        ));
+    }
+
+    Config::with(|config| {
+        config
+            .shortcut_bindings()
+            .iter()
+            .find(|binding| binding.trigger.matches(&modifiers, keysym))
+            .and_then(|binding| resolve_shortcut_action(config, &binding.action))
+    })
+}
+
+fn resolve_shortcut_action(config: &Config, action: &ShortcutAction) -> Option<KeyAction> {
+    match action {
+        ShortcutAction::Builtin(builtin) => match builtin {
+            BuiltinAction::Quit => Some(KeyAction::Quit),
+            BuiltinAction::Screen { index } => Some(KeyAction::Screen(*index)),
+            BuiltinAction::ScaleUp => Some(KeyAction::ScaleUp),
+            BuiltinAction::ScaleDown => Some(KeyAction::ScaleDown),
+            BuiltinAction::RotateOutput => Some(KeyAction::RotateOutput),
+            BuiltinAction::ToggleDecorations => Some(KeyAction::ToggleDecorations),
+            BuiltinAction::ApplicationSwitchNext => Some(KeyAction::ApplicationSwitchNext),
+            BuiltinAction::ApplicationSwitchPrev => Some(KeyAction::ApplicationSwitchPrev),
+            BuiltinAction::ApplicationSwitchNextWindow => {
+                Some(KeyAction::ApplicationSwitchNextWindow)
+            }
+            BuiltinAction::ApplicationSwitchQuit => Some(KeyAction::ApplicationSwitchQuit),
+            BuiltinAction::ExposeShowDesktop => Some(KeyAction::ExposeShowDesktop),
+            BuiltinAction::ExposeShowAll => Some(KeyAction::ExposeShowAll),
+            BuiltinAction::WorkspaceNum { index } => Some(KeyAction::WorkspaceNum(*index)),
+            BuiltinAction::SceneSnapshot => Some(KeyAction::SceneSnapshot),
+            BuiltinAction::RunTerminal => {
+                Some(KeyAction::Run((config.terminal_bin.clone(), Vec::new())))
+            }
+            BuiltinAction::RunFileManager => Some(KeyAction::Run((
+                config.file_manager_bin.clone(),
+                Vec::new(),
+            ))),
+            BuiltinAction::RunBrowser => Some(KeyAction::Run((
+                config.browser_bin.clone(),
+                config.browser_args.clone(),
+            ))),
+            BuiltinAction::RunLayersDebug => {
+                Some(KeyAction::Run(("layers_debug".to_string(), vec![])))
+            }
+        },
+        ShortcutAction::RunCommand(run) => {
+            Some(KeyAction::Run((run.cmd.clone(), run.args.clone())))
+        }
+        ShortcutAction::OpenDefaultApp { role, fallback } => {
+            match default_apps::resolve(role, fallback.as_deref(), config) {
+                Some((cmd, args)) => Some(KeyAction::Run((cmd, args))),
+                None => {
+                    warn!(
+                        role,
+                        "no default application found for role; ignoring shortcut action"
+                    );
+                    None
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::shortcuts::RunCommandConfig;
+
+    #[test]
+    fn builtin_quit_maps_to_key_action() {
+        let config = Config::default();
+        let action = ShortcutAction::Builtin(BuiltinAction::Quit);
+        assert!(matches!(
+            resolve_shortcut_action(&config, &action),
+            Some(KeyAction::Quit)
+        ));
+    }
+
+    #[test]
+    fn run_command_maps_to_key_action() {
+        let config = Config::default();
+        let action = ShortcutAction::RunCommand(RunCommandConfig {
+            cmd: "echo".into(),
+            args: vec!["hello".into()],
+        });
+        let result = resolve_shortcut_action(&config, &action).expect("command resolved");
+        match result {
+            KeyAction::Run((cmd, args)) => {
+                assert_eq!(cmd, "echo");
+                assert_eq!(args, vec!["hello".to_string()]);
+            }
+            other => panic!("unexpected key action: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn open_default_uses_fallback_when_unknown() {
+        let config = Config::default();
+        let action = ShortcutAction::OpenDefaultApp {
+            role: "nonexistent-role".into(),
+            fallback: Some("xterm".into()),
+        };
+        let result = resolve_shortcut_action(&config, &action).expect("fallback resolved");
+        match result {
+            KeyAction::Run((cmd, args)) => {
+                assert_eq!(cmd, "xterm");
+                assert!(args.is_empty());
+            }
+            other => panic!("unexpected key action: {:?}", other),
+        }
     }
 }

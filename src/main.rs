@@ -41,16 +41,19 @@ async fn main() {
         #[cfg(feature = "winit")]
         Some("--winit") => {
             tracing::info!("Starting screen-composer with winit backend");
+            std::env::set_var("SCREEN_COMPOSER_BACKEND", "winit");
             screen_composer::winit::run_winit();
         }
         #[cfg(feature = "udev")]
         Some("--tty-udev") => {
             tracing::info!("Starting screen-composer on a tty using udev");
+            std::env::set_var("SCREEN_COMPOSER_BACKEND", "tty-udev");
             screen_composer::udev::run_udev();
         }
         #[cfg(feature = "x11")]
         Some("--x11") => {
             tracing::info!("Starting screen-composer with x11 backend");
+            std::env::set_var("SCREEN_COMPOSER_BACKEND", "x11");
             screen_composer::x11::run_x11();
         }
         Some(other) => {

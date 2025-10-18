@@ -6,7 +6,6 @@ use std::{
 };
 
 use freedesktop_desktop_entry::DesktopEntry;
-use smithay::reexports::rustix::path::Arg;
 
 use lay_rs::skia;
 
