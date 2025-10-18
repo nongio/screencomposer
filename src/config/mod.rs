@@ -16,6 +16,8 @@ pub struct Config {
     pub cursor_theme: String,
     pub cursor_size: u32,
     pub natural_scroll: bool,
+    #[serde(default)]
+    pub dock: DockConfig,
     pub terminal_bin: String,
     pub file_manager_bin: String,
     pub browser_bin: String,
@@ -46,6 +48,7 @@ impl Default for Config {
             cursor_theme: "Notwaita-Black".to_string(),
             cursor_size: 24,
             natural_scroll: true,
+            dock: DockConfig::default(),
             terminal_bin: "kitty".to_string(),
             file_manager_bin: "dolphin".to_string(),
             browser_bin: "firefox".to_string(),
@@ -81,7 +84,7 @@ impl Config {
             }
         }
 
-        if let Some(backend) = std::env::var("SCREEN_COMPOSER_BACKEND").ok() {
+        if let Ok(backend) = std::env::var("SCREEN_COMPOSER_BACKEND") {
             for candidate in backend_override_candidates(&backend) {
                 if let Ok(content) = std::fs::read_to_string(&candidate) {
                     match content.parse::<toml::Value>() {
@@ -147,4 +150,19 @@ fn backend_override_candidates(backend: &str) -> Vec<String> {
         "x11" => vec!["sc_config.x11.toml".into(), "sc_config.udev.toml".into()],
         other => vec![format!("sc_config.{other}.toml")],
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DockConfig {
+    #[serde(default)]
+    pub bookmarks: Vec<DockBookmark>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DockBookmark {
+    pub desktop_id: String,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub exec_args: Vec<String>,
 }

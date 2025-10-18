@@ -321,7 +321,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         SecurityContextState::new::<Self, _>(&dh, |client| {
             client
                 .get_data::<ClientState>()
-                .map_or(true, |client_state| client_state.security_context.is_none())
+                .is_none_or(|client_state| client_state.security_context.is_none())
         });
         let xdg_foreign_state = XdgForeignState::new::<Self>(&dh);
 
@@ -412,10 +412,10 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     }
 
     pub fn schedule_event_loop_dispatch(&self) {
-        if !self.loop_wakeup_pending.swap(true, Ordering::AcqRel) {
-            if self.loop_wakeup_sender.send(()).is_err() {
-                self.loop_wakeup_pending.store(false, Ordering::Release);
-            }
+        if !self.loop_wakeup_pending.swap(true, Ordering::AcqRel)
+            && self.loop_wakeup_sender.send(()).is_err()
+        {
+            self.loop_wakeup_pending.store(false, Ordering::Release);
         }
     }
 

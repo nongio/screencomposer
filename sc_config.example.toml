@@ -51,3 +51,11 @@ browser_args = [""]
 "Alt+D" = "ExposeShowDesktop"
 "Alt+F" = "ExposeShowAll"
 "Alt+J" = "SceneSnapshot"
+browser_args = [""] 
+
+[dock]
+bookmarks = [
+  { desktop_id = "org.kde.dolphin.desktop" },
+  { desktop_id = "org.mozilla.firefox.desktop", label = "Web", exec_args = ["--private-window"] },
+  { desktop_id = "code.desktop" }
+]

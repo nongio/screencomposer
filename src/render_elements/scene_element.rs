@@ -98,8 +98,7 @@ impl SceneElement {
     pub fn root_layer(&self) -> Option<Layer> {
         self.engine
             .scene_root()
-            .map(|id| self.engine.get_layer(&id))
-            .flatten()
+            .and_then(|id| self.engine.get_layer(&id))
     }
     pub fn set_size(&mut self, width: f32, height: f32) {
         self.engine.scene_set_size(width, height);

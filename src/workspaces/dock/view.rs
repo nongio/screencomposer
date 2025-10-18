@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{hash_map::Entry, HashMap, HashSet},
     sync::{atomic::AtomicBool, Arc, RwLock},
     time::Duration,
 };
@@ -16,7 +16,7 @@ use smithay::{reexports::wayland_server::backend::ObjectId, utils::IsAlive};
 use tokio::sync::mpsc;
 
 use crate::{
-    config::Config,
+    config::{Config, DockBookmark},
     shell::WindowElement,
     theme::theme_colors,
     utils::Observer,
@@ -27,7 +27,18 @@ use super::{
     model::DockModel,
     render::{draw_app_icon, setup_app_icon, setup_label, setup_miniwindow_icon},
 };
-type AppLayers = (Layer, Layer, Layer, Option<u32>);
+
+#[derive(Debug, Clone)]
+struct AppLayerEntry {
+    layer: Layer,
+    icon_layer: Layer,
+    label_layer: Layer,
+    icon_id: Option<u32>,
+    running: bool,
+    identifier: String,
+}
+
+type MiniWindowLayers = (Layer, Layer, Layer, Option<u32>);
 
 #[derive(Debug, Clone)]
 pub struct DockView {
@@ -40,13 +51,14 @@ pub struct DockView {
     dock_apps_container: lay_rs::prelude::Layer,
     dock_windows_container: lay_rs::prelude::Layer,
 
-    app_layers: Arc<RwLock<HashMap<String, AppLayers>>>,
-    miniwindow_layers: Arc<RwLock<HashMap<ObjectId, AppLayers>>>,
+    app_layers: Arc<RwLock<HashMap<String, AppLayerEntry>>>,
+    miniwindow_layers: Arc<RwLock<HashMap<ObjectId, MiniWindowLayers>>>,
     state: Arc<RwLock<DockModel>>,
     active: Arc<AtomicBool>,
     notify_tx: tokio::sync::mpsc::Sender<WorkspacesModel>,
     latest_event: Arc<tokio::sync::RwLock<Option<WorkspacesModel>>>,
     magnification_position: Arc<RwLock<f32>>,
+    bookmark_configs: Arc<RwLock<HashMap<String, DockBookmark>>>,
 }
 impl PartialEq for DockView {
     fn eq(&self, other: &Self) -> bool {
@@ -248,11 +260,53 @@ impl DockView {
             notify_tx,
             latest_event: Arc::new(tokio::sync::RwLock::new(None)),
             magnification_position: Arc::new(RwLock::new(-500.0)),
+            bookmark_configs: Arc::new(RwLock::new(HashMap::new())),
         };
         dock.render_dock();
         dock.notification_handler(notify_rx);
+        dock.load_configured_bookmarks();
 
         dock
+    }
+    fn load_configured_bookmarks(&self) {
+        let bookmarks = Config::with(|c| c.dock.bookmarks.clone());
+        {
+            let mut configs = self.bookmark_configs.write().unwrap();
+            configs.clear();
+        }
+        if bookmarks.is_empty() {
+            let mut state = self.get_state();
+            state.launchers.clear();
+            self.update_state(&state);
+            return;
+        }
+
+        let dock = self.clone();
+        tokio::spawn(async move {
+            let mut launchers = Vec::new();
+            let mut configs = HashMap::new();
+
+            for bookmark in bookmarks {
+                if let Some(mut app) =
+                    ApplicationsInfo::get_app_info_by_id(bookmark.desktop_id.clone()).await
+                {
+                    app.override_name = bookmark.label.clone();
+                    configs.insert(app.match_id.clone(), bookmark.clone());
+                    launchers.push(app);
+                } else {
+                    tracing::warn!("dock bookmark not found: {}", bookmark.desktop_id);
+                }
+            }
+
+            {
+                let mut cfg_guard = dock.bookmark_configs.write().unwrap();
+                *cfg_guard = configs;
+            }
+
+            let mut state = dock.get_state();
+            state.launchers = launchers;
+            dock.update_state(&state);
+        });
     }
     pub fn update_state(&self, state: &DockModel) {
         {
@@ -273,9 +327,36 @@ impl DockView {
             .store(true, std::sync::atomic::Ordering::Relaxed);
         self.view_layer.set_position((0.0, 0.0), transition)
     }
+    fn display_entries(&self, state: &DockModel) -> Vec<(Application, bool)> {
+        let mut entries: Vec<(Application, bool)> = state
+            .launchers
+            .iter()
+            .map(|launcher| (launcher.clone(), false))
+            .collect();
+
+        for running in state.running_apps.iter() {
+            if let Some(entry) = entries
+                .iter_mut()
+                .find(|(app, _)| app.match_id == running.match_id)
+            {
+                let override_name = entry.0.override_name.clone();
+                let mut combined = running.clone();
+                if override_name.is_some() {
+                    combined.override_name = override_name;
+                }
+                entry.0 = combined;
+                entry.1 = true;
+            } else {
+                entries.push((running.clone(), true));
+            }
+        }
+
+        entries
+    }
     fn render_elements_layers(&self, available_icon_width: f32) {
         let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
         let state = self.get_state();
+        let display_apps = self.display_entries(&state);
         let app_height = available_icon_width + 30.0;
         let miniwindow_height = available_icon_width + 60.0;
         let bar_height = app_height;
@@ -301,15 +382,66 @@ impl DockView {
 
         let mut previous_app_layers = self.get_app_layers();
         let mut apps_layers_map = self.app_layers.write().unwrap();
-        for app in state.running_apps {
+        for (app, running) in display_apps.iter() {
+            let match_id = app.match_id.clone();
             let app_copy = app.clone();
             let app_name = app.clone().desktop_name().unwrap_or(app.identifier.clone());
-            let (layer, icon_layer, label, icon_id) = apps_layers_map
-                .entry(app.identifier.clone())
-                .or_insert_with(|| {
+
+            match apps_layers_map.entry(match_id.clone()) {
+                Entry::Occupied(mut occ) => {
+                    let entry = occ.get_mut();
+                    entry.identifier = app.identifier.clone();
+
+                    let icon_layer = entry.icon_layer.clone();
+                    let layer = entry.layer.clone();
+                    let label = entry.label_layer.clone();
+
+                    let current_icon_id = app_copy.icon.as_ref().map(|i| i.unique_id());
+                    if entry.icon_id != current_icon_id || entry.running != *running {
+                        let draw_picture = draw_app_icon(&app_copy, *running);
+                        icon_layer.set_draw_content(draw_picture);
+                        entry.icon_id = current_icon_id;
+                    }
+                    entry.running = *running;
+
+                    let darken_color = skia::Color::from_argb(100, 100, 100, 100);
+                    let add = skia::Color::from_argb(0, 0, 0, 0);
+                    let filter = skia::color_filters::lighting(darken_color, add);
+
+                    let icon_ref = icon_layer.clone();
+                    layer.remove_all_pointer_handlers();
+
+                    layer.add_on_pointer_press(move |_: &Layer, _, _| {
+                        icon_ref.set_color_filter(filter.clone());
+                    });
+
+                    let icon_ref = icon_layer.clone();
+                    layer.add_on_pointer_release(move |_: &Layer, _, _| {
+                        icon_ref.set_color_filter(None);
+                    });
+
+                    let label_ref = label.clone();
+                    layer.add_on_pointer_in(move |_: &Layer, _, _| {
+                        label_ref.set_opacity(1.0, Some(Transition::ease_in_quad(0.1)));
+                    });
+                    let label_ref = label.clone();
+                    let icon_ref = icon_layer.clone();
+                    layer.add_on_pointer_out(move |_: &Layer, _, _| {
+                        label_ref.set_opacity(0.0, Some(Transition::ease_in_quad(0.1)));
+                        icon_ref.set_color_filter(None);
+                    });
+                    previous_app_layers.retain(|l| l.id() != layer.id());
+                }
+                Entry::Vacant(vac) => {
                     let new_layer = self.layers_engine.new_layer();
                     let icon_layer = self.layers_engine.new_layer();
-                    setup_app_icon(&new_layer, &icon_layer, app.clone(), available_icon_width);
+                    setup_app_icon(
+                        &new_layer,
+                        &icon_layer,
+                        app_copy.clone(),
+                        available_icon_width,
+                        *running,
+                    );
                     icon_layer.set_image_cached(true);
 
                     self.dock_apps_container.add_sublayer(&new_layer);
@@ -318,43 +450,46 @@ impl DockView {
                     setup_label(&label_layer, app_name);
                     new_layer.add_sublayer(&icon_layer);
                     new_layer.add_sublayer(&label_layer);
-                    let icon_id = app.icon.map(|i| i.unique_id());
-                    (new_layer, icon_layer, label_layer, icon_id)
-                });
+                    let icon_id = app_copy.icon.as_ref().map(|i| i.unique_id());
 
-            if app_copy.icon.as_ref().map(|i| i.unique_id()) != *icon_id {
-                let draw_picture = draw_app_icon(&app_copy);
-                icon_layer.set_draw_content(draw_picture);
-                *icon_id = app_copy.icon.map(|i| i.unique_id());
+                    vac.insert(AppLayerEntry {
+                        layer: new_layer.clone(),
+                        icon_layer: icon_layer.clone(),
+                        label_layer: label_layer.clone(),
+                        icon_id,
+                        running: *running,
+                        identifier: app.identifier.clone(),
+                    });
+
+                    let darken_color = skia::Color::from_argb(100, 100, 100, 100);
+                    let add = skia::Color::from_argb(0, 0, 0, 0);
+                    let filter = skia::color_filters::lighting(darken_color, add);
+
+                    let icon_ref = icon_layer.clone();
+                    new_layer.remove_all_pointer_handlers();
+
+                    new_layer.add_on_pointer_press(move |_: &Layer, _, _| {
+                        icon_ref.set_color_filter(filter.clone());
+                    });
+
+                    let icon_ref = icon_layer.clone();
+                    new_layer.add_on_pointer_release(move |_: &Layer, _, _| {
+                        icon_ref.set_color_filter(None);
+                    });
+
+                    let label_ref = label_layer.clone();
+                    new_layer.add_on_pointer_in(move |_: &Layer, _, _| {
+                        label_ref.set_opacity(1.0, Some(Transition::ease_in_quad(0.1)));
+                    });
+                    let label_ref = label_layer.clone();
+                    let icon_ref = icon_layer.clone();
+                    new_layer.add_on_pointer_out(move |_: &Layer, _, _| {
+                        label_ref.set_opacity(0.0, Some(Transition::ease_in_quad(0.1)));
+                        icon_ref.set_color_filter(None);
+                    });
+                    previous_app_layers.retain(|l| l.id() != new_layer.id());
+                }
             }
-
-            let darken_color = skia::Color::from_argb(100, 100, 100, 100);
-            let add = skia::Color::from_argb(0, 0, 0, 0);
-            let filter = skia::color_filters::lighting(darken_color, add);
-
-            let icon_ref = icon_layer.clone();
-            layer.remove_all_pointer_handlers();
-
-            layer.add_on_pointer_press(move |_: &Layer, _, _| {
-                icon_ref.set_color_filter(filter.clone());
-            });
-
-            let icon_ref = icon_layer.clone();
-            layer.add_on_pointer_release(move |_: &Layer, _, _| {
-                icon_ref.set_color_filter(None);
-            });
-
-            let label_ref = label.clone();
-            layer.add_on_pointer_in(move |_: &Layer, _, _| {
-                label_ref.set_opacity(1.0, Some(Transition::ease_in_quad(0.1)));
-            });
-            let label_ref = label.clone();
-            let icon_ref = icon_layer.clone();
-            layer.add_on_pointer_out(move |_: &Layer, _, _| {
-                label_ref.set_opacity(0.0, Some(Transition::ease_in_quad(0.1)));
-                icon_ref.set_color_filter(None);
-            });
-            previous_app_layers.retain(|l| l.id() != layer.id());
         }
 
         let mut previous_miniwindows = self.get_miniwin_layers();
@@ -430,7 +565,7 @@ impl DockView {
                     },
                     true,
                 );
-            apps_layers_map.retain(|_k, (v, ..)| v.id() != layer.id());
+            apps_layers_map.retain(|_, entry| entry.layer.id() != layer.id());
         }
 
         // Mini window layers
@@ -458,7 +593,7 @@ impl DockView {
         let available_width = state.width as f32 - 20.0 * draw_scale;
         let icon_size: f32 = 100.0 * draw_scale;
 
-        let apps_len = state.running_apps.len() as f32;
+        let apps_len = self.display_entries(&state).len() as f32;
         let windows_len = state.minimized_windows.len() as f32;
 
         let mut component_padding_h: f32 = icon_size * 0.09 * draw_scale;
@@ -528,8 +663,7 @@ impl DockView {
         let app_layers = self.app_layers.read().unwrap();
         app_layers
             .values()
-            .cloned()
-            .map(|(layer, ..)| layer)
+            .map(|entry| entry.layer.clone())
             .collect()
     }
     fn get_miniwin_layers(&self) -> Vec<Layer> {
@@ -540,12 +674,12 @@ impl DockView {
             .map(|(layer, ..)| layer)
             .collect()
     }
-    pub fn get_appid_from_layer(&self, layer: &NodeRef) -> Option<String> {
+    pub fn get_app_from_layer(&self, layer: &NodeRef) -> Option<(String, String)> {
         let layers_map = self.app_layers.read().unwrap();
         layers_map
             .iter()
-            .find(|(_, (app_layer, ..))| app_layer.id() == *layer)
-            .map(|(key, _)| key.clone())
+            .find(|(_, entry)| entry.layer.id() == *layer)
+            .map(|(match_id, entry)| (entry.identifier.clone(), match_id.clone()))
     }
     pub fn get_window_from_layer(&self, layer: &NodeRef) -> Option<ObjectId> {
         let miniwindow_layers = self.miniwindow_layers.read().unwrap();
@@ -591,11 +725,12 @@ impl DockView {
         let padding = 20.0;
         let focus = pos / (bounds.width() - padding);
         let state = self.get_state();
+        let display_apps = self.display_entries(&state);
 
         let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
         let icon_size: f32 = 100.0 * draw_scale;
 
-        let apps_len = state.running_apps.len() as f32;
+        let apps_len = display_apps.len() as f32;
         let windows_len = state.minimized_windows.len() as f32;
 
         let tot_elements = apps_len + windows_len;
@@ -604,17 +739,19 @@ impl DockView {
             .add_animation_from_transition(&Transition::ease_out_quad(0.08), false);
         let mut changes = Vec::new();
         let genie_scale = Config::with(|c| c.genie_scale);
-        for (index, app) in state.running_apps.iter().enumerate() {
-            let id = &app.identifier;
+        {
             let layers_map = self.app_layers.read().unwrap();
-            if let Some((layer, ..)) = layers_map.get(id) {
-                let icon_pos = 1.0 / tot_elements * index as f32 + 1.0 / (tot_elements * 2.0);
-                let icon_focus = 1.0 + magnify_function(focus - icon_pos) * genie_scale;
-                let focused_icon_size = icon_size * icon_focus as f32;
+            for (index, (app, _running)) in display_apps.iter().enumerate() {
+                if let Some(entry) = layers_map.get(&app.match_id) {
+                    let layer = entry.layer.clone();
+                    let icon_pos = 1.0 / tot_elements * index as f32 + 1.0 / (tot_elements * 2.0);
+                    let icon_focus = 1.0 + magnify_function(focus - icon_pos) * genie_scale;
+                    let focused_icon_size = icon_size * icon_focus as f32;
 
-                let change =
-                    layer.change_size(Size::points(focused_icon_size, focused_icon_size + 30.0));
-                changes.push(change);
+                    let change = layer
+                        .change_size(Size::points(focused_icon_size, focused_icon_size + 30.0));
+                    changes.push(change);
+                }
             }
         }
 
@@ -640,6 +777,18 @@ impl DockView {
     pub fn update_magnification_position(&self, pos: f32) {
         *self.magnification_position.write().unwrap() = pos;
         self.magnify_elements();
+    }
+    pub fn bookmark_config_for(&self, match_id: &str) -> Option<DockBookmark> {
+        self.bookmark_configs.read().unwrap().get(match_id).cloned()
+    }
+    pub fn bookmark_application(&self, match_id: &str) -> Option<Application> {
+        self.state
+            .read()
+            .unwrap()
+            .launchers
+            .iter()
+            .find(|app| app.match_id == match_id)
+            .cloned()
     }
 }
 

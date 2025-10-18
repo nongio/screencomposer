@@ -15,16 +15,14 @@ pub fn setup_app_icon(
     icon_layer: &Layer,
     application: Application,
     icon_width: f32,
+    running: bool,
 ) {
     let app_name = application
         .desktop_name()
         .clone()
         .unwrap_or(application.identifier.clone());
 
-    let draw_picture = application
-        .icon
-        .as_ref()
-        .map(|_| draw_app_icon(&application));
+    let draw_picture = Some(draw_app_icon(&application, running));
     let container_tree = LayerTreeBuilder::default()
         .key(app_name)
         .layout_style(taffy::Style {
@@ -226,9 +224,8 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
     new_layer.build_layer_tree(&label_tree);
 }
 
-pub fn draw_app_icon(application: &Application) -> ContentDrawFunction {
+pub fn draw_app_icon(application: &Application, running: bool) -> ContentDrawFunction {
     let application = application.clone();
-    println!("draw_app_icon: {:?}", application.identifier);
     let draw_picture = move |canvas: &lay_rs::skia::Canvas, w: f32, h: f32| -> lay_rs::skia::Rect {
         let icon_size = (w).max(0.0);
         let circle_radius = 6.0;
@@ -293,11 +290,13 @@ pub fn draw_app_icon(application: &Application) -> ContentDrawFunction {
                 canvas.draw_picture(picure, None, None);
             }
         }
-        let mut paint =
-            lay_rs::skia::Paint::new(lay_rs::skia::Color4f::new(0.0, 0.0, 0.0, 0.5), None);
-        paint.set_anti_alias(true);
-        paint.set_style(lay_rs::skia::paint::Style::Fill);
-        canvas.draw_circle((w / 2.0, h - (10.0 + circle_radius)), circle_radius, &paint);
+        if running {
+            let mut paint =
+                lay_rs::skia::Paint::new(lay_rs::skia::Color4f::new(0.0, 0.0, 0.0, 0.5), None);
+            paint.set_anti_alias(true);
+            paint.set_style(lay_rs::skia::paint::Style::Fill);
+            canvas.draw_circle((w / 2.0, h - (10.0 + circle_radius)), circle_radius, &paint);
+        }
 
         lay_rs::skia::Rect::from_xywh(0.0, 0.0, w, h)
     };

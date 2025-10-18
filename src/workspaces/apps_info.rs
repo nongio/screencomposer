@@ -14,26 +14,53 @@ use crate::{config::Config, utils::image_from_path};
 #[derive(Clone)]
 pub struct Application {
     pub identifier: String,
+    pub match_id: String,
     pub icon_path: Option<String>,
     pub icon: Option<skia::Image>,
     pub picture: Option<skia::Picture>,
+    pub override_name: Option<String>,
+    pub desktop_file_id: Option<String>,
     desktop_entry: DesktopEntry,
 }
 
 impl Application {
     pub fn desktop_name(&self) -> Option<String> {
+        if let Some(name) = &self.override_name {
+            return Some(name.clone());
+        }
         Config::with(|c| {
             self.desktop_entry
                 .name(&c.locales)
                 .map(|name| name.to_string())
         })
     }
+    pub fn command(&self, extra_args: &[String]) -> Option<(String, Vec<String>)> {
+        let exec = self.desktop_entry.exec()?;
+        let mut parts = shell_words::split(exec).ok()?;
+        if parts.is_empty() {
+            return None;
+        }
+        let cmd = parts.remove(0);
+        let mut args: Vec<String> = parts
+            .into_iter()
+            .filter_map(|arg| {
+                if arg.starts_with('%') {
+                    None
+                } else {
+                    Some(arg)
+                }
+            })
+            .collect();
+        args.extend(extra_args.iter().cloned());
+        Some((cmd, args))
+    }
 }
 
 impl Hash for Application {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.identifier.hash(state);
+        self.match_id.hash(state);
         self.icon_path.hash(state);
+        self.override_name.hash(state);
 
         if let Some(i) = self.icon.as_ref() {
             i.unique_id().hash(state)
@@ -43,7 +70,7 @@ impl Hash for Application {
 
 impl PartialEq for Application {
     fn eq(&self, other: &Self) -> bool {
-        self.identifier == other.identifier
+        self.match_id == other.match_id
     }
 }
 impl Eq for Application {}
@@ -52,8 +79,11 @@ impl std::fmt::Debug for Application {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Application")
             .field("identifier", &self.identifier)
+            .field("match_id", &self.match_id)
+            .field("desktop_file_id", &self.desktop_file_id)
             .field("icon_path", &self.icon_path)
             .field("icon", &self.icon.is_some())
+            .field("override_name", &self.override_name)
             .finish()
     }
 }
@@ -91,7 +121,7 @@ impl ApplicationsInfo {
         app
     }
 
-    async fn get_desktop_entry(app_id: &str) -> Option<DesktopEntry> {
+    async fn get_desktop_entry<'a>(app_id: &'a str) -> Option<DesktopEntry> {
         let entry_path =
             freedesktop_desktop_entry::Iter::new(freedesktop_desktop_entry::default_paths())
                 .find(|path| path.to_string_lossy().contains(app_id));
@@ -110,6 +140,12 @@ impl ApplicationsInfo {
         let desktop_entry = ApplicationsInfo::get_desktop_entry(&app_id).await;
 
         if let Some(desktop_entry) = desktop_entry {
+            let match_id = desktop_entry.id().to_string();
+            let identifier = if app_id.ends_with(".desktop") {
+                match_id.clone()
+            } else {
+                app_id.clone()
+            };
             let icon_path = desktop_entry
                 .icon()
                 .map(|icon| icon.to_string())
@@ -142,11 +178,20 @@ impl ApplicationsInfo {
             //         None
             //     });
 
+            let desktop_file_id = desktop_entry
+                .path
+                .file_stem()
+                .and_then(|os| os.to_str())
+                .map(|s| s.to_string());
+
             let app = Application {
-                identifier: app_id.clone(),
+                identifier,
+                match_id,
                 icon_path,
                 icon,
                 picture: None,
+                override_name: None,
+                desktop_file_id,
                 desktop_entry,
             };
 
