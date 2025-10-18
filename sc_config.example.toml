@@ -26,8 +26,8 @@ browser_bin = "google-chrome-stable"
 browser_args = [""]
 
 # Keyboard remapping
-[modifier_remap]
-logo = "ctrl"
+# [modifier_remap]
+# logo = "ctrl"
 
 [key_remap]
 "BackSpace" = "Delete"
@@ -51,11 +51,13 @@ logo = "ctrl"
 "Logo+Shift+P" = "ScaleUp"
 "Logo+Shift+R" = "RotateOutput"
 "Logo+Shift+I" = "RunLayersDebug"
+"Logo+ArrowUp" = "ToggleMaximizeWindow"
 "Alt+Tab" = "ApplicationSwitchNext"
 "Alt+Shift+Tab" = "ApplicationSwitchPrev"
-"Alt+R" = "ApplicationSwitchNextWindow"
-"Alt+Q" = "ApplicationSwitchQuit"
+"Alt+`" = "ApplicationSwitchNextWindow"
 "Alt+W" = "CloseWindow"
+"Alt+Q" = "ApplicationSwitchQuit"
+"Alt+Shift+W" = "CloseWindow"
 "Alt+D" = "ExposeShowDesktop"
 "Alt+F" = "ExposeShowAll"
 "Alt+J" = "SceneSnapshot"

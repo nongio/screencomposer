@@ -115,6 +115,7 @@ pub enum BuiltinAction {
     ApplicationSwitchNextWindow,
     ApplicationSwitchQuit,
     CloseWindow,
+    ToggleMaximizeWindow,
     ExposeShowDesktop,
     ExposeShowAll,
     WorkspaceNum { index: usize },
@@ -218,6 +219,7 @@ fn parse_builtin(name: &str, index: Option<usize>) -> Result<BuiltinAction, Shor
         "ApplicationSwitchNextWindow" => BuiltinAction::ApplicationSwitchNextWindow,
         "ApplicationSwitchQuit" => BuiltinAction::ApplicationSwitchQuit,
         "CloseWindow" => BuiltinAction::CloseWindow,
+        "ToggleMaximizeWindow" => BuiltinAction::ToggleMaximizeWindow,
         "ExposeShowDesktop" => BuiltinAction::ExposeShowDesktop,
         "ExposeShowAll" => BuiltinAction::ExposeShowAll,
         "SceneSnapshot" => BuiltinAction::SceneSnapshot,
@@ -277,13 +279,37 @@ fn parse_trigger(trigger: &str) -> Result<ShortcutTrigger, ShortcutError> {
 }
 
 fn parse_keysym(key: &str) -> Result<xkb::Keysym, ShortcutError> {
-    let mut attempts = Vec::new();
-    attempts.push(key.to_string());
-    if key.len() == 1 {
-        attempts.push(key.to_ascii_uppercase());
-    } else {
-        attempts.push(key.to_ascii_lowercase());
-        attempts.push(key.to_ascii_uppercase());
+    let alias = match key {
+        "ArrowUp" => Some("Up"),
+        "ArrowDown" => Some("Down"),
+        "ArrowLeft" => Some("Left"),
+        "ArrowRight" => Some("Right"),
+        _ => None,
+    };
+
+    let mut base_candidates = Vec::new();
+    base_candidates.push(key.to_string());
+    if let Some(alias) = alias {
+        if alias != key {
+            base_candidates.push(alias.to_string());
+        }
+    }
+
+    let mut attempts: Vec<String> = Vec::new();
+    let mut add_attempt = |value: String| {
+        if !attempts.contains(&value) {
+            attempts.push(value);
+        }
+    };
+
+    for candidate in base_candidates {
+        add_attempt(candidate.clone());
+        if candidate.len() == 1 {
+            add_attempt(candidate.to_ascii_uppercase());
+        } else {
+            add_attempt(candidate.to_ascii_lowercase());
+            add_attempt(candidate.to_ascii_uppercase());
+        }
     }
 
     for attempt in attempts {

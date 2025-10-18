@@ -659,6 +659,9 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                 KeyAction::ApplicationSwitchQuit => {
                     self.workspaces.quit_appswitcher_app();
                 }
+                KeyAction::ToggleMaximize => {
+                    self.toggle_maximize_focused_window();
+                }
                 KeyAction::CloseWindow => {
                     self.close_focused_window();
                 }
@@ -922,6 +925,9 @@ impl ScreenComposer<UdevData> {
                 }
                 KeyAction::ApplicationSwitchQuit => {
                     self.quit_appswitcher_app();
+                }
+                KeyAction::ToggleMaximize => {
+                    self.toggle_maximize_focused_window();
                 }
                 KeyAction::CloseWindow => {
                     self.close_focused_window();
@@ -1498,6 +1504,7 @@ enum KeyAction {
     ApplicationSwitchNext,
     ApplicationSwitchPrev,
     ApplicationSwitchQuit,
+    ToggleMaximize,
     CloseWindow,
     ApplicationSwitchNextWindow,
     ExposeShowDesktop,
@@ -1530,10 +1537,7 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
             .shortcut_bindings()
             .iter()
             .find(|binding| binding.trigger.matches(&modifiers, keysym))
-            .and_then(|binding| {
-                
-                resolve_shortcut_action(config, &binding.action)
-            })
+            .and_then(|binding| resolve_shortcut_action(config, &binding.action))
     })
 }
 
@@ -1549,6 +1553,7 @@ fn resolve_shortcut_action(config: &Config, action: &ShortcutAction) -> Option<K
             BuiltinAction::ApplicationSwitchNext => Some(KeyAction::ApplicationSwitchNext),
             BuiltinAction::ApplicationSwitchPrev => Some(KeyAction::ApplicationSwitchPrev),
             BuiltinAction::ApplicationSwitchQuit => Some(KeyAction::ApplicationSwitchQuit),
+            BuiltinAction::ToggleMaximizeWindow => Some(KeyAction::ToggleMaximize),
             BuiltinAction::CloseWindow => Some(KeyAction::CloseWindow),
             BuiltinAction::ApplicationSwitchNextWindow => {
                 Some(KeyAction::ApplicationSwitchNextWindow)

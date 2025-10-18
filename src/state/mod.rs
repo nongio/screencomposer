@@ -43,6 +43,7 @@ use smithay::{
             generic::Generic,
             Interest, LoopHandle, Mode, PostAction,
         },
+        wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason, ObjectId},
             protocol::{wl_data_device_manager::DndAction, wl_surface::WlSurface},
@@ -753,6 +754,48 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     pub fn quit_appswitcher_app(&mut self) {
         self.workspaces.quit_appswitcher_app();
         // FIXME focus the previous window
+    }
+    pub fn toggle_maximize_focused_window(&mut self) {
+        let Some(window) = self
+            .seat
+            .get_keyboard()
+            .and_then(|keyboard| keyboard.current_focus())
+            .and_then(|focus| match focus {
+                KeyboardFocusTarget::Window(window) => Some(window),
+                _ => None,
+            })
+        else {
+            return;
+        };
+
+        match window.underlying_surface() {
+            smithay::desktop::WindowSurface::Wayland(_) => {
+                if let Some(toplevel) = window.toplevel() {
+                    let toplevel = toplevel.clone();
+                    let is_maximized = toplevel
+                        .current_state()
+                        .states
+                        .contains(xdg_toplevel::State::Maximized);
+                    if is_maximized {
+                        <Self as smithay::wayland::shell::xdg::XdgShellHandler>::unmaximize_request(
+                            self, toplevel,
+                        );
+                    } else {
+                        <Self as smithay::wayland::shell::xdg::XdgShellHandler>::maximize_request(
+                            self, toplevel,
+                        );
+                    }
+                }
+            }
+            #[cfg(feature = "xwayland")]
+            smithay::desktop::WindowSurface::X11(surface) => {
+                if surface.is_maximized() {
+                    self.unmaximize_request_x11(&surface);
+                } else {
+                    self.maximize_request_x11(&surface);
+                }
+            }
+        }
     }
     pub fn close_focused_window(&mut self) {
         if let Some(keyboard) = self.seat.get_keyboard() {

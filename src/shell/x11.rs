@@ -368,6 +368,27 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         self.space.map_element(elem, geometry.loc, false);
     }
 
+    pub fn unmaximize_request_x11(&mut self, window: &X11Surface) {
+        let Some(elem) = self
+            .space
+            .elements()
+            .find(|e| matches!(e.0.x11_surface(), Some(w) if w == window))
+            .cloned()
+        else {
+            return;
+        };
+
+        window.set_maximized(false).unwrap();
+        if let Some(old_geo) = window
+            .user_data()
+            .get::<OldGeometry>()
+            .and_then(|data| data.restore())
+        {
+            window.configure(old_geo).unwrap();
+            self.space.map_element(elem, old_geo.loc, false);
+        }
+    }
+
     pub fn move_request_x11(&mut self, window: &X11Surface) {
         if let Some(touch) = self.seat.get_touch() {
             if let Some(start_data) = touch.grab_start_data() {
