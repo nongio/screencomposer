@@ -114,6 +114,7 @@ pub enum BuiltinAction {
     ApplicationSwitchPrev,
     ApplicationSwitchNextWindow,
     ApplicationSwitchQuit,
+    CloseWindow,
     ExposeShowDesktop,
     ExposeShowAll,
     WorkspaceNum { index: usize },
@@ -216,6 +217,7 @@ fn parse_builtin(name: &str, index: Option<usize>) -> Result<BuiltinAction, Shor
         "ApplicationSwitchPrev" => BuiltinAction::ApplicationSwitchPrev,
         "ApplicationSwitchNextWindow" => BuiltinAction::ApplicationSwitchNextWindow,
         "ApplicationSwitchQuit" => BuiltinAction::ApplicationSwitchQuit,
+        "CloseWindow" => BuiltinAction::CloseWindow,
         "ExposeShowDesktop" => BuiltinAction::ExposeShowDesktop,
         "ExposeShowAll" => BuiltinAction::ExposeShowAll,
         "SceneSnapshot" => BuiltinAction::SceneSnapshot,
@@ -381,6 +383,10 @@ pub fn default_shortcut_map() -> ShortcutMap {
     map.insert(
         "Alt+W".into(),
         ShortcutActionConfig::BuiltinName("ApplicationSwitchQuit".into()),
+    );
+    map.insert(
+        "Alt+Shift+W".into(),
+        ShortcutActionConfig::BuiltinName("CloseWindow".into()),
     );
     map.insert(
         "Alt+D".into(),

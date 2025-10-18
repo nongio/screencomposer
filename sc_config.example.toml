@@ -48,6 +48,7 @@ browser_args = [""]
 "Alt+Shift+Tab" = "ApplicationSwitchPrev"
 "Alt+R" = "ApplicationSwitchNextWindow"
 "Alt+W" = "ApplicationSwitchQuit"
+"Alt+Shift+W" = "CloseWindow"
 "Alt+D" = "ExposeShowDesktop"
 "Alt+F" = "ExposeShowAll"
 "Alt+J" = "SceneSnapshot"
