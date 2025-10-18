@@ -5,5 +5,6 @@ Cargo.lock
 .vagga
 resources/backgrounds/*
 sc_config.toml
+sc_config.*.toml
 
 wlcs/CMakeFiles/**/*

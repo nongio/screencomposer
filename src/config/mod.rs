@@ -4,6 +4,8 @@ pub mod default_apps;
 pub mod shortcuts;
 
 use shortcuts::{build_bindings, ShortcutBinding, ShortcutMap};
+use toml::map::Entry;
+use tracing::warn;
 
 use crate::theme::ThemeScheme;
 
@@ -69,12 +71,38 @@ impl Config {
         CONFIG.with(f)
     }
     fn init() -> Self {
-        let mut config = match std::fs::read_to_string("sc_config.toml") {
-            Ok(content) => toml::from_str(&content).unwrap(),
-            Err(_) => Self::default(),
-        };
-        config.rebuild_shortcut_bindings();
+        let mut merged =
+            toml::Value::try_from(Self::default()).expect("default config is always valid toml");
 
+        if let Ok(content) = std::fs::read_to_string("sc_config.toml") {
+            match content.parse::<toml::Value>() {
+                Ok(value) => merge_value(&mut merged, value),
+                Err(err) => warn!("Failed to parse sc_config.toml: {err}"),
+            }
+        }
+
+        if let Some(backend) = std::env::var("SCREEN_COMPOSER_BACKEND").ok() {
+            for candidate in backend_override_candidates(&backend) {
+                if let Ok(content) = std::fs::read_to_string(&candidate) {
+                    match content.parse::<toml::Value>() {
+                        Ok(value) => {
+                            merge_value(&mut merged, value);
+                            break;
+                        }
+                        Err(err) => {
+                            warn!("Failed to parse {candidate}: {err}");
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut config: Config = merged.try_into().unwrap_or_else(|err| {
+            warn!("Falling back to default config due to invalid overrides: {err}");
+            Self::default()
+        });
+
+        config.rebuild_shortcut_bindings();
         let scaled_cursor_size = (config.cursor_size as f64) as u32;
         std::env::set_var("XCURSOR_SIZE", (scaled_cursor_size).to_string());
         std::env::set_var("XCURSOR_THEME", config.cursor_theme.clone());
@@ -88,5 +116,35 @@ impl Config {
 
     pub fn shortcut_bindings(&self) -> &[ShortcutBinding] {
         &self.shortcut_bindings
+    }
+}
+
+fn merge_value(base: &mut toml::Value, overrides: toml::Value) {
+    match (base, overrides) {
+        (toml::Value::Table(base_map), toml::Value::Table(override_map)) => {
+            for (key, override_value) in override_map {
+                match base_map.entry(key) {
+                    Entry::Occupied(mut entry) => merge_value(entry.get_mut(), override_value),
+                    Entry::Vacant(entry) => {
+                        entry.insert(override_value);
+                    }
+                }
+            }
+        }
+        (base_value, override_value) => {
+            *base_value = override_value;
+        }
+    }
+}
+
+fn backend_override_candidates(backend: &str) -> Vec<String> {
+    match backend {
+        "winit" => vec!["sc_config.winit.toml".into()],
+        "tty-udev" => vec![
+            "sc_config.tty-udev.toml".into(),
+            "sc_config.udev.toml".into(),
+        ],
+        "x11" => vec!["sc_config.x11.toml".into(), "sc_config.udev.toml".into()],
+        other => vec![format!("sc_config.{other}.toml")],
     }
 }

@@ -6,7 +6,6 @@ use std::{
 };
 
 use freedesktop_desktop_entry::DesktopEntry;
-use smithay::reexports::rustix::path::Arg;
 
 use lay_rs::skia;
 
@@ -92,7 +91,7 @@ impl ApplicationsInfo {
         app
     }
 
-    async fn get_desktop_entry<'a>(app_id: &'a str) -> Option<DesktopEntry> {
+    async fn get_desktop_entry(app_id: &str) -> Option<DesktopEntry> {
         let entry_path =
             freedesktop_desktop_entry::Iter::new(freedesktop_desktop_entry::default_paths())
                 .find(|path| path.to_string_lossy().contains(app_id));
