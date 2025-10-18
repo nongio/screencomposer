@@ -33,6 +33,10 @@ Note: Protocol availability can depend on build features and backend capabilitie
 - Input comes from the active backend (libinput via udev, or the windowing backend in winit/X11 mode).
 - Programmatic input injection is not provided at this time; agents should prefer driving behavior through client-side protocol requests (e.g., resizing via XDG requests) instead of simulating hardware input.
 
+## Keyboard shortcuts
+- `Alt+W`: Close every window owned by the focused application.
+- `Alt+Shift+W`: Close only the currently focused window.
+
 ## Rendering behavior (for synchronization)
 - Composition uses damage tracking; only damaged regions are repainted.
 - Output presentation events (`wp_presentation`) allow agents to detect when a frame was displayed and retrieve precise timestamps.

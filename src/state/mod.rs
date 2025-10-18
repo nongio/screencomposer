@@ -91,6 +91,7 @@ use smithay::{
 use crate::cursor::Cursor;
 use crate::{
     config::Config,
+    focus::KeyboardFocusTarget,
     render_elements::scene_element::SceneElement,
     shell::WindowElement,
     skia_renderer::SkiaTextureImage,
@@ -728,6 +729,19 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     pub fn quit_appswitcher_app(&mut self) {
         self.workspaces.quit_appswitcher_app();
         // FIXME focus the previous window
+    }
+    pub fn close_focused_window(&mut self) {
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            if let Some(KeyboardFocusTarget::Window(window)) = keyboard.current_focus() {
+                match window.underlying_surface() {
+                    smithay::desktop::WindowSurface::Wayland(toplevel) => toplevel.send_close(),
+                    #[cfg(feature = "xwayland")]
+                    smithay::desktop::WindowSurface::X11(surface) => {
+                        let _ = surface.close();
+                    }
+                }
+            }
+        }
     }
     pub fn raise_next_app_window(&mut self) {
         if let Some(wid) = self.workspaces.raise_next_app_window() {

@@ -654,6 +654,9 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                 KeyAction::ApplicationSwitchQuit => {
                     self.workspaces.quit_appswitcher_app();
                 }
+                KeyAction::CloseWindow => {
+                    self.close_focused_window();
+                }
                 KeyAction::ApplicationSwitchNextWindow => {
                     self.workspaces.raise_next_app_window();
                 }
@@ -914,6 +917,9 @@ impl ScreenComposer<UdevData> {
                 }
                 KeyAction::ApplicationSwitchQuit => {
                     self.quit_appswitcher_app();
+                }
+                KeyAction::CloseWindow => {
+                    self.close_focused_window();
                 }
                 KeyAction::ExposeShowDesktop => {
                     if self.workspaces.get_show_desktop() {
@@ -1487,6 +1493,7 @@ enum KeyAction {
     ApplicationSwitchNext,
     ApplicationSwitchPrev,
     ApplicationSwitchQuit,
+    CloseWindow,
     ApplicationSwitchNextWindow,
     ExposeShowDesktop,
     ExposeShowAll,
@@ -1523,10 +1530,11 @@ fn resolve_shortcut_action(config: &Config, action: &ShortcutAction) -> Option<K
             BuiltinAction::ToggleDecorations => Some(KeyAction::ToggleDecorations),
             BuiltinAction::ApplicationSwitchNext => Some(KeyAction::ApplicationSwitchNext),
             BuiltinAction::ApplicationSwitchPrev => Some(KeyAction::ApplicationSwitchPrev),
+            BuiltinAction::ApplicationSwitchQuit => Some(KeyAction::ApplicationSwitchQuit),
+            BuiltinAction::CloseWindow => Some(KeyAction::CloseWindow),
             BuiltinAction::ApplicationSwitchNextWindow => {
                 Some(KeyAction::ApplicationSwitchNextWindow)
             }
-            BuiltinAction::ApplicationSwitchQuit => Some(KeyAction::ApplicationSwitchQuit),
             BuiltinAction::ExposeShowDesktop => Some(KeyAction::ExposeShowDesktop),
             BuiltinAction::ExposeShowAll => Some(KeyAction::ExposeShowAll),
             BuiltinAction::WorkspaceNum { index } => Some(KeyAction::WorkspaceNum(*index)),
