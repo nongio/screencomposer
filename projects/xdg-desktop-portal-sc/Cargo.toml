@@ -1,0 +1,17 @@
+[package]
+name = "screencomposer-portal"
+version = "0.1.0"
+edition = "2021"
+authors = ["ScreenComposer"]
+description = "Minimal ScreenComposer-tailored implementation of the org.freedesktop.portal.ScreenCast interface"
+license = "MIT"
+publish = false
+
+[dependencies]
+anyhow = "1.0"
+nix = { version = "0.28", default-features = false, features = ["fs"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+zbus = "4"
+
