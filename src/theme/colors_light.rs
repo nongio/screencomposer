@@ -55,7 +55,7 @@ define_colors!(COLORS, {
     materials_controls_menu => "#28282894",
     materials_controls_popover => "#00000047",
     materials_controls_title_bar => "#EAEAEACC",
-    materials_controls_sidebar => "#EAEAEAD6",
+    materials_controls_sidebar => "#eaeaeaaf",
     materials_controls_selection_focused => "#0A82FFBF",
     materials_controls_selection_unfocused => "#0000001A",
     materials_controls_header_view => "#FFFFFFCC",

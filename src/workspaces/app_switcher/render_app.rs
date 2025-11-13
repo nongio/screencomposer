@@ -6,6 +6,8 @@ use lay_rs::{
 
 use crate::workspaces::Application;
 
+use crate::theme::theme_colors;
+
 use super::model::AppSwitcherModel;
 
 pub fn render_app_view(
@@ -17,12 +19,12 @@ pub fn render_app_view(
 ) -> LayerTree {
     let draw_picture = move |canvas: &skia::Canvas, w: f32, h: f32| -> skia::Rect {
         if let Some(image) = &state.icon {
-            let mut paint = skia::Paint::new(skia::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
+            let mut paint = skia::Paint::new(theme_colors().text_primary.c4f(), None);
             // paint.set_anti_alias(true);
             paint.set_style(skia::paint::Style::Fill);
 
             // draw image with shadow
-            let shadow_color = skia::Color4f::new(0.0, 0.0, 0.0, 0.5);
+            let shadow_color = theme_colors().materials_controls_popover.c4f();
             let mut shadow_paint = skia::Paint::new(shadow_color, None);
             let shadow_offset = skia::Vector::new(5.0, 5.0);
             let shadow_color = skia::Color::from_argb(128, 0, 0, 0); // semi-transparent black

@@ -4,6 +4,7 @@ use taffy::LengthPercentageAuto;
 
 use crate::{
     config::Config,
+    theme::theme_colors,
     workspaces::{
         utils::{draw_balloon_rect, FONT_CACHE},
         Application,
@@ -61,6 +62,7 @@ pub fn setup_app_icon(
             None, // None
         ))
         .pointer_events(false)
+        .image_cache(true)
         .background_color(Color::new_rgba(1.0, 0.0, 0.0, 0.0))
         .content(draw_picture)
         .build()
@@ -145,7 +147,22 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
 
         // Paint for the tooltip background
         let mut paint = lay_rs::skia::Paint::default();
-        paint.set_color(lay_rs::skia::Color::from_argb(230, 255, 255, 255)); // Light gray
+        // choose colors according to theme scheme so tooltip looks correct in dark mode
+        let (bg_col, shadow_col, text_col) = Config::with(|c| match c.theme_scheme {
+            crate::theme::ThemeScheme::Light => (
+                theme_colors().materials_controls_header_view.c4f(),
+                theme_colors().materials_controls_popover.c4f(),
+                theme_colors().text_primary.c4f(),
+            ),
+            crate::theme::ThemeScheme::Dark => (
+                theme_colors().materials_controls_tooltip.c4f(),
+                theme_colors()
+                    .materials_controls_under_window_background
+                    .c4f(),
+                theme_colors().text_primary.c4f(),
+            ),
+        });
+        paint.set_color4f(bg_col, None);
         paint.set_anti_alias(true);
 
         // Calculate tooltip dimensions
@@ -163,9 +180,8 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
             0.5,
             arrow_corner_radius,
         );
-        let shadow_color = lay_rs::skia::Color::from_argb(80, 0, 0, 0); // semi-transparent black
         let mut shadow_paint = lay_rs::skia::Paint::default();
-        shadow_paint.set_color(shadow_color);
+        shadow_paint.set_color4f(shadow_col, None);
         shadow_paint.set_anti_alias(true);
         shadow_paint.set_mask_filter(lay_rs::skia::MaskFilter::blur(
             lay_rs::skia::BlurStyle::Normal,
@@ -182,7 +198,7 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
 
         // // Paint for the text
         let mut text_paint = lay_rs::skia::Paint::default();
-        text_paint.set_color(lay_rs::skia::Color::BLACK);
+        text_paint.set_color4f(text_col, None);
         text_paint.set_anti_alias(true);
 
         // // Draw the text inside the tooltip
@@ -291,8 +307,8 @@ pub fn draw_app_icon(application: &Application, running: bool) -> ContentDrawFun
             }
         }
         if running {
-            let mut paint =
-                lay_rs::skia::Paint::new(lay_rs::skia::Color4f::new(0.0, 0.0, 0.0, 0.5), None);
+            // use primary text color for the running indicator (dark on light theme)
+            let mut paint = lay_rs::skia::Paint::new(theme_colors().text_primary.c4f(), None);
             paint.set_anti_alias(true);
             paint.set_style(lay_rs::skia::paint::Style::Fill);
             canvas.draw_circle((w / 2.0, h - (10.0 + circle_radius)), circle_radius, &paint);

@@ -1,7 +1,7 @@
 use lay_rs::{prelude::*, types::Size};
 use taffy::FromLength;
 
-use crate::{config::Config, workspaces::utils::FONT_CACHE};
+use crate::{config::Config, theme::theme_colors, workspaces::utils::FONT_CACHE};
 
 use super::render_app::render_app_view;
 
@@ -40,7 +40,7 @@ pub fn render_appswitcher_view(
     let component_width =
         apps_len * available_icon_size + total_padding + COMPONENT_PADDING_H * 2.0;
     let component_height = available_icon_size + ICON_PADDING * 2.0 + COMPONENT_PADDING_V * 2.0;
-    let background_color = Color::new_rgba255(236, 220, 195, 120);
+    let background_color = theme_colors().materials_controls_sidebar;
     let current_app = state.current_app as f32;
     let mut app_name = "".to_string();
     if !state.apps.is_empty() && state.current_app < state.apps.len() {
@@ -50,8 +50,8 @@ pub fn render_appswitcher_view(
             .unwrap_or("".to_string());
     }
     let draw_container = move |canvas: &lay_rs::skia::Canvas, w, h| {
-        let color = lay_rs::skia::Color4f::new(0.0, 0.0, 0.0, 0.15);
-        let paint = lay_rs::skia::Paint::new(color, None);
+        let selection_background_color = theme_colors().materials_controls_popover.c4f();
+        let paint = lay_rs::skia::Paint::new(selection_background_color, None);
         // let available_icon_size = h - COMPONENT_PADDING_V * 2.0 - ICON_PADDING * 2.0;
         // let icon_size = ICON_SIZE.min(available_icon_size);
         let selection_width = available_icon_size + ICON_PADDING * 2.0;
@@ -83,8 +83,9 @@ pub fn render_appswitcher_view(
             );
             text_style.set_font_style(font_style);
             text_style.set_letter_spacing(-1.0);
+            // use primary text color (dark on light theme)
             let foreground_paint =
-                lay_rs::skia::Paint::new(lay_rs::skia::Color4f::new(0.0, 0.0, 0.0, 0.5), None);
+                lay_rs::skia::Paint::new(theme_colors().text_primary.c4f(), None);
             text_style.set_foreground_paint(&foreground_paint);
             let ff = Config::with(|c| c.font_family.clone());
             text_style.set_font_families(&[ff]);

@@ -154,7 +154,7 @@ impl DockView {
             .blend_mode(BlendMode::BackgroundBlur)
             .background_color(theme_colors().materials_thin)
             .border_width((3.0, None))
-            .border_color(Color::new_rgba(1.0, 1.0, 1.0, 0.3))
+            .border_color(Color::new_rgba(0.6, 0.6, 0.6, 0.3))
             .shadow_color(Color::new_rgba(0.0, 0.0, 0.0, 0.2))
             .shadow_offset(((0.0, -5.0).into(), None))
             .shadow_radius((20.0, None))
@@ -194,13 +194,13 @@ impl DockView {
             .key("dock_handle")
             .pointer_events(false)
             .size(Size {
-                width: taffy::Dimension::Length(25.0 * draw_scale),
+                width: taffy::Dimension::Length(35.0 * draw_scale),
                 height: taffy::Dimension::Percent(DOCK_BAR_HEIGHT * draw_scale),
             })
             // .background_color(Color::new_rgba(0.0, 0.0, 0.0, 0.0     ))
             .content(Some(move |canvas: &skia::Canvas, w, h| {
-                let mut paint = lay_rs::skia::Paint::default();
-                paint.set_color(lay_rs::skia::Color::from_argb(70, 0, 0, 0));
+                let paint = lay_rs::skia::Paint::new(theme_colors().text_tertiary.c4f(), None);
+                
                 let line_width: f32 = 3.0 * draw_scale;
                 let margin_h = (w - line_width) / 2.0;
                 let margin_v = 15.0 * draw_scale;

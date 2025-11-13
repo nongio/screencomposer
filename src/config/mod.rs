@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
+use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
@@ -50,9 +51,7 @@ pub struct Config {
     modifier_lookup: HashMap<ModifierKind, ModifierKind>,
 }
 
-thread_local! {
-    static CONFIG: Config = Config::init();
-}
+static CONFIG: OnceLock<Config> = OnceLock::new();
 
 impl Default for Config {
     fn default() -> Self {
@@ -91,7 +90,8 @@ pub const WINIT_DISPLAY_ID: &str = "winit";
 
 impl Config {
     pub fn with<R>(f: impl FnOnce(&Config) -> R) -> R {
-        CONFIG.with(f)
+        let config = CONFIG.get_or_init(Config::init);
+        f(config)
     }
     fn init() -> Self {
         let mut merged =
@@ -109,6 +109,7 @@ impl Config {
 
         if let Ok(backend) = std::env::var("SCREEN_COMPOSER_BACKEND") {
             for candidate in backend_override_candidates(&backend) {
+                println!("Trying to load backend override config: {}", &candidate);
                 if let Ok(content) = std::fs::read_to_string(&candidate) {
                     match content.parse::<toml::Value>() {
                         Ok(mut value) => {
@@ -137,6 +138,7 @@ impl Config {
         std::env::set_var("XCURSOR_SIZE", (scaled_cursor_size).to_string());
         std::env::set_var("XCURSOR_THEME", config.cursor_theme.clone());
         // std::env::set_var("GDK_DPI_SCALE", (config.screen_scale).to_string());
+        print!("Config initialized: {:#?}", config.theme_scheme);
         config
     }
 
@@ -592,5 +594,21 @@ mod tests {
         assert!(entries.contains(&(backspace, delete)));
 
         assert!(config.key_remap.keys().all(|key| key != "BadEntry"));
+    }
+
+    #[test]
+    fn theme_scheme_defaults_to_light() {
+        let config = Config::default();
+        assert!(matches!(config.theme_scheme, ThemeScheme::Light));
+    }
+
+    #[test]
+    fn theme_scheme_overrides_to_dark_in_toml() {
+        let overrides = r#"
+            theme_scheme = "Dark"
+        "#;
+
+        let config: Config = toml::from_str(overrides).expect("Config should deserialize");
+        assert!(matches!(config.theme_scheme, ThemeScheme::Dark));
     }
 }
