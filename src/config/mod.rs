@@ -16,6 +16,8 @@ use smithay::input::keyboard::{keysyms::KEY_NoSymbol, xkb, Keysym, ModifiersStat
 #[serde(default)]
 pub struct Config {
     pub screen_scale: f64,
+    #[serde(default)]
+    pub displays: DisplaysConfig,
     pub cursor_theme: String,
     pub cursor_size: u32,
     pub natural_scroll: bool,
@@ -47,6 +49,7 @@ pub struct Config {
     #[serde(default)]
     modifier_lookup: HashMap<ModifierKind, ModifierKind>,
 }
+
 thread_local! {
     static CONFIG: Config = Config::init();
 }
@@ -55,6 +58,7 @@ impl Default for Config {
     fn default() -> Self {
         let mut config = Self {
             screen_scale: 2.0,
+            displays: DisplaysConfig::default(),
             cursor_theme: "Notwaita-Black".to_string(),
             cursor_size: 24,
             natural_scroll: true,
@@ -83,6 +87,8 @@ impl Default for Config {
         config
     }
 }
+pub const WINIT_DISPLAY_ID: &str = "winit";
+
 impl Config {
     pub fn with<R>(f: impl FnOnce(&Config) -> R) -> R {
         CONFIG.with(f)
@@ -184,6 +190,14 @@ impl Config {
                 }
             })
             .collect()
+    }
+
+    pub fn resolve_display_profile<'a>(
+        &self,
+        name: &str,
+        descriptor: &DisplayDescriptor<'a>,
+    ) -> Option<DisplayProfile> {
+        self.displays.resolve(name, descriptor)
     }
 
     fn rebuild_remap_tables(&mut self) {
@@ -289,6 +303,161 @@ pub struct DockBookmark {
     pub label: Option<String>,
     #[serde(default)]
     pub exec_args: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DisplaysConfig {
+    #[serde(default)]
+    pub named: BTreeMap<String, DisplayProfile>,
+    #[serde(default)]
+    pub generic: Vec<DisplayProfileMatch>,
+}
+
+impl DisplaysConfig {
+    pub fn resolve<'a>(
+        &self,
+        name: &str,
+        descriptor: &DisplayDescriptor<'a>,
+    ) -> Option<DisplayProfile> {
+        if let Some(profile) = self.named.get(name) {
+            return Some(profile.clone());
+        }
+
+        self.generic
+            .iter()
+            .find(|entry| entry.matcher.matches(name, descriptor))
+            .map(|entry| entry.profile.clone())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DisplayProfile {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub resolution: Option<DisplayResolution>,
+    #[serde(default)]
+    pub refresh_hz: Option<f64>,
+    #[serde(default)]
+    pub position: Option<DisplayPosition>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DisplayResolution {
+    pub width: u32,
+    pub height: u32,
+}
+
+impl DisplayResolution {
+    pub fn as_f64(self) -> (f64, f64) {
+        (self.width as f64, self.height as f64)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct DisplayPosition {
+    pub x: i32,
+    pub y: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DisplayProfileMatch {
+    #[serde(default, rename = "match")]
+    pub matcher: DisplayMatcher,
+    #[serde(flatten)]
+    pub profile: DisplayProfile,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DisplayMatcher {
+    #[serde(default)]
+    pub connector: Option<String>,
+    #[serde(default)]
+    pub connector_prefix: Option<String>,
+    #[serde(default)]
+    pub vendor: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub kind: Option<DisplayKind>,
+}
+
+impl DisplayMatcher {
+    fn matches(&self, connector: &str, descriptor: &DisplayDescriptor<'_>) -> bool {
+        if let Some(expected) = &self.connector {
+            if expected != connector && descriptor.connector != expected {
+                return false;
+            }
+        }
+
+        if let Some(prefix) = &self.connector_prefix {
+            let matches_actual = connector.starts_with(prefix);
+            let matches_descriptor = descriptor.connector.starts_with(prefix);
+            if !matches_actual && !matches_descriptor {
+                return false;
+            }
+        }
+
+        if let Some(expected_vendor) = &self.vendor {
+            match descriptor.vendor {
+                Some(vendor) if equals_ignore_case(vendor, expected_vendor) => {}
+                _ => return false,
+            }
+        }
+
+        if let Some(expected_model) = &self.model {
+            match descriptor.model {
+                Some(model) if equals_ignore_case(model, expected_model) => {}
+                _ => return false,
+            }
+        }
+
+        if let Some(expected_kind) = self.kind {
+            if descriptor.kind.unwrap_or(DisplayKind::Unknown) != expected_kind {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DisplayKind {
+    Internal,
+    External,
+    Virtual,
+    Unknown,
+}
+
+impl Default for DisplayKind {
+    fn default() -> Self {
+        DisplayKind::Unknown
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DisplayDescriptor<'a> {
+    pub connector: &'a str,
+    pub vendor: Option<&'a str>,
+    pub model: Option<&'a str>,
+    pub kind: Option<DisplayKind>,
+}
+
+impl<'a> DisplayDescriptor<'a> {
+    pub fn new(connector: &'a str) -> Self {
+        Self {
+            connector,
+            vendor: None,
+            model: None,
+            kind: None,
+        }
+    }
+}
+
+fn equals_ignore_case(actual: &str, expected: &str) -> bool {
+    actual.eq_ignore_ascii_case(expected)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

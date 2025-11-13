@@ -1,6 +1,16 @@
 # Display
 screen_scale = 2.0
 compositor_mode = "drm"
+[displays.named."winit"]
+resolution = { width = 1280, height = 1000 }
+refresh_hz = 60.0
+position = { x = 0, y = 0 }
+
+[[displays.generic]]
+match = { connector_prefix = "HDMI" }
+resolution = { width = 1920, height = 1080 }
+refresh_hz = 60.0
+position = { x = 1920, y = 0 }
 
 # Theme
 cursor_size = 24
