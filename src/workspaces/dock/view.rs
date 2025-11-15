@@ -59,6 +59,8 @@ pub struct DockView {
     latest_event: Arc<tokio::sync::RwLock<Option<WorkspacesModel>>>,
     magnification_position: Arc<RwLock<f32>>,
     bookmark_configs: Arc<RwLock<HashMap<String, DockBookmark>>>,
+
+    pub dragging: Arc<AtomicBool>,
 }
 impl PartialEq for DockView {
     fn eq(&self, other: &Self) -> bool {
@@ -261,6 +263,7 @@ impl DockView {
             latest_event: Arc::new(tokio::sync::RwLock::new(None)),
             magnification_position: Arc::new(RwLock::new(-500.0)),
             bookmark_configs: Arc::new(RwLock::new(HashMap::new())),
+            dragging: Arc::new(AtomicBool::new(false)),
         };
         dock.render_dock();
         dock.notification_handler(notify_rx);

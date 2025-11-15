@@ -182,7 +182,7 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
             arrow_corner_radius,
         );
         let mut shadow_paint = lay_rs::skia::Paint::default();
-        shadow_paint.set_blend_mode(lay_rs::skia::BlendMode::Darken);
+        shadow_paint.set_blend_mode(lay_rs::skia::BlendMode::Multiply);
         shadow_paint.set_color4f(shadow_col, None);
         shadow_paint.set_anti_alias(true);
         shadow_paint.set_mask_filter(lay_rs::skia::MaskFilter::blur(

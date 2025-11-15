@@ -562,7 +562,7 @@ impl Workspaces {
             let dock_ref = self.dock.clone();
             tr.on_finish(
                 move |_: &Layer, _: f32| {
-                    if show_all {
+                    if show_all || current_workspace.get_fullscreen_mode() {
                         dock_ref.hide(None);
                     } else {
                         dock_ref.show(None);
