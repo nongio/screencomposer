@@ -59,8 +59,9 @@ define_colors!(COLORS, {
     materials_controls_selection_focused => "#0A82FFBF",
     materials_controls_selection_unfocused => "#FFFFFF1A",
     materials_controls_header_view => "#2852AD14",
-    materials_controls_tooltip => "#00000059",
+    materials_controls_tooltip => "#4d4c4cc1",
     materials_controls_under_window_background => "#00000073",
     materials_controls_fullscreen => "#28282880",
-    materials_controls_hud => "#28282880"
+    materials_controls_hud => "#28282880",
+    shadow_color => "#000000ff",    
 });
