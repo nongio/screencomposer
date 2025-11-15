@@ -178,6 +178,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         let time = Event::time_msec(&evt);
         let mut suppressed_keys = self.suppressed_keys.clone();
         let keyboard = self.seat.get_keyboard().unwrap();
+        let mut updated_modifiers: Option<ModifiersState> = None;
 
         for layer in self.layer_shell_state.layer_surfaces().rev() {
             let data = with_states(layer.wl_surface(), |states| {
@@ -214,6 +215,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             .map(|inhibitor| inhibitor.is_active())
             .unwrap_or(false);
 
+        let modifier_masks = self.modifier_masks;
         let action = keyboard
             .input(
                 self,
@@ -231,22 +233,26 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                         "keysym"
                     );
 
-                    // If the key is pressed and triggered a action
+                    let (remapped_modifiers, shortcut_action) = Config::with(|config| {
+                        let remapped = config.apply_modifier_remap(*modifiers, Some(&modifier_masks));
+                        let action = if matches!(state, KeyState::Pressed) && !inhibited {
+                            process_keyboard_shortcut(config, remapped, keysym)
+                        } else {
+                            None
+                        };
+                        (remapped, action)
+                    });
+                    updated_modifiers = Some(remapped_modifiers);
+
+                    // If the key is pressed and triggered an action
                     // we will not forward the key to the client.
                     // Additionally add the key to the suppressed keys
                     // so that we can decide on a release if the key
                     // should be forwarded to the client or not.
                     if let KeyState::Pressed = state {
-                        if !inhibited {
-                            let action = process_keyboard_shortcut(*modifiers, keysym);
-
-                            if action.is_some() {
-                                suppressed_keys.push(keysym);
-                            }
-
-                            action
-                                .map(FilterResult::Intercept)
-                                .unwrap_or(FilterResult::Forward)
+                        if let Some(action) = shortcut_action {
+                            suppressed_keys.push(keysym);
+                            FilterResult::Intercept(action)
                         } else {
                             FilterResult::Forward
                         }
@@ -263,21 +269,45 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             )
             .unwrap_or(KeyAction::None);
 
-        // FIXME this keys handling should be moved into the AppSwitcher
-        // by moving the focus to that view
-        if KeyState::Released == state && original_keycode == 56 {
-            // App switcher
-            if self.workspaces.app_switcher.alive() {
-                self.workspaces.app_switcher.hide();
-                if let Some(app_id) = self.workspaces.app_switcher.get_current_app_id() {
-                    self.focus_app(&app_id);
-                    self.workspaces.app_switcher.reset();
-                }
-            }
+        if let Some(modifiers) = updated_modifiers {
+            self.current_modifiers = modifiers;
+        }
+
+        if matches!(state, KeyState::Pressed)
+            && matches!(
+                action,
+                KeyAction::ApplicationSwitchNext
+                    | KeyAction::ApplicationSwitchPrev
+                    | KeyAction::ApplicationSwitchNextWindow
+            )
+        {
+            self.app_switcher_hold_modifiers =
+                capture_app_switcher_hold_modifiers(self.current_modifiers);
+        }
+
+        if KeyState::Released == state
+            && self.workspaces.app_switcher.alive()
+            && !app_switcher_hold_is_active(
+                self.app_switcher_hold_modifiers,
+                self.current_modifiers,
+            )
+        {
+            self.dismiss_app_switcher();
         }
 
         self.suppressed_keys = suppressed_keys;
         action
+    }
+
+    fn dismiss_app_switcher(&mut self) {
+        if self.workspaces.app_switcher.alive() {
+            self.workspaces.app_switcher.hide();
+            if let Some(app_id) = self.workspaces.app_switcher.get_current_app_id() {
+                self.focus_app(&app_id);
+                self.workspaces.app_switcher.reset();
+            }
+        }
+        self.app_switcher_hold_modifiers = None;
     }
 
     fn on_pointer_button<B: InputBackend>(&mut self, evt: B::PointerButtonEvent) {
@@ -946,6 +976,9 @@ impl ScreenComposer<UdevData> {
                         self.workspaces.expose_show_all(1.0, true);
                     }
                 }
+                KeyAction::WorkspaceNum(index) => {
+                    self.workspaces.set_current_workspace_index(index, None);
+                }
                 action => match action {
                     KeyAction::None
                     | KeyAction::Quit
@@ -1515,30 +1548,59 @@ enum KeyAction {
     None,
 }
 
-fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Option<KeyAction> {
-    Config::with(|config| {
-        let modifiers = config.apply_modifier_remap(modifiers);
-        if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace
-            || modifiers.logo && keysym == Keysym::q
-        {
-            // ctrl+alt+backspace = quit
-            // logo + q = quit
-            info!("keyboard shortcut activated");
-            return Some(KeyAction::Quit);
-        }
+fn capture_app_switcher_hold_modifiers(mut modifiers: ModifiersState) -> Option<ModifiersState> {
+    modifiers.caps_lock = false;
+    modifiers.num_lock = false;
+    if modifiers.ctrl || modifiers.alt || modifiers.logo || modifiers.shift {
+        Some(modifiers)
+    } else {
+        None
+    }
+}
 
-        if (xkb::KEY_XF86Switch_VT_1..=xkb::KEY_XF86Switch_VT_12).contains(&keysym.raw()) {
-            return Some(KeyAction::VtSwitch(
-                (keysym.raw() - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
-            ));
+fn app_switcher_hold_is_active(hold: Option<ModifiersState>, current: ModifiersState) -> bool {
+    match hold {
+        Some(hold_modifiers) => {
+            let has_primary = hold_modifiers.ctrl || hold_modifiers.alt || hold_modifiers.logo;
+            if has_primary {
+                (hold_modifiers.ctrl && current.ctrl)
+                    || (hold_modifiers.alt && current.alt)
+                    || (hold_modifiers.logo && current.logo)
+            } else if hold_modifiers.shift {
+                current.shift
+            } else {
+                false
+            }
         }
+        None => current.ctrl || current.alt || current.logo || current.shift,
+    }
+}
 
-        config
-            .shortcut_bindings()
-            .iter()
-            .find(|binding| binding.trigger.matches(&modifiers, keysym))
-            .and_then(|binding| resolve_shortcut_action(config, &binding.action))
-    })
+fn process_keyboard_shortcut(
+    config: &Config,
+    modifiers: ModifiersState,
+    keysym: Keysym,
+) -> Option<KeyAction> {
+    if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace
+        || modifiers.logo && keysym == Keysym::q
+    {
+        // ctrl+alt+backspace = quit
+        // logo + q = quit
+        info!("keyboard shortcut activated");
+        return Some(KeyAction::Quit);
+    }
+
+    if (xkb::KEY_XF86Switch_VT_1..=xkb::KEY_XF86Switch_VT_12).contains(&keysym.raw()) {
+        return Some(KeyAction::VtSwitch(
+            (keysym.raw() - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
+        ));
+    }
+
+    config
+        .shortcut_bindings()
+        .iter()
+        .find(|binding| binding.trigger.matches(&modifiers, keysym))
+        .and_then(|binding| resolve_shortcut_action(config, &binding.action))
 }
 
 fn resolve_shortcut_action(config: &Config, action: &ShortcutAction) -> Option<KeyAction> {

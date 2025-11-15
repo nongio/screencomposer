@@ -11,7 +11,11 @@ use toml::map::Entry;
 use tracing::warn;
 
 use crate::theme::ThemeScheme;
-use smithay::input::keyboard::{keysyms::KEY_NoSymbol, xkb, Keysym, ModifiersState};
+use smithay::input::keyboard::{
+    keysyms::KEY_NoSymbol,
+    xkb::{self, MOD_INVALID},
+    Keysym, ModifiersState, SerializedMods,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -150,7 +154,11 @@ impl Config {
         &self.shortcut_bindings
     }
 
-    pub fn apply_modifier_remap(&self, state: ModifiersState) -> ModifiersState {
+    pub fn apply_modifier_remap(
+        &self,
+        state: ModifiersState,
+        masks: Option<&ModifierMaskLookup>,
+    ) -> ModifiersState {
         if self.modifier_lookup.is_empty() {
             return state;
         }
@@ -168,6 +176,11 @@ impl Config {
             let target = self.modifier_lookup.get(&kind).copied().unwrap_or(kind);
             let already = target.get(&result);
             target.set(&mut result, already || true);
+        }
+
+        if let Some(mask_lookup) = masks {
+            result.serialized =
+                remap_serialized_modifiers(&self.modifier_lookup, state.serialized, mask_lookup);
         }
 
         result
@@ -463,7 +476,7 @@ fn equals_ignore_case(actual: &str, expected: &str) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum ModifierKind {
+pub enum ModifierKind {
     Ctrl,
     Alt,
     Shift,
@@ -505,6 +518,45 @@ impl ModifierKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ModifierMaskLookup {
+    ctrl: Option<u32>,
+    alt: Option<u32>,
+    shift: Option<u32>,
+    logo: Option<u32>,
+    caps_lock: Option<u32>,
+    num_lock: Option<u32>,
+}
+
+impl ModifierMaskLookup {
+    pub fn from_keymap(keymap: &xkb::Keymap) -> Self {
+        fn mask_for(keymap: &xkb::Keymap, name: &str) -> Option<u32> {
+            let idx = keymap.mod_get_index(name);
+            (idx != MOD_INVALID).then(|| 1u32 << idx)
+        }
+
+        Self {
+            ctrl: mask_for(keymap, xkb::MOD_NAME_CTRL),
+            alt: mask_for(keymap, xkb::MOD_NAME_ALT),
+            shift: mask_for(keymap, xkb::MOD_NAME_SHIFT),
+            logo: mask_for(keymap, xkb::MOD_NAME_LOGO),
+            caps_lock: mask_for(keymap, xkb::MOD_NAME_CAPS),
+            num_lock: mask_for(keymap, xkb::MOD_NAME_NUM),
+        }
+    }
+
+    pub fn get(&self, kind: ModifierKind) -> Option<u32> {
+        match kind {
+            ModifierKind::Ctrl => self.ctrl,
+            ModifierKind::Alt => self.alt,
+            ModifierKind::Shift => self.shift,
+            ModifierKind::Logo => self.logo,
+            ModifierKind::CapsLock => self.caps_lock,
+            ModifierKind::NumLock => self.num_lock,
+        }
+    }
+}
+
 fn parse_modifier_kind(input: &str) -> Option<ModifierKind> {
     match input.trim().to_ascii_lowercase().as_str() {
         "ctrl" | "control" | "primary" => Some(ModifierKind::Ctrl),
@@ -515,6 +567,46 @@ fn parse_modifier_kind(input: &str) -> Option<ModifierKind> {
         "num" | "numlock" | "num_lock" => Some(ModifierKind::NumLock),
         _ => None,
     }
+}
+
+fn remap_serialized_modifiers(
+    lookup: &HashMap<ModifierKind, ModifierKind>,
+    original: SerializedMods,
+    masks: &ModifierMaskLookup,
+) -> SerializedMods {
+    fn transfer(field: &mut u32, original: u32, from_mask: u32, to_mask: u32) {
+        if from_mask == to_mask {
+            return;
+        }
+        let from_active = original & from_mask;
+        if from_active == 0 {
+            return;
+        }
+        *field &= !from_mask;
+        *field |= to_mask;
+    }
+
+    let mut serialized = original;
+    for (&from, &to) in lookup {
+        let (Some(from_mask), Some(to_mask)) = (masks.get(from), masks.get(to)) else {
+            continue;
+        };
+        transfer(
+            &mut serialized.depressed,
+            original.depressed,
+            from_mask,
+            to_mask,
+        );
+        transfer(
+            &mut serialized.latched,
+            original.latched,
+            from_mask,
+            to_mask,
+        );
+        transfer(&mut serialized.locked, original.locked, from_mask, to_mask);
+    }
+
+    serialized
 }
 
 fn parse_keysym_name(name: &str) -> Option<Keysym> {
@@ -543,9 +635,45 @@ mod tests {
         let mut mods = ModifiersState::default();
         mods.logo = true;
 
-        let remapped = config.apply_modifier_remap(mods);
+        let remapped = config.apply_modifier_remap(mods, None);
         assert!(remapped.ctrl);
         assert!(!remapped.logo);
+    }
+
+    #[test]
+    fn modifier_swap_preserves_serialized_mods() {
+        let mut config = Config::default();
+        config.modifier_remap.insert("logo".into(), "ctrl".into());
+        config.modifier_remap.insert("ctrl".into(), "logo".into());
+        config.rebuild_remap_tables();
+
+        let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+        let keymap = xkb::Keymap::new_from_names(
+            &context,
+            "",
+            "",
+            "",
+            "",
+            None,
+            xkb::KEYMAP_COMPILE_NO_FLAGS,
+        )
+        .expect("default keymap");
+        let masks = ModifierMaskLookup::from_keymap(&keymap);
+
+        let mut serialized = SerializedMods::default();
+        let logo_mask = masks.get(ModifierKind::Logo).expect("logo mask");
+        serialized.depressed = logo_mask;
+
+        let mut mods = ModifiersState::default();
+        mods.logo = true;
+        mods.serialized = serialized;
+
+        let remapped = config.apply_modifier_remap(mods, Some(&masks));
+        assert!(remapped.ctrl);
+        assert!(!remapped.logo);
+
+        let ctrl_mask = masks.get(ModifierKind::Ctrl).expect("ctrl mask");
+        assert_eq!(remapped.serialized.depressed & ctrl_mask, ctrl_mask);
     }
 
     #[test]

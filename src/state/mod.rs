@@ -32,7 +32,7 @@ use smithay::{
         PopupManager,
     },
     input::{
-        keyboard::{xkb, Keysym, XkbConfig, XkbContextHandler},
+        keyboard::{xkb, Keysym, ModifiersState, XkbConfig, XkbContextHandler},
         pointer::{CursorIcon, CursorImageAttributes, CursorImageStatus, PointerHandle},
         Seat, SeatState,
     },
@@ -91,7 +91,7 @@ use smithay::{
 #[cfg(feature = "xwayland")]
 use crate::cursor::Cursor;
 use crate::{
-    config::Config,
+    config::{Config, ModifierMaskLookup},
     focus::KeyboardFocusTarget,
     render_elements::scene_element::SceneElement,
     shell::WindowElement,
@@ -163,6 +163,9 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     // input-related fields
     pub suppressed_keys: Vec<Keysym>,
     pub keycode_remap: HashMap<u32, u32>,
+    pub current_modifiers: ModifiersState,
+    pub app_switcher_hold_modifiers: Option<ModifiersState>,
+    pub modifier_masks: ModifierMaskLookup,
     pub cursor_status: Arc<Mutex<CursorImageStatus>>,
     pub seat_name: String,
     pub seat: Seat<ScreenComposer<BackendData>>,
@@ -389,6 +392,9 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             dnd_icon: None,
             suppressed_keys: Vec::new(),
             keycode_remap: HashMap::new(),
+            current_modifiers: ModifiersState::default(),
+            app_switcher_hold_modifiers: None,
+            modifier_masks: ModifierMaskLookup::default(),
             cursor_status,
             seat_name,
             seat,
@@ -415,6 +421,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         };
 
         composer.rebuild_keycode_remap();
+        composer.rebuild_modifier_masks();
 
         composer
     }
@@ -443,6 +450,17 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             keyboard.with_xkb_state(self, |ctx| build_keycode_remap_map(ctx.keymap(), &remaps));
 
         self.keycode_remap = mapping;
+    }
+
+    fn rebuild_modifier_masks(&mut self) {
+        let Some(keyboard) = self.seat.get_keyboard() else {
+            self.modifier_masks = ModifierMaskLookup::default();
+            return;
+        };
+
+        let masks =
+            keyboard.with_xkb_state(self, |ctx| ModifierMaskLookup::from_keymap(ctx.keymap()));
+        self.modifier_masks = masks;
     }
 
     #[cfg(feature = "xwayland")]

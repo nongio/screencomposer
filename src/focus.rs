@@ -459,6 +459,7 @@ impl<B: Backend> KeyboardTarget<ScreenComposer<B>> for KeyboardFocusTarget<B> {
             }
         }
     }
+    /// Hold modifiers were changed on a keyboard from a given seat
     fn modifiers(
         &self,
         seat: &Seat<ScreenComposer<B>>,
@@ -466,24 +467,32 @@ impl<B: Backend> KeyboardTarget<ScreenComposer<B>> for KeyboardFocusTarget<B> {
         modifiers: ModifiersState,
         serial: Serial,
     ) {
+        let masks = data.modifier_masks;
+        let remapped_modifiers =
+            Config::with(|config| config.apply_modifier_remap(modifiers, Some(&masks)));
+
         match self {
             KeyboardFocusTarget::Window(w) => match w.underlying_surface() {
-                WindowSurface::Wayland(w) => {
-                    KeyboardTarget::modifiers(w.wl_surface(), seat, data, modifiers, serial)
-                }
+                WindowSurface::Wayland(w) => KeyboardTarget::modifiers(
+                    w.wl_surface(),
+                    seat,
+                    data,
+                    remapped_modifiers,
+                    serial,
+                ),
                 #[cfg(feature = "xwayland")]
                 WindowSurface::X11(s) => {
-                    KeyboardTarget::modifiers(s, seat, data, modifiers, serial)
+                    KeyboardTarget::modifiers(s, seat, data, remapped_modifiers, serial)
                 }
             },
             KeyboardFocusTarget::LayerSurface(l) => {
-                KeyboardTarget::modifiers(l.wl_surface(), seat, data, modifiers, serial)
+                KeyboardTarget::modifiers(l.wl_surface(), seat, data, remapped_modifiers, serial)
             }
             KeyboardFocusTarget::Popup(p) => {
-                KeyboardTarget::modifiers(p.wl_surface(), seat, data, modifiers, serial)
+                KeyboardTarget::modifiers(p.wl_surface(), seat, data, remapped_modifiers, serial)
             }
             KeyboardFocusTarget::View(d) => {
-                KeyboardTarget::modifiers(d, seat, data, modifiers, serial)
+                KeyboardTarget::modifiers(d, seat, data, remapped_modifiers, serial)
             }
         }
     }
