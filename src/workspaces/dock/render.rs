@@ -147,7 +147,7 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
 
         // Paint for the tooltip background
         let mut paint = lay_rs::skia::Paint::default();
-        
+
         // choose colors according to theme scheme so tooltip looks correct in dark mode
         let (bg_col, shadow_col, text_col) = Config::with(|c| match c.theme_scheme {
             crate::theme::ThemeScheme::Light => (
@@ -157,9 +157,7 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
             ),
             crate::theme::ThemeScheme::Dark => (
                 theme_colors().materials_controls_tooltip.c4f(),
-                theme_colors()
-                    .shadow_color
-                    .c4f(),
+                theme_colors().shadow_color.c4f(),
                 theme_colors().text_primary.c4f(),
             ),
         });

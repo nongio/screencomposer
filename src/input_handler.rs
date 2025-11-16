@@ -234,7 +234,8 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                     );
 
                     let (remapped_modifiers, shortcut_action) = Config::with(|config| {
-                        let remapped = config.apply_modifier_remap(*modifiers, Some(&modifier_masks));
+                        let remapped =
+                            config.apply_modifier_remap(*modifiers, Some(&modifier_masks));
                         let action = if matches!(state, KeyState::Pressed) && !inhibited {
                             process_keyboard_shortcut(config, remapped, keysym)
                         } else {

@@ -202,7 +202,7 @@ impl DockView {
             // .background_color(Color::new_rgba(0.0, 0.0, 0.0, 0.0     ))
             .content(Some(move |canvas: &skia::Canvas, w, h| {
                 let paint = lay_rs::skia::Paint::new(theme_colors().text_tertiary.c4f(), None);
-                
+
                 let line_width: f32 = 3.0 * draw_scale;
                 let margin_h = (w - line_width) / 2.0;
                 let margin_v = 15.0 * draw_scale;
