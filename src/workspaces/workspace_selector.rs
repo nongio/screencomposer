@@ -275,38 +275,39 @@ fn render_workspace_selector_view(
                                     },
                                     None,
                                 ))
-                                .children(vec![
-                                    LayerTreeBuilder::with_key(format!(
+                                .children::<LayerTree>({
+                                    let children: Vec<Option<LayerTree>> = vec![
+                                    Some(LayerTreeBuilder::with_key(format!(
                                         "workspace_selector_desktop_content_mirror_{}",
                                         w.index
                                     ))
-                                    .layout_style(taffy::Style {
-                                        position: taffy::Position::Absolute,
-                                        ..Default::default()
-                                    })
-                                    .size((
-                                        lay_rs::types::Size {
-                                            width: lay_rs::taffy::style::Dimension::Length(
-                                                workspace_width,
-                                            ),
-                                            height: lay_rs::taffy::style::Dimension::Length(
-                                                workspace_height,
-                                            ),
-                                        },
-                                        None,
-                                    ))
-                                    .scale(Point::new(scale, scale))
-                                    .replicate_node(w.workspace_node)
-                                    .color_filter(color_filter)
-                                    .on_pointer_press(button_press_filter())
-                                    .on_pointer_release(button_release_filter())
-                                    .border_corner_radius(BorderRadius::new_single(10.0 / scale))
-                                    .image_cache(true)
-                                    .clip_children(true)
-                                    .clip_content(true)
-                                    .build()
-                                    .unwrap(),
-                                    LayerTreeBuilder::with_key(format!(
+                                        .layout_style(taffy::Style {
+                                            position: taffy::Position::Absolute,
+                                            ..Default::default()
+                                        })
+                                        .size((
+                                            lay_rs::types::Size {
+                                                width: lay_rs::taffy::style::Dimension::Length(
+                                                    workspace_width,
+                                                ),
+                                                height: lay_rs::taffy::style::Dimension::Length(
+                                                    workspace_height,
+                                                ),
+                                            },
+                                            None,
+                                        ))
+                                        .scale(Point::new(scale, scale))
+                                        .replicate_node(w.workspace_node)
+                                        .color_filter(color_filter)
+                                        .on_pointer_press(button_press_filter())
+                                        .on_pointer_release(button_release_filter())
+                                        .border_corner_radius(BorderRadius::new_single(10.0 / scale))
+                                        .image_cache(true)
+                                        .clip_children(true)
+                                        .clip_content(true)
+                                        .build()
+                                        .unwrap()),
+                                    Some(LayerTreeBuilder::with_key(format!(
                                         "workspace_selector_desktop_border_{}",
                                         w.index
                                     ))
@@ -326,36 +327,41 @@ fn render_workspace_selector_view(
                                     .border_color(border_color)
                                     .border_corner_radius(BorderRadius::new_single(10.0))
                                     .build()
-                                    .unwrap(),
-                                    LayerTreeBuilder::with_key(format!(
-                                        "workspace_selector_desktop_remove_{}",
-                                        w.index
-                                    ))
-                                    .layout_style(taffy::Style {
-                                        position: taffy::Position::Absolute,
-                                        ..Default::default()
-                                    })
-                                    .anchor_point(Point::new(0.5, 0.5))
-                                    .position(Point::new(preview_width, 0.0))
-                                    .size((
-                                        lay_rs::types::Size {
-                                            width: lay_rs::taffy::style::Dimension::Length(50.0),
-                                            height: lay_rs::taffy::style::Dimension::Length(50.0),
-                                        },
-                                        None,
-                                    ))
-                                    .background_color(theme_colors().materials_ultrathick)
-                                    .border_corner_radius(BorderRadius::new_single(25.0))
-                                    .content(draw_named_icon("close-symbolic"))
-                                    .shadow_color((Color::new_rgba(0.0, 0.0, 0.0, 0.2), None))
-                                    .shadow_offset(((0.0, 0.0).into(), None))
-                                    .shadow_radius((5.0, None))
-                                    .image_cache(true)
-                                    .on_pointer_press(button_press_filter())
-                                    .on_pointer_release(button_release_filter())
-                                    .build()
-                                    .unwrap(),
-                                ])
+                                    .unwrap()),
+                                    // Only show remove button if not current workspace
+                                    (!current).then(|| -> LayerTree {
+                                        LayerTreeBuilder::with_key(format!(
+                                            "workspace_selector_desktop_remove_{}",
+                                            w.index
+                                        ))
+                                        .layout_style(taffy::Style {
+                                            position: taffy::Position::Absolute,
+                                            ..Default::default()
+                                        })
+                                        .anchor_point(Point::new(0.5, 0.5))
+                                        .position(Point::new(preview_width, 0.0))
+                                        .size((
+                                            lay_rs::types::Size {
+                                                width: lay_rs::taffy::style::Dimension::Length(50.0),
+                                                height: lay_rs::taffy::style::Dimension::Length(50.0),
+                                            },
+                                            None,
+                                        ))
+                                        .background_color(theme_colors().materials_ultrathick)
+                                        .border_corner_radius(BorderRadius::new_single(25.0))
+                                        .content(draw_named_icon("close-symbolic"))
+                                        .shadow_color((Color::new_rgba(0.0, 0.0, 0.0, 0.2), None))
+                                        .shadow_offset(((0.0, 0.0).into(), None))
+                                        .shadow_radius((5.0, None))
+                                        .image_cache(true)
+                                        .on_pointer_press(button_press_filter())
+                                        .on_pointer_release(button_release_filter())
+                                        .build()
+                                        .unwrap()
+                                    }),
+                                ];
+                                    children
+                                })
                                 .build()
                                 .unwrap(),
                                 LayerTreeBuilder::with_key(format!(
