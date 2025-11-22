@@ -19,7 +19,7 @@ use super::{utils::FONT_CACHE, WorkspacesModel, WORKSPACE_SELECTOR_PREVIEW_WIDTH
 
 // Logical (unscaled) values - will be multiplied by screen scale when used
 const WINDOW_SELECTOR_DRAG_THRESHOLD_LOGICAL: f32 = 2.5;
-const WORKSPACE_SELECTOR_TARGET_Y_LOGICAL: f32 = 110.0;
+const WORKSPACE_SELECTOR_TARGET_Y_LOGICAL: f32 = 200.0;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct WindowSelection {
@@ -87,6 +87,7 @@ pub struct DragState {
     pub original_scale: lay_rs::types::Point,
     pub original_anchor: lay_rs::types::Point,
     pub original_parent: Layer,
+    pub current_drop_target: Option<usize>,
 }
 
 #[derive(Clone)]
@@ -258,7 +259,7 @@ impl WindowSelectorView {
         }
     }
 
-    fn stop_dragging(&self) -> Option<WindowSelection> {
+    fn stop_dragging(&self) -> Option<DragState> {
         let mut drag_state = self.drag_state.write().unwrap();
         let state = drag_state.take()?;
         
@@ -276,7 +277,7 @@ impl WindowSelectorView {
         );
         state.original_parent.add_sublayer(&state.window_layer);
         
-        Some(state.selection)
+        Some(state)
     }
 
     fn remove_rect_from_state(&self, target_index: usize) {
@@ -394,6 +395,7 @@ impl WindowSelectorView {
             original_scale,
             original_anchor,
             original_parent: self.windows_layer.clone(),
+            current_drop_target: None,
         };
         
         *self.drag_state.write().unwrap() = Some(drag_state);
@@ -406,8 +408,7 @@ impl WindowSelectorView {
 }
 
 pub fn get_paragraph_for_text(text: &str, font_size: f32) -> skia::textlayout::Paragraph {
-    #[allow(unsafe_code)]
-    let mut text_style = skia::textlayout::TextStyle::new();
+    let mut text_style = unsafe {skia::textlayout::TextStyle::new()};
 
     text_style.set_font_size(font_size);
     let font_style = skia::FontStyle::new(
@@ -597,9 +598,40 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
         let cursor_point = (location.x as f32, location.y as f32);
         self.record_cursor_location(cursor_point);
 
-        // If dragging, update drag position
-        if self.drag_state.read().unwrap().is_some() {
+        // If dragging, update drag position and check for drop targets
+        let is_dragging = self.drag_state.read().unwrap().is_some();
+        if is_dragging {
             self.update_drag_position(cursor_point);
+            
+            // Check if dragged window intersects with any workspace preview drop target
+            let drop_targets = data.workspaces.workspace_selector_view.get_drop_targets();
+            let mut new_drop_target = None;
+            
+            // Get the dragged window's bounds
+            if let Some(drag_state) = self.drag_state.read().unwrap().as_ref() {
+                let drag_bounds = drag_state.window_layer.render_bounds_transformed();
+                
+                for target in drop_targets {
+                    if target.workspace_index == data.workspaces.get_current_workspace_index() + 1 {
+                        continue; // Skip current workspace
+                    }
+                    // Use Skia's intersect to check if drag bounds overlap with drop target
+                    if drag_bounds.intersects(target.bounds) {
+                        new_drop_target = Some(target.workspace_index);
+                        break;
+                    }
+                }
+            }
+            
+            // Update drag state and visual feedback if target changed
+            let current_target = self.drag_state.read().unwrap().as_ref().and_then(|ds| ds.current_drop_target);
+            if current_target != new_drop_target {
+                if let Some(drag_state) = self.drag_state.write().unwrap().as_mut() {
+                    drag_state.current_drop_target = new_drop_target;
+                }
+                data.workspaces.workspace_selector_view.set_drop_hover(new_drop_target);
+            }
+            
             return;
         }
 
@@ -680,15 +712,29 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                 let was_dragging = self.drag_state.read().unwrap().is_some();
                 
                 if was_dragging {
-                    if let Some(selection) = self.stop_dragging() {
-                        self.restore_rect_to_state(selection.clone());
-                        if let Some(wid) = selection.window_id {
-                            screencomposer.workspaces.end_window_selector_drag(&wid);
+                    if let Some(drag_state) = self.stop_dragging() {
+                        let drop_target = drag_state.current_drop_target;
+                        
+                        // Clear drop hover visual feedback
+                        screencomposer.workspaces.workspace_selector_view.set_drop_hover(None);
+                        
+                        if let Some(target_workspace) = drop_target {
+                            // Drop window onto target workspace
+                            if let Some(window_element) = screencomposer.workspaces.windows_map.get(&drag_state.window_id).cloned() {
+                                screencomposer.workspaces.move_window_to_workspace(
+                                    &window_element,
+                                    target_workspace,
+                                    (0, 0) // Will be auto-positioned by workspace
+                                );
+                            }
+                            screencomposer.workspaces.end_window_selector_drag(&drag_state.window_id);
+                        } else {
+                            // No drop target - restore to original position
+                            self.restore_rect_to_state(drag_state.selection.clone());
+                            screencomposer.workspaces.end_window_selector_drag(&drag_state.window_id);
                         }
-                        // TODO: use `selection` to support dropping windows onto other workspaces.
                     }
                     self.clear_press_context();
-                    // TODO: implement drop targets to move windows between workspaces.
                     screencomposer.set_cursor(&CursorImageStatus::default_named());
                     return;
                 }

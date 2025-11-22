@@ -23,6 +23,12 @@ use super::WorkspacesModel;
 pub const WORKSPACE_SELECTOR_PREVIEW_WIDTH: f32 = 300.0;
 
 #[derive(Clone, Debug)]
+pub struct WorkspaceDropTarget {
+    pub workspace_index: usize,
+    pub bounds: lay_rs::skia::Rect,
+}
+
+#[derive(Clone, Debug)]
 pub struct WorkspaceViewState {
     name: String,
     index: usize,
@@ -45,12 +51,14 @@ impl Hash for WorkspaceViewState {
 pub struct WorkspaceSelectorViewState {
     workspaces: Vec<WorkspaceViewState>,
     current: usize,
+    drop_hover_index: Option<usize>,
 }
 
 impl Hash for WorkspaceSelectorViewState {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.workspaces.hash(state);
         self.current.hash(state);
+        self.drop_hover_index.hash(state);
     }
 }
 
@@ -59,6 +67,8 @@ pub struct WorkspaceSelectorView {
     pub layer: lay_rs::prelude::Layer,
     pub view: lay_rs::prelude::View<WorkspaceSelectorViewState>,
     pub cursor_location: Arc<RwLock<Point>>,
+    pub drop_targets: Arc<RwLock<Vec<WorkspaceDropTarget>>>,
+    pub drop_hover_index: Arc<RwLock<Option<usize>>>,
 }
 
 /// # WorkspaceSelectorView Layer Structure
@@ -82,6 +92,7 @@ impl WorkspaceSelectorView {
         let state = WorkspaceSelectorViewState {
             workspaces: Vec::new(),
             current: 0,
+            drop_hover_index: None,
         };
         let view = View::new(
             "workspace_selector_view",
@@ -93,12 +104,54 @@ impl WorkspaceSelectorView {
         layer.set_opacity(0.0, None);
         view.set_layer(layer.clone());
 
+        let drop_targets = Arc::new(RwLock::new(Vec::new()));
+        let drop_hover_index = Arc::new(RwLock::new(None));
+        
+        // Setup post-render hook to update drop targets
+        let drop_targets_clone = drop_targets.clone();
+        view.add_post_render_hook(move |state, view, _layer| {
+            let targets: Vec<WorkspaceDropTarget> = state
+                .workspaces
+                .iter()
+                .filter_map(|w| {
+                    let key = format!("workspace_selector_desktop_content_{}", w.index);
+                    view.layer_by_key(&key).map(|layer| WorkspaceDropTarget {
+                        workspace_index: w.index,
+                        bounds: layer.render_bounds_transformed(),
+                    })
+                })
+                .collect();
+            *drop_targets_clone.write().unwrap() = targets;
+        });
+
         Self {
             // engine: layers_engine,
             layer,
             view,
-            cursor_location: Arc::new(RwLock::new(Point::default())), // state: RwLock::new(state),
+            cursor_location: Arc::new(RwLock::new(Point::default())),
+            drop_targets,
+            drop_hover_index,
         }
+    }
+    
+    /// Get current drop targets (updated after each render)
+    pub fn get_drop_targets(&self) -> Vec<WorkspaceDropTarget> {
+        self.drop_targets.read().unwrap().clone()
+    }
+    
+    /// Set which workspace is being hovered during drag (for visual feedback)
+    pub fn set_drop_hover(&self, workspace_index: Option<usize>) {
+        *self.drop_hover_index.write().unwrap() = workspace_index;
+        
+        // Update view state to trigger re-render with new hover indication
+        let mut state = self.view.get_state().clone();
+        state.drop_hover_index = workspace_index;
+        self.view.update_state(&state);
+    }
+    
+    /// Get the currently hovered workspace index
+    pub fn get_drop_hover(&self) -> Option<usize> {
+        *self.drop_hover_index.read().unwrap()
     }
 }
 
@@ -157,10 +210,25 @@ fn render_workspace_selector_view(
                         .enumerate()
                         .map(|(i, w)| {
                             let current = i == state.current;
+                            let mut state_drop_hover_index:i32 = -1;
+                            if state.drop_hover_index.is_some() {
+                                state_drop_hover_index = state.drop_hover_index.unwrap() as i32;
+                            }
+                            let is_drop_hover = state_drop_hover_index-1 == (i as i32) && !current;
+
                             let mut border_width = 0.0;
+                            let border_color = theme_colors().accents_blue;
+                            
                             if current {
                                 border_width = 8.0;
                             }
+                            let mut color_filter = None;
+                            if is_drop_hover {
+                                let darken_color = lay_rs::skia::Color::from_argb(100, 100, 100, 100);
+                                let add = lay_rs::skia::Color::from_argb(0, 0, 0, 0);
+                                color_filter = lay_rs::skia::color_filters::lighting(darken_color, add);
+                            }
+                            
                             let workspace_width = w.workspace_width.max(1.0);
                             let workspace_height = w.workspace_height.max(1.0);
                             let preview_width = WORKSPACE_SELECTOR_PREVIEW_WIDTH;
@@ -229,9 +297,11 @@ fn render_workspace_selector_view(
                                     ))
                                     .scale(Point::new(scale, scale))
                                     .replicate_node(w.workspace_node)
+                                    .color_filter(color_filter)
                                     .on_pointer_press(button_press_filter())
                                     .on_pointer_release(button_release_filter())
                                     .border_corner_radius(BorderRadius::new_single(10.0 / scale))
+                                    .image_cache(true)
                                     .clip_children(true)
                                     .clip_content(true)
                                     .build()
@@ -253,7 +323,7 @@ fn render_workspace_selector_view(
                                         None,
                                     ))
                                     .border_width((border_width, None))
-                                    .border_color(theme_colors().accents_blue)
+                                    .border_color(border_color)
                                     .border_corner_radius(BorderRadius::new_single(10.0))
                                     .build()
                                     .unwrap(),
@@ -280,7 +350,7 @@ fn render_workspace_selector_view(
                                     .shadow_color((Color::new_rgba(0.0, 0.0, 0.0, 0.2), None))
                                     .shadow_offset(((0.0, 0.0).into(), None))
                                     .shadow_radius((5.0, None))
-                                    // .image_cache(true)
+                                    .image_cache(true)
                                     .on_pointer_press(button_press_filter())
                                     .on_pointer_release(button_release_filter())
                                     .build()
