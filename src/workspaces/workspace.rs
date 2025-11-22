@@ -4,7 +4,7 @@ use core::fmt;
 
 use lay_rs::{
     engine::Engine,
-    prelude::{taffy, Layer},
+    prelude::{Layer, taffy}, types::Size,
 };
 use smithay::reexports::wayland_server::backend::ObjectId;
 use std::{
@@ -58,7 +58,12 @@ impl fmt::Debug for WorkspaceView {
 /// ```
 ///
 impl WorkspaceView {
-    pub fn new(index: usize, layers_engine: Arc<Engine>, parent: &Layer) -> Self {
+    pub fn new(
+        index: usize,
+        layers_engine: Arc<Engine>,
+        parent: &Layer,
+        overlay_layer: Layer,
+    ) -> Self {
         println!("add_workspace {}", index);
 
         let workspace_layer = layers_engine.new_layer();
@@ -107,6 +112,7 @@ impl WorkspaceView {
             index,
             layers_engine.clone(),
             background_view.base_layer.clone(),
+            overlay_layer,
         );
 
         let window_selector_view = Arc::new(window_selector_view);
@@ -156,7 +162,7 @@ impl WorkspaceView {
             self.windows_layer
                 .add_sublayer(&window_element.base_layer().id);
 
-            let mirror_window = self.layers_engine.new_layer();
+            let mirror_window = window_element.mirror_layer();
             mirror_window.set_key(format!(
                 "mirror_window_{}",
                 window_element.base_layer().id.0
@@ -165,15 +171,15 @@ impl WorkspaceView {
                 position: taffy::Position::Absolute,
                 ..Default::default()
             });
-            // FIXME this is ruining the damage tracking
-            mirror_window.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+            let size = window_element.base_layer().render_size_transformed();
+            mirror_window.set_size(Size::points(size.x, size.y), None);
             self.window_selector_view
                 .windows_layer
-                .add_sublayer(&mirror_window);
+                .add_sublayer(mirror_window);
 
             let window_base = window_element.base_layer();
             mirror_window.set_draw_content(window_base.as_content());
-            window_base.add_follower_node(&mirror_window);
+            window_base.add_follower_node(mirror_window);
             mirror_window.set_picture_cached(false);
             self.window_selector_view
                 .map_window(wid.clone(), mirror_window);

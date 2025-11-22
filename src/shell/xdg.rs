@@ -51,9 +51,11 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         // the surface is not already configured
 
         let window_layer = self.layers_engine.new_layer();
+        let mirror_layer = self.layers_engine.new_layer();
         let window_element = WindowElement::new(
             Window::new_wayland_window(surface.clone()),
             window_layer.clone(),
+            mirror_layer.clone(),
         );
         let pointer_location = self.pointer.current_location();
 

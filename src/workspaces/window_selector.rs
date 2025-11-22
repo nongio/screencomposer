@@ -1,17 +1,25 @@
 use lay_rs::{prelude::*, skia};
 use smithay::{
+    backend::input::ButtonState,
     input::pointer::{CursorIcon, CursorImageStatus},
     reexports::wayland_server::backend::ObjectId,
 };
 use std::{
     collections::HashMap,
     hash::{Hash, Hasher},
-    sync::{Arc, RwLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, RwLock,
+    },
 };
 
 use crate::{config::Config, interactive_view::ViewInteractions, utils::Observer};
 
-use super::{utils::FONT_CACHE, WorkspacesModel};
+use super::{utils::FONT_CACHE, WorkspacesModel, WORKSPACE_SELECTOR_PREVIEW_WIDTH};
+
+// Logical (unscaled) values - will be multiplied by screen scale when used
+const WINDOW_SELECTOR_DRAG_THRESHOLD_LOGICAL: f32 = 2.5;
+const WORKSPACE_SELECTOR_TARGET_Y_LOGICAL: f32 = 110.0;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct WindowSelection {
@@ -68,14 +76,33 @@ impl<F: Fn(usize) + Send + Sync + 'static> From<F> for HandlerFunction {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct DragState {
+    pub window_layer: Layer,
+    pub window_id: ObjectId,
+    pub selection: WindowSelection,
+    pub start_location: (f32, f32),
+    pub offset: (f32, f32),
+    pub original_position: lay_rs::types::Point,
+    pub original_scale: lay_rs::types::Point,
+    pub original_anchor: lay_rs::types::Point,
+    pub original_parent: Layer,
+}
+
 #[derive(Clone)]
 pub struct WindowSelectorView {
     pub layer: lay_rs::prelude::Layer,
     pub background_layer: lay_rs::prelude::Layer,
     pub windows_layer: lay_rs::prelude::Layer,
     pub overlay_layer: lay_rs::prelude::Layer,
+    pub drag_overlay_layer: lay_rs::prelude::Layer,
     pub view: lay_rs::prelude::View<WindowSelectorState>,
     pub windows: std::sync::Arc<RwLock<HashMap<ObjectId, Layer>>>,
+    pub cursor_location: Arc<RwLock<Option<(f32, f32)>>>,
+    pub press_location: Arc<RwLock<Option<(f32, f32)>>>,
+    pub pointer_down: Arc<AtomicBool>,
+    pub pressed_selection: Arc<RwLock<Option<WindowSelection>>>,
+    pub drag_state: Arc<RwLock<Option<DragState>>>,
 }
 
 /// # WindowSelectorView Layer Structure
@@ -97,7 +124,12 @@ pub struct WindowSelectorView {
 ///
 
 impl WindowSelectorView {
-    pub fn new(index: usize, layers_engine: Arc<Engine>, background_layer: Layer) -> Self {
+    pub fn new(
+        index: usize,
+        layers_engine: Arc<Engine>,
+        background_layer: Layer,
+        drag_overlay_layer: Layer,
+    ) -> Self {
         let window_selector_root = layers_engine.new_layer();
         window_selector_root.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
@@ -161,7 +193,13 @@ impl WindowSelectorView {
             background_layer: clone_background_layer,
             windows_layer,
             overlay_layer,
+            drag_overlay_layer,
             windows: std::sync::Arc::new(RwLock::new(HashMap::new())),
+            cursor_location: Arc::new(RwLock::new(None)),
+            press_location: Arc::new(RwLock::new(None)),
+            pointer_down: Arc::new(AtomicBool::new(false)),
+            pressed_selection: Arc::new(RwLock::new(None)),
+            drag_state: Arc::new(RwLock::new(None)),
         }
     }
     pub fn layer_for_window(&self, window: &ObjectId) -> Option<Layer> {
@@ -170,14 +208,200 @@ impl WindowSelectorView {
 
     /// add a window layer to windows map
     /// and append the window to the windows_layer
-    pub fn map_window(&self, window_id: ObjectId, layer: Layer) {
-        self.windows_layer.add_sublayer(&layer);
-        self.windows.write().unwrap().insert(window_id, layer);
+    pub fn map_window(&self, window_id: ObjectId, layer: &Layer) {
+        self.windows_layer.add_sublayer(layer);
+        self.windows.write().unwrap().insert(window_id, layer.clone());
     }
     /// remove the window from the windows map
     /// and remove the layer from windows_layer
     pub fn unmap_window(&self, window_id: &ObjectId) -> Option<Layer> {
         self.windows.write().unwrap().remove(window_id)
+    }
+
+    fn record_cursor_location(&self, location: (f32, f32)) {
+        let mut cursor = self.cursor_location.write().unwrap();
+        *cursor = Some(location);
+    }
+
+    fn current_pointer_or_default<Backend: crate::state::Backend>(
+        &self,
+        composer: &crate::ScreenComposer<Backend>,
+    ) -> (f32, f32) {
+        if let Some(location) = *self.cursor_location.read().unwrap() {
+            location
+        } else {
+            let physical = composer.get_cursor_position();
+            (physical.x as f32, physical.y as f32)
+        }
+    }
+
+    fn preview_scale(&self) -> f32 {
+        let workspace_width = self.layer.render_size().x.max(1.0);
+        WORKSPACE_SELECTOR_PREVIEW_WIDTH / workspace_width
+    }
+
+    fn clear_press_context(&self) {
+        *self.pressed_selection.write().unwrap() = None;
+        *self.press_location.write().unwrap() = None;
+    }
+
+    fn update_drag_position(&self, pointer_location: (f32, f32)) {
+        let drag_state = self.drag_state.read().unwrap();
+        if let Some(ref state) = *drag_state {
+            let position = lay_rs::types::Point {
+                x: pointer_location.0 - state.offset.0,
+                y: pointer_location.1 - state.offset.1,
+            };
+            state.window_layer.set_position(position, None);
+            drop(drag_state);
+            self.update_drag_scale(pointer_location);
+        }
+    }
+
+    fn stop_dragging(&self) -> Option<WindowSelection> {
+        let mut drag_state = self.drag_state.write().unwrap();
+        let state = drag_state.take()?;
+        
+        state.window_layer.set_position(
+            state.original_position,
+            Some(Transition::ease_out_quad(0.12)),
+        );
+        state.window_layer.set_scale(
+            state.original_scale,
+            Some(Transition::ease_out_quad(0.12)),
+        );
+        state.window_layer.set_anchor_point(
+            state.original_anchor,
+            Some(Transition::ease_out_quad(0.12)),
+        );
+        state.original_parent.add_sublayer(&state.window_layer);
+        
+        Some(state.selection)
+    }
+
+    fn remove_rect_from_state(&self, target_index: usize) {
+        let mut state = self.view.get_state().clone();
+        if let Some(position) = state.rects.iter().position(|r| r.index == target_index) {
+            state.rects.remove(position);
+            if let Some(current) = state.current_selection {
+                if current == target_index {
+                    state.current_selection = None;
+                } else if current > target_index {
+                    state.current_selection = Some(current - 1);
+                }
+            }
+            for (idx, rect) in state.rects.iter_mut().enumerate() {
+                rect.index = idx;
+            }
+            self.view.update_state(&state);
+        }
+    }
+
+    fn restore_rect_to_state(&self, rect: WindowSelection) {
+        let mut state = self.view.get_state().clone();
+        let insert_idx = rect.index.min(state.rects.len());
+        state.rects.insert(insert_idx, rect);
+        for (idx, rect) in state.rects.iter_mut().enumerate() {
+            rect.index = idx;
+        }
+        self.view.update_state(&state);
+    }
+
+    fn update_drag_scale(&self, pointer_location: (f32, f32)) {
+        let drag_state = self.drag_state.read().unwrap();
+        if let Some(ref state) = *drag_state {
+            let screen_scale = Config::with(|config| config.screen_scale) as f32;
+            let target_y = WORKSPACE_SELECTOR_TARGET_Y_LOGICAL * screen_scale;
+            
+            let preview_scale_value = self.preview_scale();
+            let preview_scale_point = lay_rs::types::Point {
+                x: preview_scale_value,
+                y: preview_scale_value,
+            };
+            let mut start_y_value = state.start_location.1;
+            if start_y_value <= target_y {
+                start_y_value = target_y + 0.01;
+            }
+            let mut progress = (pointer_location.1 - target_y)
+                / (start_y_value - target_y);
+            progress = progress.clamp(0.0, 1.0);
+
+            let new_scale = lay_rs::types::Point {
+                x: preview_scale_point.x + (state.original_scale.x - preview_scale_point.x) * progress,
+                y: preview_scale_point.y + (state.original_scale.y - preview_scale_point.y) * progress,
+            };
+            state.window_layer.set_scale(new_scale, None);
+        }
+    }
+
+    fn try_activate_drag(&self, pointer_location: (f32, f32)) -> Option<ObjectId> {
+        // If already dragging, return the current window_id
+        if self.drag_state.read().unwrap().is_some() {
+            return self.drag_state.read().unwrap()
+                .as_ref()
+                .map(|s| s.window_id.clone());
+        }
+        
+        let selection = self.pressed_selection.read().unwrap().clone();
+        let Some(selection) = selection else {
+            return None;
+        };
+        let window_layer = selection
+            .window_id
+            .as_ref()
+            .and_then(|id| self.layer_for_window(id));
+
+        let Some(window_layer) = window_layer else {
+            return None;
+        };
+
+        let bounds = window_layer.render_layer().global_transformed_bounds;
+        let original_position = Point::new(bounds.left(), bounds.top());
+        let render_size = bounds.size();
+
+        let anchor_point = lay_rs::types::Point {
+            x: ((pointer_location.0 - original_position.x) / render_size.width).clamp(0.0, 1.0),
+            y: ((pointer_location.1 - original_position.y) / render_size.height).clamp(0.0, 1.0),
+        };
+
+        let original_scale = window_layer.scale();
+        let original_anchor = window_layer.anchor_point();
+        
+        // Move window to drag overlay
+        self.drag_overlay_layer.add_sublayer(&window_layer);
+        
+        // Remove from state grid
+        self.remove_rect_from_state(selection.index);
+
+        // Set new anchor point and position
+        let new_position = window_layer.set_anchor_point_preserving_position(anchor_point);
+        window_layer.set_position(new_position, None);
+
+        // Calculate offset for smooth dragging
+        let offset = (
+            pointer_location.0 - new_position.x,
+            pointer_location.1 - new_position.y,
+        );
+
+        // Create and store drag state
+        let drag_state = DragState {
+            window_layer: window_layer.clone(),
+            window_id: selection.window_id.clone()?,
+            selection: selection.clone(),
+            start_location: pointer_location,
+            offset,
+            original_position,
+            original_scale,
+            original_anchor,
+            original_parent: self.windows_layer.clone(),
+        };
+        
+        *self.drag_state.write().unwrap() = Some(drag_state);
+
+        self.update_drag_position(pointer_location);
+        
+        let window_id = selection.window_id.clone();
+        window_id
     }
 }
 
@@ -370,6 +594,36 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
         let mut state = self.view.get_state().clone();
         let screen_scale = Config::with(|config| config.screen_scale);
         let location = event.location.to_physical(screen_scale);
+        let cursor_point = (location.x as f32, location.y as f32);
+        self.record_cursor_location(cursor_point);
+
+        // If dragging, update drag position
+        if self.drag_state.read().unwrap().is_some() {
+            self.update_drag_position(cursor_point);
+            return;
+        }
+
+        // Check for drag threshold
+        if self.pointer_down.load(Ordering::SeqCst) {
+            if let Some(_selection) = self.pressed_selection.read().unwrap().clone() {
+                if let Some(start) = *self.press_location.read().unwrap() {
+                    let screen_scale = Config::with(|config| config.screen_scale) as f32;
+                    let drag_threshold = WINDOW_SELECTOR_DRAG_THRESHOLD_LOGICAL * screen_scale;
+                    
+                    let delta_x = (cursor_point.0 - start.0).abs();
+                    let delta_y = (cursor_point.1 - start.1).abs();
+                    if delta_x >= drag_threshold || delta_y >= drag_threshold {
+                        if let Some(window_id) = self.try_activate_drag(cursor_point) {
+                            data.workspaces.start_window_selector_drag(&window_id);
+                            self.update_drag_position(cursor_point);
+                            let cursor = CursorImageStatus::Named(CursorIcon::Move);
+                            data.set_cursor(&cursor);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
 
         let rect = state
             .rects
@@ -402,22 +656,56 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
         &self,
         _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
         screencomposer: &mut crate::ScreenComposer<Backend>,
-        _event: &smithay::input::pointer::ButtonEvent,
+        event: &smithay::input::pointer::ButtonEvent,
     ) {
-        let selector_state = self.view.get_state();
-        if let Some(index) = selector_state.current_selection {
-            let wid = selector_state
-                .rects
-                .get(index)
-                .unwrap()
-                .window_id
-                .clone()
-                .unwrap();
+        match event.state {
+            ButtonState::Pressed => {
+                self.pointer_down.store(true, Ordering::SeqCst);
+                let pointer_location = self.current_pointer_or_default(screencomposer);
+                *self.press_location.write().unwrap() = Some(pointer_location);
 
-            screencomposer.workspaces.focus_app_with_window(&wid);
-            screencomposer.set_keyboard_focus_on_surface(&wid);
+                let state = self.view.get_state();
+                let selection = state
+                    .current_selection
+                    .and_then(|index| state.rects.get(index).cloned());
+
+                if let Some(selection) = selection {
+                    *self.pressed_selection.write().unwrap() = Some(selection);
+                } else {
+                    self.clear_press_context();
+                }
+            }
+            ButtonState::Released => {
+                self.pointer_down.store(false, Ordering::SeqCst);
+                let was_dragging = self.drag_state.read().unwrap().is_some();
+                
+                if was_dragging {
+                    if let Some(selection) = self.stop_dragging() {
+                        self.restore_rect_to_state(selection.clone());
+                        if let Some(wid) = selection.window_id {
+                            screencomposer.workspaces.end_window_selector_drag(&wid);
+                        }
+                        // TODO: use `selection` to support dropping windows onto other workspaces.
+                    }
+                    self.clear_press_context();
+                    // TODO: implement drop targets to move windows between workspaces.
+                    screencomposer.set_cursor(&CursorImageStatus::default_named());
+                    return;
+                }
+                self.clear_press_context();
+
+                let selector_state = self.view.get_state();
+                if let Some(index) = selector_state.current_selection {
+                    if let Some(window_selection) = selector_state.rects.get(index) {
+                        if let Some(wid) = window_selection.window_id.clone() {
+                            screencomposer.workspaces.focus_app_with_window(&wid);
+                            screencomposer.set_keyboard_focus_on_surface(&wid);
+                        }
+                    }
+                }
+                screencomposer.workspaces.expose_show_all(-1.0, true);
+                screencomposer.set_cursor(&CursorImageStatus::default_named());
+            }
         }
-        screencomposer.workspaces.expose_show_all(-1.0, true);
-        screencomposer.set_cursor(&CursorImageStatus::default_named());
     }
 }

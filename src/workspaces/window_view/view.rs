@@ -26,6 +26,7 @@ pub struct WindowView {
     pub window_layer: lay_rs::prelude::Layer,
     pub shadow_layer: lay_rs::prelude::Layer,
     pub content_layer: lay_rs::prelude::Layer,
+    pub mirror_layer: lay_rs::prelude::Layer,
 
     pub genie_effect: GenieEffect,
 
@@ -71,7 +72,8 @@ impl WindowView {
             lay_rs::prelude::View::new("window_shadow", base_rect, Box::new(view_window_shadow));
 
         view_base.mount_layer(shadow_layer.clone());
-
+        let mirror_layer = window.mirror_layer().clone();
+        mirror_layer.set_size(shadow_layer.render_layer().bounds.size(), None);
         let view_content = View::new("window_content", render_elements, view_render_elements);
         view_content.mount_layer(content_layer.clone());
 
@@ -88,7 +90,7 @@ impl WindowView {
             content_layer,
             shadow_layer,
             genie_effect,
-
+            mirror_layer,
             unmaximised_rect: smithay::utils::Rectangle::default(),
         }
     }

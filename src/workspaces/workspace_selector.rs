@@ -20,11 +20,25 @@ use crate::{
 
 use super::WorkspacesModel;
 
-#[derive(Clone, Debug, Hash)]
+pub const WORKSPACE_SELECTOR_PREVIEW_WIDTH: f32 = 300.0;
+
+#[derive(Clone, Debug)]
 pub struct WorkspaceViewState {
     name: String,
     index: usize,
     workspace_node: Option<NodeRef>,
+    workspace_width: f32,
+    workspace_height: f32,
+}
+
+impl Hash for WorkspaceViewState {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.index.hash(state);
+        self.workspace_node.hash(state);
+        self.workspace_width.to_bits().hash(state);
+        self.workspace_height.to_bits().hash(state);
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -147,10 +161,9 @@ fn render_workspace_selector_view(
                             if current {
                                 border_width = 8.0;
                             }
-                            // FIXME: hardcoded values
-                            let workspace_width = 1280.0 * 2.0;
-                            let workspace_height = 900.0 * 2.0;
-                            let preview_width = 300.0;
+                            let workspace_width = w.workspace_width.max(1.0);
+                            let workspace_height = w.workspace_height.max(1.0);
+                            let preview_width = WORKSPACE_SELECTOR_PREVIEW_WIDTH;
                             let scale = preview_width / workspace_width;
                             let preview_height = workspace_height * scale;
 
@@ -340,6 +353,8 @@ impl Observer<WorkspacesModel> for WorkspaceSelectorView {
                 name: format!("Bench {}", i),
                 index: w.index,
                 workspace_node: Some(w.workspace_layer.id()),
+                workspace_width: w.workspace_layer.render_size_transformed().x,
+                workspace_height: w.workspace_layer.render_size_transformed().y,
             })
             .collect();
         state.current = model.current_workspace;

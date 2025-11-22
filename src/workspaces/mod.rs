@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    hash::Hasher,
     sync::{
         atomic::{AtomicBool, AtomicI32},
         Arc, RwLock, Weak,
@@ -43,7 +42,7 @@ pub use window_view::{WindowView, WindowViewBaseModel, WindowViewSurface};
 pub use app_switcher::AppSwitcherView;
 pub use dnd_view::DndView;
 pub use dock::DockView;
-pub use workspace_selector::WorkspaceSelectorView;
+pub use workspace_selector::{WorkspaceSelectorView, WORKSPACE_SELECTOR_PREVIEW_WIDTH};
 
 use crate::{
     config::Config,
@@ -103,6 +102,7 @@ pub struct Workspaces {
     pub workspaces_layer: Layer,
     expose_layer: Layer,
     observers: Vec<Weak<dyn Observer<WorkspacesModel>>>,
+    expose_dragging_window: Arc<std::sync::Mutex<Option<ObjectId>>>,
 }
 
 /// # Workspaces Layer Structure
@@ -148,6 +148,19 @@ pub struct Workspaces {
 /// ```
 ///
 impl Workspaces {
+    pub fn start_window_selector_drag(&self, window_id: &ObjectId) {
+        *self.expose_dragging_window.lock().unwrap() = Some(window_id.clone());
+        self.expose_show_all(1.0, true);
+    }
+
+    pub fn end_window_selector_drag(&self, window_id: &ObjectId) {
+        let mut dragging = self.expose_dragging_window.lock().unwrap();
+        if dragging.as_ref() == Some(window_id) {
+            *dragging = None;
+        }
+        drop(dragging);
+        self.expose_show_all(1.0, true);
+    }
     pub fn new(layers_engine: Arc<Engine>) -> Self {
         let model = WorkspacesModel::default();
         let spaces = Vec::new();
@@ -191,6 +204,10 @@ impl Workspaces {
         overlay_layer.set_key("overlay_view");
         overlay_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
+            size: taffy::Size {
+                width: taffy::Dimension::Percent(1.0),
+                height: taffy::Dimension::Percent(1.0),
+            },
             ..Default::default()
         });
         overlay_layer.set_pointer_events(false);
@@ -206,6 +223,7 @@ impl Workspaces {
         let workspace_selector_layer = layers_engine.new_layer();
         workspace_selector_layer.set_pointer_events(false);
         layers_engine.add_layer(&workspace_selector_layer);
+        layers_engine.add_layer(&overlay_layer);
 
         let workspace_selector_view = Arc::new(WorkspaceSelectorView::new(
             layers_engine.clone(),
@@ -235,6 +253,7 @@ impl Workspaces {
             window_views: Arc::new(RwLock::new(HashMap::new())),
             observers: Vec::new(),
             layers_engine,
+            expose_dragging_window: Arc::new(std::sync::Mutex::new(None)),
         };
         workspaces.add_workspace();
         workspaces.add_workspace();
@@ -348,6 +367,25 @@ impl Workspaces {
     }
 
     /// Set the mode to window selection mode using a delta for gestures
+    ///
+    /// # Arguments
+    /// * `delta` - The incremental change value from a gesture:
+    ///   - For continuous gestures (e.g., three-finger swipe): use incremental values (typically -1.0 to 1.0 range)
+    ///   - For layout updates without mode change: use `0.0` or `1.0` as needed
+    /// * `end_gesture` - Whether the gesture/action has completed:
+    ///   - `true`: Finalize the transition with animations and state commitment (snaps to nearest state based on threshold)
+    ///   - `false`: Track finger movement without animation smoothing (direct 1:1 response during gesture)
+    ///
+    /// # Behavior
+    /// The function uses a hysteresis mechanism: you must swipe at least 10% to enter the mode,
+    /// but must swipe back past 90% to exit when already active, preventing accidental toggles.
+    ///
+    /// # Usage Examples
+    /// - Keyboard toggle on: `expose_show_all(1.0, true)`
+    /// - Keyboard toggle off: `expose_show_all(-1.0, true)`
+    /// - Gesture update mid-swipe: `expose_show_all(0.05, false)` (5% progress increment)
+    /// - Gesture completion: `expose_show_all(0.0, true)` (finalize at current position)
+    /// - Update layout during window drag: `expose_show_all(0.0, false)` (recalculate without animation)
     pub fn expose_show_all(&self, delta: f32, end_gesture: bool) {
         const MULTIPLIER: f32 = 1000.0;
         let gesture = self
@@ -404,7 +442,7 @@ impl Workspaces {
         let padding_top = 10.0;
         let padding_bottom = 10.0;
 
-        let size = self.workspaces_layer.render_size();
+        let size = self.workspaces_layer.render_size_transformed();
         let scale = Config::with(|c| c.screen_scale);
         let screen_size_w = size.x;
         let screen_size_h = size.y - padding_top - padding_bottom - workspace_selector_height;
@@ -420,6 +458,7 @@ impl Workspaces {
             screen_size_h - offset_y,
         );
         let init_layout = bin.is_empty();
+        let dragging_window = self.expose_dragging_window.lock().unwrap().clone();
         let current_workspace = self.with_model(|model| {
             for (i, workspace) in model.workspaces.iter().enumerate() {
                 let windows_list = workspace.windows_list.read().unwrap();
@@ -428,6 +467,9 @@ impl Workspaces {
                 let space = self.spaces.get(i).unwrap();
 
                 let workspace_windows = windows_list.iter().filter_map(|wid| {
+                    if dragging_window.as_ref() == Some(wid) {
+                        return None;
+                    }
                     if let Some(window) = self.get_window_for_surface(wid) {
                         if !window.is_minimised() {
                             let bbox = space.element_geometry(window).unwrap().to_f64();
@@ -438,6 +480,8 @@ impl Workspaces {
                                 bbox.size.w as f32,
                                 bbox.size.h as f32,
                             );
+                            
+                            window.mirror_layer().set_size(Size::points(bbox.size.w as f32, bbox.size.h as f32), None);                            
                             return Some((window, rect));
                         }
                     }
@@ -454,6 +498,9 @@ impl Workspaces {
                 let mut index = 0;
                 let windows_list = workspace.windows_list.read().unwrap();
                 for window_id in windows_list.iter() {
+                    if dragging_window.as_ref() == Some(window_id) {
+                        continue;
+                    }
                     let window = self.get_window_for_surface(window_id).unwrap();
                     if window.is_minimised() {
                         continue;
@@ -1348,6 +1395,7 @@ impl Workspaces {
                 m.workspace_counter,
                 self.layers_engine.clone(),
                 &self.workspaces_layer,
+                self.overlay_layer.clone(),
             ));
             self.expose_layer
                 .add_sublayer(&workspace.window_selector_view.layer);
