@@ -163,14 +163,6 @@ impl WorkspaceView {
                 .add_sublayer(&window_element.base_layer().id);
 
             let mirror_window = window_element.mirror_layer();
-            mirror_window.set_key(format!(
-                "mirror_window_{}",
-                window_element.base_layer().id.0
-            ));
-            mirror_window.set_layout_style(taffy::Style {
-                position: taffy::Position::Absolute,
-                ..Default::default()
-            });
             let size = window_element.base_layer().render_size_transformed();
             mirror_window.set_size(Size::points(size.x, size.y), None);
             self.window_selector_view
@@ -178,9 +170,6 @@ impl WorkspaceView {
                 .add_sublayer(mirror_window);
 
             let window_base = window_element.base_layer();
-            mirror_window.set_draw_content(window_base.as_content());
-            window_base.add_follower_node(mirror_window);
-            mirror_window.set_picture_cached(false);
             self.window_selector_view
                 .map_window(wid.clone(), mirror_window);
 
@@ -218,20 +207,30 @@ impl WorkspaceView {
     /// remove the window from the windows list
     /// and remove the window layer from the window selector view
     pub fn unmap_window(&self, window_id: &ObjectId) {
+        self.unmap_window_internal(window_id);
+
+        if let Some(mirror_layer) = self.window_selector_view.unmap_window(window_id) {
+            if let Some(base_layer) = self.window_base_layers.write().unwrap().remove(window_id) {
+                base_layer.remove_follower_node(&mirror_layer);
+            }
+                // Remove the mirror layer when the window is truly destroyed
+                mirror_layer.remove();
+        } else {
+            self.window_base_layers.write().unwrap().remove(window_id);
+        }
+    }
+
+    /// Internal version of unmap_window that allows controlling whether to remove the mirror layer
+    /// When remove_mirror is false, the mirror layer is not removed to avoid SlotMap key issues
+    /// during drag-and-drop operations when expose_show_all will be called to rebuild the layout
+    pub fn unmap_window_internal(&self, window_id: &ObjectId) {
         let mut window_list = self.windows_list.write().unwrap();
 
         if let Some(index) = window_list.iter().position(|x| x == window_id) {
             window_list.remove(index);
         }
 
-        if let Some(mirror_layer) = self.window_selector_view.unmap_window(window_id) {
-            if let Some(base_layer) = self.window_base_layers.write().unwrap().remove(window_id) {
-                base_layer.remove_follower_node(&mirror_layer);
-            }
-            mirror_layer.remove();
-        } else {
-            self.window_base_layers.write().unwrap().remove(window_id);
-        }
+        
     }
 
     pub fn set_fullscreen_mode(&self, fullscreen: bool) {

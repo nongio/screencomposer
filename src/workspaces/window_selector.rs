@@ -5,7 +5,7 @@ use smithay::{
     reexports::wayland_server::backend::ObjectId,
 };
 use std::{
-    collections::HashMap,
+    collections::{hash_map::DefaultHasher, HashMap},
     hash::{Hash, Hasher},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -13,12 +13,16 @@ use std::{
     },
 };
 
-use crate::{config::Config, interactive_view::ViewInteractions, utils::Observer};
+use crate::{
+    config::Config, interactive_view::ViewInteractions, theme::theme_colors, utils::{
+        Observer, natural_layout::{LayoutRect, natural_layout}
+    }
+};
 
 use super::{utils::FONT_CACHE, WorkspacesModel, WORKSPACE_SELECTOR_PREVIEW_WIDTH};
 
 // Logical (unscaled) values - will be multiplied by screen scale when used
-const WINDOW_SELECTOR_DRAG_THRESHOLD_LOGICAL: f32 = 2.5;
+const WINDOW_SELECTOR_DRAG_THRESHOLD_LOGICAL: f32 = 1.5;
 const WORKSPACE_SELECTOR_TARGET_Y_LOGICAL: f32 = 200.0;
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -28,7 +32,6 @@ pub struct WindowSelection {
     pub w: f32,
     pub h: f32,
     pub window_title: String,
-    pub visible: bool,
     pub index: usize,
     pub window_id: Option<ObjectId>,
 }
@@ -42,11 +45,11 @@ pub struct WindowSelectorState {
 impl Hash for WindowSelectorState {
     fn hash<H: Hasher>(&self, state: &mut H) {
         let current = self
-            .current_selection
-            .as_ref()
-            .map(|x| self.rects.get(*x).unwrap());
-        current.hash(state);
-        self.rects.hash(state);
+        .current_selection
+        .as_ref()
+        .map(|x| self.rects.get(*x).unwrap());
+    current.hash(state);
+    self.rects.hash(state);
     }
 }
 
@@ -57,8 +60,14 @@ impl Hash for WindowSelection {
         self.w.to_bits().hash(state);
         self.h.to_bits().hash(state);
         self.window_title.hash(state);
-        self.visible.hash(state);
     }
+}
+
+#[derive(Clone, Hash)]
+pub struct WindowSelectorWindow {
+    pub id: ObjectId,
+    pub rect: LayoutRect,
+    pub title: String,
 }
 
 #[derive(Clone)]
@@ -104,6 +113,9 @@ pub struct WindowSelectorView {
     pub pointer_down: Arc<AtomicBool>,
     pub pressed_selection: Arc<RwLock<Option<WindowSelection>>>,
     pub drag_state: Arc<RwLock<Option<DragState>>>,
+    pub expose_bin: Arc<RwLock<HashMap<ObjectId, LayoutRect>>>,
+    layout_hash: Arc<RwLock<u64>>,
+
 }
 
 /// # WindowSelectorView Layer Structure
@@ -134,9 +146,6 @@ impl WindowSelectorView {
         let window_selector_root = layers_engine.new_layer();
         window_selector_root.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
-            // flex_grow: 1.0,
-            // flex_shrink: 0.0,
-            // flex_basis: taffy::Dimension::Percent(1.0),
             ..Default::default()
         });
 
@@ -149,8 +158,12 @@ impl WindowSelectorView {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
+        // let mut overlay_color = theme_colors().accents_green;
+        // overlay_color.alpha = 0.5;
+        // overlay_layer.set_background_color(overlay_color, None);
         overlay_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
         overlay_layer.set_pointer_events(false);
+        overlay_layer.set_hidden(true);
 
         let state = WindowSelectorState {
             rects: vec![],
@@ -201,6 +214,8 @@ impl WindowSelectorView {
             pointer_down: Arc::new(AtomicBool::new(false)),
             pressed_selection: Arc::new(RwLock::new(None)),
             drag_state: Arc::new(RwLock::new(None)),
+            expose_bin: Arc::new(RwLock::new(HashMap::new())),
+            layout_hash: Arc::new(RwLock::new(0)),
         }
     }
     pub fn layer_for_window(&self, window: &ObjectId) -> Option<Layer> {
@@ -474,7 +489,7 @@ pub fn view_window_selector(
     let draw_container = Some(move |canvas: &skia::Canvas, w, h| {
         if window_selection.is_some() {
             let window_selection = window_selection.as_ref().unwrap();
-            let color = skia::Color4f::new(85.0 / 255.0, 150.0 / 255.0, 244.0 / 255.0, 1.0);
+            let color = theme_colors().accents_blue.c4f();
             let mut paint = skia::Paint::new(color, None);
             paint.set_stroke(true);
             paint.set_stroke_width(10.0 * draw_scale);
@@ -565,6 +580,102 @@ pub fn view_window_selector(
 impl Observer<WorkspacesModel> for WindowSelectorView {
     fn notify(&self, _workspaces: &WorkspacesModel) {}
 }
+
+impl WindowSelectorView {
+    fn compute_layout_hash(
+        windows: &[WindowSelectorWindow],
+        layout_rect: &LayoutRect,
+        offset_y: f32,
+    ) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        layout_rect.hash(&mut hasher);
+        offset_y.to_bits().hash(&mut hasher);
+        // sort the windows by window.id.protocol_id()
+        let windows_sorted = {
+            let mut ws = windows.to_vec();
+            ws.sort_by_key(|w| w.id.protocol_id());
+            ws
+        };
+        for window in &windows_sorted {
+            window.id.hash(&mut hasher);
+            window.rect.hash(&mut hasher);
+            window.title.hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
+    pub fn is_layout_up_to_date(
+        &self,
+        layout_rect: &LayoutRect,
+        offset_y: f32,
+        windows: &[WindowSelectorWindow],
+    ) -> bool {
+        let layout_hash = Self::compute_layout_hash(windows, layout_rect, offset_y);
+        let stored_hash = *self.layout_hash.read().unwrap();
+        let has_bin = !self.expose_bin.read().unwrap().is_empty();
+        stored_hash == layout_hash && has_bin
+    }
+
+    
+    /// Updates the window selector layout and state.
+    ///
+    /// Recalculates the layout of window previews in the selector view when the geometry or window list changes.
+    /// It uses a hash to detect changes in layout parameters and only recomputes the layout if necessary. The function updates
+    /// the internal bin mapping window IDs to their layout rectangles, computes scaling for each window preview, and updates
+    /// the selector state with the new positions and sizes. The view is then refreshed to reflect the new state.
+    pub fn update_windows(
+        &self,
+        layout_rect: LayoutRect,
+        offset_y: f32,
+        windows: &[WindowSelectorWindow],
+    ) {
+        let layout_hash = Self::compute_layout_hash(windows, &layout_rect, offset_y);
+        let mut bin = self.expose_bin.write().unwrap();
+        let mut stored_hash = self.layout_hash.write().unwrap();
+
+        // No-op if nothing changed and bin already exists
+        if *stored_hash == layout_hash && !bin.is_empty() {
+            return;
+        }
+
+        // Recalculate layout only when geometry changed
+        if *stored_hash != layout_hash {
+            bin.clear();
+            natural_layout(
+                &mut bin,
+                windows.iter().map(|window| (window.id.clone(), window.rect)),
+                &layout_rect,
+                false,
+            );
+            *stored_hash = layout_hash;
+        }
+
+        let mut state = WindowSelectorState {
+            rects: vec![],
+            current_selection: None,
+        };
+
+        for (index, window) in windows.iter().enumerate() {
+            if let Some(rect) = bin.get(&window.id) {
+                let scale_x = rect.width / window.rect.width;
+                let scale_y = rect.height / window.rect.height;
+                let scale = scale_x.min(scale_y).min(1.0);
+
+                state.rects.push(WindowSelection {
+                    x: rect.x,
+                    y: rect.y + offset_y,
+                    w: window.rect.width * scale,
+                    h: window.rect.height * scale,
+                    window_title: window.title.clone(),
+                    index,
+                    window_id: Some(window.id.clone()),
+                });
+            }
+        }
+
+        self.view.update_state(&state);
+    }
+}
 impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelectorView {
     fn id(&self) -> Option<usize> {
         self.view
@@ -616,7 +727,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                         continue; // Skip current workspace
                     }
                     // Use Skia's intersect to check if drag bounds overlap with drop target
-                    if drag_bounds.intersects(target.bounds) {
+                    if drag_bounds.intersects(target.drop_layer.render_bounds_transformed()) {
                         new_drop_target = Some(target.workspace_index);
                         break;
                     }
@@ -721,17 +832,30 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                         if let Some(target_workspace) = drop_target {
                             // Drop window onto target workspace
                             if let Some(window_element) = screencomposer.workspaces.windows_map.get(&drag_state.window_id).cloned() {
+                                // Get position in current workspace before moving
+                                let position = screencomposer.workspaces.space().element_location(&window_element).unwrap_or_default();
+                                
+                                // Clear dragging state
+                                *screencomposer.workspaces.expose_dragging_window.lock().unwrap() = None;
+                                
+                                // Move window to target workspace
+                                // Note: unmap_window no longer removes the mirror layer to avoid SlotMap key issues
                                 screencomposer.workspaces.move_window_to_workspace(
                                     &window_element,
-                                    target_workspace,
-                                    (0, 0) // Will be auto-positioned by workspace
+                                    target_workspace - 1,
+                                    position,
                                 );
+                                
+                                // Refresh expose view - this will rebuild the layout with updated state
+                                screencomposer.workspaces.expose_show_all(1.0, true);
+                            } else {
+                                screencomposer.workspaces.end_window_selector_drag(&drag_state.window_id);
                             }
-                            screencomposer.workspaces.end_window_selector_drag(&drag_state.window_id);
                         } else {
                             // No drop target - restore to original position
                             self.restore_rect_to_state(drag_state.selection.clone());
                             screencomposer.workspaces.end_window_selector_drag(&drag_state.window_id);
+                            screencomposer.workspaces.expose_update_if_needed();
                         }
                     }
                     self.clear_press_context();
@@ -751,6 +875,8 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                 }
                 screencomposer.workspaces.expose_show_all(-1.0, true);
                 screencomposer.set_cursor(&CursorImageStatus::default_named());
+                let state = WindowSelectorState { current_selection: None, ..selector_state };
+                self.view.update_state(&state);
             }
         }
     }

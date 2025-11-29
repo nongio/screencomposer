@@ -38,8 +38,8 @@ once_cell = "1.20"
 paste = "1.0.15"
 
 [dependencies.lay-rs]
-# path = "../layers"
-git = "https://github.com/nongio/layers"
+path = "../layers"
+# git = "https://github.com/nongio/layers"
 features = ["export-taffy"]
 
 [dependencies.smithay-drm-extras]
@@ -74,7 +74,7 @@ version = "0.12.0"
 
 [features]
 perf-counters = []
-default = ["egl", "winit", "x11", "udev", "debug", "profile", "debugger"]
+default = ["egl", "winit", "x11", "udev", "debug", "profile", "debugger", "renderer_sync"]
 debug = ["image/png", "renderdoc", "debugger"] # "fps_ticker", 
 debugger = ["lay-rs/debugger"]
 profile = ["profile-with-puffin", "lay-rs/profile-with-puffin"]

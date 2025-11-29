@@ -1351,8 +1351,11 @@ impl ScreenComposer<UdevData> {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
         // tracing::error!("on_gesture_swipe_begin: {:?}", self.swipe_gesture);
+        if evt.fingers() == 4 && !self.is_pinching {
+            self.is_expose_swiping = true;
+        }
         if evt.fingers() == 3 && !self.is_pinching {
-            self.is_swiping = true;
+            self.is_workspace_swiping = true;
         }
         // self.background_view.set_debug_text(format!("on_gesture_swipe_begin: {:?}", self.swipe_gesture));
 
@@ -1368,10 +1371,9 @@ impl ScreenComposer<UdevData> {
 
     fn on_gesture_swipe_update<B: InputBackend>(&mut self, evt: B::GestureSwipeUpdateEvent) {
         let pointer = self.pointer.clone();
-        let multiplier = 800.0;
+        let multiplier = 500.0;
         let delta = evt.delta_y() as f32 / multiplier;
-
-        if self.is_swiping {
+        if self.is_expose_swiping {
             self.workspaces.expose_show_all(-delta, false);
         }
         pointer.gesture_swipe_update(
@@ -1387,9 +1389,9 @@ impl ScreenComposer<UdevData> {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
 
-        if self.is_swiping {
+        if self.is_expose_swiping {
             self.workspaces.expose_show_all(0.0, true);
-            self.is_swiping = false;
+            self.is_expose_swiping = false;
         }
         pointer.gesture_swipe_end(
             self,
@@ -1405,7 +1407,7 @@ impl ScreenComposer<UdevData> {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
 
-        if evt.fingers() == 4 && !self.is_swiping {
+        if evt.fingers() == 5 && !self.is_expose_swiping {
             self.is_pinching = true;
         }
 

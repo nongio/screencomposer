@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use lay_rs::prelude::{Layer, Transition};
+use lay_rs::prelude::{Layer, Transition, taffy};
 use smithay::{
     desktop::{
         find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
@@ -51,11 +51,25 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         // the surface is not already configured
 
         let window_layer = self.layers_engine.new_layer();
-        let mirror_layer = self.layers_engine.new_layer();
+        let expose_mirror_layer = self.layers_engine.new_layer();
+
+        expose_mirror_layer.set_draw_content(window_layer.as_content());
+        expose_mirror_layer.set_picture_cached(false);
+        expose_mirror_layer.set_key(format!(
+            "mirror_window_{}",
+            window_layer.id.0
+        ));
+        expose_mirror_layer.set_layout_style(taffy::Style {
+            position: taffy::Position::Absolute,
+            ..Default::default()
+        });
+        window_layer.add_follower_node(&expose_mirror_layer);
+
+
         let window_element = WindowElement::new(
             Window::new_wayland_window(surface.clone()),
-            window_layer.clone(),
-            mirror_layer.clone(),
+            window_layer,
+            expose_mirror_layer,
         );
         let pointer_location = self.pointer.current_location();
 

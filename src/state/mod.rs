@@ -2,8 +2,7 @@ use std::{
     collections::{HashMap, VecDeque},
     fmt::Debug,
     sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, atomic::{AtomicBool, Ordering}
     },
     time::Duration,
 };
@@ -186,7 +185,8 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub layers_engine: Arc<Engine>,
 
     pub show_desktop: bool,
-    pub is_swiping: bool,
+    pub is_expose_swiping: bool,
+    pub is_workspace_swiping: bool,
     pub is_pinching: bool,
     pub is_resizing: bool,
 }
@@ -415,7 +415,8 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
 
             show_desktop: false,
             // support variables for gestures
-            is_swiping: false,
+            is_expose_swiping: false,
+            is_workspace_swiping: false,
             is_pinching: false,
             is_resizing: false,
         };
@@ -765,6 +766,8 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 window_view
                     .view_content
                     .update_state(&render_elements.into());
+
+                self.workspaces.expose_update_if_needed();
             }
         }
     }
