@@ -350,7 +350,7 @@ impl WindowSelectorView {
         }
     }
 
-    fn try_activate_drag(&self, pointer_location: (f32, f32)) -> Option<ObjectId> {
+    fn try_activate_drag<Backend: crate::state::Backend>(&self, pointer_location: (f32, f32), screencomposer: &crate::ScreenComposer<Backend>) -> Option<ObjectId> {
         // If already dragging, return the current window_id
         if self.drag_state.read().unwrap().is_some() {
             return self.drag_state.read().unwrap()
@@ -358,10 +358,37 @@ impl WindowSelectorView {
                 .map(|s| s.window_id.clone());
         }
         
+        // Do not allow dragging when the current workspace is fullscreen
+        if screencomposer
+            .workspaces
+            .get_current_workspace()
+            .get_fullscreen_mode()
+        {
+            return None;
+        }
+
         let selection = self.pressed_selection.read().unwrap().clone();
         let Some(selection) = selection else {
             return None;
         };
+
+        if let Some(window_id) = &selection.window_id {
+            let window_in_space = screencomposer
+                .workspaces
+                .space()
+                .elements()
+                .any(|w| w.id() == *window_id);
+
+            if !window_in_space {
+                return None;
+            }
+
+            if let Some(window) = screencomposer.workspaces.windows_map.get(window_id) {
+                if window.is_fullscreen() {
+                    return None;
+                }
+            }
+        }
         let window_layer = selection
             .window_id
             .as_ref()
@@ -699,7 +726,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
     fn on_motion(
         &self,
         _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-        data: &mut crate::ScreenComposer<Backend>,
+        screencomposer: &mut crate::ScreenComposer<Backend>,
         event: &smithay::input::pointer::MotionEvent,
     ) {
         // println!("on_motion");
@@ -715,7 +742,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
             self.update_drag_position(cursor_point);
             
             // Check if dragged window intersects with any workspace preview drop target
-            let drop_targets = data.workspaces.workspace_selector_view.get_drop_targets();
+            let drop_targets = screencomposer.workspaces.workspace_selector_view.get_drop_targets();
             let mut new_drop_target = None;
             
             // Get the dragged window's bounds
@@ -723,7 +750,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                 let drag_bounds = drag_state.window_layer.render_bounds_transformed();
                 
                 for target in drop_targets {
-                    if target.workspace_index == data.workspaces.get_current_workspace_index() + 1 {
+                    if target.workspace_index == screencomposer.workspaces.get_current_workspace_index() + 1 {
                         continue; // Skip current workspace
                     }
                     // Use Skia's intersect to check if drag bounds overlap with drop target
@@ -740,7 +767,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                 if let Some(drag_state) = self.drag_state.write().unwrap().as_mut() {
                     drag_state.current_drop_target = new_drop_target;
                 }
-                data.workspaces.workspace_selector_view.set_drop_hover(new_drop_target);
+                screencomposer.workspaces.workspace_selector_view.set_drop_hover(new_drop_target);
             }
             
             return;
@@ -756,11 +783,11 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                     let delta_x = (cursor_point.0 - start.0).abs();
                     let delta_y = (cursor_point.1 - start.1).abs();
                     if delta_x >= drag_threshold || delta_y >= drag_threshold {
-                        if let Some(window_id) = self.try_activate_drag(cursor_point) {
-                            data.workspaces.start_window_selector_drag(&window_id);
+                        if let Some(window_id) = self.try_activate_drag(cursor_point, screencomposer) {
+                            screencomposer.workspaces.start_window_selector_drag(&window_id);
                             self.update_drag_position(cursor_point);
                             let cursor = CursorImageStatus::Named(CursorIcon::Move);
-                            data.set_cursor(&cursor);
+                            screencomposer.set_cursor(&cursor);
                             return;
                         }
                     }
@@ -780,11 +807,11 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                     // println!("Found rect {:?}", rect);
                     state.current_selection = Some(rect.index);
                     let cursor = CursorImageStatus::Named(CursorIcon::Pointer);
-                    data.set_cursor(&cursor);
+                    screencomposer.set_cursor(&cursor);
                     true
                 } else {
                     let cursor = CursorImageStatus::Named(CursorIcon::default());
-                    data.set_cursor(&cursor);
+                    screencomposer.set_cursor(&cursor);
                     false
                 }
             })
