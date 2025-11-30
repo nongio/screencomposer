@@ -1607,6 +1607,12 @@ impl Workspaces {
         });
 
         if n < self.spaces.len() {
+            if let Some(ws) = self.get_workspace_at(n) {
+                if ws.get_fullscreen_mode() {
+                    // Do not remove a fullscreen workspace
+                    return;
+                }
+            }
             // move all windows to previous workspace
             let space_to_remove = self.spaces.remove(n);
             for e in space_to_remove.elements() {
