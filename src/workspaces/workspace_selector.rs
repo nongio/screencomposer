@@ -464,8 +464,8 @@ impl Observer<WorkspacesModel> for WorkspaceSelectorView {
                 name: format!("Bench {}", i),
                 index: w.index,
                 workspace_node: Some(w.workspace_layer.id()),
-                workspace_width: w.workspace_layer.render_size_transformed().x,
-                workspace_height: w.workspace_layer.render_size_transformed().y,
+                workspace_width: model.width as f32,
+                workspace_height: model.height as f32,
             })
             .collect();
         state.current = model.current_workspace;
