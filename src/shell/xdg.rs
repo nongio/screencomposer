@@ -608,8 +608,11 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 self.workspaces.set_window_view(&id, view);
             }
 
-            self.workspaces.minimize_window(&window);
-            self.set_keyboard_focus_on_surface(&id);
+            let next_focus = self.workspaces.minimize_window(&window);
+            match next_focus {
+                Some(wid) => self.set_keyboard_focus_on_surface(&wid),
+                None => self.clear_keyboard_focus(),
+            }
         }
 
         // The protocol demands us to always reply with a configure,

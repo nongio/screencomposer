@@ -853,7 +853,7 @@ impl Workspaces {
     }
 
     /// Minimise a WindowElement
-    pub fn minimize_window(&mut self, we: &WindowElement) {
+    pub fn minimize_window(&mut self, we: &WindowElement) -> Option<ObjectId> {
         let id = we.id();
 
         if let Some(window) = self.windows_map.get_mut(&id) {
@@ -901,38 +901,33 @@ impl Workspaces {
 
             self.notify_observers(model);
         });
-        we.set_activate(false);
 
-        // ideally we set the focus to the next (non-minimized) window in the stack
+        // Focus should move to the next topmost (non-minimized) window or to none.
         let index = self.with_model(|m| m.current_workspace);
-        let windows: Vec<_> = self.spaces[index]
+        let next = self.spaces[index]
             .elements()
-            .filter_map(|e| {
+            .rev()
+            .find_map(|e| {
                 let id = e.id();
                 if let Some(window) = self.windows_map.get(&id) {
-                    if window.is_minimised() {
+                    if window.is_minimised() || window.id() == we.id() {
                         return None;
                     }
                 }
                 Some(id)
-            })
-            .collect();
+            });
 
-        let win_len = windows.len();
-        if win_len <= 1 {
-            return;
-        }
-
-        for (i, wid) in windows.iter().enumerate() {
-            let activate = i == win_len - 2;
-            // if !wid.is_minimized {
-            self.raise_element(wid, activate, false);
-            // }
+        if let Some(next_id) = next {
+            // Raise and activate the next topmost window
+            self.raise_element(&next_id, true, true);
+            Some(next_id)
+        } else {
+            None
         }
     }
 
     /// Unminimise a WindowElement
-    pub fn unminimize_window(&mut self, wid: &ObjectId) {
+    pub fn unminimize_window(&mut self, wid: &ObjectId) -> Option<ObjectId> {
         let workspace_for_window = self.with_model(|model| {
             model
                 .workspaces
@@ -941,33 +936,34 @@ impl Workspaces {
         });
         if workspace_for_window.is_none() {
             tracing::warn!("Trying to unminimize a window that is not in any workspace: {}", wid);
-            return;
+            return None;
         }
         let workspace_for_window = workspace_for_window.unwrap();
         let current_workspace_index = self.get_current_workspace_index();
 
         let ctx = match self.build_unminimize_context(wid) {
             Some(ctx) => ctx,
-            None => return,
+            None => return None,
         };
 
         if workspace_for_window != current_workspace_index {
             if let Some(tr) = self.set_current_workspace_index(
                 workspace_for_window,
                 Some(Transition::ease_out_quad(0.2)),
-            ) {
-                let ctx_clone = ctx.clone();
-                tr.on_finish(
-                    move |_: &Layer, _: f32| {
-                        ctx_clone.run();
-                    },
-                    true,
-                );
-                return;
-            }
+                ) {
+                    let ctx_clone = ctx.clone();
+                    tr.on_finish(
+                        move |_: &Layer, _: f32| {
+                            ctx_clone.run();
+                        },
+                        true,
+                    );
+                    return Some(ctx.wid.clone());
+                }
         }
 
         self.unminimize_window_in_workspace(ctx);
+        Some(wid.clone())
     }
 
     fn unminimize_window_in_workspace(&self, ctx: UnminimizeContext) {
@@ -1854,7 +1850,6 @@ impl UnminimizeContext {
             view.mirror_layer.set_hidden(false);
         }
 
-        window.set_activate(true);
         workspace.map_window(&window, (pos_logical.0, pos_logical.1).into());
 
         crate::utils::notify_observers(&observers, &event);

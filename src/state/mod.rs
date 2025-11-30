@@ -853,6 +853,13 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             keyboard.set_focus(self, Some(window.clone().into()), serial);
         }
     }
+
+    pub fn clear_keyboard_focus(&mut self) {
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            let serial = SERIAL_COUNTER.next_serial();
+            keyboard.set_focus(self, None, serial);
+        }
+    }
 }
 
 fn build_keycode_remap_map(keymap: &xkb::Keymap, remaps: &[(Keysym, Keysym)]) -> HashMap<u32, u32> {
