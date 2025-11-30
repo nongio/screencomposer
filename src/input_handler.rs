@@ -1407,9 +1407,9 @@ impl ScreenComposer<UdevData> {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
 
-        if evt.fingers() == 5 && !self.is_expose_swiping {
-            self.is_pinching = true;
-        }
+        // if evt.fingers() == 5 && !self.is_expose_swiping {
+            // self.is_pinching = true;
+        // }
 
         pointer.gesture_pinch_begin(
             self,
@@ -1434,10 +1434,10 @@ impl ScreenComposer<UdevData> {
         //     x: delta,//(self.pinch_gesture.x - delta),
         //     y: delta,//(self.pinch_gesture.y - delta),
         // };
-        if self.is_pinching {
+        // if self.is_pinching {
             // self.background_view.set_debug_text(format!("on_gesture_pinch_update: {:?}", delta));
-            self.workspaces.expose_show_desktop(delta, false);
-        }
+            // self.workspaces.expose_show_desktop(delta, false);
+        // }
         pointer.gesture_pinch_update(
             self,
             &GesturePinchUpdateEvent {
