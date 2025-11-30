@@ -604,9 +604,6 @@ pub fn view_window_selector(
         .build()
         .unwrap()
 }
-impl Observer<WorkspacesModel> for WindowSelectorView {
-    fn notify(&self, _workspaces: &WorkspacesModel) {}
-}
 
 impl WindowSelectorView {
     fn compute_layout_hash(

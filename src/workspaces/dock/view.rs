@@ -759,10 +759,13 @@ impl DockView {
         }
 
         let miniwindow_layers = self.miniwindow_layers.read().unwrap();
+        let miniwindow_start_index = display_apps.len();
 
         for (index, (win, _title)) in state.minimized_windows.iter().enumerate() {
             if let Some((layer, ..)) = miniwindow_layers.get(win) {
-                let index = index + state.running_apps.len();
+                // Use the number of dock entries we actually render (launchers + running)
+                // so minimized window magnification lines up with their on-screen order.
+                let index = index + miniwindow_start_index;
                 let icon_pos = 1.0 / tot_elements * index as f32 + 1.0 / (tot_elements * 2.0);
                 let icon_focus = 1.0 + magnify_function(focus - icon_pos) * genie_scale;
                 let focused_icon_size = icon_size * icon_focus as f32;

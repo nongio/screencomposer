@@ -8,7 +8,7 @@ use std::{
 
 use apps_info::Application;
 use lay_rs::{
-    engine::Engine,
+    engine::{Engine, TransactionRef},
     prelude::{taffy, Interpolate, Layer, Spring, TimingFunction, Transition},
     skia::{self, Contains},
     types::Size,
@@ -77,6 +77,7 @@ pub struct WorkspacesModel {
     pub height: i32,
     pub scale: f64,
 }
+
 
 pub struct Workspaces {
     model: Arc<RwLock<WorkspacesModel>>,
@@ -871,6 +872,10 @@ impl Workspaces {
                     position: taffy::Position::Absolute,
                     ..Default::default()
                 });
+
+                // Hide mirror layer so it won't appear in expose
+                view.mirror_layer.set_hidden(true);
+
                 self.layers_engine
                     .add_layer_to_positioned(view.window_layer.clone(), Some(drawer.id));
                 // bounds are calculate after this call
@@ -878,16 +883,17 @@ impl Workspaces {
                 view.minimize(skia::Rect::from_xywh(
                     drawer_bounds.x(),
                     drawer_bounds.y(),
-                    130.0,
-                    130.0,
+                    drawer_bounds.width(),
+                    drawer_bounds.height(),
                 ));
 
                 let view_ref = view.clone();
+                drawer.clear_on_change_size_handlers();
                 drawer.on_change_size(
                     move |layer: &Layer, _| {
                         let bounds = layer.render_bounds_transformed();
-                        view_ref.genie_effect.set_destination(bounds);
-                        view_ref.genie_effect.apply();
+                        // Keep the minimized window scaled to the drawer bounds
+                        view_ref.apply_minimized_scale(bounds);
                     },
                     false,
                 );
@@ -897,15 +903,25 @@ impl Workspaces {
         });
         we.set_activate(false);
 
-        // ideally we set the focus to the next window in the stack
-        let windows = self.spaces_elements();
+        // ideally we set the focus to the next (non-minimized) window in the stack
+        let index = self.with_model(|m| m.current_workspace);
+        let windows: Vec<_> = self.spaces[index]
+            .elements()
+            .filter_map(|e| {
+                let id = e.id();
+                if let Some(window) = self.windows_map.get(&id) {
+                    if window.is_minimised() {
+                        return None;
+                    }
+                }
+                Some(id)
+            })
+            .collect();
 
-        let win_len = windows.count();
+        let win_len = windows.len();
         if win_len <= 1 {
             return;
         }
-        let index = self.with_model(|m| m.current_workspace);
-        let windows: Vec<_> = self.spaces[index].elements().map(|e| e.id()).collect();
 
         for (i, wid) in windows.iter().enumerate() {
             let activate = i == win_len - 2;
@@ -917,80 +933,77 @@ impl Workspaces {
 
     /// Unminimise a WindowElement
     pub fn unminimize_window(&mut self, wid: &ObjectId) {
-        let event = self.with_model_mut(|model| {
-            model.minimized_windows.retain(|(w, _title)| w != wid);
-            model.clone()
+        let workspace_for_window = self.with_model(|model| {
+            model
+                .workspaces
+                .iter()
+                .position(|ws| ws.windows_list.read().unwrap().contains(wid))
         });
+        if workspace_for_window.is_none() {
+            tracing::warn!("Trying to unminimize a window that is not in any workspace: {}", wid);
+            return;
+        }
+        let workspace_for_window = workspace_for_window.unwrap();
+        let current_workspace_index = self.get_current_workspace_index();
+
+        let ctx = match self.build_unminimize_context(wid) {
+            Some(ctx) => ctx,
+            None => return,
+        };
+
+        if workspace_for_window != current_workspace_index {
+            if let Some(tr) = self.set_current_workspace_index(
+                workspace_for_window,
+                Some(Transition::ease_out_quad(0.2)),
+            ) {
+                let ctx_clone = ctx.clone();
+                tr.on_finish(
+                    move |_: &Layer, _: f32| {
+                        ctx_clone.run();
+                    },
+                    true,
+                );
+                return;
+            }
+        }
+
+        self.unminimize_window_in_workspace(ctx);
+    }
+
+    fn unminimize_window_in_workspace(&self, ctx: UnminimizeContext) {
+        ctx.run();
+    }
+
+    fn build_unminimize_context(&self, wid: &ObjectId) -> Option<UnminimizeContext> {
         let scale = Config::with(|c| c.screen_scale) as f32;
-        if let Some((index, space)) = self
+        let (index, space) = self
             .spaces
             .iter()
             .enumerate()
-            .find(|(_, space)| space.elements().any(|e| e.id() == *wid))
-        {
-            let workspace = event.workspaces[index].clone();
-            let window = self.get_window_for_surface(wid).unwrap();
-            let window_geometry = space.element_geometry(window).unwrap();
-            let pos_x = window_geometry.loc.x;
-            let pos_y = window_geometry.loc.y;
-            let layer_pos_x = pos_x as f32 * scale;
-            let layer_pos_y = pos_y as f32 * scale;
-            if let Some(window) = self.windows_map.get_mut(wid) {
-                window.set_is_minimised(false);
-            }
-            if let Some(view) = self.get_window_view(wid) {
-                if let Some(drawer) = self.dock.remove_window_element(wid) {
-                    let engine_ref = self.layers_engine.clone();
+            .find(|(_, space)| space.elements().any(|e| e.id() == *wid))?;
 
-                    let windows_layer_ref = workspace.windows_layer.clone();
-                    let layer_ref = view.window_layer.clone();
-                    self.layers_engine.update(0.0);
+        let workspace = self.with_model(|m| m.workspaces[index].clone());
+        let window = self.get_window_for_surface(wid)?.clone();
+        let view = self.get_window_view(wid)?;
+        let window_geometry = space.element_geometry(&window)?;
+        let pos_x = window_geometry.loc.x;
+        let pos_y = window_geometry.loc.y;
+        let layer_pos_x = pos_x as f32 * scale;
+        let layer_pos_y = pos_y as f32 * scale;
 
-                    let drawer_bounds = drawer.render_bounds_transformed();
-
-                    // close dock drawer animation
-                    // on start animation move the window to the workspace
-
-                    drawer
-                        .set_size(
-                            Size::points(0.0, 130.0),
-                            Transition {
-                                delay: 0.2,
-                                timing: TimingFunction::ease_out_quad(0.3),
-                            },
-                        )
-                        .on_start(
-                            move |_layer: &Layer, _| {
-                                layer_ref.remove_draw_content();
-                                engine_ref.add_layer_to_positioned(
-                                    layer_ref.clone(),
-                                    Some(windows_layer_ref.id),
-                                );
-                                layer_ref.set_position(
-                                    (layer_pos_x, layer_pos_y),
-                                    Transition::ease_out(0.3),
-                                );
-                            },
-                            true,
-                        )
-                        .then(move |layer: &Layer, _| {
-                            layer.remove();
-                        });
-
-                    view.unminimize(drawer_bounds);
-
-                    if let Some(window) = self.get_window_for_surface(wid).cloned() {
-                        window.set_activate(true);
-                        //     window.set_activate(true);
-                        //     self.map_element(window.clone(), (pos_x as i32, pos_y as i32), true);
-                        // self.map_element(window.clone(), (pos_x as i32, pos_y as i32), true);
-                    }
-                }
-            }
-
-            // let event = model.clone();
-            self.notify_observers(&event);
-        }
+        Some(UnminimizeContext {
+            wid: wid.clone(),
+            workspace,
+            window,
+            view,
+            dock: self.dock.clone(),
+            layers_engine: self.layers_engine.clone(),
+            expose_layer: self.expose_layer.clone(),
+            model: self.model.clone(),
+            observers: self.observers.clone(),
+            layer_pos: (layer_pos_x, layer_pos_y),
+            pos_logical: (pos_x, pos_y),
+        })
     }
 
     // Helpers / Windows Management
@@ -1598,6 +1611,14 @@ impl Workspaces {
             let space_to_remove = self.spaces.remove(n);
             for e in space_to_remove.elements() {
                 let location = space_to_remove.element_location(e).unwrap_or_default();
+                // Drop fullscreen state so the window restores to its normal size on the target workspace
+                if e.is_fullscreen() {
+                    e.set_fullscreen(false, workspace_model.current_workspace);
+                    
+                    if let Some(ws) = self.get_workspace_at(workspace_model.current_workspace) {
+                        ws.set_fullscreen_mode(false);
+                    }
+                }
                 self.move_window_to_workspace(e, workspace_model.current_workspace, location);
             }
         }
@@ -1617,9 +1638,9 @@ impl Workspaces {
     pub fn get_current_workspace_index(&self) -> usize {
         self.with_model(|m| m.current_workspace)
     }
-    pub fn set_current_workspace_index(&mut self, i: usize, transition: Option<Transition>) {
+    pub fn set_current_workspace_index(&mut self, i: usize, transition: Option<Transition>) -> Option<TransactionRef> {
         if i > self.spaces.len() - 1 {
-            return;
+            return None;
         }
         self.with_model_mut(|m| {
             if i > m.workspaces.len() - 1 {
@@ -1628,10 +1649,10 @@ impl Workspaces {
             m.current_workspace = i;
         });
         self.update_workspace_model();
-        self.scroll_to_workspace_index(i, transition);
+        self.scroll_to_workspace_index(i, transition)
     }
     /// Scroll to the workspace at index i, default transition is 1.0s spring
-    fn scroll_to_workspace_index(&self, i: usize, transition: Option<Transition>) {
+    fn scroll_to_workspace_index(&self, i: usize, transition: Option<Transition>) -> Option<TransactionRef> {
         let transition = transition.unwrap_or(Transition {
             delay: 0.0,
             timing: TimingFunction::Spring(Spring::with_duration_and_bounce(1.0, 0.1)),
@@ -1659,7 +1680,7 @@ impl Workspaces {
             }
         }
 
-        self.apply_scroll_offset(x, Some(transition));
+        self.apply_scroll_offset(x, Some(transition))
     }
 
     // Space management
@@ -1668,9 +1689,13 @@ impl Workspaces {
         self.space().outputs_for_element(element)
     }
 
-    fn apply_scroll_offset(&self, offset: f32, transition: Option<Transition>) {
+    fn apply_scroll_offset(
+        &self,
+        offset: f32,
+        transition: Option<Transition>,
+    ) -> Option<TransactionRef> {
         if !offset.is_finite() {
-            return;
+            return None;
         }
         if let Some(transition) = &transition {
             let animation = self
@@ -1680,10 +1705,14 @@ impl Workspaces {
             let change1 = self.workspaces_layer.change_position((-offset, 0.0));
             let change2 = self.expose_layer.change_position((-offset, 0.0));
             let changes = vec![change1, change2];
-            self.workspaces_layer
+            return self
+                .workspaces_layer
                 .engine
-                .schedule_changes(&changes, animation);
+                .schedule_changes(&changes, animation)
+                .into_iter()
+                .next();
         }
+        None
     }
 
     pub fn element_under(
@@ -1739,6 +1768,90 @@ impl Workspaces {
         self.spaces
             .iter()
             .position(|space| space.elements().any(|e| e.id() == element.id()))
+    }
+}
+
+#[derive(Clone)]
+struct UnminimizeContext {
+    wid: ObjectId,
+    workspace: Arc<WorkspaceView>,
+    window: WindowElement,
+    view: WindowView,
+    dock: Arc<DockView>,
+    layers_engine: Arc<Engine>,
+    expose_layer: Layer,
+    model: Arc<RwLock<WorkspacesModel>>,
+    observers: Vec<Weak<dyn Observer<WorkspacesModel>>>,
+    layer_pos: (f32, f32),
+    pos_logical: (i32, i32),
+}
+
+impl UnminimizeContext {
+    fn run(&self) {
+        let wid = self.wid.clone();
+        let workspace = self.workspace.clone();
+        let window = self.window.clone();
+        let view = self.view.clone();
+        let dock = self.dock.clone();
+        let layers_engine = self.layers_engine.clone();
+        let expose_layer = self.expose_layer.clone();
+        let model = self.model.clone();
+        let observers = self.observers.clone();
+        let layer_pos = self.layer_pos;
+        let pos_logical = self.pos_logical;
+
+        let event = {
+            let mut model = model.write().unwrap();
+            model.minimized_windows.retain(|(w, _title)| w != &wid);
+            model.clone()
+        };
+
+        window.set_is_minimised(false);
+
+        if let Some(drawer) = dock.remove_window_element(&wid) {
+            let windows_layer_ref = workspace.windows_layer.clone();
+            let expose_windows_ref = expose_layer.clone();
+            let layer_ref = view.window_layer.clone();
+            let mirror_ref = view.mirror_layer.clone();
+            let target_pos = layer_pos;
+            layer_ref.set_hidden(true);
+            mirror_ref.set_hidden(true);
+
+            layers_engine.update(0.0);
+
+            let drawer_bounds = drawer.render_bounds_transformed();
+
+            drawer
+                .set_size(
+                    Size::points(0.0, 130.0),
+                    Transition {
+                        delay: 0.2,
+                        timing: TimingFunction::ease_out_quad(0.3),
+                    },
+                )
+                .on_start(
+                    move |_layer: &Layer, _| {
+                        layer_ref.remove_draw_content();
+                        windows_layer_ref.add_sublayer(&layer_ref);
+                        expose_windows_ref.add_sublayer(&mirror_ref);
+                        layer_ref.set_position(target_pos, None);
+                    },
+                    true,
+                )
+                .then(move |layer: &Layer, _| {
+                    layer.remove();
+                });
+
+            view.unminimize(drawer_bounds);
+
+            // Make sure the mirror layer is visible again for expose
+            view.mirror_layer.set_hidden(false);
+        }
+
+        window.set_activate(true);
+        workspace.map_window(&window, (pos_logical.0, pos_logical.1).into());
+
+        crate::utils::notify_observers(&observers, &event);
     }
 }
 
