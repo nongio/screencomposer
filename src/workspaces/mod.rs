@@ -14,7 +14,7 @@ use lay_rs::{
     types::Size,
 };
 use smithay::{
-    desktop::{layer_map_for_output, space::SpaceElement, Space, WindowSurface},
+    desktop::{layer_map_for_output, Space, WindowSurface},
     output::Output,
     reexports::wayland_server::{backend::ObjectId, Resource},
     utils::{IsAlive, Rectangle},
@@ -749,7 +749,7 @@ impl Workspaces {
         let mut new_gesture = gesture + (delta * MULTIPLIER) as i32;
         let show_desktop = self.get_show_desktop();
 
-        let model = self.model.read().unwrap();
+        let _model = self.model.read().unwrap();
 
         if end_gesture {
             if show_desktop {
@@ -1822,7 +1822,7 @@ impl UnminimizeContext {
             layers_engine.update(0.0);
 
             let drawer_bounds = drawer.render_bounds_transformed();
-
+            drawer.clear_on_change_size_handlers();
             drawer
                 .set_size(
                     Size::points(0.0, 130.0),
