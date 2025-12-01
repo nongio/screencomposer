@@ -1623,6 +1623,11 @@ impl Workspaces {
                 }
                 self.move_window_to_workspace(e, workspace_model.current_workspace, location);
             }
+
+            // If expose is visible, rebuild its layout to reflect the moved windows
+            if self.get_show_all() {
+                self.expose_update_if_needed_workspace(workspace_model.current_workspace);
+            }
         }
         self.update_workspaces_layout();
         self.scroll_to_workspace_index(workspace_model.current_workspace, None);
@@ -1639,6 +1644,13 @@ impl Workspaces {
 
     pub fn get_current_workspace_index(&self) -> usize {
         self.with_model(|m| m.current_workspace)
+    }
+
+    /// Given a workspace view index (WorkspaceView.index), return its current
+    /// position in the workspaces vector (zero-based). Useful when external
+    /// components keep the view index while the internal ordering may change.
+    pub fn workspace_position_by_view_index(&self, workspace_index: usize) -> Option<usize> {
+        self.with_model(|m| m.workspaces.iter().position(|ws| ws.index == workspace_index))
     }
     pub fn set_current_workspace_index(&mut self, i: usize, transition: Option<Transition>) -> Option<TransactionRef> {
         if i > self.spaces.len() - 1 {
