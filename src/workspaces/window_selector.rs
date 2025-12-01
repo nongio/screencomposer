@@ -228,6 +228,24 @@ impl WindowSelectorView {
         self.windows_layer.add_sublayer(layer);
         self.windows.write().unwrap().insert(window_id, layer.clone());
     }
+
+    /// Ensure the window preview layers keep the same stacking order
+    /// as the current selector state, useful after a drag is cancelled.
+    fn restore_layer_order_from_state(&self) {
+        let state = self.view.get_state();
+        let windows = self.windows.read().unwrap();
+        for window_id in state
+            .rects
+            .iter()
+            .filter_map(|r| r.window_id.as_ref())
+        {
+            if let Some(layer) = windows.get(window_id) {
+                // Re-append in state order; append detaches first, so this
+                // effectively reorders the siblings without changing parents.
+                self.windows_layer.add_sublayer(layer);
+            }
+        }
+    }
     /// remove the window from the windows map
     /// and remove the layer from windows_layer
     pub fn unmap_window(&self, window_id: &ObjectId) -> Option<Layer> {
@@ -878,6 +896,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                         } else {
                             // No drop target - restore to original position
                             self.restore_rect_to_state(drag_state.selection.clone());
+                            self.restore_layer_order_from_state();
                             screencomposer.workspaces.end_window_selector_drag(&drag_state.window_id);
                             screencomposer.workspaces.expose_update_if_needed();
                         }
