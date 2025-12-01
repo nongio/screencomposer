@@ -682,9 +682,15 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     self.backend_data.reset_buffers(&output);
                 }
                 KeyAction::ApplicationSwitchNext => {
+                    if self.workspaces.get_show_all() {
+                        self.workspaces.expose_show_all(-1.0, true);
+                    }
                     self.workspaces.app_switcher.next();
                 }
                 KeyAction::ApplicationSwitchPrev => {
+                    if self.workspaces.get_show_all() {
+                        self.workspaces.expose_show_all(-1.0, true);
+                    }
                     self.workspaces.app_switcher.previous();
                 }
                 KeyAction::ApplicationSwitchQuit => {
@@ -946,9 +952,15 @@ impl ScreenComposer<UdevData> {
                     }
                 }
                 KeyAction::ApplicationSwitchNext => {
+                    if self.workspaces.get_show_all() {
+                        self.workspaces.expose_show_all(-1.0, true);
+                    }
                     self.workspaces.app_switcher.next();
                 }
                 KeyAction::ApplicationSwitchPrev => {
+                    if self.workspaces.get_show_all() {
+                        self.workspaces.expose_show_all(-1.0, true);
+                    }
                     self.workspaces.app_switcher.previous();
                 }
                 KeyAction::ApplicationSwitchNextWindow => {
