@@ -765,7 +765,18 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                 let drag_bounds = drag_state.window_layer.render_bounds_transformed();
                 
                 for target in drop_targets {
-                    if target.workspace_index == screencomposer.workspaces.get_current_workspace_index() + 1 {
+                    // Map view index to workspace position
+                    let Some(target_pos) = screencomposer
+                        .workspaces
+                        .workspace_position_by_view_index(target.workspace_index)
+                    else {
+                        tracing::warn!(
+                            "Expose drop hover: workspace view index {} not found",
+                            target.workspace_index
+                        );
+                        continue;
+                    };
+                    if target_pos == screencomposer.workspaces.get_current_workspace_index() {
                         continue; // Skip current workspace
                     }
                     // Use Skia's intersect to check if drag bounds overlap with drop target
@@ -872,8 +883,30 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                         screencomposer.workspaces.workspace_selector_view.set_drop_hover(None);
                         
                         if let Some(target_workspace) = drop_target {
+                            tracing::info!(
+                                "Expose drop: moving window {:?} to workspace {}",
+                                drag_state.window_id,
+                                target_workspace
+                            );
+                            let target_pos = screencomposer
+                                .workspaces
+                                .workspace_position_by_view_index(target_workspace);
+                            if target_pos.is_none() {
+                                tracing::warn!(
+                                    "Expose drop: workspace {} not found, restoring window {:?}",
+                                    target_workspace,
+                                    drag_state.window_id
+                                );
+                            }
                             // Drop window onto target workspace
-                            if let Some(window_element) = screencomposer.workspaces.windows_map.get(&drag_state.window_id).cloned() {
+                            if let (Some(window_element), Some(target_pos)) = (
+                                screencomposer
+                                    .workspaces
+                                    .windows_map
+                                    .get(&drag_state.window_id)
+                                    .cloned(),
+                                target_pos,
+                            ) {
                                 // Get position in current workspace before moving
                                 let position = screencomposer.workspaces.space().element_location(&window_element).unwrap_or_default();
                                 
@@ -884,16 +917,24 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                                 // Note: unmap_window no longer removes the mirror layer to avoid SlotMap key issues
                                 screencomposer.workspaces.move_window_to_workspace(
                                     &window_element,
-                                    target_workspace - 1,
+                                    target_pos,
                                     position,
                                 );
                                 
                                 // Refresh expose view - this will rebuild the layout with updated state
                                 screencomposer.workspaces.expose_show_all(1.0, true);
                             } else {
+                                tracing::warn!(
+                                    "Expose drop: window {:?} not found in windows_map, ending drag only",
+                                    drag_state.window_id
+                                );
                                 screencomposer.workspaces.end_window_selector_drag(&drag_state.window_id);
                             }
                         } else {
+                            tracing::info!(
+                                "Expose drop: no target workspace, restoring window {:?} to original position",
+                                drag_state.window_id
+                            );
                             // No drop target - restore to original position
                             self.restore_rect_to_state(drag_state.selection.clone());
                             self.restore_layer_order_from_state();
