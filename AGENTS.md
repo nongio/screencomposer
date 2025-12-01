@@ -2,6 +2,7 @@
 - A Wayland compositor built with Smithay.
 - Runs with one of the supported backends: udev (DRM/GBM), winit, or X11.
 - Provides a Wayland socket for clients to connect and standard protocols for windowing, input, and output management.
+- Expose mode design and flow are documented in `docs/expose.md`.
 
 ## Running the compositor
 - Select a backend via one of: `--tty-udev`, `--winit`, or `--x11`.
