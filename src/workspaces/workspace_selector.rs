@@ -574,9 +574,6 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WorkspaceSele
             None
         };
 
-        println!(
-            "Hovered key at button event: {:?}", hovered_key(&location)
-        );
         match event.state {
             ButtonState::Pressed => {
                 let mut pressed = self.pressed_action.write().unwrap();

@@ -1405,7 +1405,7 @@ impl Workspaces {
             .get_window_for_surface(wid)
             .map(|w| w.xdg_app_id())
             .unwrap_or_default();
-        tracing::info!("workspaces::focus_app_with_window {:?}", app_id);
+        tracing::trace!("workspaces::focus_app_with_window {:?}", app_id);
         let wid = self.raise_app_elements(&app_id, Some(wid));
         if wid.is_none() {
             // return early

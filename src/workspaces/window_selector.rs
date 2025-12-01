@@ -883,7 +883,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                         screencomposer.workspaces.workspace_selector_view.set_drop_hover(None);
                         
                         if let Some(target_workspace) = drop_target {
-                            tracing::info!(
+                            tracing::trace!(
                                 "Expose drop: moving window {:?} to workspace {}",
                                 drag_state.window_id,
                                 target_workspace
@@ -931,7 +931,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                                 screencomposer.workspaces.end_window_selector_drag(&drag_state.window_id);
                             }
                         } else {
-                            tracing::info!(
+                            tracing::trace!(
                                 "Expose drop: no target workspace, restoring window {:?} to original position",
                                 drag_state.window_id
                             );
