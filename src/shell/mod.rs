@@ -135,8 +135,22 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
         on_commit_buffer_handler::<Self>(surface);
         self.backend_data.early_import(surface);
 
-        if !is_sync_subsurface(surface) {
-            let mut root = surface.clone();
+        let sync = is_sync_subsurface(surface);
+
+        if !sync {
+            let parent_id = get_parent(surface).map(|p| p.id()).or_else(|| {
+                self.popups.find_popup(surface).and_then(|p| match p {
+                    PopupKind::Xdg(ref popup) => popup.get_parent_surface().map(|ps| ps.id()),
+                    PopupKind::InputMethod(ref popup) => {
+                        popup.get_parent().map(|parent| parent.surface.id())
+                    }
+                })
+            });
+
+            let mut root = parent_id
+                .as_ref()
+                .and_then(|id| WlSurface::from_id(&self.display_handle, id.clone()).ok())
+                .unwrap_or_else(|| surface.clone());
             while let Some(parent) = get_parent(&root) {
                 root = parent;
             }
@@ -151,6 +165,28 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
         ensure_initial_configure(surface, self);
         self.backend_data.request_redraw();
         self.schedule_event_loop_dispatch();
+    }
+    fn destroyed(&mut self, surface: &WlSurface) {
+        let parent_id = get_parent(surface).map(|p| p.id()).or_else(|| {
+            self.popups.find_popup(surface).and_then(|p| match p {
+                PopupKind::Xdg(ref popup) => popup.get_parent_surface().map(|ps| ps.id()),
+                PopupKind::InputMethod(ref popup) => {
+                    popup.get_parent().map(|parent| parent.surface.id())
+                }
+            })
+        });
+
+        let mut root = parent_id
+            .as_ref()
+            .and_then(|id| WlSurface::from_id(&self.display_handle, id.clone()).ok())
+            .unwrap_or_else(|| surface.clone());
+        while let Some(parent) = get_parent(&root) {
+            root = parent;
+        }
+        if let Some(window) = self.workspaces.get_window_for_surface(&root.id()).cloned() {
+            window.on_commit();
+            self.update_window_view(&window);
+        }
     }
 }
 

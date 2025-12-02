@@ -2,7 +2,8 @@ use std::{
     collections::{HashMap, VecDeque},
     fmt::Debug,
     sync::{
-        Arc, Mutex, atomic::{AtomicBool, Ordering}
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
     },
     time::Duration,
 };

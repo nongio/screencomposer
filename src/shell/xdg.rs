@@ -1,24 +1,21 @@
 use std::cell::RefCell;
 
-use lay_rs::prelude::{Layer, Transition, taffy};
+use lay_rs::prelude::{taffy, Layer, Transition};
 use smithay::{
     desktop::{
-        find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
-        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, Window, WindowSurface,
-        WindowSurfaceType,
+        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, Window, WindowSurface, WindowSurfaceType, find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output
     },
-    input::{pointer::Focus, Seat},
+    input::{Seat, pointer::Focus},
     output::Output,
     reexports::{
         wayland_protocols::xdg::{decoration as xdg_decoration, shell::server::xdg_toplevel},
         wayland_server::{
-            protocol::{wl_output, wl_seat, wl_surface::WlSurface},
-            Resource,
+            Resource, protocol::{wl_output, wl_seat, wl_surface::WlSurface}
         },
     },
     utils::{Logical, Serial},
     wayland::{
-        compositor::with_states,
+        compositor::{get_parent, with_states},
         seat::WaylandFocus,
         shell::xdg::{
             Configure, PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler,
@@ -55,10 +52,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
         expose_mirror_layer.set_draw_content(window_layer.as_content());
         expose_mirror_layer.set_picture_cached(false);
-        expose_mirror_layer.set_key(format!(
-            "mirror_window_{}",
-            window_layer.id.0
-        ));
+        expose_mirror_layer.set_key(format!("mirror_window_{}", window_layer.id.0));
         expose_mirror_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
             ..Default::default()
@@ -134,6 +128,20 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         }
     }
 
+    fn popup_destroyed(&mut self, popup_surface: PopupSurface) {
+        tracing::info!("SC::popup_destroyed surface={:?}", popup_surface.wl_surface().id());
+        popup_surface.get_parent_surface().and_then(|parent_surface| {
+            let mut root = parent_surface.clone();
+            while let Some(parent) = get_parent(&root) {
+                root = parent;
+            }
+            if let Some(window) = self.workspaces.get_window_for_surface(&root.id()).cloned() {
+                window.on_commit();
+                self.update_window_view(&window);
+            }
+            Some(())
+        });
+    }
     fn reposition_request(
         &mut self,
         surface: PopupSurface,
