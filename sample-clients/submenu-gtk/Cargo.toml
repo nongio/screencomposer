@@ -1,0 +1,12 @@
+[package]
+name = "submenu-gtk"
+version = "0.1.0"
+edition = "2021"
+authors = ["ScreenComposer Samples"]
+description = "GTK demo showing context menu with submenu"
+license = "MIT"
+publish = false
+
+[dependencies]
+anyhow = "1.0"
+gtk4 = { version = "0.7.3", package = "gtk4", features = ["v4_4"] }
