@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use smithay::xwayland::XWaylandClientData;
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
-    desktop::{layer_map_for_output, LayerSurface, PopupKind, WindowSurface, WindowSurfaceType},
+    desktop::{find_popup_root_surface, layer_map_for_output, LayerSurface, PopupKind, WindowSurface, WindowSurfaceType},
     output::Output,
     reexports::{
         calloop::Interest,
@@ -138,23 +138,38 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
         let sync = is_sync_subsurface(surface);
 
         if !sync {
-            let parent_id = get_parent(surface).map(|p| p.id()).or_else(|| {
-                self.popups.find_popup(surface).and_then(|p| match p {
-                    PopupKind::Xdg(ref popup) => popup.get_parent_surface().map(|ps| ps.id()),
-                    PopupKind::InputMethod(ref popup) => {
-                        popup.get_parent().map(|parent| parent.surface.id())
-                    }
+            // Find the root surface for this commit
+            // 1. Check popup cache first (O(1))
+            // 2. Try PopupManager for popups
+            // 3. Traverse subsurface hierarchy to find root
+            let root_id = self
+                .popup_root_cache
+                .get(&surface.id())
+                .cloned()
+                .or_else(|| {
+                    self.popups.find_popup(surface).and_then(|popup| {
+                        find_popup_root_surface(&popup).ok().map(|r| r.id())
+                    })
                 })
-            });
+                .or_else(|| {
+                    // Traverse subsurface hierarchy to find root
+                    let mut root = surface.clone();
+                    while let Some(parent) = get_parent(&root) {
+                        root = parent;
+                    }
+                    // Only return if we found a different root
+                    if root.id() != surface.id() {
+                        Some(root.id())
+                    } else {
+                        None
+                    }
+                });
 
-            let mut root = parent_id
-                .as_ref()
-                .and_then(|id| WlSurface::from_id(&self.display_handle, id.clone()).ok())
-                .unwrap_or_else(|| surface.clone());
-            while let Some(parent) = get_parent(&root) {
-                root = parent;
-            }
-            if let Some(window) = self.workspaces.get_window_for_surface(&root.id()).cloned() {
+            let window = root_id
+                .and_then(|id| self.workspaces.get_window_for_surface(&id).cloned())
+                .or_else(|| self.workspaces.get_window_for_surface(&surface.id()).cloned());
+
+            if let Some(window) = window {
                 window.on_commit();
                 self.update_window_view(&window);
             }
@@ -167,23 +182,38 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
         self.schedule_event_loop_dispatch();
     }
     fn destroyed(&mut self, surface: &WlSurface) {
-        let parent_id = get_parent(surface).map(|p| p.id()).or_else(|| {
-            self.popups.find_popup(surface).and_then(|p| match p {
-                PopupKind::Xdg(ref popup) => popup.get_parent_surface().map(|ps| ps.id()),
-                PopupKind::InputMethod(ref popup) => {
-                    popup.get_parent().map(|parent| parent.surface.id())
-                }
+        // Find root surface for this destroyed surface
+        // 1. Check popup cache first (O(1)) - entry removal happens in popup_destroyed
+        // 2. Try PopupManager for popups
+        // 3. Traverse subsurface hierarchy to find root
+        let root_id = self
+            .popup_root_cache
+            .get(&surface.id())
+            .cloned()
+            .or_else(|| {
+                self.popups.find_popup(surface).and_then(|popup| {
+                    find_popup_root_surface(&popup).ok().map(|r| r.id())
+                })
             })
-        });
+            .or_else(|| {
+                // Traverse subsurface hierarchy to find root
+                let mut root = surface.clone();
+                while let Some(parent) = get_parent(&root) {
+                    root = parent;
+                }
+                // Only return if we found a different root
+                if root.id() != surface.id() {
+                    Some(root.id())
+                } else {
+                    None
+                }
+            });
 
-        let mut root = parent_id
-            .as_ref()
-            .and_then(|id| WlSurface::from_id(&self.display_handle, id.clone()).ok())
-            .unwrap_or_else(|| surface.clone());
-        while let Some(parent) = get_parent(&root) {
-            root = parent;
-        }
-        if let Some(window) = self.workspaces.get_window_for_surface(&root.id()).cloned() {
+        let window = root_id
+            .and_then(|id| self.workspaces.get_window_for_surface(&id).cloned())
+            .or_else(|| self.workspaces.get_window_for_surface(&surface.id()).cloned());
+
+        if let Some(window) = window {
             window.on_commit();
             self.update_window_view(&window);
         }

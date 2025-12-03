@@ -1,32 +1,87 @@
 use anyhow::Result;
-use gtk4::gdk;
-use gtk4::gio;
-use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::{
-    Application, ApplicationWindow, EventControllerMotion, EventSequenceState, GestureClick, Label,
-    PopoverMenu, PropagationPhase,
+    Application, ApplicationWindow, Box as GtkBox, Button, EventControllerMotion, Label, ListBox,
+    ListBoxRow, Orientation, Popover, PositionType, ScrolledWindow,
 };
+use gtk4::{gdk, glib};
+use std::cell::RefCell;
+use std::rc::Rc;
 
-fn build_menu() -> gio::Menu {
-    let root = gio::Menu::new();
-    let submenu_lvl2 = gio::Menu::new();
-    // Add a little top padding via a spacer item.
-    submenu_lvl2.append(Some("  "), None);
-    submenu_lvl2.append(Some("First action"), Some("app.first"));
-    submenu_lvl2.append(Some("Second action"), Some("app.second"));
-    submenu_lvl2.append(Some("Disabled action"), Some("app.disabled"));
-    // Bottom spacer for breathing room.
-    submenu_lvl2.append(Some("  "), None);
+/// State for tracking which row currently has a submenu open
+struct SubmenuState {
+    current_row: Option<glib::WeakRef<ListBoxRow>>,
+    submenu: Popover,
+}
 
-    let submenu_lvl1 = gio::Menu::new();
-    submenu_lvl1.append_submenu(Some("Level 2 submenu"), &submenu_lvl2);
+impl SubmenuState {
+    fn new() -> Self {
+        let submenu = Popover::builder()
+            .has_arrow(false)
+            .position(PositionType::Right)
+            .autohide(false)
+            .build();
+        Self {
+            current_row: None,
+            submenu,
+        }
+    }
 
-    let submenu_section = gio::Menu::new();
-    submenu_section.append_submenu(Some("Level 1 submenu"), &submenu_lvl1);
+    fn show_for_row(&mut self, row: &ListBoxRow, item_index: usize) {
+        // Skip if already showing for this row
+        if self
+            .current_row
+            .as_ref()
+            .and_then(|w| w.upgrade())
+            .as_ref()
+            .is_some_and(|current| current == row)
+        {
+            return;
+        }
 
-    root.append_section(None, &submenu_section);
-    root
+        self.hide();
+
+        // Build submenu content for this item
+        let content = GtkBox::new(Orientation::Vertical, 4);
+        content.set_margin_start(8);
+        content.set_margin_end(8);
+        content.set_margin_top(6);
+        content.set_margin_bottom(6);
+
+        let header = Label::new(Some(&format!("Submenu for Item {}", item_index + 1)));
+        header.add_css_class("heading");
+        content.append(&header);
+
+        // Add submenu items
+        for j in 1..=5 {
+            let sub_item = Label::new(Some(&format!("  Sub-action {}.{}", item_index + 1, j)));
+            sub_item.set_halign(gtk4::Align::Start);
+            content.append(&sub_item);
+        }
+
+        self.submenu.set_child(Some(&content));
+
+        // Position submenu aligned to the row
+        let alloc = row.allocation();
+        self.submenu.set_parent(row);
+        self.submenu.set_pointing_to(Some(&gdk::Rectangle::new(
+            alloc.width(),
+            0,
+            1,
+            alloc.height().max(1),
+        )));
+
+        self.submenu.popup();
+        self.current_row = Some(row.downgrade());
+    }
+
+    fn hide(&mut self) {
+        self.submenu.popdown();
+        if self.submenu.parent().is_some() {
+            self.submenu.unparent();
+        }
+        self.current_row = None;
+    }
 }
 
 fn main() -> Result<()> {
@@ -34,60 +89,82 @@ fn main() -> Result<()> {
         .application_id("com.screencomposer.submenu_gtk4")
         .build();
 
-    app.connect_startup(|app| {
-        let mk_action = |name: &str| {
-            let action = gio::SimpleAction::new(name, None);
-            let name_owned = name.to_string();
-            action.connect_activate(move |_, _| println!("Activated {}", name_owned));
-            action
-        };
-        app.add_action(&mk_action("first"));
-        app.add_action(&mk_action("second"));
-
-        let disabled = gio::SimpleAction::new("disabled", None);
-        disabled.set_enabled(false);
-        app.add_action(&disabled);
-    });
-
     app.connect_activate(|app| {
-        let menu_model = build_menu();
-        let popover = PopoverMenu::from_model(Some(&menu_model));
-        popover.set_size_request(220, 220);
-
-        let label = Label::builder()
-            .label("Right click anywhere to open the menu with a submenu.")
-            .wrap(true)
-            .margin_top(18)
-            .margin_bottom(18)
-            .margin_start(18)
-            .margin_end(18)
-            .build();
-
-        let click = GestureClick::builder()
-            .button(gdk::ffi::GDK_BUTTON_SECONDARY as u32)
-            .propagation_phase(PropagationPhase::Capture)
-            .build();
-        click.connect_pressed(glib::clone!(@strong popover => move |gesture, _, x, y| {
-            popover.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
-            popover.popup();
-            gesture.set_state(EventSequenceState::Claimed);
-        }));
-
         let window = ApplicationWindow::builder()
             .application(app)
-            .title("Submenu GTK4 demo")
-            .default_width(480)
-            .default_height(260)
-            .child(&label)
+            .title("Submenu GTK4 Demo")
+            .default_width(300)
+            .default_height(200)
             .build();
 
-        let motion = EventControllerMotion::new();
-        let pop_motion = EventControllerMotion::new();
+        // Main menu popover
+        let main_menu = Popover::builder()
+            .has_arrow(true)
+            .position(PositionType::Bottom)
+            .build();
 
-        popover.set_parent(&window);
-        popover.add_controller(pop_motion);
-        window.add_controller(motion);
-        window.add_controller(click);
+        // Submenu state
+        let submenu_state = Rc::new(RefCell::new(SubmenuState::new()));
+
+        // Build list with 20 items
+        let list = ListBox::new();
+        list.set_selection_mode(gtk4::SelectionMode::None);
+
+        for i in 0..20 {
+            let row = ListBoxRow::new();
+            let label = Label::new(Some(&format!("Menu Item {}", i + 1)));
+            label.set_halign(gtk4::Align::Start);
+            label.set_margin_start(12);
+            label.set_margin_end(12);
+            label.set_margin_top(8);
+            label.set_margin_bottom(8);
+            row.set_child(Some(&label));
+
+            // Show submenu on hover
+            let motion = EventControllerMotion::new();
+            let state = submenu_state.clone();
+            motion.connect_enter(move |controller, _, _| {
+                if let Ok(row) = controller.widget().downcast::<ListBoxRow>() {
+                    state.borrow_mut().show_for_row(&row, i);
+                }
+            });
+            row.add_controller(motion);
+
+            list.append(&row);
+        }
+
+        // Scrollable container for the menu
+        let scroll = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk4::PolicyType::Never)
+            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .min_content_height(300)
+            .max_content_height(400)
+            .child(&list)
+            .build();
+
+        main_menu.set_child(Some(&scroll));
+
+        // Close submenu when main menu closes
+        let state_for_close = submenu_state.clone();
+        main_menu.connect_closed(move |_| {
+            state_for_close.borrow_mut().hide();
+        });
+
+        // Button to open the menu
+        let button = Button::with_label("Open Menu");
+        let menu_for_button = main_menu.clone();
+        button.connect_clicked(move |btn| {
+            menu_for_button.set_parent(btn);
+            menu_for_button.popup();
+        });
+
+        // Layout
+        let container = GtkBox::new(Orientation::Vertical, 0);
+        container.set_halign(gtk4::Align::Center);
+        container.set_valign(gtk4::Align::Center);
+        container.append(&button);
+
+        window.set_child(Some(&container));
         window.present();
     });
 

@@ -15,7 +15,7 @@ use smithay::{
     },
     utils::{Logical, Serial},
     wayland::{
-        compositor::{get_parent, with_states},
+        compositor::with_states,
         seat::WaylandFocus,
         shell::xdg::{
             Configure, PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler,
@@ -123,24 +123,32 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
         self.unconstrain_popup(&surface);
 
-        if let Err(err) = self.popups.track_popup(PopupKind::from(surface)) {
+        let popup_kind = PopupKind::from(surface);
+        
+        // Cache the root surface mapping for fast lookup during commit/destroy
+        if let Ok(root) = find_popup_root_surface(&popup_kind) {
+            let popup_surface_id = popup_kind.wl_surface().id();
+            self.popup_root_cache.insert(popup_surface_id, root.id());
+        }
+
+        if let Err(err) = self.popups.track_popup(popup_kind) {
             warn!("Failed to track popup: {}", err);
         }
     }
 
     fn popup_destroyed(&mut self, popup_surface: PopupSurface) {
-        tracing::info!("SC::popup_destroyed surface={:?}", popup_surface.wl_surface().id());
-        popup_surface.get_parent_surface().and_then(|parent_surface| {
-            let mut root = parent_surface.clone();
-            while let Some(parent) = get_parent(&root) {
-                root = parent;
-            }
-            if let Some(window) = self.workspaces.get_window_for_surface(&root.id()).cloned() {
+        // Use cached root lookup - O(1) instead of traversing popup tree
+        let popup_id = popup_surface.wl_surface().id();
+        
+        // Remove from popup overlay layer
+        self.workspaces.popup_overlay.remove_popup(&popup_id);
+        
+        if let Some(root_id) = self.popup_root_cache.remove(&popup_id) {
+            if let Some(window) = self.workspaces.get_window_for_surface(&root_id).cloned() {
                 window.on_commit();
                 self.update_window_view(&window);
             }
-            Some(())
-        });
+        }
     }
     fn reposition_request(
         &mut self,

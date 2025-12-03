@@ -820,7 +820,6 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                 }
             }
         }
-
         let rect = state
             .rects
             .iter()
@@ -830,7 +829,6 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                     && rect.y < location.y as f32
                     && rect.y + rect.h > location.y as f32
                 {
-                    // println!("Found rect {:?}", rect);
                     state.current_selection = Some(rect.index);
                     let cursor = CursorImageStatus::Named(CursorIcon::Pointer);
                     screencomposer.set_cursor(&cursor);

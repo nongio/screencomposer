@@ -26,6 +26,7 @@ mod app_switcher;
 mod background;
 mod dnd_view;
 mod dock;
+mod popup_overlay;
 pub mod workspace;
 
 pub mod utils;
@@ -44,6 +45,7 @@ pub use window_view::{WindowView, WindowViewBaseModel, WindowViewSurface};
 pub use app_switcher::AppSwitcherView;
 pub use dnd_view::DndView;
 pub use dock::DockView;
+pub use popup_overlay::PopupOverlayView;
 pub use workspace_selector::{WorkspaceSelectorView, WORKSPACE_SELECTOR_PREVIEW_WIDTH};
 
 use crate::{
@@ -91,6 +93,7 @@ pub struct Workspaces {
     pub app_switcher: Arc<AppSwitcherView>,
     pub window_views: Arc<RwLock<HashMap<ObjectId, WindowView>>>,
     pub dnd_view: DndView,
+    pub popup_overlay: PopupOverlayView,
 
     // gestures states
     pub show_all: Arc<AtomicBool>,
@@ -134,6 +137,7 @@ pub struct Workspaces {
 /// │
 /// ├── dnd_view
 /// ├── dock
+/// ├── popup_overlay (popups rendered on top of everything)
 /// ├── app_switcher
 /// ├── workspace_selector_view
 /// │   ├── workspace_selector_view_content
@@ -211,6 +215,9 @@ impl Workspaces {
         let dock = Arc::new(dock);
         dock.show(None);
 
+        // Create popup overlay AFTER dock so it renders on top
+        let popup_overlay = PopupOverlayView::new(layers_engine.clone());
+
         let app_switcher = AppSwitcherView::new(layers_engine.clone());
         let app_switcher = Arc::new(app_switcher);
 
@@ -238,6 +245,7 @@ impl Workspaces {
             workspace_selector_view: workspace_selector_view.clone(),
             dock: dock.clone(),
             dnd_view,
+            popup_overlay,
             overlay_layer,
             show_all: Arc::new(AtomicBool::new(false)),
             show_desktop: Arc::new(AtomicBool::new(false)),
@@ -547,6 +555,9 @@ impl Workspaces {
         end_gesture: bool,
     ) {
         let delta = delta.clamp(0.0, 1.0);
+
+        // Hide popup overlay when entering expose mode
+        self.popup_overlay.set_hidden(visible);
 
         let scale = Config::with(|c| c.screen_scale);
 
@@ -1189,7 +1200,10 @@ impl Workspaces {
     }
 
     /// Remove a WindowView from the scene and delete it from the window_views map
-    pub fn remove_window_view(&self, object_id: &ObjectId) {
+    pub fn remove_window_view(&mut self, object_id: &ObjectId) {
+        // Remove any popups that belong to this window
+        self.popup_overlay.remove_popups_for_window(object_id);
+        
         let mut window_views = self.window_views.write().unwrap();
         if let Some(view) = window_views.remove(object_id) {
             view.window_layer.remove();

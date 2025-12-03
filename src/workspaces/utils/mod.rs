@@ -117,6 +117,7 @@ pub fn view_render_elements(
             },
             None,
         ))
+        .pointer_events(false)
         .children(
             render_elements
                 .iter()

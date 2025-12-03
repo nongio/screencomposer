@@ -135,6 +135,9 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
 
     // desktop
     pub popups: PopupManager,
+    /// Cache mapping popup surface IDs to their root window surface IDs
+    /// for fast lookup during commit/destroy without re-traversing the popup tree
+    pub popup_root_cache: HashMap<ObjectId, ObjectId>,
     pub workspaces: Workspaces,
 
     // smithay state
@@ -374,6 +377,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             loop_wakeup_pending,
 
             popups: PopupManager::default(),
+            popup_root_cache: HashMap::new(),
             compositor_state,
             data_device_state,
             layer_shell_state,
@@ -699,18 +703,40 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             let fullscreen = window.xdg_is_fullscreen();
 
             let mut render_elements = VecDeque::new();
+            
+            // Collect popup surfaces and send them to the popup overlay layer
             PopupManager::popups_for_surface(&window_surface).for_each(|(popup, popup_offset)| {
                 let offset: smithay::utils::Point<f64, smithay::utils::Physical> =
-                    (popup_offset - popup.geometry().loc).to_physical_precise_round(scale_factor);
+                    popup_offset.to_physical_precise_round(scale_factor);
                 let popup_surface = popup.wl_surface();
+                let popup_id = popup_surface.id();
+                
+                // Calculate absolute popup position (window position + popup offset)
+                let popup_position = lay_rs::types::Point {
+                    x: location.x as f32 + offset.x as f32,
+                    y: location.y as f32 + offset.y as f32,
+                };
+                
+                // Collect surfaces for this popup
+                let mut popup_surfaces = Vec::new();
+                let popup_origin: smithay::utils::Point<f64, smithay::utils::Physical> = (0.0, 0.0).into();
                 with_surfaces_surface_tree(popup_surface, |surface, states| {
                     if let Some(window_view) =
-                        self.window_view_for_surface(surface, states, &offset, scale_factor)
+                        self.window_view_for_surface(surface, states, &popup_origin, scale_factor)
                     {
-                        render_elements.push_front(window_view);
+                        popup_surfaces.push(window_view);
                     }
                 });
+                
+                // Send popup to the overlay layer
+                self.workspaces.popup_overlay.update_popup(
+                    &popup_id,
+                    &id,
+                    popup_position,
+                    popup_surfaces,
+                );
             });
+            
             let initial_location: smithay::utils::Point<f64, smithay::utils::Physical> =
                 (0.0, 0.0).into();
 
@@ -859,6 +885,25 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         if let Some(keyboard) = self.seat.get_keyboard() {
             let serial = SERIAL_COUNTER.next_serial();
             keyboard.set_focus(self, None, serial);
+        }
+    }
+
+    /// Dismiss all active popups and release any pointer/keyboard grabs
+    pub fn dismiss_all_popups(&mut self) {
+        let serial = SERIAL_COUNTER.next_serial();
+        
+        // Unset pointer grab if active
+        if let Some(pointer) = self.seat.get_pointer() {
+            if pointer.is_grabbed() {
+                pointer.unset_grab(self, serial, 0);
+            }
+        }
+        
+        // Unset keyboard grab if active  
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            if keyboard.is_grabbed() {
+                keyboard.unset_grab(self);
+            }
         }
     }
 }
