@@ -1389,7 +1389,19 @@ impl ScreenComposer<UdevData> {
                 true
             }
             Err(err) => {
-                warn!("Error during rendering: {:?}", err);
+                // Log as debug for DeviceInactive (expected during suspend), warn for others
+                let is_device_inactive = matches!(
+                    &err,
+                    SwapBuffersError::TemporaryFailure(e)
+                        if matches!(e.downcast_ref::<DrmError>(), Some(&DrmError::DeviceInactive))
+                );
+                
+                if is_device_inactive {
+                    debug!("Device inactive during rendering (expected during suspend): {:?}", err);
+                } else {
+                    warn!("Error during rendering: {:?}", err);
+                }
+                
                 match err {
                     SwapBuffersError::AlreadySwapped => true,
                     // If the device has been deactivated do not reschedule, this will be done
@@ -1605,7 +1617,19 @@ impl ScreenComposer<UdevData> {
         let reschedule = match &result {
             Ok(outcome) => !outcome.rendered,
             Err(err) => {
-                warn!("Error during rendering: {:?}", err);
+                // Log as debug for DeviceInactive (expected during suspend), warn for others
+                let is_device_inactive = matches!(
+                    err,
+                    SwapBuffersError::TemporaryFailure(e)
+                        if matches!(e.downcast_ref::<DrmError>(), Some(&DrmError::DeviceInactive))
+                );
+                
+                if is_device_inactive {
+                    debug!("Device inactive during rendering (expected during suspend): {:?}", err);
+                } else {
+                    warn!("Error during rendering: {:?}", err);
+                }
+                
                 match err {
                     SwapBuffersError::AlreadySwapped => false,
                     SwapBuffersError::TemporaryFailure(err) => match err.downcast_ref::<DrmError>()
