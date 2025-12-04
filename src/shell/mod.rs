@@ -40,6 +40,7 @@ use crate::{
 
 mod element;
 mod grabs;
+mod layer;
 pub(crate) mod ssd;
 #[cfg(feature = "xwayland")]
 mod x11;
@@ -47,6 +48,7 @@ mod xdg;
 
 pub use self::element::*;
 pub use self::grabs::*;
+pub use self::layer::*;
 
 // the surface size is either output size
 // or the current workspace size
@@ -136,42 +138,48 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
         self.backend_data.early_import(surface);
 
         let sync = is_sync_subsurface(surface);
+        let surface_id = surface.id();
 
         if !sync {
-            // Find the root surface for this commit
-            // 1. Check popup cache first (O(1))
-            // 2. Try PopupManager for popups
-            // 3. Traverse subsurface hierarchy to find root
-            let root_id = self
-                .popup_root_cache
-                .get(&surface.id())
-                .cloned()
-                .or_else(|| {
-                    self.popups.find_popup(surface).and_then(|popup| {
-                        find_popup_root_surface(&popup).ok().map(|r| r.id())
+            // Check if this is a layer shell surface first
+            if self.layer_surfaces.contains_key(&surface_id) {
+                self.update_layer_surface(&surface_id);
+            } else {
+                // Find the root surface for this commit
+                // 1. Check popup cache first (O(1))
+                // 2. Try PopupManager for popups
+                // 3. Traverse subsurface hierarchy to find root
+                let root_id = self
+                    .popup_root_cache
+                    .get(&surface_id)
+                    .cloned()
+                    .or_else(|| {
+                        self.popups.find_popup(surface).and_then(|popup| {
+                            find_popup_root_surface(&popup).ok().map(|r| r.id())
+                        })
                     })
-                })
-                .or_else(|| {
-                    // Traverse subsurface hierarchy to find root
-                    let mut root = surface.clone();
-                    while let Some(parent) = get_parent(&root) {
-                        root = parent;
-                    }
-                    // Only return if we found a different root
-                    if root.id() != surface.id() {
-                        Some(root.id())
-                    } else {
-                        None
-                    }
-                });
+                    .or_else(|| {
+                        // Traverse subsurface hierarchy to find root
+                        let mut root = surface.clone();
+                        while let Some(parent) = get_parent(&root) {
+                            root = parent;
+                        }
+                        // Only return if we found a different root
+                        if root.id() != surface_id {
+                            Some(root.id())
+                        } else {
+                            None
+                        }
+                    });
 
-            let window = root_id
-                .and_then(|id| self.workspaces.get_window_for_surface(&id).cloned())
-                .or_else(|| self.workspaces.get_window_for_surface(&surface.id()).cloned());
+                let window = root_id
+                    .and_then(|id| self.workspaces.get_window_for_surface(&id).cloned())
+                    .or_else(|| self.workspaces.get_window_for_surface(&surface_id).cloned());
 
-            if let Some(window) = window {
-                window.on_commit();
-                self.update_window_view(&window);
+                if let Some(window) = window {
+                    window.on_commit();
+                    self.update_window_view(&window);
+                }
             }
         }
         self.popups.commit(surface);
@@ -229,19 +237,57 @@ impl<BackendData: Backend> WlrLayerShellHandler for ScreenComposer<BackendData> 
         &mut self,
         surface: WlrLayerSurface,
         wl_output: Option<wl_output::WlOutput>,
-        _layer: Layer,
+        wlr_layer: Layer,
         namespace: String,
     ) {
         let output = wl_output
             .as_ref()
             .and_then(Output::from_resource)
             .unwrap_or_else(|| self.workspaces.outputs().next().unwrap().clone());
+
+        // Create the Smithay LayerSurface wrapper
+        let layer_surface = LayerSurface::new(surface.clone(), namespace.clone());
+
+        // Create a lay_rs layer for rendering
+        let layer = self.workspaces.create_layer_shell_layer(wlr_layer, &namespace);
+
+        // Create our compositor-owned wrapper
+        let layer_shell_surface = LayerShellSurface::new(
+            layer_surface.clone(),
+            layer,
+            output.clone(),
+            wlr_layer,
+            namespace,
+        );
+
+        // Store in our map
+        let surface_id = surface.wl_surface().id();
+        self.layer_surfaces.insert(surface_id, layer_shell_surface);
+
+        // Also register with Smithay's layer map for protocol compliance
         let mut map = layer_map_for_output(&output);
-        map.map_layer(&LayerSurface::new(surface, namespace))
-            .unwrap();
+        map.map_layer(&layer_surface).unwrap();
+
+        tracing::info!(
+            "New layer surface: layer={:?}, namespace={}",
+            wlr_layer,
+            layer_surface.namespace()
+        );
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
+        let surface_id = surface.wl_surface().id();
+
+        // Remove from our compositor map and clean up lay_rs layer
+        if let Some(layer_shell_surface) = self.layer_surfaces.remove(&surface_id) {
+            self.workspaces.remove_layer_shell_layer(&layer_shell_surface.layer);
+            tracing::info!(
+                "Layer surface destroyed: namespace={}",
+                layer_shell_surface.namespace()
+            );
+        }
+
+        // Also unmap from Smithay's layer map
         if let Some((mut map, layer)) = self.workspaces.outputs().find_map(|o| {
             let map = layer_map_for_output(o);
             let layer = map

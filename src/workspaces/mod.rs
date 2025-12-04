@@ -105,6 +105,10 @@ pub struct Workspaces {
     pub layers_engine: Arc<Engine>,
     pub overlay_layer: Layer,
     pub workspaces_layer: Layer,
+    /// Container for wlr-layer-shell background layer surfaces
+    pub layer_shell_background: Layer,
+    /// Container for wlr-layer-shell overlay layer surfaces  
+    pub layer_shell_overlay: Layer,
     expose_layer: Layer,
     observers: Vec<Weak<dyn Observer<WorkspacesModel>>>,
     expose_dragging_window: Arc<std::sync::Mutex<Option<ObjectId>>>,
@@ -171,6 +175,20 @@ impl Workspaces {
         let model = WorkspacesModel::default();
         let spaces = Vec::new();
 
+        // Layer shell background layer (z-order: below workspaces)
+        let layer_shell_background = layers_engine.new_layer();
+        layer_shell_background.set_key("layer_shell_background");
+        layer_shell_background.set_layout_style(taffy::Style {
+            position: taffy::Position::Absolute,
+            size: taffy::Size {
+                width: taffy::Dimension::Percent(1.0),
+                height: taffy::Dimension::Percent(1.0),
+            },
+            ..Default::default()
+        });
+        layer_shell_background.set_pointer_events(false);
+        layers_engine.add_layer(&layer_shell_background);
+
         let workspaces_layer = layers_engine.new_layer();
         workspaces_layer.set_key("workspaces");
         workspaces_layer.set_layout_style(taffy::Style {
@@ -226,6 +244,20 @@ impl Workspaces {
         layers_engine.add_layer(&workspace_selector_layer);
         layers_engine.add_layer(&overlay_layer);
 
+        // Layer shell overlay layer (z-order: above overlay_layer, below popups)
+        let layer_shell_overlay = layers_engine.new_layer();
+        layer_shell_overlay.set_key("layer_shell_overlay");
+        layer_shell_overlay.set_layout_style(taffy::Style {
+            position: taffy::Position::Absolute,
+            size: taffy::Size {
+                width: taffy::Dimension::Percent(1.0),
+                height: taffy::Dimension::Percent(1.0),
+            },
+            ..Default::default()
+        });
+        layer_shell_overlay.set_pointer_events(false);
+        layers_engine.add_layer(&layer_shell_overlay);
+
         let workspace_selector_view = Arc::new(WorkspaceSelectorView::new(
             layers_engine.clone(),
             workspace_selector_layer.clone(),
@@ -247,6 +279,8 @@ impl Workspaces {
             dnd_view,
             popup_overlay,
             overlay_layer,
+            layer_shell_background,
+            layer_shell_overlay,
             show_all: Arc::new(AtomicBool::new(false)),
             show_desktop: Arc::new(AtomicBool::new(false)),
             show_all_gesture: Arc::new(AtomicI32::new(0)),
@@ -665,12 +699,17 @@ impl Workspaces {
         let workspace_opacity = 0.0.interpolate(&1.0, delta);
         let workspace_opacity = workspace_opacity.clamp(0.0, 1.0);
 
+        // Layer shell overlay fades out when entering expose (inverse of workspace opacity)
+        let layer_shell_overlay_opacity = 1.0.interpolate(&0.0, delta);
+        let layer_shell_overlay_opacity = layer_shell_overlay_opacity.clamp(0.0, 1.0);
+
         if (!end_gesture && delta > 0.0) || animation.is_some() {
             workspace_view.window_selector_view.overlay_layer.set_opacity(0.0, None);
         }
 
         let window_selector_overlay_ref = workspace_view.window_selector_view.overlay_layer.clone();
         let expose_layer = self.expose_layer.clone();
+        let layer_shell_overlay_ref = self.layer_shell_overlay.clone();
         let show_all_ref = self.show_all.clone();
         expose_layer.set_hidden(false);
         let transaction = self.workspace_selector_view
@@ -689,6 +728,8 @@ impl Workspaces {
                     window_selector_overlay_ref.set_opacity(1.0, None);
                     window_selector_overlay_ref.set_hidden(!show_all);
                     expose_layer.set_hidden(!show_all);
+                    // Restore layer shell overlay when exiting expose mode
+                    layer_shell_overlay_ref.set_opacity(if show_all { 0.0 } else { 1.0 }, None);
                     show_all_ref.store(show_all, std::sync::atomic::Ordering::Relaxed);
                 },
                 true,
@@ -697,6 +738,9 @@ impl Workspaces {
         self.workspace_selector_view
             .layer
             .set_opacity(workspace_opacity, transition);
+
+        // Animate layer shell overlay opacity (fade out when entering expose)
+        self.layer_shell_overlay.set_opacity(layer_shell_overlay_opacity, transition);
 
         // Animate dock position
         if let Some(current_workspace) = current_workspace {
@@ -729,6 +773,17 @@ impl Workspaces {
                 );
             }
         }
+    }
+
+    /// Set layer_shell_overlay visibility when entering/exiting fullscreen
+    /// When entering fullscreen (is_fullscreen=true), fades out the overlay
+    /// When exiting fullscreen (is_fullscreen=false), fades in the overlay
+    pub fn set_fullscreen_overlay_visibility(&self, is_fullscreen: bool) {
+        let target_opacity = if is_fullscreen { 0.0 } else { 1.0 };
+        let transition = Some(Transition::ease_in_out_quad(1.4));
+        
+        self.layer_shell_overlay
+            .set_opacity(target_opacity, transition);
     }
 
     /// Recalculates the layout for a single workspace without animation
@@ -1692,6 +1747,12 @@ impl Workspaces {
             } else {
                 self.dock.show(Some(transition));
             }
+            
+            // Animate layer_shell_overlay based on target workspace fullscreen state
+            let target_opacity = if workspace.get_fullscreen_mode() { 0.0 } else { 1.0 };
+            self.layer_shell_overlay
+                .set_opacity(target_opacity, Some(transition));
+            
             if self.get_show_all() {
                 self.expose_show_all_workspace(i, 1.0, true);
             }
@@ -1796,6 +1857,66 @@ impl Workspaces {
         self.spaces
             .iter()
             .position(|space| space.elements().any(|e| e.id() == element.id()))
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Layer Shell Support
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /// Create a new lay_rs layer for a layer shell surface and add it to the appropriate container.
+    /// Returns the new layer.
+    pub fn create_layer_shell_layer(
+        &self,
+        wlr_layer: smithay::wayland::shell::wlr_layer::Layer,
+        namespace: &str,
+    ) -> Layer {
+        use smithay::wayland::shell::wlr_layer::Layer as WlrLayer;
+
+        let layer = self.layers_engine.new_layer();
+        layer.set_key(&format!("layer_shell_{}_{}", wlr_layer_to_str(wlr_layer), namespace));
+        layer.set_layout_style(taffy::Style {
+            position: taffy::Position::Absolute,
+            ..Default::default()
+        });
+        // Layer shell surfaces handle their own pointer events
+        layer.set_pointer_events(true);
+
+        // Add to appropriate container based on layer
+        match wlr_layer {
+            WlrLayer::Background => {
+                self.layer_shell_background.add_sublayer(&layer);
+            }
+            WlrLayer::Bottom => {
+                // Bottom layers go just above background, below workspaces
+                // For now, add to background container (we can refine z-order later)
+                self.layer_shell_background.add_sublayer(&layer);
+            }
+            WlrLayer::Top => {
+                // Top layers go above windows, below overlay
+                self.layer_shell_overlay.add_sublayer(&layer);
+            }
+            WlrLayer::Overlay => {
+                self.layer_shell_overlay.add_sublayer(&layer);
+            }
+        }
+
+        layer
+    }
+
+    /// Remove a layer shell layer from the scene graph.
+    pub fn remove_layer_shell_layer(&self, layer: &Layer) {
+        layer.remove();
+    }
+}
+
+/// Helper to convert WlrLayer to string for layer keys
+fn wlr_layer_to_str(layer: smithay::wayland::shell::wlr_layer::Layer) -> &'static str {
+    use smithay::wayland::shell::wlr_layer::Layer as WlrLayer;
+    match layer {
+        WlrLayer::Background => "background",
+        WlrLayer::Bottom => "bottom",
+        WlrLayer::Top => "top",
+        WlrLayer::Overlay => "overlay",
     }
 }
 

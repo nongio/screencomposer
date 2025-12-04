@@ -418,6 +418,10 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             let id = window.id();
             if let Some(view) = self.workspaces.get_window_view(&id) {
                 let transition = Transition::ease_in_out_quad(1.4);
+                
+                // Fade out layer_shell_overlay when entering fullscreen
+                self.workspaces.set_fullscreen_overlay_visibility(true);
+                
                 self.workspaces
                     .move_window_to_workspace(&window, next_workspace_index, (0, 0));
                 window.set_workspace(current_workspace_index);
@@ -498,6 +502,9 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
                     let workspace = self.workspaces.get_current_workspace();
                     workspace.set_fullscreen_mode(false);
+                    
+                    // Fade in layer_shell_overlay when exiting fullscreen
+                    self.workspaces.set_fullscreen_overlay_visibility(false);
 
                     self.workspaces.move_window_to_workspace(
                         &we,
