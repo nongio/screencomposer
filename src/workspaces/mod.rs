@@ -421,7 +421,17 @@ impl Workspaces {
     /// - Update layout during window drag: `expose_show_all(0.0, false)` (recalculate without animation)
     pub fn expose_show_all(&self, delta: f32, end_gesture: bool) {
         let current_workspace_index = self.get_current_workspace_index();
-        self.expose_show_all_workspace(current_workspace_index, delta, end_gesture);
+        
+        if end_gesture {
+            // When ending the gesture, animate all workspaces so they all transition together
+            let num_workspaces = self.with_model(|m| m.workspaces.len());
+            for i in 0..num_workspaces {
+                self.expose_show_all_workspace(i, delta, end_gesture);
+            }
+        } else {
+            // During gesture, only update the current workspace for performance
+            self.expose_show_all_workspace(current_workspace_index, delta, end_gesture);
+        }
     }
 
     /// Process expose mode for a specific workspace
@@ -1770,6 +1780,92 @@ impl Workspaces {
         }
 
         self.apply_scroll_offset(x, Some(transition))
+    }
+
+    /// Update workspace position during 3-finger horizontal swipe gesture.
+    /// Applies delta immediately (no animation) with rubber-band resistance at edges.
+    pub fn workspace_swipe_update(&self, delta_x: f32) {
+        let (num_workspaces, workspace_width, scale) = self.with_model(|m| {
+            (m.workspaces.len(), m.width as f32, m.scale as f32)
+        });
+        
+        if num_workspaces == 0 || workspace_width <= 0.0 {
+            return;
+        }
+        
+        // Get current scroll position (negated because layer position is negative of scroll offset)
+        let current_pos = self.workspaces_layer.render_position();
+        let current_offset = -current_pos.x;
+        
+        // Calculate new offset - delta is in logical pixels, convert to physical
+        let physical_delta = delta_x * scale;
+        let mut new_offset = current_offset - physical_delta;
+        
+        // Calculate bounds
+        let max_offset = (num_workspaces - 1) as f32 * workspace_width;
+        
+        // Apply rubber-band resistance at edges
+        if new_offset < 0.0 {
+            // Past first workspace - rubber band effect
+            new_offset = new_offset * 0.3;
+        } else if new_offset > max_offset {
+            // Past last workspace - rubber band effect
+            let overshoot = new_offset - max_offset;
+            new_offset = max_offset + overshoot * 0.3;
+        }
+        
+        // Apply immediately without animation
+        self.workspaces_layer.set_position((-new_offset, 0.0), None);
+        self.expose_layer.set_position((-new_offset, 0.0), None);
+    }
+    
+    /// End workspace swipe gesture and snap to nearest workspace.
+    /// Uses velocity to determine target workspace for natural momentum-based snapping.
+    pub fn workspace_swipe_end(&mut self, velocity: f32) {
+        let (num_workspaces, workspace_width, current_index, scale) = self.with_model(|m| {
+            (m.workspaces.len(), m.width as f32, m.current_workspace, m.scale as f32)
+        });
+        
+        if num_workspaces == 0 || workspace_width <= 0.0 {
+            // Just snap to current
+            let _ = self.set_current_workspace_index(current_index, None);
+            return;
+        }
+        
+        // Get current scroll position
+        let current_pos = self.workspaces_layer.render_position();
+        let current_offset = -current_pos.x;
+        
+        // Convert velocity to physical units
+        let physical_velocity = velocity * scale;
+        
+        // Velocity threshold for momentum-based switching (pixels per update event)
+        // Typical trackpad sends ~60 events/sec, so 15px/event ≈ 900px/sec
+        const VELOCITY_THRESHOLD: f32 = 15.0;
+        
+        let target_index = if physical_velocity.abs() > VELOCITY_THRESHOLD {
+            // Velocity-based: switch in direction of swipe
+            if physical_velocity > 0.0 {
+                // Swiping right (moving content left) -> go to previous workspace
+                current_index.saturating_sub(1)
+            } else {
+                // Swiping left (moving content right) -> go to next workspace
+                (current_index + 1).min(num_workspaces - 1)
+            }
+        } else {
+            // Position-based: snap to nearest workspace
+            let progress = current_offset / workspace_width;
+            let nearest = progress.round() as usize;
+            nearest.min(num_workspaces - 1)
+        };
+        
+        // Use a snappy spring transition for the final animation
+        let transition = Transition {
+            delay: 0.0,
+            timing: TimingFunction::Spring(Spring::with_duration_and_bounce(0.5, 0.05)),
+        };
+        
+        let _ = self.set_current_workspace_index(target_index, Some(transition));
     }
 
     // Space management

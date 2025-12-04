@@ -779,6 +779,12 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                     if target_pos == screencomposer.workspaces.get_current_workspace_index() {
                         continue; // Skip current workspace
                     }
+                    // Skip fullscreen workspaces - can't drop windows into them
+                    if let Some(ws) = screencomposer.workspaces.get_workspace_at(target_pos) {
+                        if ws.get_fullscreen_mode() {
+                            continue;
+                        }
+                    }
                     // Use Skia's intersect to check if drag bounds overlap with drop target
                     if drag_bounds.intersects(target.drop_layer.render_bounds_transformed()) {
                         new_drop_target = Some(target.workspace_index);

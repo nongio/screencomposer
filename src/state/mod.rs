@@ -193,6 +193,9 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub show_desktop: bool,
     pub is_expose_swiping: bool,
     pub is_workspace_swiping: bool,
+    pub workspace_swipe_accumulated: (f64, f64),
+    pub workspace_swipe_active: bool,
+    pub workspace_swipe_velocity_samples: Vec<f64>,
     pub is_pinching: bool,
     pub is_resizing: bool,
 }
@@ -425,6 +428,9 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             // support variables for gestures
             is_expose_swiping: false,
             is_workspace_swiping: false,
+            workspace_swipe_accumulated: (0.0, 0.0),
+            workspace_swipe_active: false,
+            workspace_swipe_velocity_samples: Vec::new(),
             is_pinching: false,
             is_resizing: false,
         };

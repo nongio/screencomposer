@@ -1380,11 +1380,15 @@ impl ScreenComposer<UdevData> {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
         // tracing::error!("on_gesture_swipe_begin: {:?}", self.swipe_gesture);
-        if evt.fingers() == 4 && !self.is_pinching {
-            self.is_expose_swiping = true;
-        }
+        
+        // 3-finger swipe: direction determines behavior (horizontal=workspace, vertical=expose)
         if evt.fingers() == 3 && !self.is_pinching {
+            // Start tracking but don't activate until direction is determined
             self.is_workspace_swiping = true;
+            self.workspace_swipe_accumulated = (0.0, 0.0);
+            self.workspace_swipe_active = false;
+            self.workspace_swipe_velocity_samples.clear();
+            self.is_expose_swiping = false;
         }
         // self.background_view.set_debug_text(format!("on_gesture_swipe_begin: {:?}", self.swipe_gesture));
 
@@ -1400,11 +1404,49 @@ impl ScreenComposer<UdevData> {
 
     fn on_gesture_swipe_update<B: InputBackend>(&mut self, evt: B::GestureSwipeUpdateEvent) {
         let pointer = self.pointer.clone();
-        let multiplier = 500.0;
-        let delta = evt.delta_y() as f32 / multiplier;
-        if self.is_expose_swiping {
-            self.workspaces.expose_show_all(-delta, false);
+        
+        // Handle 3-finger swipe (direction determines: horizontal=workspace, vertical=expose)
+        if self.is_workspace_swiping || self.is_expose_swiping {
+            let delta_x = evt.delta().x;
+            let delta_y = evt.delta().y;
+            
+            // If direction not yet determined, accumulate and check threshold
+            if self.is_workspace_swiping && !self.workspace_swipe_active && !self.is_expose_swiping {
+                self.workspace_swipe_accumulated.0 += delta_x;
+                self.workspace_swipe_accumulated.1 += delta_y;
+                
+                let horiz = self.workspace_swipe_accumulated.0.abs();
+                let vert = self.workspace_swipe_accumulated.1.abs();
+                const THRESHOLD: f64 = 20.0;
+                
+                if horiz > THRESHOLD && horiz > vert {
+                    // Horizontal swipe -> workspace switching
+                    self.workspace_swipe_active = true;
+                    self.workspaces.workspace_swipe_update(self.workspace_swipe_accumulated.0 as f32);
+                } else if vert > THRESHOLD {
+                    // Vertical swipe -> expose mode
+                    self.is_workspace_swiping = false;
+                    self.is_expose_swiping = true;
+                    // Apply accumulated vertical delta to expose
+                    let multiplier = 500.0;
+                    let delta = self.workspace_swipe_accumulated.1 as f32 / multiplier;
+                    self.workspaces.expose_show_all(-delta, false);
+                }
+            } else if self.workspace_swipe_active {
+                // Already in workspace swipe mode
+                self.workspace_swipe_velocity_samples.push(delta_x);
+                if self.workspace_swipe_velocity_samples.len() > 4 {
+                    self.workspace_swipe_velocity_samples.remove(0);
+                }
+                self.workspaces.workspace_swipe_update(delta_x as f32);
+            } else if self.is_expose_swiping {
+                // Already in expose mode
+                let multiplier = 500.0;
+                let delta = delta_y as f32 / multiplier;
+                self.workspaces.expose_show_all(-delta, false);
+            }
         }
+        
         pointer.gesture_swipe_update(
             self,
             &GestureSwipeUpdateEvent {
@@ -1422,6 +1464,28 @@ impl ScreenComposer<UdevData> {
             self.workspaces.expose_show_all(0.0, true);
             self.is_expose_swiping = false;
         }
+        
+        // Handle workspace swipe end
+        if self.is_workspace_swiping {
+            if self.workspace_swipe_active && !evt.cancelled() {
+                // Calculate smoothed velocity from samples
+                let velocity = if self.workspace_swipe_velocity_samples.is_empty() {
+                    0.0
+                } else {
+                    self.workspace_swipe_velocity_samples.iter().sum::<f64>() 
+                        / self.workspace_swipe_velocity_samples.len() as f64
+                };
+                self.workspaces.workspace_swipe_end(velocity as f32);
+            } else if self.workspace_swipe_active {
+                // Gesture cancelled, snap back to current workspace
+                self.workspaces.workspace_swipe_end(0.0);
+            }
+            self.is_workspace_swiping = false;
+            self.workspace_swipe_active = false;
+            self.workspace_swipe_accumulated = (0.0, 0.0);
+            self.workspace_swipe_velocity_samples.clear();
+        }
+        
         pointer.gesture_swipe_end(
             self,
             &GestureSwipeEndEvent {
