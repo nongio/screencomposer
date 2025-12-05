@@ -715,7 +715,7 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     }
                 }
                 KeyAction::WorkspaceNum(n) => {
-                    self.workspaces.set_current_workspace_index(n, None);
+                    self.set_current_workspace_index(n);
                 }
 
                 action => match action {
@@ -988,7 +988,7 @@ impl ScreenComposer<UdevData> {
                     }
                 }
                 KeyAction::WorkspaceNum(index) => {
-                    self.workspaces.set_current_workspace_index(index, None);
+                    self.set_current_workspace_index(index);
                 }
                 action => match action {
                     KeyAction::None
@@ -1467,7 +1467,7 @@ impl ScreenComposer<UdevData> {
         
         // Handle workspace swipe end
         if self.is_workspace_swiping {
-            if self.workspace_swipe_active && !evt.cancelled() {
+            let target_index = if self.workspace_swipe_active && !evt.cancelled() {
                 // Calculate smoothed velocity from samples
                 let velocity = if self.workspace_swipe_velocity_samples.is_empty() {
                     0.0
@@ -1475,11 +1475,23 @@ impl ScreenComposer<UdevData> {
                     self.workspace_swipe_velocity_samples.iter().sum::<f64>() 
                         / self.workspace_swipe_velocity_samples.len() as f64
                 };
-                self.workspaces.workspace_swipe_end(velocity as f32);
+                Some(self.workspaces.workspace_swipe_end(velocity as f32))
             } else if self.workspace_swipe_active {
                 // Gesture cancelled, snap back to current workspace
-                self.workspaces.workspace_swipe_end(0.0);
+                Some(self.workspaces.workspace_swipe_end(0.0))
+            } else {
+                None
+            };
+            
+            // Update keyboard focus to top window of the target workspace
+            if let Some(index) = target_index {
+                if let Some(top_wid) = self.workspaces.get_top_window_of_workspace(index) {
+                    self.set_keyboard_focus_on_surface(&top_wid);
+                } else {
+                    self.clear_keyboard_focus();
+                }
             }
+            
             self.is_workspace_swiping = false;
             self.workspace_swipe_active = false;
             self.workspace_swipe_accumulated = (0.0, 0.0);

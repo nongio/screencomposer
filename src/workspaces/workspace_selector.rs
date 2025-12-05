@@ -287,6 +287,7 @@ fn render_workspace_selector_view(
                         ))
                         .scale(Point::new(scale, scale))
                         .replicate_node(w.workspace_node)
+                        .picture_cached(false)
                         .color_filter(color_filter)
                         .on_pointer_press(button_press_filter())
                         .on_pointer_release(button_release_filter())
@@ -600,9 +601,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WorkspaceSele
                             .and_then(|idx| idx.parse::<usize>().ok())
                         {
                             if let Some(pos) = get_position_worspace_by_index(index) {
-                                screencomposer
-                                    .workspaces
-                                    .set_current_workspace_index(pos, None);
+                                screencomposer.set_current_workspace_index(pos);
                             }
                         }
                     }

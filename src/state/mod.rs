@@ -1003,7 +1003,12 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     }
     pub fn set_current_workspace_index(&mut self, index: usize) {
         self.workspaces.set_current_workspace_index(index, None);
-        // FIXME focus the top window of the workspace
+        // Focus the top window of the new workspace, or clear focus if empty
+        if let Some(top_wid) = self.workspaces.get_top_window_of_workspace(index) {
+            self.set_keyboard_focus_on_surface(&top_wid);
+        } else {
+            self.clear_keyboard_focus();
+        }
     }
 
     pub fn set_keyboard_focus_on_surface(&mut self, wid: &ObjectId) {
