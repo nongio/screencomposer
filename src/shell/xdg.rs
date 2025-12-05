@@ -408,6 +408,10 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 .unwrap()
                 .set(window.clone());
 
+            // Reset buffers to force a full redraw when entering fullscreen
+            // This prevents damage tracking artifacts from the scene-based rendering
+            self.backend_data.reset_buffers(&output);
+
             let (next_workspace_index, next_workspace) = self.workspaces.get_next_free_workspace();
             next_workspace.set_fullscreen_mode(true);
 

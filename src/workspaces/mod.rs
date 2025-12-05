@@ -100,6 +100,8 @@ pub struct Workspaces {
     pub show_desktop: Arc<AtomicBool>,
     pub show_all_gesture: Arc<AtomicI32>,
     pub show_desktop_gesture: Arc<AtomicI32>,
+    /// Tracks whether the workspace is currently animating (e.g., scrolling between workspaces)
+    pub is_animating: Arc<AtomicBool>,
 
     // layers
     pub layers_engine: Arc<Engine>,
@@ -285,6 +287,7 @@ impl Workspaces {
             show_desktop: Arc::new(AtomicBool::new(false)),
             show_all_gesture: Arc::new(AtomicI32::new(0)),
             show_desktop_gesture: Arc::new(AtomicI32::new(0)),
+            is_animating: Arc::new(AtomicBool::new(false)),
             window_views: Arc::new(RwLock::new(HashMap::new())),
             observers: Vec::new(),
             layers_engine,
@@ -376,6 +379,44 @@ impl Workspaces {
     }
 
     // Gestures
+
+    /// Check if the current workspace has a fullscreen surface and is ready for direct scanout.
+    /// Returns true only when:
+    /// - The current workspace is in fullscreen mode
+    /// - The workspace is not animating (not scrolling between workspaces)
+    /// - Not in expose/show-all mode
+    pub fn is_fullscreen_and_stable(&self) -> bool {
+        // Check if expose mode is active
+        if self.get_show_all() {
+            return false;
+        }
+        
+        // Check if workspace is animating
+        if self.is_animating.load(std::sync::atomic::Ordering::Relaxed) {
+            return false;
+        }
+        
+        // Get current workspace and check if it's in fullscreen mode
+        let current_workspace = self.get_current_workspace();
+        current_workspace.get_fullscreen_mode()
+    }
+
+    /// Get the fullscreen window from the current workspace, if any.
+    /// Returns Some(WindowElement) if the current workspace is in fullscreen mode
+    /// and has a fullscreen window.
+    pub fn get_fullscreen_window(&self) -> Option<WindowElement> {
+        let current_workspace = self.get_current_workspace();
+        if !current_workspace.get_fullscreen_mode() {
+            return None;
+        }
+        
+        // Find the fullscreen window in the current workspace
+        let current_index = self.with_model(|m| m.current_workspace);
+        self.spaces[current_index]
+            .elements()
+            .find(|w| w.is_fullscreen())
+            .cloned()
+    }
 
     /// Return if we are in window selection mode
     pub fn get_show_all(&self) -> bool {
@@ -509,7 +550,7 @@ impl Workspaces {
     /// Update the layout bin and window selector state for a workspace
     /// This ensures the bin has correct layout positions for all windows
     /// Returns true when a relayout was performed.
-    fn expose_show_all_layout(&self, workspace_index: usize) -> bool {
+    fn expose_show_all_layout(&self, workspace_index: usize) -> bool {      
         let Some(workspace) = self.get_workspace_at(workspace_index) else {
             tracing::warn!("Workspace {} not found for expose layout", workspace_index);
             return false;
@@ -617,6 +658,7 @@ impl Workspaces {
         // Keep the overlay hidden unless we're animating or expose should be visible
         let overlay_layer = workspace_view.window_selector_view.overlay_layer.clone();
         let is_animating = transition.is_some();
+        self.is_animating.store(is_animating, std::sync::atomic::Ordering::Relaxed);
         overlay_layer.set_hidden(!is_animating && !visible);
 
 
@@ -1725,6 +1767,25 @@ impl Workspaces {
         self.with_model(|m| m.current_workspace)
     }
 
+    /// Get the top (non-minimized) window of a workspace, or None if the workspace is empty.
+    pub fn get_top_window_of_workspace(&self, workspace_index: usize) -> Option<ObjectId> {
+        if workspace_index >= self.spaces.len() {
+            return None;
+        }
+        self.spaces[workspace_index]
+            .elements()
+            .rev()
+            .find_map(|e| {
+                let id = e.id();
+                if let Some(window) = self.windows_map.get(&id) {
+                    if window.is_minimised() {
+                        return None;
+                    }
+                }
+                Some(id)
+            })
+    }
+
     /// Given a workspace view index (WorkspaceView.index), return its current
     /// position in the workspaces vector (zero-based). Useful when external
     /// components keep the view index while the internal ordering may change.
@@ -1821,7 +1882,8 @@ impl Workspaces {
     
     /// End workspace swipe gesture and snap to nearest workspace.
     /// Uses velocity to determine target workspace for natural momentum-based snapping.
-    pub fn workspace_swipe_end(&mut self, velocity: f32) {
+    /// Returns the target workspace index.
+    pub fn workspace_swipe_end(&mut self, velocity: f32) -> usize {
         let (num_workspaces, workspace_width, current_index, scale) = self.with_model(|m| {
             (m.workspaces.len(), m.width as f32, m.current_workspace, m.scale as f32)
         });
@@ -1829,7 +1891,7 @@ impl Workspaces {
         if num_workspaces == 0 || workspace_width <= 0.0 {
             // Just snap to current
             let _ = self.set_current_workspace_index(current_index, None);
-            return;
+            return current_index;
         }
         
         // Get current scroll position
@@ -1866,6 +1928,7 @@ impl Workspaces {
         };
         
         let _ = self.set_current_workspace_index(target_index, Some(transition));
+        target_index
     }
 
     // Space management
@@ -1883,6 +1946,9 @@ impl Workspaces {
             return None;
         }
         if let Some(transition) = &transition {
+            // Mark as animating
+            self.is_animating.store(true, std::sync::atomic::Ordering::Relaxed);
+            
             let animation = self
                 .workspaces_layer
                 .engine
@@ -1890,12 +1956,22 @@ impl Workspaces {
             let change1 = self.workspaces_layer.change_position((-offset, 0.0));
             let change2 = self.expose_layer.change_position((-offset, 0.0));
             let changes = vec![change1, change2];
-            return self
+            let tr = self
                 .workspaces_layer
                 .engine
                 .schedule_changes(&changes, animation)
                 .into_iter()
                 .next();
+            
+            // Clear animating flag when animation completes
+            if let Some(tr) = &tr {
+                let is_animating = self.is_animating.clone();
+                tr.on_finish(move |_: &Layer, _: f32| {
+                    is_animating.store(false, std::sync::atomic::Ordering::Relaxed);
+                }, true);
+            }
+            
+            return tr;
         }
         None
     }
