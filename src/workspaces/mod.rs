@@ -660,7 +660,11 @@ impl Workspaces {
         let is_animating = transition.is_some();
         self.is_animating.store(is_animating, std::sync::atomic::Ordering::Relaxed);
         overlay_layer.set_hidden(!is_animating && !visible);
-
+        
+        // Ensure overlay starts at correct opacity for animation
+        if is_animating || visible {
+            overlay_layer.set_opacity(0.0, None);
+        }
 
         workspace_view.window_selector_view.windows_layer.set_hidden(false);
         workspace_view.window_selector_view.layer.set_hidden(false);
@@ -755,9 +759,9 @@ impl Workspaces {
         let layer_shell_overlay_opacity = 1.0.interpolate(&0.0, delta);
         let layer_shell_overlay_opacity = layer_shell_overlay_opacity.clamp(0.0, 1.0);
 
-        if (!end_gesture && delta > 0.0) || animation.is_some() {
-            workspace_view.window_selector_view.overlay_layer.set_opacity(0.0, None);
-        }
+        // Set overlay opacity to match the workspace selector opacity (fade in as we enter expose)
+        let overlay_opacity = workspace_opacity;
+        workspace_view.window_selector_view.overlay_layer.set_opacity(overlay_opacity, transition);
 
         let window_selector_overlay_ref = workspace_view.window_selector_view.overlay_layer.clone();
         let expose_layer = self.expose_layer.clone();
@@ -777,7 +781,6 @@ impl Workspaces {
             transaction
             .on_finish(
                 move |_: &Layer, _: f32| {
-                    window_selector_overlay_ref.set_opacity(1.0, None);
                     window_selector_overlay_ref.set_hidden(!show_all);
                     expose_layer.set_hidden(!show_all);
                     // Restore layer shell overlay when exiting expose mode
