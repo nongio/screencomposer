@@ -36,7 +36,7 @@ Following a draft roadmap of features and improvements.
 - [x] window fullscreen/maximize
 - [x] window scaling
 - [x] animated drag and drop
-- [ ] minimize windows
+- [x] minimize windows
 ### Applications switcher (hotkey: `alt + Tab`)
 - [x] background search for application metadata and icons (following xdg specs)
 - [x] close applications from application switcher
@@ -47,8 +47,8 @@ Following a draft roadmap of features and improvements.
 
 ### Dock task manager
 - [x] show running applications in their opening order
-- [ ] show minimized windows
-- [ ] show pinned applications
+- [x] show minimized windows
+- [x] show pinned applications
 - [ ] show favorite locations
 
 ### Screenshare
@@ -66,30 +66,42 @@ Following a draft roadmap of features and improvements.
 - [ ] calculate scroll acceleration
 
 ### Workspace
-- [ ] dynamic background
+- [x] dynamic background
+- [x] multiple workspaces
+- [x] workspace switcher
 - [ ] enable multiple screens
 - [ ] screen rotation / resolution
-- [ ] multiple workspaces
-- [ ] workspace switcher
 
 ### Config
-- [ ] centralized config manager
-- [ ] persistent config from text files
-- [ ] setup keybindings from config
+- [x] centralized config manager
+- [x] persistent config from text files
+- [x] setup keybindings from config
 - [ ] setup screen mode
 
-### Hardcoded Hotkeys
-- show desktop: `alt + d`
-- show all windows: `alt + f`
-- cycle current app windows: `alt + r`
-- application switcher: `alt + tab`
-- open a terminal: `alt + shift + enter`
-- open a file browser: `alt + shift + space`
-- open a browser: `alt + shift + b`
+### Keyboard Shortcuts
+Hotkeys are now fully configurable via the `sc_config.toml` file. See the `[keyboard_shortcuts]` section to customize keybindings for your setup. Example:
 
-If you want to customise the binaries triggered by the hotkeys, you can edit the `src/config.rs` file.
+```toml
+[keyboard_shortcuts]
+"Ctrl+Alt+BackSpace" = "Quit"
+"Ctrl+Shift+Q" = "Quit"
+"Ctrl+Return" = { run = { cmd = "terminator", args = [] } }
+"Logo+Space" = { open_default = "file_manager" }
+"Logo+B" = { open_default = "browser" }
+"Ctrl+1" = { builtin = "Workspace", index = 0 }
+```
 
-If you want to change the hotkeys, take a look at: `src/input_handler.rs#L1401`
+## Supported Wayland Protocols
+ScreenComposer implements a comprehensive set of Wayland protocols, including:
+- Core: `wl_compositor`, `wl_shm`, `wl_seat`, `wl_data_device_manager`
+- Shells: `xdg_wm_base` (XDG shell), `wlr_layer_shell_v1` (Layer shell 1.0)
+- Output management: `wl_output`, `xdg_output`, `wp_presentation`
+- Rendering: `zwp_linux_dmabuf_v1`, `wp_viewporter`
+- Input: pointer gestures, relative pointer, keyboard shortcuts inhibit, text input, input method
+- Selection: primary selection, data control (wlr-data-control)
+- XDG foreign: cross-client surface identification
+
+For a complete and up-to-date list, see [docs/wayland.md](./docs/wayland.md).
 
 ## Is it open for contributions?
 You can contribute by testing the compositor, reporting bugs, by implementing new features or bring new ideas. Both this project and the LayersEngine are open to contributions. If you have any questions,  open an issue on the repository.
