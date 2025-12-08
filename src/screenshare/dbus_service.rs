@@ -36,6 +36,7 @@ pub struct ScreenCastInterface {
 /// Internal state for a session.
 #[derive(Clone)]
 struct SessionState {
+    #[allow(dead_code)]
     cursor_mode: u32,
     streams: Vec<String>, // Stream object paths
     started: bool,
@@ -373,6 +374,7 @@ pub struct StreamInterface {
     /// The stream's object path.
     stream_path: String,
     /// Channel to send commands to the compositor's main loop.
+    #[allow(dead_code)]
     compositor_tx: Sender<CompositorCommand>,
     /// Shared stream state.
     streams: Arc<RwLock<HashMap<String, StreamState>>>,

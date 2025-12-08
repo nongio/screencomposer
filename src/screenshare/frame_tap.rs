@@ -562,6 +562,7 @@ impl FrameTap for LoggingTap {
 ///
 /// Currently always returns false. Override by setting the environment
 /// variable `SCREEN_COMPOSER_LOGGING_TAP=1`.
+#[allow(dead_code)]
 pub fn logging_tap_enabled() -> bool {
     std::env::var("SCREEN_COMPOSER_LOGGING_TAP")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))

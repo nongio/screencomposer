@@ -51,6 +51,7 @@ pub use session_tap::ScreencastSessionTap;
 
 use session_tap::FrameData;
 use smithay::reexports::calloop::channel::{channel, Event as ChannelEvent, Sender as ChannelSender};
+#[allow(unused_imports)]
 use zbus::zvariant::OwnedFd;
 
 /// Active screencast session state (compositor side).
