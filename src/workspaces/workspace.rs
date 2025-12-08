@@ -210,11 +210,11 @@ impl WorkspaceView {
         self.unmap_window_internal(window_id);
 
         if let Some(mirror_layer) = self.window_selector_view.unmap_window(window_id) {
-            if let Some(base_layer) = self.window_base_layers.write().unwrap().remove(window_id) {
-                base_layer.remove_follower_node(&mirror_layer);
-            }
-                // Remove the mirror layer when the window is truly destroyed
-                mirror_layer.remove();
+            // Remove both the base_layer mapping and the mirror layer
+            // Don't call remove_follower_node as it may cause accessing freed nodes
+            // when the layer tree is being modified during window destruction
+            self.window_base_layers.write().unwrap().remove(window_id);
+            mirror_layer.remove();
         } else {
             self.window_base_layers.write().unwrap().remove(window_id);
         }
