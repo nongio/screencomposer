@@ -13,7 +13,7 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v3
       - name: Rust toolchain
-        uses: dtolnay/rust-toolchain@1.82.0
+        uses: dtolnay/rust-toolchain@1.83.0
         with:
           components: rustfmt
       - name: Cargo cache
@@ -32,7 +32,7 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v3
       - name: Rust toolchain
-        uses: dtolnay/rust-toolchain@1.82.0
+        uses: dtolnay/rust-toolchain@1.83.0
         with:
           components: clippy
       - name: Get date for registry cache
