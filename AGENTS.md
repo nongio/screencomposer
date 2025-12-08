@@ -1,63 +1,106 @@
-# ScreenComposer
+# CLAUDE.md
 
-A Wayland compositor built with Smithay. Runs with udev (DRM/GBM), winit, or X11 backends.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Structure
+## Build & Run Commands
 
+```sh
+# Development (debug build, faster compilation)
+cargo build
+cargo run -- --winit   # Run in windowed mode (Wayland/X11 session)
+cargo run -- --x11     # Run as X11 client
+cargo run -- --tty-udev # Run on bare metal (DRM/GBM, requires root or libseat)
+
+# Release build
+cargo build --release
+
+# Linting and formatting
+cargo fmt --all -- --check   # Check formatting
+cargo fmt --all              # Auto-format
+cargo clippy --features "default" -- -D warnings
+
+# Build specific workspace members
+cargo build -p xdg-desktop-portal-screencomposer  # Portal backend component
+
+# Run with tracing
+RUST_LOG=debug cargo run -- --winit
 ```
-src/                    # Main crate source
-├── main.rs             # Entry point and backend selection
-├── lib.rs              # Library exports
-├── config/             # Configuration parsing and runtime settings
-├── state/              # Compositor state and Wayland protocol handlers
-├── shell/              # Window management (XDG, layer shell, X11)
-├── render_elements/    # Render element types for the damage tracker
-├── workspaces/         # Workspace management and UI components
-├── theme/              # Theming and styling
-├── utils/              # Shared utilities
-└── sc_layer_shell/     # Custom layer shell protocol
 
-docs/                   # Design documentation
-assets/                 # Static assets (icons, images)
-resources/              # Runtime resources (cursors, etc.)
-sample-clients/         # Example Wayland client applications
-```
+**Note:** No test suite exists yet. The project uses Rust 1.83.0 minimum.
 
-### Key Modules
+## Architecture Overview
 
-- **Backends**: `udev.rs` (DRM/GBM), `winit.rs`, `x11.rs` — platform-specific display and input
-- **Rendering**: `render.rs`, `skia_renderer.rs` — frame composition and Skia-based drawing
-- **State**: Protocol handlers, seat management, data device, and global compositor state
-- **Shell**: XDG toplevel/popup handling, layer shell, server-side decorations
-- **Workspaces**: Multi-workspace support, window views, dock, app switcher
+ScreenComposer is a Wayland compositor built on Smithay with a Skia-based rendering pipeline and the `lay-rs` engine for scene graph/layout management.
+
+### Backend System
+
+Three interchangeable backends implement the same compositor logic:
+- `src/udev.rs` — Production backend using DRM/GBM/libinput for bare-metal display
+- `src/winit.rs` — Development backend running as a window inside another compositor
+- `src/x11.rs` — X11 backend for running inside an X session
+
+Each backend:
+1. Sets up its display/input subsystem
+2. Creates `ScreenComposer<BackendData>` state
+3. Runs the event loop with calloop
+4. Calls the shared rendering pipeline
+
+### Core State (`src/state/mod.rs`)
+
+`ScreenComposer<BackendData>` is the central compositor state containing:
+- Wayland protocol handlers (via Smithay delegates)
+- `Workspaces` — multi-workspace window management with dock, app switcher, expose mode
+- `PopupManager` — popup surface management
+- Seat/input state, output management, layer shell surfaces
+
+The state module also contains protocol handler implementations (`*_handler.rs` files).
+
+### Rendering Pipeline
+
+1. **Scene Graph**: `lay-rs` engine manages the scene tree and Taffy-based layout
+2. **Element Building**: `src/render.rs` produces `OutputRenderElements` per output
+3. **Skia Renderer**: `src/skia_renderer.rs` wraps Smithay's GlesRenderer with Skia for drawing
+4. **Damage Tracking**: `OutputDamageTracker` from Smithay renders only damaged regions
+5. **Frame Submission**: Backend submits the composed buffer (dmabuf on DRM, presented on winit/x11)
+
+### Window Management
+
+- `src/shell/` — Protocol implementations for XDG shell, layer shell, XWayland
+- `src/workspaces/` — Workspace logic, window views, dock, app switcher, expose mode
+- `src/workspaces/window_view/` — Individual window rendering and effects (genie minimize)
+
+### Screenshare System (In Progress)
+
+Located in `src/screenshare/`:
+- `dbus_service.rs` — D-Bus API (`org.screencomposer.ScreenCast`)
+- `frame_tap.rs` — Frame capture hooks with damage tracking
+- `pipewire_stream.rs` — PipeWire integration (partially implemented)
+- `session_tap.rs` — Per-session frame filtering
+
+Portal backend: `components/xdg-desktop-portal-sc/` — separate binary that bridges xdg-desktop-portal to compositor
+
+See [screenshare-plan.md](./screenshare-plan.md) for current implementation status and next steps.
+
+## Configuration
+
+TOML-based config at runtime:
+- `sc_config.toml` — Default configuration
+- `sc_config.{backend}.toml` — Backend-specific overrides (e.g., `sc_config.winit.toml`)
+
+See `sc_config.example.toml` for all options.
+
+## Key Dependencies
+
+- **smithay** — Wayland compositor library (pinned to specific git rev)
+- **lay-rs** — Scene graph and layout engine (from `github.com/nongio/layers`)
+- **zbus** — D-Bus implementation for screenshare
+- **pipewire** — Video streaming for screenshare
+- **tokio** — Async runtime for D-Bus service
 
 ## Documentation
 
-See the `docs/` folder for detailed documentation:
-
-- `configuration.md` - Configuration options and settings
-- `rendering.md` - Rendering pipeline details
-- `render_loop.md` - Main render loop explanation
-- `wayland.md` - Wayland protocol implementation
-- `layer-shell.md` - Layer shell protocol support
-- `expose.md` - Expose mode design and flow
-- `dock-design.md` - Dock component design
-- `window-move.md` - Window movement handling
-- `keyboard_mapping.md` - Keyboard mapping configuration
-- `screenshare.md` - Screen sharing support
-
-## Build & Run
-
-```sh
-cargo build --release
-./target/release/screen-composer --winit   # Winit backend (development)
-./target/release/screen-composer --x11     # X11 backend
-./target/release/screen-composer --tty-udev # Native DRM/GBM (production)
-```
-
-Check `Cargo.toml` for available feature flags.
-
-## Observability
-
-- Use `RUST_LOG` environment variable to control tracing output
-- Optional Puffin profiling server available at build time
+Detailed design docs in `docs/`:
+- `rendering.md`, `render_loop.md` — Rendering pipeline
+- `wayland.md` — Protocol implementation details
+- `xdg-desktop-portal.md` — Screenshare portal integration
+- `expose.md`, `dock-design.md` — UI component design
