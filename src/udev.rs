@@ -711,7 +711,7 @@ impl SurfaceComposition {
                     .render_output(renderer, age.into(), elements, clear_color)
                     .map(|res| {
                         #[cfg(feature = "renderer_sync")]
-                        res.sync.wait();
+                        let _ = res.sync.wait();
                         let rendered = res.damage.is_some();
                         SurfaceCompositorRenderResult {
                             rendered,
@@ -734,7 +734,7 @@ impl SurfaceComposition {
                     if let PrimaryPlaneElement::Swapchain(element) =
                         render_frame_result.primary_element
                     {
-                        element.sync.wait();
+                        let _ = element.sync.wait();
                     }
                     SurfaceCompositorRenderResult {
                         rendered: !render_frame_result.is_empty,

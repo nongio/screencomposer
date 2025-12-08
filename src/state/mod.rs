@@ -267,7 +267,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             let socket_name = source.socket_name().to_string_lossy().into_owned();
             handle
                 .insert_source(source, |client_stream, _, data| {
-                    if let Ok(client) = data
+                    if let Ok(_client) = data
                         .display_handle
                         .insert_client(client_stream, Arc::new(ClientState::default()))
                     {

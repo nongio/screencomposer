@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Once, RwLock},
+    sync::{Arc, OnceLock, RwLock},
 };
 
 use lay_rs::{
@@ -12,21 +12,12 @@ use lay_rs::{
 use crate::{config::Config, workspaces::utils::FONT_CACHE};
 pub mod natural_layout;
 
-static INIT: Once = Once::new();
-static mut ICON_CACHE: Option<Arc<RwLock<HashMap<String, skia::Image>>>> = None;
-
-fn init_icon_cache() {
-    unsafe {
-        ICON_CACHE = Some(Arc::new(RwLock::new(HashMap::new())));
-    }
-}
+static ICON_CACHE: OnceLock<Arc<RwLock<HashMap<String, skia::Image>>>> = OnceLock::new();
 
 fn icon_cache() -> Arc<RwLock<HashMap<String, skia::Image>>> {
-    let icon_cache = unsafe {
-        INIT.call_once(init_icon_cache);
-        ICON_CACHE.as_ref().unwrap()
-    };
-    icon_cache.clone()
+    ICON_CACHE
+        .get_or_init(|| Arc::new(RwLock::new(HashMap::new())))
+        .clone()
 }
 
 // FIXME check why skia_safe svg is broken

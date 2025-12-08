@@ -461,6 +461,7 @@ pub struct DisplayDescriptor<'a> {
 }
 
 impl<'a> DisplayDescriptor<'a> {
+    #[allow(dead_code)]
     pub fn new(connector: &'a str) -> Self {
         Self {
             connector,

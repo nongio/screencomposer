@@ -233,7 +233,7 @@ impl RenderElement<SkiaRenderer> for SceneElement {
         &self,
         frame: &mut <SkiaRenderer as Renderer>::Frame<'_>,
         _src: Rectangle<f64, Buffer>,
-        dst: Rectangle<i32, Physical>,
+        _dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
         _opaque_regions: &[Rectangle<i32, Physical>],
     ) -> Result<(), <SkiaRenderer as Renderer>::Error> {

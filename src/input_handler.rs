@@ -1528,8 +1528,8 @@ impl ScreenComposer<UdevData> {
 
     fn on_gesture_pinch_update<B: InputBackend>(&mut self, evt: B::GesturePinchUpdateEvent) {
         let pointer = self.pointer.clone();
-        let multiplier = 1.1;
-        let delta = evt.scale() as f32 * multiplier;
+        let _multiplier = 1.1;
+        let _delta = evt.scale() as f32 * _multiplier;
 
         // if !self.show_desktop {
         //     delta -= 1.0;

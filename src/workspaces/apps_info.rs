@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::{
     collections::HashMap,
     hash::{Hash, Hasher},
-    sync::Once,
 };
 
 use freedesktop_desktop_entry::DesktopEntry;
@@ -91,17 +90,10 @@ impl std::fmt::Debug for Application {
 type AppsInfoStorage = HashMap<String, Application>;
 
 fn applications_info() -> &'static Arc<tokio::sync::RwLock<AppsInfoStorage>> {
-    static mut INSTANCE: Option<Arc<tokio::sync::RwLock<AppsInfoStorage>>> = None;
+    static INSTANCE: std::sync::OnceLock<Arc<tokio::sync::RwLock<HashMap<String, Application>>>> =
+        std::sync::OnceLock::new();
 
-    static INIT: Once = Once::new();
-
-    unsafe {
-        INIT.call_once(|| {
-            let applications = Arc::new(tokio::sync::RwLock::new(HashMap::new()));
-            INSTANCE = Some(applications);
-        });
-        INSTANCE.as_ref().unwrap()
-    }
+    INSTANCE.get_or_init(|| Arc::new(tokio::sync::RwLock::new(HashMap::new())))
 }
 
 pub struct ApplicationsInfo;

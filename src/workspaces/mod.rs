@@ -424,6 +424,7 @@ impl Workspaces {
     }
 
     /// Set the window selection mode
+    #[allow(dead_code)]
     fn set_show_all(&self, show_all: bool) {
         self.show_all
             .store(show_all, std::sync::atomic::Ordering::Relaxed);
@@ -2022,12 +2023,14 @@ impl Workspaces {
     }
 
     // Add these helper methods
+    #[allow(dead_code)]
     fn find_space_for_element(&self, element: &WindowElement) -> Option<&Space<WindowElement>> {
         self.spaces
             .iter()
             .find(|space| space.elements().any(|e| e.id() == element.id()))
     }
 
+    #[allow(dead_code)]
     fn find_space_index_for_element(&self, element: &WindowElement) -> Option<usize> {
         self.spaces
             .iter()

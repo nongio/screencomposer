@@ -15,11 +15,11 @@ use std::{
 
 use crate::{
     config::Config, interactive_view::ViewInteractions, theme::theme_colors, utils::{
-        Observer, natural_layout::{LayoutRect, natural_layout}
+        natural_layout::{LayoutRect, natural_layout}
     }
 };
 
-use super::{utils::FONT_CACHE, WorkspacesModel, WORKSPACE_SELECTOR_PREVIEW_WIDTH};
+use super::{utils::FONT_CACHE, WORKSPACE_SELECTOR_PREVIEW_WIDTH};
 
 // Logical (unscaled) values - will be multiplied by screen scale when used
 const WINDOW_SELECTOR_DRAG_THRESHOLD_LOGICAL: f32 = 1.5;
@@ -468,7 +468,7 @@ impl WindowSelectorView {
 }
 
 pub fn get_paragraph_for_text(text: &str, font_size: f32) -> skia::textlayout::Paragraph {
-    let mut text_style = unsafe {skia::textlayout::TextStyle::new()};
+    let mut text_style = skia::textlayout::TextStyle::new();
 
     text_style.set_font_size(font_size);
     let font_style = skia::FontStyle::new(

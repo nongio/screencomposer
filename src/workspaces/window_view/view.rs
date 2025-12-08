@@ -6,7 +6,7 @@ use lay_rs::{
     view::{RenderLayerTree, View},
 };
 use smithay::{reexports::wayland_server::backend::ObjectId, utils::Logical};
-use std::sync::{Arc, atomic::AtomicBool, RwLock};
+use std::sync::{Arc, atomic::AtomicBool};
 
 use crate::{shell::WindowElement, workspaces::utils::view_render_elements};
 
