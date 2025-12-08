@@ -1,28 +1,47 @@
-# Project structure
+# Project Structure
 
-Top-level (selected):
-- `src/` — main crate source
-  - `config.rs` — runtime configuration handling
-  - `render.rs` — build output render elements and call damage tracker
-  - `skia_renderer.rs` — Skia wrapper over Smithay GLES renderer
-  - `udev.rs` — DRM/GBM backend (primary production path)
-  - `winit.rs`, `x11.rs` — alternative backends
-  - `render_elements/` — element types used by the renderer
-  - `shell/` — XDG/Layer shell handlers and window management glue
-  - `state/` — Wayland globals, seats, data device, and compositor state
-  - `sc_layer_shell/` — custom protocol example integration
-  - `screenshare/` — (new, feature-gated) screenshare modules: frame_tap, policy, screenshot, optional pipewire
-  - `protocols/` — (planned) screencopy module, generated protocol code, and XML
-- `docs/` — documentation for configuration, design, and features
-- `assets/`, `resources/` — images and UI resources
+## Overview
 
-Features:
-- `winit`, `x11`, `udev`, `egl` — backends/capabilities
-- `screenshare` — enables screenshare modules (frame_tap/policy/screenshot)
-- `screencopy` — enables zwlr_screencopy_v1 server (to be added)
-- `pipewire` — enables PipeWire publisher (optional)
-- `headless` — planned headless backend for CI screenshots
+ScreenComposer is a Wayland compositor built with Smithay. The codebase follows a modular architecture separating backends, rendering, shell handling, and UI components.
 
-Build & run:
-- Main binary: `screen-composer --winit|--x11|--tty-udev`
-- Future: `sc` helper binary or subcommands for screenshots/streaming and policy toggles
+## Directory Layout
+
+```
+src/                    # Main crate source
+├── main.rs             # Entry point and backend selection
+├── lib.rs              # Library exports
+├── config/             # Configuration parsing and runtime settings
+├── state/              # Compositor state and Wayland protocol handlers
+├── shell/              # Window management (XDG, layer shell, X11)
+├── render_elements/    # Render element types for the damage tracker
+├── workspaces/         # Workspace management and UI components
+├── theme/              # Theming and styling
+├── utils/              # Shared utilities
+└── sc_layer_shell/     # Custom layer shell protocol
+
+docs/                   # Design documentation
+assets/                 # Static assets (icons, images)
+resources/              # Runtime resources (cursors, etc.)
+sample-clients/         # Example Wayland client applications
+```
+
+## Key Modules
+
+- **Backends**: `udev.rs` (DRM/GBM), `winit.rs`, `x11.rs` — platform-specific display and input
+- **Rendering**: `render.rs`, `skia_renderer.rs` — frame composition and Skia-based drawing
+- **State**: Protocol handlers, seat management, data device, and global compositor state
+- **Shell**: XDG toplevel/popup handling, layer shell, server-side decorations
+- **Workspaces**: Multi-workspace support, window views, dock, app switcher
+
+## Build & Run
+
+```sh
+cargo build --release
+./target/release/screen-composer --winit   # Winit backend (development)
+./target/release/screen-composer --x11     # X11 backend
+./target/release/screen-composer --tty-udev # Native DRM/GBM (production)
+```
+
+## Feature Flags
+
+Check `Cargo.toml` for available feature flags that enable optional functionality like different backends or experimental features.

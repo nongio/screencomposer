@@ -17,6 +17,6 @@ Notes:
 - For deterministic screenshots, add a headless backend and fixed clock advancing to render a specific frame consistently.
 
 ## See also
-- Project structure: [docs/project-structure.md](./project-structure.md)
+- Project structure: [AGENTS.md](../AGENTS.md)
 - Configuration guide: [docs/configuration.md](./configuration.md)
-- Screensharing overview: [docs/screensharing.md](./screensharing.md)
+- Screensharing overview: [docs/screenshare.md](./screenshare.md)

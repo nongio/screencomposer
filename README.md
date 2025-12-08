@@ -123,6 +123,27 @@ If you want to enable X11 support (to run X11 applications within anvil),
 then you'll need to install the following packages as well:
     - `xwayland`
 
+## Configuration
+
+ScreenComposer uses TOML configuration files. A complete example configuration is provided in `sc_config.example.toml` which you can copy and modify:
+
+```bash
+cp sc_config.example.toml sc_config.toml
+```
+
+### Backend-specific configuration
+
+You can create backend-specific configuration files using the naming convention `sc_config.{backend}.toml`. For example:
+
+- `sc_config.winit.toml` - Configuration for the winit backend
+- `sc_config.udev.toml` - Configuration for the tty-udev/DRM backend
+
+When running with a specific backend, ScreenComposer will automatically load the corresponding configuration file if it exists, falling back to `sc_config.toml` otherwise.
+
+This allows you to maintain different display settings, keyboard shortcuts, or other preferences for each backend. For instance, you might want different `screen_scale` values or display resolutions when running in a window (winit/X11) versus on bare metal (tty-udev).
+
+For detailed configuration options, see the [configuration documentation](./docs/configuration.md).
+
 ## Build and run
 
 You can run it with cargo after having cloned this repository:
