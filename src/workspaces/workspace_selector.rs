@@ -1,5 +1,6 @@
 use std::{
-    hash::{Hash, Hasher}, sync::{Arc, RwLock}
+    hash::{Hash, Hasher},
+    sync::{Arc, RwLock},
 };
 
 use lay_rs::prelude::*;
@@ -13,7 +14,8 @@ use crate::{
     interactive_view::ViewInteractions,
     theme::{self, theme_colors},
     utils::{
-        Observer, button_press_filter, button_press_scale, button_release_filter, button_release_scale, draw_named_icon, draw_text_content
+        button_press_filter, button_press_scale, button_release_filter, button_release_scale,
+        draw_named_icon, draw_text_content, Observer,
     },
 };
 
@@ -109,7 +111,7 @@ impl WorkspaceSelectorView {
         let drop_targets = Arc::new(RwLock::new(Vec::new()));
         let drop_hover_index = Arc::new(RwLock::new(None));
         let pressed_action = Arc::new(RwLock::new(None));
-        
+
         // Setup post-render hook to update drop targets
         let drop_targets_clone = drop_targets.clone();
         view.add_post_render_hook(move |state, view, _layer| {
@@ -137,22 +139,22 @@ impl WorkspaceSelectorView {
             pressed_action,
         }
     }
-    
+
     /// Get current drop targets (updated after each render)
     pub fn get_drop_targets(&self) -> Vec<WorkspaceDropTarget> {
         self.drop_targets.read().unwrap().clone()
     }
-    
+
     /// Set which workspace is being hovered during drag (for visual feedback)
     pub fn set_drop_hover(&self, workspace_index: Option<usize>) {
         *self.drop_hover_index.write().unwrap() = workspace_index;
-        
+
         // Update view state to trigger re-render with new hover indication
         let mut state = self.view.get_state().clone();
         state.drop_hover_index = workspace_index;
         self.view.update_state(&state);
     }
-    
+
     /// Get the currently hovered workspace index
     pub fn get_drop_hover(&self) -> Option<usize> {
         *self.drop_hover_index.read().unwrap()
@@ -163,25 +165,23 @@ fn render_workspace_selector_view(
     state: &WorkspaceSelectorViewState,
     view: &View<WorkspaceSelectorViewState>,
 ) -> LayerTree {
-
     let worspaces = state.workspaces.clone();
 
     let workspaces_tree = worspaces
         .iter()
         .enumerate()
         .map(|(i, w)| {
-
-            let workspace_index =  w.index;
+            let workspace_index = w.index;
             let current = i == state.current;
-            let mut state_drop_hover_index:i32 = -1;
+            let mut state_drop_hover_index: i32 = -1;
             if state.drop_hover_index.is_some() {
                 state_drop_hover_index = state.drop_hover_index.unwrap() as i32;
             }
-            let is_drop_hover = state_drop_hover_index-1 == (i as i32) && !current;
+            let is_drop_hover = state_drop_hover_index - 1 == (i as i32) && !current;
 
             let mut border_width = 0.0;
             let border_color = theme_colors().accents_blue;
-            
+
             if current {
                 border_width = 8.0;
             }
@@ -191,7 +191,7 @@ fn render_workspace_selector_view(
                 let add = lay_rs::skia::Color::from_argb(0, 0, 0, 0);
                 color_filter = lay_rs::skia::color_filters::lighting(darken_color, add);
             }
-            
+
             let workspace_width = w.workspace_width.max(1.0);
             let workspace_height = w.workspace_height.max(1.0);
             let preview_width = WORKSPACE_SELECTOR_PREVIEW_WIDTH;
@@ -229,156 +229,147 @@ fn render_workspace_selector_view(
                 })
                 .size((
                     lay_rs::types::Size {
-                        width: lay_rs::taffy::style::Dimension::Length(
-                            preview_width,
-                        ),
-                        height: lay_rs::taffy::style::Dimension::Length(
-                            preview_height,
-                        ),
+                        width: lay_rs::taffy::style::Dimension::Length(preview_width),
+                        height: lay_rs::taffy::style::Dimension::Length(preview_height),
                     },
                     None,
                 ))
                 .on_pointer_move({
                     let view_ref = view.clone();
                     move |_layer: &Layer, _x, _y| {
-                        let key = format!(
-                            "workspace_selector_desktop_remove_{}",
-                            workspace_index
-                        );
+                        let key = format!("workspace_selector_desktop_remove_{}", workspace_index);
                         if let Some(remove_button) = view_ref.layer_by_key(key.as_str()) {
                             remove_button.set_opacity(1.0, Transition::spring(0.3, 0.1));
-                            remove_button.set_scale(Point::new(1.0, 1.0), Transition::spring(0.3, 0.1));
+                            remove_button
+                                .set_scale(Point::new(1.0, 1.0), Transition::spring(0.3, 0.1));
                         }
                     }
                 })
                 .on_pointer_out({
                     let view_ref = view.clone();
                     move |_layer: &Layer, _x, _y| {
-                        let key = format!(
-                            "workspace_selector_desktop_remove_{}",
-                            workspace_index
-                        );
+                        let key = format!("workspace_selector_desktop_remove_{}", workspace_index);
                         if let Some(remove_button) = view_ref.layer_by_key(key.as_str()) {
                             remove_button.set_opacity(0.0, Transition::spring(0.3, 0.1));
-                            remove_button.set_scale(Point::new(0.8, 0.8), Transition::spring(0.3, 0.1));
+                            remove_button
+                                .set_scale(Point::new(0.8, 0.8), Transition::spring(0.3, 0.1));
                         }
                     }
                 })
                 .children::<LayerTree>({
                     let children: Vec<Option<LayerTree>> = vec![
-                    Some(LayerTreeBuilder::with_key(format!(
-                        "workspace_selector_desktop_content_mirror_{}",
-                        workspace_index.clone()
-                    ))
-                        .layout_style(taffy::Style {
-                            position: taffy::Position::Absolute,
-                            ..Default::default()
-                        })
-                        .size((
-                            lay_rs::types::Size {
-                                width: lay_rs::taffy::style::Dimension::Length(
-                                    workspace_width,
-                                ),
-                                height: lay_rs::taffy::style::Dimension::Length(
-                                    workspace_height,
-                                ),
-                            },
-                            None,
-                        ))
-                        .scale(Point::new(scale, scale))
-                        .replicate_node(w.workspace_node)
-                        .picture_cached(false)
-                        .color_filter(color_filter)
-                        .on_pointer_press(button_press_filter())
-                        .on_pointer_release(button_release_filter())
-                        .border_corner_radius(BorderRadius::new_single(10.0 / scale))
-                        .image_cache(true)
-                        .clip_children(true)
-                        .clip_content(true)
-                        .build()
-                        .unwrap()),
-                    Some(LayerTreeBuilder::with_key(format!(
-                        "workspace_selector_desktop_border_{}",
-                        w.index
-                    ))
-                    .layout_style(taffy::Style {
-                        position: taffy::Position::Absolute,
-                        ..Default::default()
-                    })
-                    .position(Point::new(0.0, 0.0))
-                    .size((
-                        lay_rs::types::Size {
-                            width: lay_rs::taffy::style::Dimension::Percent(1.0),
-                            height: lay_rs::taffy::style::Dimension::Percent(1.0),
-                        },
-                        None,
-                    ))
-                    .border_width((border_width, None))
-                    .border_color(border_color)
-                    .border_corner_radius(BorderRadius::new_single(10.0))
-                    .build()
-                    .unwrap()),
-                    // Only show remove button if not current workspace and not fullscreen
-                    (!current && !w.fullscreen).then(|| -> LayerTree {
-                        LayerTreeBuilder::with_key(format!(
-                            "workspace_selector_desktop_remove_{}",
-                            w.index
-                        ))
-                        .layout_style(taffy::Style {
-                            position: taffy::Position::Absolute,
-                            ..Default::default()
-                        })
-                        .anchor_point(Point::new(0.5, 0.5))
-                        .scale(Point::new(0.2, 0.2))
-                        .opacity((0.0, None))
-                        .position(Point::new(preview_width, 0.0))
-                        .size((
-                            lay_rs::types::Size {
-                                width: lay_rs::taffy::style::Dimension::Length(50.0),
-                                height: lay_rs::taffy::style::Dimension::Length(50.0),
-                            },
-                            None,
-                        ))
-                        .background_color(theme_colors().materials_ultrathick)
-                        .border_corner_radius(BorderRadius::new_single(25.0))
-                        .content(draw_named_icon("close-symbolic"))
-                        .shadow_color((Color::new_rgba(0.0, 0.0, 0.0, 0.2), None))
-                        .shadow_offset(((0.0, 0.0).into(), None))
-                        .shadow_radius((5.0, None))
-                        .image_cache(true)
-                        .on_pointer_press(button_press_scale(0.8))
-                        .on_pointer_release(button_release_scale())
-                        .build()
-                        .unwrap()
-                    }),
-                ];
+                        Some(
+                            LayerTreeBuilder::with_key(format!(
+                                "workspace_selector_desktop_content_mirror_{}",
+                                workspace_index.clone()
+                            ))
+                            .layout_style(taffy::Style {
+                                position: taffy::Position::Absolute,
+                                ..Default::default()
+                            })
+                            .size((
+                                lay_rs::types::Size {
+                                    width: lay_rs::taffy::style::Dimension::Length(workspace_width),
+                                    height: lay_rs::taffy::style::Dimension::Length(
+                                        workspace_height,
+                                    ),
+                                },
+                                None,
+                            ))
+                            .scale(Point::new(scale, scale))
+                            .replicate_node(w.workspace_node)
+                            .picture_cached(false)
+                            .color_filter(color_filter)
+                            .on_pointer_press(button_press_filter())
+                            .on_pointer_release(button_release_filter())
+                            .border_corner_radius(BorderRadius::new_single(10.0 / scale))
+                            .image_cache(true)
+                            .clip_children(true)
+                            .clip_content(true)
+                            .build()
+                            .unwrap(),
+                        ),
+                        Some(
+                            LayerTreeBuilder::with_key(format!(
+                                "workspace_selector_desktop_border_{}",
+                                w.index
+                            ))
+                            .layout_style(taffy::Style {
+                                position: taffy::Position::Absolute,
+                                ..Default::default()
+                            })
+                            .position(Point::new(0.0, 0.0))
+                            .size((
+                                lay_rs::types::Size {
+                                    width: lay_rs::taffy::style::Dimension::Percent(1.0),
+                                    height: lay_rs::taffy::style::Dimension::Percent(1.0),
+                                },
+                                None,
+                            ))
+                            .border_width((border_width, None))
+                            .border_color(border_color)
+                            .border_corner_radius(BorderRadius::new_single(10.0))
+                            .build()
+                            .unwrap(),
+                        ),
+                        // Only show remove button if not current workspace and not fullscreen
+                        (!current && !w.fullscreen).then(|| -> LayerTree {
+                            LayerTreeBuilder::with_key(format!(
+                                "workspace_selector_desktop_remove_{}",
+                                w.index
+                            ))
+                            .layout_style(taffy::Style {
+                                position: taffy::Position::Absolute,
+                                ..Default::default()
+                            })
+                            .anchor_point(Point::new(0.5, 0.5))
+                            .scale(Point::new(0.2, 0.2))
+                            .opacity((0.0, None))
+                            .position(Point::new(preview_width, 0.0))
+                            .size((
+                                lay_rs::types::Size {
+                                    width: lay_rs::taffy::style::Dimension::Length(50.0),
+                                    height: lay_rs::taffy::style::Dimension::Length(50.0),
+                                },
+                                None,
+                            ))
+                            .background_color(theme_colors().materials_ultrathick)
+                            .border_corner_radius(BorderRadius::new_single(25.0))
+                            .content(draw_named_icon("close-symbolic"))
+                            .shadow_color((Color::new_rgba(0.0, 0.0, 0.0, 0.2), None))
+                            .shadow_offset(((0.0, 0.0).into(), None))
+                            .shadow_radius((5.0, None))
+                            .image_cache(true)
+                            .on_pointer_press(button_press_scale(0.8))
+                            .on_pointer_release(button_release_scale())
+                            .build()
+                            .unwrap()
+                        }),
+                    ];
                     children
                 })
                 .build()
                 .unwrap(),
-                LayerTreeBuilder::with_key(format!(
-                    "workspace_selector_desktop_label_{}",
-                    w.index
-                ))
-                .layout_style(taffy::Style {
-                    position: taffy::Position::Relative,
-                    ..Default::default()
-                })
-                .size((
-                    lay_rs::types::Size {
-                        width: lay_rs::taffy::style::Dimension::Percent(1.0),
-                        height: lay_rs::taffy::style::Dimension::Length(40.0),
-                    },
-                    None,
-                ))
-                // .background_color(theme_colors().accents_purple)
-                .content(draw_text_content(
-                    format!("Bench {}", i + 1),
-                    theme::text_styles::title_3_regular(),
-                    lay_rs::skia::textlayout::TextAlign::Center,
-                ))
-                .build()
-                .unwrap(),
+                LayerTreeBuilder::with_key(format!("workspace_selector_desktop_label_{}", w.index))
+                    .layout_style(taffy::Style {
+                        position: taffy::Position::Relative,
+                        ..Default::default()
+                    })
+                    .size((
+                        lay_rs::types::Size {
+                            width: lay_rs::taffy::style::Dimension::Percent(1.0),
+                            height: lay_rs::taffy::style::Dimension::Length(40.0),
+                        },
+                        None,
+                    ))
+                    // .background_color(theme_colors().accents_purple)
+                    .content(draw_text_content(
+                        format!("Bench {}", i + 1),
+                        theme::text_styles::title_3_regular(),
+                        lay_rs::skia::textlayout::TextAlign::Center,
+                    ))
+                    .build()
+                    .unwrap(),
             ])
             .build()
             .unwrap()
@@ -428,9 +419,7 @@ fn render_workspace_selector_view(
                     },
                     None,
                 ))
-                .children(
-                    workspaces_tree
-                )
+                .children(workspaces_tree)
                 .build()
                 .unwrap(),
             LayerTreeBuilder::default()
@@ -554,10 +543,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WorkspaceSele
         };
         let hovered_key = |loc: &Point| -> Option<String> {
             // check add first so it has priority over overlaps
-            if self
-                .view
-                .hover_layer("workspace_selector_desktop_add", loc)
-            {
+            if self.view.hover_layer("workspace_selector_desktop_add", loc) {
                 return Some("workspace_selector_desktop_add".to_string());
             }
 
@@ -583,9 +569,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WorkspaceSele
             ButtonState::Released => {
                 let release_key = hovered_key(&location);
                 let mut pressed = self.pressed_action.write().unwrap();
-                if let (Some(pressed_key), Some(release_key)) =
-                    (pressed.clone(), release_key)
-                {
+                if let (Some(pressed_key), Some(release_key)) = (pressed.clone(), release_key) {
                     if pressed_key == release_key {
                         if release_key == "workspace_selector_desktop_add" {
                             screencomposer.workspaces.add_workspace();

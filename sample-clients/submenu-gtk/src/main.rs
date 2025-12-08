@@ -1,10 +1,10 @@
 use anyhow::Result;
 use gtk4::prelude::*;
+use gtk4::{gdk, glib};
 use gtk4::{
     Application, ApplicationWindow, Box as GtkBox, Button, EventControllerMotion, Label, ListBox,
     ListBoxRow, Orientation, Popover, PositionType, ScrolledWindow,
 };
-use gtk4::{gdk, glib};
 use std::cell::RefCell;
 use std::rc::Rc;
 

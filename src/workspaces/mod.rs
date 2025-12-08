@@ -37,9 +37,7 @@ mod window_view;
 mod workspace_selector;
 
 pub use background::BackgroundView;
-pub use window_selector::{
-     WindowSelectorView, WindowSelectorWindow,
-};
+pub use window_selector::{WindowSelectorView, WindowSelectorWindow};
 pub use window_view::{WindowView, WindowViewBaseModel, WindowViewSurface};
 
 pub use app_switcher::AppSwitcherView;
@@ -51,10 +49,7 @@ pub use workspace_selector::{WorkspaceSelectorView, WORKSPACE_SELECTOR_PREVIEW_W
 use crate::{
     config::Config,
     shell::WindowElement,
-    utils::{
-        natural_layout::LayoutRect,
-        Observable, Observer,
-    },
+    utils::{natural_layout::LayoutRect, Observable, Observer},
 };
 
 #[derive(Debug, Default, Clone)]
@@ -79,7 +74,6 @@ pub struct WorkspacesModel {
     pub height: i32,
     pub scale: f64,
 }
-
 
 pub struct Workspaces {
     model: Arc<RwLock<WorkspacesModel>>,
@@ -390,12 +384,12 @@ impl Workspaces {
         if self.get_show_all() {
             return false;
         }
-        
+
         // Check if workspace is animating
         if self.is_animating.load(std::sync::atomic::Ordering::Relaxed) {
             return false;
         }
-        
+
         // Get current workspace and check if it's in fullscreen mode
         let current_workspace = self.get_current_workspace();
         current_workspace.get_fullscreen_mode()
@@ -409,7 +403,7 @@ impl Workspaces {
         if !current_workspace.get_fullscreen_mode() {
             return None;
         }
-        
+
         // Find the fullscreen window in the current workspace
         let current_index = self.with_model(|m| m.current_workspace);
         self.spaces[current_index]
@@ -463,7 +457,7 @@ impl Workspaces {
     /// - Update layout during window drag: `expose_show_all(0.0, false)` (recalculate without animation)
     pub fn expose_show_all(&self, delta: f32, end_gesture: bool) {
         let current_workspace_index = self.get_current_workspace_index();
-        
+
         if end_gesture {
             // When ending the gesture, animate all workspaces so they all transition together
             let num_workspaces = self.with_model(|m| m.workspaces.len());
@@ -518,7 +512,7 @@ impl Workspaces {
         }
 
         let gesture_active = show_all || (!end_gesture && new_gesture > 0);
-        
+
         let delta_normalized = new_gesture as f32 / 1000.0;
 
         let gesture_changed = new_gesture != gesture || show_all != previous_show_all;
@@ -536,7 +530,7 @@ impl Workspaces {
 
         self.show_all_gesture
             .store(new_gesture, std::sync::atomic::Ordering::Relaxed);
-        
+
         // Animate based on current state
         self.expose_show_all_animate(
             workspace_index,
@@ -551,12 +545,12 @@ impl Workspaces {
     /// Update the layout bin and window selector state for a workspace
     /// This ensures the bin has correct layout positions for all windows
     /// Returns true when a relayout was performed.
-    fn expose_show_all_layout(&self, workspace_index: usize) -> bool {      
+    fn expose_show_all_layout(&self, workspace_index: usize) -> bool {
         let Some(workspace) = self.get_workspace_at(workspace_index) else {
             tracing::warn!("Workspace {} not found for expose layout", workspace_index);
             return false;
         };
-        
+
         // FIXME: remove hardcoded values
         let workspace_selector_height = 250.0;
         let padding_top = 10.0;
@@ -650,30 +644,41 @@ impl Workspaces {
         let offset_y = 200.0;
         let mut changes = Vec::new();
         let Some(workspace_view) = self.get_workspace_at(workspace_index) else {
-            tracing::warn!("Workspace {} not found for expose animation", workspace_index);
+            tracing::warn!(
+                "Workspace {} not found for expose animation",
+                workspace_index
+            );
             return;
         };
-        let bin = workspace_view.window_selector_view.expose_bin.read().unwrap();
+        let bin = workspace_view
+            .window_selector_view
+            .expose_bin
+            .read()
+            .unwrap();
         let dragging_window = self.expose_dragging_window.lock().unwrap().clone();
 
         // Keep the overlay hidden unless we're animating or expose should be visible
         let overlay_layer = workspace_view.window_selector_view.overlay_layer.clone();
         let is_animating = transition.is_some();
-        self.is_animating.store(is_animating, std::sync::atomic::Ordering::Relaxed);
+        self.is_animating
+            .store(is_animating, std::sync::atomic::Ordering::Relaxed);
         overlay_layer.set_hidden(!is_animating && !visible);
-        
+
         // Ensure overlay starts at correct opacity for animation
         if is_animating || visible {
             overlay_layer.set_opacity(0.0, None);
         }
 
-        workspace_view.window_selector_view.windows_layer.set_hidden(false);
+        workspace_view
+            .window_selector_view
+            .windows_layer
+            .set_hidden(false);
         workspace_view.window_selector_view.layer.set_hidden(false);
 
         // Create animation if transition is specified
-        let animation = transition.as_ref().map(|t| {
-            self.layers_engine.add_animation_from_transition(t, false)
-        });
+        let animation = transition
+            .as_ref()
+            .map(|t| self.layers_engine.add_animation_from_transition(t, false));
 
         // Animate window layers
         let current_workspace = self.with_model(|model| {
@@ -717,14 +722,14 @@ impl Workspaces {
                                         let translation =
                                             layer.change_position(lay_rs::types::Point { x, y });
                                         let scale_change =
-                                            layer.change_scale(lay_rs::types::Point { x: scale, y: scale });
+                                            layer.change_scale(lay_rs::types::Point {
+                                                x: scale,
+                                                y: scale,
+                                            });
                                         changes.push(translation);
                                         changes.push(scale_change);
                                     } else {
-                                        layer.set_position(
-                                            lay_rs::types::Point { x, y },
-                                            None,
-                                        );
+                                        layer.set_position(lay_rs::types::Point { x, y }, None);
                                         layer.set_scale(
                                             lay_rs::types::Point { x: scale, y: scale },
                                             None,
@@ -736,15 +741,14 @@ impl Workspaces {
                     }
                 }
             }
-            
+
             model.workspaces.get(workspace_index).cloned()
         });
 
         // Schedule layer changes with animation
         if let Some(anim_ref) = animation {
             let _transactions = self.layers_engine.schedule_changes(&changes, anim_ref);
-        }
-        ;
+        };
 
         // Animate workspace selector and dock
         let mut delta = delta.max(0.0);
@@ -762,25 +766,25 @@ impl Workspaces {
 
         // Set overlay opacity to match the workspace selector opacity (fade in as we enter expose)
         let overlay_opacity = workspace_opacity;
-        workspace_view.window_selector_view.overlay_layer.set_opacity(overlay_opacity, transition);
+        workspace_view
+            .window_selector_view
+            .overlay_layer
+            .set_opacity(overlay_opacity, transition);
 
         let window_selector_overlay_ref = workspace_view.window_selector_view.overlay_layer.clone();
         let expose_layer = self.expose_layer.clone();
         let layer_shell_overlay_ref = self.layer_shell_overlay.clone();
         let show_all_ref = self.show_all.clone();
         expose_layer.set_hidden(false);
-        let transaction = self.workspace_selector_view
-            .layer
-            .set_position(
-                lay_rs::types::Point {
-                    x: 0.0,
-                    y: workspace_selector_y,
-                },
-                transition,
-            );
-        if transition .is_some() {
-            transaction
-            .on_finish(
+        let transaction = self.workspace_selector_view.layer.set_position(
+            lay_rs::types::Point {
+                x: 0.0,
+                y: workspace_selector_y,
+            },
+            transition,
+        );
+        if transition.is_some() {
+            transaction.on_finish(
                 move |_: &Layer, _: f32| {
                     window_selector_overlay_ref.set_hidden(!show_all);
                     expose_layer.set_hidden(!show_all);
@@ -796,7 +800,8 @@ impl Workspaces {
             .set_opacity(workspace_opacity, transition);
 
         // Animate layer shell overlay opacity (fade out when entering expose)
-        self.layer_shell_overlay.set_opacity(layer_shell_overlay_opacity, transition);
+        self.layer_shell_overlay
+            .set_opacity(layer_shell_overlay_opacity, transition);
 
         // Animate dock position
         if let Some(current_workspace) = current_workspace {
@@ -837,7 +842,7 @@ impl Workspaces {
     pub fn set_fullscreen_overlay_visibility(&self, is_fullscreen: bool) {
         let target_opacity = if is_fullscreen { 0.0 } else { 1.0 };
         let transition = Some(Transition::ease_in_out_quad(1.4));
-        
+
         self.layer_shell_overlay
             .set_opacity(target_opacity, transition);
     }
@@ -849,13 +854,13 @@ impl Workspaces {
     //     if !self.get_show_all() {
     //         return;
     //     }
-        
+
     //     let delta = self.show_all_gesture.load(std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
     //     let transition = Some(Transition {
     //         delay: 0.0,
     //         timing: TimingFunction::Spring(Spring::with_duration_and_bounce(0.3, 0.1)),
     //     });
-        
+
     //     // Force relayout and animate
     //     if self.expose_show_all_layout(workspace_index) && self.get_show_all(){
     //         self.expose_show_all_animate(workspace_index, delta, transition, true, true, true);
@@ -1027,18 +1032,15 @@ impl Workspaces {
 
         // Focus should move to the next topmost (non-minimized) window or to none.
         let index = self.with_model(|m| m.current_workspace);
-        let next = self.spaces[index]
-            .elements()
-            .rev()
-            .find_map(|e| {
-                let id = e.id();
-                if let Some(window) = self.windows_map.get(&id) {
-                    if window.is_minimised() || window.id() == we.id() {
-                        return None;
-                    }
+        let next = self.spaces[index].elements().rev().find_map(|e| {
+            let id = e.id();
+            if let Some(window) = self.windows_map.get(&id) {
+                if window.is_minimised() || window.id() == we.id() {
+                    return None;
                 }
-                Some(id)
-            });
+            }
+            Some(id)
+        });
 
         if let Some(next_id) = next {
             // Raise and activate the next topmost window
@@ -1058,7 +1060,10 @@ impl Workspaces {
                 .position(|ws| ws.windows_list.read().unwrap().contains(wid))
         });
         if workspace_for_window.is_none() {
-            tracing::warn!("Trying to unminimize a window that is not in any workspace: {}", wid);
+            tracing::warn!(
+                "Trying to unminimize a window that is not in any workspace: {}",
+                wid
+            );
             return None;
         }
         let workspace_for_window = workspace_for_window.unwrap();
@@ -1070,16 +1075,16 @@ impl Workspaces {
             if let Some(tr) = self.set_current_workspace_index(
                 workspace_for_window,
                 Some(Transition::ease_out_quad(0.2)),
-                ) {
-                    let ctx_clone = ctx.clone();
-                    tr.on_finish(
-                        move |_: &Layer, _: f32| {
-                            ctx_clone.run();
-                        },
-                        true,
-                    );
-                    return Some(ctx.wid.clone());
-                }
+            ) {
+                let ctx_clone = ctx.clone();
+                tr.on_finish(
+                    move |_: &Layer, _: f32| {
+                        ctx_clone.run();
+                    },
+                    true,
+                );
+                return Some(ctx.wid.clone());
+            }
         }
 
         self.unminimize_window_in_workspace(ctx);
@@ -1203,7 +1208,7 @@ impl Workspaces {
         tracing::info!("workspaces::unmap_window: {:?}", window_id);
 
         let mut workspace_index = None;
-        
+
         if let Some(element) = self.get_window_for_surface(window_id).cloned() {
             for (i, space) in self.spaces.iter_mut().enumerate() {
                 if space.elements().any(|e| e.id() == element.id()) {
@@ -1225,7 +1230,7 @@ impl Workspaces {
 
         self.refresh_space();
         self.update_workspace_model();
-        
+
         // Recalculate expose layout if in expose mode
         if let Some(index) = workspace_index {
             self.expose_update_if_needed_workspace(index);
@@ -1312,7 +1317,7 @@ impl Workspaces {
     pub fn remove_window_view(&mut self, object_id: &ObjectId) {
         // Remove any popups that belong to this window
         self.popup_overlay.remove_popups_for_window(object_id);
-        
+
         let mut window_views = self.window_views.write().unwrap();
         if let Some(view) = window_views.remove(object_id) {
             view.window_layer.remove();
@@ -1342,7 +1347,7 @@ impl Workspaces {
         let location = location.into();
 
         let mut source_workspace_index = None;
-        
+
         // unmap from old space
         if let Some((index, space)) = self
             .spaces
@@ -1377,7 +1382,7 @@ impl Workspaces {
                 }
             }
         }
-        
+
         // Recalculate layout for both source and target workspaces if in expose mode
         if let Some(source_index) = source_workspace_index {
             self.expose_update_if_needed_workspace(source_index);
@@ -1739,7 +1744,7 @@ impl Workspaces {
                 // Drop fullscreen state so the window restores to its normal size on the target workspace
                 if e.is_fullscreen() {
                     e.set_fullscreen(false, workspace_model.current_workspace);
-                    
+
                     if let Some(ws) = self.get_workspace_at(workspace_model.current_workspace) {
                         ws.set_fullscreen_mode(false);
                     }
@@ -1774,27 +1779,32 @@ impl Workspaces {
         if workspace_index >= self.spaces.len() {
             return None;
         }
-        self.spaces[workspace_index]
-            .elements()
-            .rev()
-            .find_map(|e| {
-                let id = e.id();
-                if let Some(window) = self.windows_map.get(&id) {
-                    if window.is_minimised() {
-                        return None;
-                    }
+        self.spaces[workspace_index].elements().rev().find_map(|e| {
+            let id = e.id();
+            if let Some(window) = self.windows_map.get(&id) {
+                if window.is_minimised() {
+                    return None;
                 }
-                Some(id)
-            })
+            }
+            Some(id)
+        })
     }
 
     /// Given a workspace view index (WorkspaceView.index), return its current
     /// position in the workspaces vector (zero-based). Useful when external
     /// components keep the view index while the internal ordering may change.
     pub fn workspace_position_by_view_index(&self, workspace_index: usize) -> Option<usize> {
-        self.with_model(|m| m.workspaces.iter().position(|ws| ws.index == workspace_index))
+        self.with_model(|m| {
+            m.workspaces
+                .iter()
+                .position(|ws| ws.index == workspace_index)
+        })
     }
-    pub fn set_current_workspace_index(&mut self, i: usize, transition: Option<Transition>) -> Option<TransactionRef> {
+    pub fn set_current_workspace_index(
+        &mut self,
+        i: usize,
+        transition: Option<Transition>,
+    ) -> Option<TransactionRef> {
         if i > self.spaces.len() - 1 {
             return None;
         }
@@ -1808,7 +1818,11 @@ impl Workspaces {
         self.scroll_to_workspace_index(i, transition)
     }
     /// Scroll to the workspace at index i, default transition is 1.0s spring
-    fn scroll_to_workspace_index(&self, i: usize, transition: Option<Transition>) -> Option<TransactionRef> {
+    fn scroll_to_workspace_index(
+        &self,
+        i: usize,
+        transition: Option<Transition>,
+    ) -> Option<TransactionRef> {
         let transition = transition.unwrap_or(Transition {
             delay: 0.0,
             timing: TimingFunction::Spring(Spring::with_duration_and_bounce(1.0, 0.1)),
@@ -1820,12 +1834,16 @@ impl Workspaces {
             } else {
                 self.dock.show(Some(transition));
             }
-            
+
             // Animate layer_shell_overlay based on target workspace fullscreen state
-            let target_opacity = if workspace.get_fullscreen_mode() { 0.0 } else { 1.0 };
+            let target_opacity = if workspace.get_fullscreen_mode() {
+                0.0
+            } else {
+                1.0
+            };
             self.layer_shell_overlay
                 .set_opacity(target_opacity, Some(transition));
-            
+
             if self.get_show_all() {
                 self.expose_show_all_workspace(i, 1.0, true);
             }
@@ -1848,25 +1866,24 @@ impl Workspaces {
     /// Update workspace position during 3-finger horizontal swipe gesture.
     /// Applies delta immediately (no animation) with rubber-band resistance at edges.
     pub fn workspace_swipe_update(&self, delta_x: f32) {
-        let (num_workspaces, workspace_width, scale) = self.with_model(|m| {
-            (m.workspaces.len(), m.width as f32, m.scale as f32)
-        });
-        
+        let (num_workspaces, workspace_width, scale) =
+            self.with_model(|m| (m.workspaces.len(), m.width as f32, m.scale as f32));
+
         if num_workspaces == 0 || workspace_width <= 0.0 {
             return;
         }
-        
+
         // Get current scroll position (negated because layer position is negative of scroll offset)
         let current_pos = self.workspaces_layer.render_position();
         let current_offset = -current_pos.x;
-        
+
         // Calculate new offset - delta is in logical pixels, convert to physical
         let physical_delta = delta_x * scale;
         let mut new_offset = current_offset - physical_delta;
-        
+
         // Calculate bounds
         let max_offset = (num_workspaces - 1) as f32 * workspace_width;
-        
+
         // Apply rubber-band resistance at edges
         if new_offset < 0.0 {
             // Past first workspace - rubber band effect
@@ -1876,37 +1893,42 @@ impl Workspaces {
             let overshoot = new_offset - max_offset;
             new_offset = max_offset + overshoot * 0.3;
         }
-        
+
         // Apply immediately without animation
         self.workspaces_layer.set_position((-new_offset, 0.0), None);
         self.expose_layer.set_position((-new_offset, 0.0), None);
     }
-    
+
     /// End workspace swipe gesture and snap to nearest workspace.
     /// Uses velocity to determine target workspace for natural momentum-based snapping.
     /// Returns the target workspace index.
     pub fn workspace_swipe_end(&mut self, velocity: f32) -> usize {
         let (num_workspaces, workspace_width, current_index, scale) = self.with_model(|m| {
-            (m.workspaces.len(), m.width as f32, m.current_workspace, m.scale as f32)
+            (
+                m.workspaces.len(),
+                m.width as f32,
+                m.current_workspace,
+                m.scale as f32,
+            )
         });
-        
+
         if num_workspaces == 0 || workspace_width <= 0.0 {
             // Just snap to current
             let _ = self.set_current_workspace_index(current_index, None);
             return current_index;
         }
-        
+
         // Get current scroll position
         let current_pos = self.workspaces_layer.render_position();
         let current_offset = -current_pos.x;
-        
+
         // Convert velocity to physical units
         let physical_velocity = velocity * scale;
-        
+
         // Velocity threshold for momentum-based switching (pixels per update event)
         // Typical trackpad sends ~60 events/sec, so 15px/event ≈ 900px/sec
         const VELOCITY_THRESHOLD: f32 = 15.0;
-        
+
         let target_index = if physical_velocity.abs() > VELOCITY_THRESHOLD {
             // Velocity-based: switch in direction of swipe
             if physical_velocity > 0.0 {
@@ -1922,13 +1944,13 @@ impl Workspaces {
             let nearest = progress.round() as usize;
             nearest.min(num_workspaces - 1)
         };
-        
+
         // Use a snappy spring transition for the final animation
         let transition = Transition {
             delay: 0.0,
             timing: TimingFunction::Spring(Spring::with_duration_and_bounce(0.5, 0.05)),
         };
-        
+
         let _ = self.set_current_workspace_index(target_index, Some(transition));
         target_index
     }
@@ -1949,8 +1971,9 @@ impl Workspaces {
         }
         if let Some(transition) = &transition {
             // Mark as animating
-            self.is_animating.store(true, std::sync::atomic::Ordering::Relaxed);
-            
+            self.is_animating
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+
             let animation = self
                 .workspaces_layer
                 .engine
@@ -1964,15 +1987,18 @@ impl Workspaces {
                 .schedule_changes(&changes, animation)
                 .into_iter()
                 .next();
-            
+
             // Clear animating flag when animation completes
             if let Some(tr) = &tr {
                 let is_animating = self.is_animating.clone();
-                tr.on_finish(move |_: &Layer, _: f32| {
-                    is_animating.store(false, std::sync::atomic::Ordering::Relaxed);
-                }, true);
+                tr.on_finish(
+                    move |_: &Layer, _: f32| {
+                        is_animating.store(false, std::sync::atomic::Ordering::Relaxed);
+                    },
+                    true,
+                );
             }
-            
+
             return tr;
         }
         None
@@ -2049,7 +2075,11 @@ impl Workspaces {
         use smithay::wayland::shell::wlr_layer::Layer as WlrLayer;
 
         let layer = self.layers_engine.new_layer();
-        layer.set_key(format!("layer_shell_{}_{}", wlr_layer_to_str(wlr_layer), namespace));
+        layer.set_key(format!(
+            "layer_shell_{}_{}",
+            wlr_layer_to_str(wlr_layer),
+            namespace
+        ));
         layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
             ..Default::default()

@@ -4,7 +4,10 @@ use std::cell::RefCell;
 use smithay::xwayland::XWaylandClientData;
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
-    desktop::{find_popup_root_surface, layer_map_for_output, LayerSurface, PopupKind, WindowSurface, WindowSurfaceType},
+    desktop::{
+        find_popup_root_surface, layer_map_for_output, LayerSurface, PopupKind, WindowSurface,
+        WindowSurfaceType,
+    },
     output::Output,
     reexports::{
         calloop::Interest,
@@ -154,9 +157,9 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
                     .get(&surface_id)
                     .cloned()
                     .or_else(|| {
-                        self.popups.find_popup(surface).and_then(|popup| {
-                            find_popup_root_surface(&popup).ok().map(|r| r.id())
-                        })
+                        self.popups
+                            .find_popup(surface)
+                            .and_then(|popup| find_popup_root_surface(&popup).ok().map(|r| r.id()))
                     })
                     .or_else(|| {
                         // Traverse subsurface hierarchy to find root
@@ -199,9 +202,9 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
             .get(&surface.id())
             .cloned()
             .or_else(|| {
-                self.popups.find_popup(surface).and_then(|popup| {
-                    find_popup_root_surface(&popup).ok().map(|r| r.id())
-                })
+                self.popups
+                    .find_popup(surface)
+                    .and_then(|popup| find_popup_root_surface(&popup).ok().map(|r| r.id()))
             })
             .or_else(|| {
                 // Traverse subsurface hierarchy to find root
@@ -219,7 +222,11 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
 
         let window = root_id
             .and_then(|id| self.workspaces.get_window_for_surface(&id).cloned())
-            .or_else(|| self.workspaces.get_window_for_surface(&surface.id()).cloned());
+            .or_else(|| {
+                self.workspaces
+                    .get_window_for_surface(&surface.id())
+                    .cloned()
+            });
 
         if let Some(window) = window {
             window.on_commit();
@@ -249,7 +256,9 @@ impl<BackendData: Backend> WlrLayerShellHandler for ScreenComposer<BackendData> 
         let layer_surface = LayerSurface::new(surface.clone(), namespace.clone());
 
         // Create a lay_rs layer for rendering
-        let layer = self.workspaces.create_layer_shell_layer(wlr_layer, &namespace);
+        let layer = self
+            .workspaces
+            .create_layer_shell_layer(wlr_layer, &namespace);
 
         // Create our compositor-owned wrapper
         let layer_shell_surface = LayerShellSurface::new(
@@ -280,7 +289,8 @@ impl<BackendData: Backend> WlrLayerShellHandler for ScreenComposer<BackendData> 
 
         // Remove from our compositor map and clean up lay_rs layer
         if let Some(layer_shell_surface) = self.layer_surfaces.remove(&surface_id) {
-            self.workspaces.remove_layer_shell_layer(&layer_shell_surface.layer);
+            self.workspaces
+                .remove_layer_shell_layer(&layer_shell_surface.layer);
             tracing::info!(
                 "Layer surface destroyed: namespace={}",
                 layer_shell_surface.namespace()

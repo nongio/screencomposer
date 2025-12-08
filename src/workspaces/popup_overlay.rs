@@ -19,7 +19,7 @@ pub struct PopupLayer {
 }
 
 /// View for rendering popups on top of all windows
-/// 
+///
 /// Popups (menus, dropdowns, tooltips) need to be rendered above all windows
 /// to prevent clipping when they extend beyond their parent window bounds.
 pub struct PopupOverlayView {
@@ -58,40 +58,42 @@ impl PopupOverlayView {
         popup_id: ObjectId,
         root_window_id: ObjectId,
     ) -> &mut PopupLayer {
-        self.popup_layers.entry(popup_id.clone()).or_insert_with(|| {
-            let layer = self.layers_engine.new_layer();
-            layer.set_key(format!("popup_{:?}", popup_id));
-            layer.set_layout_style(taffy::Style {
-                position: taffy::Position::Absolute,
-                ..Default::default()
-            });
-            layer.set_pointer_events(false);
-            
-            let content_layer = self.layers_engine.new_layer();
-            content_layer.set_layout_style(taffy::Style {
-                position: taffy::Position::Absolute,
-                ..Default::default()
-            });
-            content_layer.set_pointer_events(false);
-            
-            self.layers_engine.append_layer(&layer, self.layer.id());
-            self.layers_engine.append_layer(&content_layer, layer.id());
-            
-            let view_content = View::new(
-                format!("popup_content_{:?}", popup_id),
-                Vec::new(),
-                view_render_elements,
-            );
-            view_content.mount_layer(content_layer.clone());
+        self.popup_layers
+            .entry(popup_id.clone())
+            .or_insert_with(|| {
+                let layer = self.layers_engine.new_layer();
+                layer.set_key(format!("popup_{:?}", popup_id));
+                layer.set_layout_style(taffy::Style {
+                    position: taffy::Position::Absolute,
+                    ..Default::default()
+                });
+                layer.set_pointer_events(false);
 
-            PopupLayer {
-                popup_id,
-                root_window_id,
-                layer,
-                content_layer,
-                view_content,
-            }
-        })
+                let content_layer = self.layers_engine.new_layer();
+                content_layer.set_layout_style(taffy::Style {
+                    position: taffy::Position::Absolute,
+                    ..Default::default()
+                });
+                content_layer.set_pointer_events(false);
+
+                self.layers_engine.append_layer(&layer, self.layer.id());
+                self.layers_engine.append_layer(&content_layer, layer.id());
+
+                let view_content = View::new(
+                    format!("popup_content_{:?}", popup_id),
+                    Vec::new(),
+                    view_render_elements,
+                );
+                view_content.mount_layer(content_layer.clone());
+
+                PopupLayer {
+                    popup_id,
+                    root_window_id,
+                    layer,
+                    content_layer,
+                    view_content,
+                }
+            })
     }
 
     /// Update popup position and surfaces
@@ -116,12 +118,13 @@ impl PopupOverlayView {
 
     /// Remove all popups belonging to a specific root window
     pub fn remove_popups_for_window(&mut self, root_window_id: &ObjectId) {
-        let to_remove: Vec<ObjectId> = self.popup_layers
+        let to_remove: Vec<ObjectId> = self
+            .popup_layers
             .iter()
             .filter(|(_, popup)| &popup.root_window_id == root_window_id)
             .map(|(id, _)| id.clone())
             .collect();
-        
+
         for id in to_remove {
             self.remove_popup(&id);
         }
@@ -133,12 +136,12 @@ impl PopupOverlayView {
             popup.layer.remove();
         }
     }
-    
+
     /// Get a popup layer by ID
     pub fn get_popup(&self, popup_id: &ObjectId) -> Option<&PopupLayer> {
         self.popup_layers.get(popup_id)
     }
-    
+
     /// Show or hide the popup overlay layer
     pub fn set_hidden(&self, hidden: bool) {
         self.layer.set_hidden(hidden);

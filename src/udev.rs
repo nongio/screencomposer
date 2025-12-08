@@ -1403,13 +1403,16 @@ impl ScreenComposer<UdevData> {
                     SwapBuffersError::TemporaryFailure(e)
                         if matches!(e.downcast_ref::<DrmError>(), Some(&DrmError::DeviceInactive))
                 );
-                
+
                 if is_device_inactive {
-                    debug!("Device inactive during rendering (expected during suspend): {:?}", err);
+                    debug!(
+                        "Device inactive during rendering (expected during suspend): {:?}",
+                        err
+                    );
                 } else {
                     warn!("Error during rendering: {:?}", err);
                 }
-                
+
                 match err {
                     SwapBuffersError::AlreadySwapped => true,
                     // If the device has been deactivated do not reschedule, this will be done
@@ -1602,7 +1605,7 @@ impl ScreenComposer<UdevData> {
             .set_texture(pointer_image.clone());
         let pointer_scale = pointer_width as f64 / self.backend_data.cursor_manager.size as f64;
         let all_window_elements: Vec<&WindowElement> = self.workspaces.spaces_elements().collect();
-        
+
         // Determine if direct scanout should be allowed:
         // - Current workspace must be in fullscreen mode and not animating
         // - Disable during expose gesture
@@ -1610,14 +1613,14 @@ impl ScreenComposer<UdevData> {
         let allow_direct_scanout = self.workspaces.is_fullscreen_and_stable()
             && !self.is_expose_swiping
             && !self.is_workspace_swiping;
-        
+
         // Only fetch the fullscreen window if direct scanout is allowed
         let fullscreen_window = if allow_direct_scanout {
             self.workspaces.get_fullscreen_window()
         } else {
             None
         };
-        
+
         let result = render_surface(
             surface,
             &mut renderer,
@@ -1648,13 +1651,16 @@ impl ScreenComposer<UdevData> {
                     SwapBuffersError::TemporaryFailure(e)
                         if matches!(e.downcast_ref::<DrmError>(), Some(&DrmError::DeviceInactive))
                 );
-                
+
                 if is_device_inactive {
-                    debug!("Device inactive during rendering (expected during suspend): {:?}", err);
+                    debug!(
+                        "Device inactive during rendering (expected during suspend): {:?}",
+                        err
+                    );
                 } else {
                     warn!("Error during rendering: {:?}", err);
                 }
-                
+
                 match err {
                     SwapBuffersError::AlreadySwapped => false,
                     SwapBuffersError::TemporaryFailure(err) => match err.downcast_ref::<DrmError>()
@@ -1786,7 +1792,7 @@ fn render_surface<'a, 'b>(
     let pointer_in_output = output_geometry
         .to_f64()
         .contains(pointer_location.to_physical(scale));
-    
+
     if pointer_in_output {
         pointer_needs_draw = true;
         let (cursor_phy_size, cursor_hotspot) = match cursor_status {
@@ -1906,7 +1912,7 @@ fn render_surface<'a, 'b>(
     let is_direct_scanout = fullscreen_window.is_some();
     let mode_changed = is_direct_scanout != surface.was_direct_scanout;
     surface.was_direct_scanout = is_direct_scanout;
-    
+
     // Reset buffers when transitioning between direct scanout and normal mode
     // This ensures clean state when switching rendering paths
     if mode_changed {
@@ -1914,74 +1920,70 @@ fn render_surface<'a, 'b>(
     }
 
     // If fullscreen_window is Some, direct scanout is allowed (checked by caller)
-    let (output_elements, clear_color, should_draw) = if let Some(fullscreen_win) = fullscreen_window {
-        // In fullscreen mode: render only the fullscreen window + cursor
-        // Skip the scene element entirely for direct scanout
-        let mut elements: Vec<OutputRenderElements<'a, _, WindowRenderElement<_>>> = Vec::new();
-        
-        // Add pointer elements first (rendered at bottom, but cursor plane may handle separately)
-        // Capture pointer element count before moving workspace_render_elements
-        let pointer_element_count = workspace_render_elements.len();
-        elements.extend(
-            workspace_render_elements
-                .into_iter()
-                .map(OutputRenderElements::from)
-        );
-        
-        // Add the fullscreen window's render elements wrapped in Wrap
-        use smithay::backend::renderer::element::Wrap;
-        let window_elements_rendered: Vec<WindowRenderElement<_>> = 
-            fullscreen_win.render_elements(
-                renderer,
-                (0, 0).into(),
-                scale,
-                1.0,
+    let (output_elements, clear_color, should_draw) =
+        if let Some(fullscreen_win) = fullscreen_window {
+            // In fullscreen mode: render only the fullscreen window + cursor
+            // Skip the scene element entirely for direct scanout
+            let mut elements: Vec<OutputRenderElements<'a, _, WindowRenderElement<_>>> = Vec::new();
+
+            // Add pointer elements first (rendered at bottom, but cursor plane may handle separately)
+            // Capture pointer element count before moving workspace_render_elements
+            let pointer_element_count = workspace_render_elements.len();
+            elements.extend(
+                workspace_render_elements
+                    .into_iter()
+                    .map(OutputRenderElements::from),
             );
-        elements.extend(
-            window_elements_rendered
-                .into_iter()
-                .map(|e| OutputRenderElements::Window(Wrap::from(e)))
-        );
-        
-        // Track element count transitions in fullscreen mode.
-        // When pointer element count changes (0↔1 transition), force a full redraw.
-        // This handles cursor appearing/disappearing when cursor surface damage state changes.
-        let element_count_changed = pointer_element_count != surface.last_pointer_element_count;
-        surface.last_pointer_element_count = pointer_element_count;
-        
-        if element_count_changed && pointer_in_output {
-            // reset_buffers() forces a complete re-render of all content, ensuring
-            // the full window is redrawn when cursor appears/disappears.
-            surface.compositor.reset_buffers();
-        }
-        
-        // Always render in fullscreen mode since the window surface may have damage
-        // Use black clear color - the window fills the screen anyway
-        (elements, CLEAR_COLOR, true)
-    } else {
-        // Normal mode: render the full scene
-        workspace_render_elements.push(WorkspaceRenderElements::Scene(scene_element));
 
-        let should_draw = scene_has_damage || pointer_needs_draw || dnd_needs_draw;
-        if !should_draw {
-            return Ok(RenderOutcome::skipped());
-        }
+            // Add the fullscreen window's render elements wrapped in Wrap
+            use smithay::backend::renderer::element::Wrap;
+            let window_elements_rendered: Vec<WindowRenderElement<_>> =
+                fullscreen_win.render_elements(renderer, (0, 0).into(), scale, 1.0);
+            elements.extend(
+                window_elements_rendered
+                    .into_iter()
+                    .map(|e| OutputRenderElements::Window(Wrap::from(e))),
+            );
 
-        let output_render_elements: Vec<OutputRenderElements<'a, _, WindowRenderElement<_>>> =
-            workspace_render_elements
-                .into_iter()
-                .map(OutputRenderElements::from)
-                .collect::<Vec<_>>();
-        let (output_elements, clear_color) = output_elements(
-            output,
-            window_elements.iter().copied(),
-            output_render_elements,
-            dnd_icon,
-            renderer,
-        );
-        (output_elements, clear_color, true)
-    };
-    
+            // Track element count transitions in fullscreen mode.
+            // When pointer element count changes (0↔1 transition), force a full redraw.
+            // This handles cursor appearing/disappearing when cursor surface damage state changes.
+            let element_count_changed = pointer_element_count != surface.last_pointer_element_count;
+            surface.last_pointer_element_count = pointer_element_count;
+
+            if element_count_changed && pointer_in_output {
+                // reset_buffers() forces a complete re-render of all content, ensuring
+                // the full window is redrawn when cursor appears/disappears.
+                surface.compositor.reset_buffers();
+            }
+
+            // Always render in fullscreen mode since the window surface may have damage
+            // Use black clear color - the window fills the screen anyway
+            (elements, CLEAR_COLOR, true)
+        } else {
+            // Normal mode: render the full scene
+            workspace_render_elements.push(WorkspaceRenderElements::Scene(scene_element));
+
+            let should_draw = scene_has_damage || pointer_needs_draw || dnd_needs_draw;
+            if !should_draw {
+                return Ok(RenderOutcome::skipped());
+            }
+
+            let output_render_elements: Vec<OutputRenderElements<'a, _, WindowRenderElement<_>>> =
+                workspace_render_elements
+                    .into_iter()
+                    .map(OutputRenderElements::from)
+                    .collect::<Vec<_>>();
+            let (output_elements, clear_color) = output_elements(
+                output,
+                window_elements.iter().copied(),
+                output_render_elements,
+                dnd_icon,
+                renderer,
+            );
+            (output_elements, clear_color, true)
+        };
+
     if !should_draw {
         return Ok(RenderOutcome::skipped());
     }

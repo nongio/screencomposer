@@ -514,7 +514,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
             return Some((focus, (position.x as f64, position.y as f64).into()));
         }
-     
+
         if let Some(layer) = layers
             .layer_under(WlrLayer::Overlay, pos)
             .or_else(|| layers.layer_under(WlrLayer::Top, pos))
@@ -1380,7 +1380,7 @@ impl ScreenComposer<UdevData> {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
         // tracing::error!("on_gesture_swipe_begin: {:?}", self.swipe_gesture);
-        
+
         // 3-finger swipe: direction determines behavior (horizontal=workspace, vertical=expose)
         if evt.fingers() == 3 && !self.is_pinching {
             // Start tracking but don't activate until direction is determined
@@ -1404,25 +1404,27 @@ impl ScreenComposer<UdevData> {
 
     fn on_gesture_swipe_update<B: InputBackend>(&mut self, evt: B::GestureSwipeUpdateEvent) {
         let pointer = self.pointer.clone();
-        
+
         // Handle 3-finger swipe (direction determines: horizontal=workspace, vertical=expose)
         if self.is_workspace_swiping || self.is_expose_swiping {
             let delta_x = evt.delta().x;
             let delta_y = evt.delta().y;
-            
+
             // If direction not yet determined, accumulate and check threshold
-            if self.is_workspace_swiping && !self.workspace_swipe_active && !self.is_expose_swiping {
+            if self.is_workspace_swiping && !self.workspace_swipe_active && !self.is_expose_swiping
+            {
                 self.workspace_swipe_accumulated.0 += delta_x;
                 self.workspace_swipe_accumulated.1 += delta_y;
-                
+
                 let horiz = self.workspace_swipe_accumulated.0.abs();
                 let vert = self.workspace_swipe_accumulated.1.abs();
                 const THRESHOLD: f64 = 20.0;
-                
+
                 if horiz > THRESHOLD && horiz > vert {
                     // Horizontal swipe -> workspace switching
                     self.workspace_swipe_active = true;
-                    self.workspaces.workspace_swipe_update(self.workspace_swipe_accumulated.0 as f32);
+                    self.workspaces
+                        .workspace_swipe_update(self.workspace_swipe_accumulated.0 as f32);
                 } else if vert > THRESHOLD {
                     // Vertical swipe -> expose mode
                     self.is_workspace_swiping = false;
@@ -1446,7 +1448,7 @@ impl ScreenComposer<UdevData> {
                 self.workspaces.expose_show_all(-delta, false);
             }
         }
-        
+
         pointer.gesture_swipe_update(
             self,
             &GestureSwipeUpdateEvent {
@@ -1464,7 +1466,7 @@ impl ScreenComposer<UdevData> {
             self.workspaces.expose_show_all(0.0, true);
             self.is_expose_swiping = false;
         }
-        
+
         // Handle workspace swipe end
         if self.is_workspace_swiping {
             let target_index = if self.workspace_swipe_active && !evt.cancelled() {
@@ -1472,7 +1474,7 @@ impl ScreenComposer<UdevData> {
                 let velocity = if self.workspace_swipe_velocity_samples.is_empty() {
                     0.0
                 } else {
-                    self.workspace_swipe_velocity_samples.iter().sum::<f64>() 
+                    self.workspace_swipe_velocity_samples.iter().sum::<f64>()
                         / self.workspace_swipe_velocity_samples.len() as f64
                 };
                 Some(self.workspaces.workspace_swipe_end(velocity as f32))
@@ -1482,7 +1484,7 @@ impl ScreenComposer<UdevData> {
             } else {
                 None
             };
-            
+
             // Update keyboard focus to top window of the target workspace
             if let Some(index) = target_index {
                 if let Some(top_wid) = self.workspaces.get_top_window_of_workspace(index) {
@@ -1491,13 +1493,13 @@ impl ScreenComposer<UdevData> {
                     self.clear_keyboard_focus();
                 }
             }
-            
+
             self.is_workspace_swiping = false;
             self.workspace_swipe_active = false;
             self.workspace_swipe_accumulated = (0.0, 0.0);
             self.workspace_swipe_velocity_samples.clear();
         }
-        
+
         pointer.gesture_swipe_end(
             self,
             &GestureSwipeEndEvent {
@@ -1513,7 +1515,7 @@ impl ScreenComposer<UdevData> {
         let pointer = self.pointer.clone();
 
         // if evt.fingers() == 5 && !self.is_expose_swiping {
-            // self.is_pinching = true;
+        // self.is_pinching = true;
         // }
 
         pointer.gesture_pinch_begin(
@@ -1540,8 +1542,8 @@ impl ScreenComposer<UdevData> {
         //     y: delta,//(self.pinch_gesture.y - delta),
         // };
         // if self.is_pinching {
-            // self.background_view.set_debug_text(format!("on_gesture_pinch_update: {:?}", delta));
-            // self.workspaces.expose_show_desktop(delta, false);
+        // self.background_view.set_debug_text(format!("on_gesture_pinch_update: {:?}", delta));
+        // self.workspaces.expose_show_desktop(delta, false);
         // }
         pointer.gesture_pinch_update(
             self,

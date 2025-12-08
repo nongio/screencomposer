@@ -66,7 +66,6 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
                     } else if let Some(wid) = self.get_window_from_layer(&layer_id) {
                         // if we click on a minimized window, unminimize it
                         if let Some(wid) = state.workspaces.unminimize_window(&wid) {
-
                             state.set_keyboard_focus_on_surface(&wid);
                         }
                     }

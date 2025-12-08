@@ -4,7 +4,8 @@ use core::fmt;
 
 use lay_rs::{
     engine::Engine,
-    prelude::{Layer, taffy}, types::Size,
+    prelude::{taffy, Layer},
+    types::Size,
 };
 use smithay::reexports::wayland_server::backend::ObjectId;
 use std::{
@@ -229,8 +230,6 @@ impl WorkspaceView {
         if let Some(index) = window_list.iter().position(|x| x == window_id) {
             window_list.remove(index);
         }
-
-        
     }
 
     pub fn set_fullscreen_mode(&self, fullscreen: bool) {

@@ -6,7 +6,7 @@ use lay_rs::{
     view::{RenderLayerTree, View},
 };
 use smithay::{reexports::wayland_server::backend::ObjectId, utils::Logical};
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::{atomic::AtomicBool, Arc};
 
 use crate::{shell::WindowElement, workspaces::utils::view_render_elements};
 
@@ -132,7 +132,6 @@ impl WindowView {
                 l.remove_effect();
                 view_ref.apply_minimized_scale_to_layer(l, (w, h), to_rect);
                 l.set_position(Point { x: 0.0, y: 0.0 }, None);
-                
             },
             true,
         );
@@ -151,19 +150,23 @@ impl WindowView {
         self.window_layer.engine.update(0.0);
         self.genie_effect.set_destination(from, false);
         let view_ref = self.clone();
-        self
-            .window_layer
-            .set_image_filter_progress(1.0, None);
+        self.window_layer.set_image_filter_progress(1.0, None);
         *self
             .window_layer
             .set_image_filter_progress(0.0, Transition::linear(0.5))
-            .on_start(|l: &Layer, _| {
-                l.set_opacity(1.0, None);
-            }, true)
-            .on_finish(move |l: &Layer, _| {
-                l.remove_effect();
-                view_ref.set_is_minimizing(false);
-            }, true)
+            .on_start(
+                |l: &Layer, _| {
+                    l.set_opacity(1.0, None);
+                },
+                true,
+            )
+            .on_finish(
+                move |l: &Layer, _| {
+                    l.remove_effect();
+                    view_ref.set_is_minimizing(false);
+                },
+                true,
+            )
     }
 
     /// Apply a scale/position to make the window fit inside the minimized drawer rect.
@@ -174,7 +177,12 @@ impl WindowView {
         self.apply_minimized_scale_to_layer(&self.window_layer, base_size, target);
     }
 
-    fn apply_minimized_scale_to_layer(&self, layer: &Layer, base_size: (f32, f32), target: skia::Rect) {
+    fn apply_minimized_scale_to_layer(
+        &self,
+        layer: &Layer,
+        base_size: (f32, f32),
+        target: skia::Rect,
+    ) {
         if self.is_minimizing() {
             return;
         }
@@ -182,7 +190,13 @@ impl WindowView {
         let scale_x = if w > 0.0 { target.width() / w } else { 1.0 };
         let scale_y = if h > 0.0 { target.height() / h } else { 1.0 };
         let target_scale = scale_x.min(scale_y);
-        layer.set_scale(Point { x: target_scale, y: target_scale }, None);
+        layer.set_scale(
+            Point {
+                x: target_scale,
+                y: target_scale,
+            },
+            None,
+        );
     }
 }
 

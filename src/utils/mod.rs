@@ -190,11 +190,13 @@ pub fn button_press_filter() -> PointerHandlerFunction {
 
 pub fn button_press_scale(s: f32) -> PointerHandlerFunction {
     let f = move |layer: &Layer, _x: f32, _y: f32| {
-        layer.set_scale(lay_rs::types::Point::new(s, s), Transition::spring(0.3, 0.1));
+        layer.set_scale(
+            lay_rs::types::Point::new(s, s),
+            Transition::spring(0.3, 0.1),
+        );
     };
     f.into()
 }
-
 
 pub fn button_release_filter() -> PointerHandlerFunction {
     let f = |layer: &Layer, _x: f32, _y: f32| {
@@ -205,7 +207,10 @@ pub fn button_release_filter() -> PointerHandlerFunction {
 
 pub fn button_release_scale() -> PointerHandlerFunction {
     let f = |layer: &Layer, _x: f32, _y: f32| {
-        layer.set_scale(lay_rs::types::Point::new(1.0, 1.0), Transition::spring(0.3, 0.1));
+        layer.set_scale(
+            lay_rs::types::Point::new(1.0, 1.0),
+            Transition::spring(0.3, 0.1),
+        );
     };
     f.into()
 }

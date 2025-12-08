@@ -14,9 +14,10 @@ use std::{
 };
 
 use crate::{
-    config::Config, interactive_view::ViewInteractions, theme::theme_colors, utils::{
-        natural_layout::{LayoutRect, natural_layout}
-    }
+    config::Config,
+    interactive_view::ViewInteractions,
+    theme::theme_colors,
+    utils::natural_layout::{natural_layout, LayoutRect},
 };
 
 use super::{utils::FONT_CACHE, WORKSPACE_SELECTOR_PREVIEW_WIDTH};
@@ -45,11 +46,11 @@ pub struct WindowSelectorState {
 impl Hash for WindowSelectorState {
     fn hash<H: Hasher>(&self, state: &mut H) {
         let current = self
-        .current_selection
-        .as_ref()
-        .map(|x| self.rects.get(*x).unwrap());
-    current.hash(state);
-    self.rects.hash(state);
+            .current_selection
+            .as_ref()
+            .map(|x| self.rects.get(*x).unwrap());
+        current.hash(state);
+        self.rects.hash(state);
     }
 }
 
@@ -115,7 +116,6 @@ pub struct WindowSelectorView {
     pub drag_state: Arc<RwLock<Option<DragState>>>,
     pub expose_bin: Arc<RwLock<HashMap<ObjectId, LayoutRect>>>,
     layout_hash: Arc<RwLock<u64>>,
-
 }
 
 /// # WindowSelectorView Layer Structure
@@ -224,7 +224,10 @@ impl WindowSelectorView {
     /// and append the window to the windows_layer
     pub fn map_window(&self, window_id: ObjectId, layer: &Layer) {
         self.windows_layer.add_sublayer(layer);
-        self.windows.write().unwrap().insert(window_id, layer.clone());
+        self.windows
+            .write()
+            .unwrap()
+            .insert(window_id, layer.clone());
     }
 
     /// Ensure the window preview layers keep the same stacking order
@@ -232,11 +235,7 @@ impl WindowSelectorView {
     fn restore_layer_order_from_state(&self) {
         let state = self.view.get_state();
         let windows = self.windows.read().unwrap();
-        for window_id in state
-            .rects
-            .iter()
-            .filter_map(|r| r.window_id.as_ref())
-        {
+        for window_id in state.rects.iter().filter_map(|r| r.window_id.as_ref()) {
             if let Some(layer) = windows.get(window_id) {
                 // Re-append in state order; append detaches first, so this
                 // effectively reorders the siblings without changing parents.
@@ -293,21 +292,19 @@ impl WindowSelectorView {
     fn stop_dragging(&self) -> Option<DragState> {
         let mut drag_state = self.drag_state.write().unwrap();
         let state = drag_state.take()?;
-        
+
         state.window_layer.set_position(
             state.original_position,
             Some(Transition::ease_out_quad(0.12)),
         );
-        state.window_layer.set_scale(
-            state.original_scale,
-            Some(Transition::ease_out_quad(0.12)),
-        );
-        state.window_layer.set_anchor_point(
-            state.original_anchor,
-            Some(Transition::ease_out_quad(0.12)),
-        );
+        state
+            .window_layer
+            .set_scale(state.original_scale, Some(Transition::ease_out_quad(0.12)));
+        state
+            .window_layer
+            .set_anchor_point(state.original_anchor, Some(Transition::ease_out_quad(0.12)));
         state.original_parent.add_sublayer(&state.window_layer);
-        
+
         Some(state)
     }
 
@@ -344,7 +341,7 @@ impl WindowSelectorView {
         if let Some(ref state) = *drag_state {
             let screen_scale = Config::with(|config| config.screen_scale) as f32;
             let target_y = WORKSPACE_SELECTOR_TARGET_Y_LOGICAL * screen_scale;
-            
+
             let preview_scale_value = self.preview_scale();
             let preview_scale_point = lay_rs::types::Point {
                 x: preview_scale_value,
@@ -354,26 +351,34 @@ impl WindowSelectorView {
             if start_y_value <= target_y {
                 start_y_value = target_y + 0.01;
             }
-            let mut progress = (pointer_location.1 - target_y)
-                / (start_y_value - target_y);
+            let mut progress = (pointer_location.1 - target_y) / (start_y_value - target_y);
             progress = progress.clamp(0.0, 1.0);
 
             let new_scale = lay_rs::types::Point {
-                x: preview_scale_point.x + (state.original_scale.x - preview_scale_point.x) * progress,
-                y: preview_scale_point.y + (state.original_scale.y - preview_scale_point.y) * progress,
+                x: preview_scale_point.x
+                    + (state.original_scale.x - preview_scale_point.x) * progress,
+                y: preview_scale_point.y
+                    + (state.original_scale.y - preview_scale_point.y) * progress,
             };
             state.window_layer.set_scale(new_scale, None);
         }
     }
 
-    fn try_activate_drag<Backend: crate::state::Backend>(&self, pointer_location: (f32, f32), screencomposer: &crate::ScreenComposer<Backend>) -> Option<ObjectId> {
+    fn try_activate_drag<Backend: crate::state::Backend>(
+        &self,
+        pointer_location: (f32, f32),
+        screencomposer: &crate::ScreenComposer<Backend>,
+    ) -> Option<ObjectId> {
         // If already dragging, return the current window_id
         if self.drag_state.read().unwrap().is_some() {
-            return self.drag_state.read().unwrap()
+            return self
+                .drag_state
+                .read()
+                .unwrap()
                 .as_ref()
                 .map(|s| s.window_id.clone());
         }
-        
+
         // Do not allow dragging when the current workspace is fullscreen
         if screencomposer
             .workspaces
@@ -421,10 +426,10 @@ impl WindowSelectorView {
 
         let original_scale = window_layer.scale();
         let original_anchor = window_layer.anchor_point();
-        
+
         // Move window to drag overlay
         self.drag_overlay_layer.add_sublayer(&window_layer);
-        
+
         // Remove from state grid
         self.remove_rect_from_state(selection.index);
 
@@ -451,11 +456,11 @@ impl WindowSelectorView {
             original_parent: self.windows_layer.clone(),
             current_drop_target: None,
         };
-        
+
         *self.drag_state.write().unwrap() = Some(drag_state);
 
         self.update_drag_position(pointer_location);
-        
+
         selection.window_id.clone()
     }
 }
@@ -651,7 +656,6 @@ impl WindowSelectorView {
         stored_hash == layout_hash && has_bin
     }
 
-    
     /// Updates the window selector layout and state.
     ///
     /// Recalculates the layout of window previews in the selector view when the geometry or window list changes.
@@ -678,7 +682,9 @@ impl WindowSelectorView {
             bin.clear();
             natural_layout(
                 &mut bin,
-                windows.iter().map(|window| (window.id.clone(), window.rect)),
+                windows
+                    .iter()
+                    .map(|window| (window.id.clone(), window.rect)),
                 &layout_rect,
                 false,
             );
@@ -748,15 +754,18 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
         let is_dragging = self.drag_state.read().unwrap().is_some();
         if is_dragging {
             self.update_drag_position(cursor_point);
-            
+
             // Check if dragged window intersects with any workspace preview drop target
-            let drop_targets = screencomposer.workspaces.workspace_selector_view.get_drop_targets();
+            let drop_targets = screencomposer
+                .workspaces
+                .workspace_selector_view
+                .get_drop_targets();
             let mut new_drop_target = None;
-            
+
             // Get the dragged window's bounds
             if let Some(drag_state) = self.drag_state.read().unwrap().as_ref() {
                 let drag_bounds = drag_state.window_layer.render_bounds_transformed();
-                
+
                 for target in drop_targets {
                     // Map view index to workspace position
                     let Some(target_pos) = screencomposer
@@ -785,16 +794,24 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                     }
                 }
             }
-            
+
             // Update drag state and visual feedback if target changed
-            let current_target = self.drag_state.read().unwrap().as_ref().and_then(|ds| ds.current_drop_target);
+            let current_target = self
+                .drag_state
+                .read()
+                .unwrap()
+                .as_ref()
+                .and_then(|ds| ds.current_drop_target);
             if current_target != new_drop_target {
                 if let Some(drag_state) = self.drag_state.write().unwrap().as_mut() {
                     drag_state.current_drop_target = new_drop_target;
                 }
-                screencomposer.workspaces.workspace_selector_view.set_drop_hover(new_drop_target);
+                screencomposer
+                    .workspaces
+                    .workspace_selector_view
+                    .set_drop_hover(new_drop_target);
             }
-            
+
             return;
         }
 
@@ -804,12 +821,16 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                 if let Some(start) = *self.press_location.read().unwrap() {
                     let screen_scale = Config::with(|config| config.screen_scale) as f32;
                     let drag_threshold = WINDOW_SELECTOR_DRAG_THRESHOLD_LOGICAL * screen_scale;
-                    
+
                     let delta_x = (cursor_point.0 - start.0).abs();
                     let delta_y = (cursor_point.1 - start.1).abs();
                     if delta_x >= drag_threshold || delta_y >= drag_threshold {
-                        if let Some(window_id) = self.try_activate_drag(cursor_point, screencomposer) {
-                            screencomposer.workspaces.start_window_selector_drag(&window_id);
+                        if let Some(window_id) =
+                            self.try_activate_drag(cursor_point, screencomposer)
+                        {
+                            screencomposer
+                                .workspaces
+                                .start_window_selector_drag(&window_id);
                             self.update_drag_position(cursor_point);
                             let cursor = CursorImageStatus::Named(CursorIcon::Move);
                             screencomposer.set_cursor(&cursor);
@@ -871,14 +892,17 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
             ButtonState::Released => {
                 self.pointer_down.store(false, Ordering::SeqCst);
                 let was_dragging = self.drag_state.read().unwrap().is_some();
-                
+
                 if was_dragging {
                     if let Some(drag_state) = self.stop_dragging() {
                         let drop_target = drag_state.current_drop_target;
-                        
+
                         // Clear drop hover visual feedback
-                        screencomposer.workspaces.workspace_selector_view.set_drop_hover(None);
-                        
+                        screencomposer
+                            .workspaces
+                            .workspace_selector_view
+                            .set_drop_hover(None);
+
                         if let Some(target_workspace) = drop_target {
                             tracing::trace!(
                                 "Expose drop: moving window {:?} to workspace {}",
@@ -905,11 +929,19 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                                 target_pos,
                             ) {
                                 // Get position in current workspace before moving
-                                let position = screencomposer.workspaces.space().element_location(&window_element).unwrap_or_default();
-                                
+                                let position = screencomposer
+                                    .workspaces
+                                    .space()
+                                    .element_location(&window_element)
+                                    .unwrap_or_default();
+
                                 // Clear dragging state
-                                *screencomposer.workspaces.expose_dragging_window.lock().unwrap() = None;
-                                
+                                *screencomposer
+                                    .workspaces
+                                    .expose_dragging_window
+                                    .lock()
+                                    .unwrap() = None;
+
                                 // Move window to target workspace
                                 // Note: unmap_window no longer removes the mirror layer to avoid SlotMap key issues
                                 screencomposer.workspaces.move_window_to_workspace(
@@ -917,7 +949,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                                     target_pos,
                                     position,
                                 );
-                                
+
                                 // Refresh expose view - this will rebuild the layout with updated state
                                 screencomposer.workspaces.expose_show_all(1.0, true);
                             } else {
@@ -925,7 +957,9 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                                     "Expose drop: window {:?} not found in windows_map, ending drag only",
                                     drag_state.window_id
                                 );
-                                screencomposer.workspaces.end_window_selector_drag(&drag_state.window_id);
+                                screencomposer
+                                    .workspaces
+                                    .end_window_selector_drag(&drag_state.window_id);
                             }
                         } else {
                             tracing::trace!(
@@ -935,7 +969,9 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                             // No drop target - restore to original position
                             self.restore_rect_to_state(drag_state.selection.clone());
                             self.restore_layer_order_from_state();
-                            screencomposer.workspaces.end_window_selector_drag(&drag_state.window_id);
+                            screencomposer
+                                .workspaces
+                                .end_window_selector_drag(&drag_state.window_id);
                             screencomposer.workspaces.expose_update_if_needed();
                         }
                     }
@@ -956,7 +992,10 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                 }
                 screencomposer.workspaces.expose_show_all(-1.0, true);
                 screencomposer.set_cursor(&CursorImageStatus::default_named());
-                let state = WindowSelectorState { current_selection: None, ..selector_state };
+                let state = WindowSelectorState {
+                    current_selection: None,
+                    ..selector_state
+                };
                 self.view.update_state(&state);
             }
         }

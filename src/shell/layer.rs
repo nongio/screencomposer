@@ -145,12 +145,13 @@ impl LayerShellSurface {
 
     /// Get the margin from cached state
     pub fn margin(&self) -> (i32, i32, i32, i32) {
-        let state = smithay::wayland::compositor::with_states(self.layer_surface.wl_surface(), |states| {
-            *states
-                .cached_state
-                .get::<LayerSurfaceCachedState>()
-                .current()
-        });
+        let state =
+            smithay::wayland::compositor::with_states(self.layer_surface.wl_surface(), |states| {
+                *states
+                    .cached_state
+                    .get::<LayerSurfaceCachedState>()
+                    .current()
+            });
         (
             state.margin.top,
             state.margin.right,
@@ -180,7 +181,10 @@ impl LayerShellSurface {
     }
 
     /// Compute the geometry for this surface based on anchors, margins, and output size
-    pub fn compute_geometry(&self, output_geometry: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
+    pub fn compute_geometry(
+        &self,
+        output_geometry: Rectangle<i32, Logical>,
+    ) -> Rectangle<i32, Logical> {
         let anchor = self.anchor();
         let (margin_top, margin_right, margin_bottom, margin_left) = self.margin();
         let requested_size = self.requested_size();

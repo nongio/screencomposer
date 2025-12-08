@@ -3,14 +3,17 @@ use std::cell::RefCell;
 use lay_rs::prelude::{taffy, Layer, Transition};
 use smithay::{
     desktop::{
-        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, Window, WindowSurface, WindowSurfaceType, find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output
+        find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
+        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, Window, WindowSurface,
+        WindowSurfaceType,
     },
-    input::{Seat, pointer::Focus},
+    input::{pointer::Focus, Seat},
     output::Output,
     reexports::{
         wayland_protocols::xdg::{decoration as xdg_decoration, shell::server::xdg_toplevel},
         wayland_server::{
-            Resource, protocol::{wl_output, wl_seat, wl_surface::WlSurface}
+            protocol::{wl_output, wl_seat, wl_surface::WlSurface},
+            Resource,
         },
     },
     utils::{Logical, Serial},
@@ -58,7 +61,6 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             ..Default::default()
         });
         window_layer.add_follower_node(&expose_mirror_layer);
-
 
         let window_element = WindowElement::new(
             Window::new_wayland_window(surface.clone()),
@@ -124,7 +126,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         self.unconstrain_popup(&surface);
 
         let popup_kind = PopupKind::from(surface);
-        
+
         // Cache the root surface mapping for fast lookup during commit/destroy
         if let Ok(root) = find_popup_root_surface(&popup_kind) {
             let popup_surface_id = popup_kind.wl_surface().id();
@@ -139,10 +141,10 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
     fn popup_destroyed(&mut self, popup_surface: PopupSurface) {
         // Use cached root lookup - O(1) instead of traversing popup tree
         let popup_id = popup_surface.wl_surface().id();
-        
+
         // Remove from popup overlay layer
         self.workspaces.popup_overlay.remove_popup(&popup_id);
-        
+
         if let Some(root_id) = self.popup_root_cache.remove(&popup_id) {
             if let Some(window) = self.workspaces.get_window_for_surface(&root_id).cloned() {
                 window.on_commit();
@@ -422,10 +424,10 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             let id = window.id();
             if let Some(view) = self.workspaces.get_window_view(&id) {
                 let transition = Transition::ease_in_out_quad(1.4);
-                
+
                 // Fade out layer_shell_overlay when entering fullscreen
                 self.workspaces.set_fullscreen_overlay_visibility(true);
-                
+
                 self.workspaces
                     .move_window_to_workspace(&window, next_workspace_index, (0, 0));
                 window.set_workspace(current_workspace_index);
@@ -505,7 +507,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
                     let workspace = self.workspaces.get_current_workspace();
                     workspace.set_fullscreen_mode(false);
-                    
+
                     // Fade in layer_shell_overlay when exiting fullscreen
                     self.workspaces.set_fullscreen_overlay_visibility(false);
 
