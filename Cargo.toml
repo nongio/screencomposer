@@ -116,6 +116,7 @@ renderer_sync = []
 
 [workspace]
 members = [
+    "components/xdg-desktop-portal-sc",
     "sample-clients/client-rainbow",
     "sample-clients/submenu",
     "sample-clients/submenu-gtk",

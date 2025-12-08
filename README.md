@@ -52,7 +52,10 @@ Following a draft roadmap of features and improvements.
 - [ ] show favorite locations
 
 ### Screenshare
-- [ ] enable screenshare xdg-portal
+- [x] XDG Desktop Portal backend (see [docs/xdg-desktop-portal.md](./docs/xdg-desktop-portal.md))
+- [x] ScreenCast portal for PipeWire screen sharing
+- [ ] Window capture support
+- [ ] Permission dialog UI
 
 ### Miscellaneus
 - [ ] Volume control widget
@@ -102,6 +105,17 @@ ScreenComposer implements a comprehensive set of Wayland protocols, including:
 - XDG foreign: cross-client surface identification
 
 For a complete and up-to-date list, see [docs/wayland.md](./docs/wayland.md).
+
+## Components
+
+ScreenComposer consists of the main compositor and additional components:
+
+| Component | Description |
+|-----------|-------------|
+| `screen-composer` | Main compositor binary |
+| `xdg-desktop-portal-screencomposer` | XDG Desktop Portal backend for screen sharing |
+
+See [docs/xdg-desktop-portal.md](./docs/xdg-desktop-portal.md) for details on the portal integration.
 
 ## Is it open for contributions?
 You can contribute by testing the compositor, reporting bugs, by implementing new features or bring new ideas. Both this project and the LayersEngine are open to contributions. If you have any questions,  open an issue on the repository.
