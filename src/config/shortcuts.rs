@@ -52,6 +52,7 @@ pub struct RunCommandConfig {
 pub struct ShortcutBinding {
     pub trigger: ShortcutTrigger,
     pub action: ShortcutAction,
+    #[allow(dead_code)]
     pub trigger_repr: String,
 }
 

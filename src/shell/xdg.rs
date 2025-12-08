@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use lay_rs::prelude::{Layer, Transition};
+use lay_rs::prelude::{taffy, Layer, Transition};
 use smithay::{
     desktop::{
         find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
@@ -51,9 +51,21 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         // the surface is not already configured
 
         let window_layer = self.layers_engine.new_layer();
+        let expose_mirror_layer = self.layers_engine.new_layer();
+
+        expose_mirror_layer.set_draw_content(window_layer.as_content());
+        expose_mirror_layer.set_picture_cached(false);
+        expose_mirror_layer.set_key(format!("mirror_window_{}", window_layer.id.0));
+        expose_mirror_layer.set_layout_style(taffy::Style {
+            position: taffy::Position::Absolute,
+            ..Default::default()
+        });
+        window_layer.add_follower_node(&expose_mirror_layer);
+
         let window_element = WindowElement::new(
             Window::new_wayland_window(surface.clone()),
-            window_layer.clone(),
+            window_layer,
+            expose_mirror_layer,
         );
         let pointer_location = self.pointer.current_location();
 
@@ -113,11 +125,33 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
         self.unconstrain_popup(&surface);
 
-        if let Err(err) = self.popups.track_popup(PopupKind::from(surface)) {
+        let popup_kind = PopupKind::from(surface);
+
+        // Cache the root surface mapping for fast lookup during commit/destroy
+        if let Ok(root) = find_popup_root_surface(&popup_kind) {
+            let popup_surface_id = popup_kind.wl_surface().id();
+            self.popup_root_cache.insert(popup_surface_id, root.id());
+        }
+
+        if let Err(err) = self.popups.track_popup(popup_kind) {
             warn!("Failed to track popup: {}", err);
         }
     }
 
+    fn popup_destroyed(&mut self, popup_surface: PopupSurface) {
+        // Use cached root lookup - O(1) instead of traversing popup tree
+        let popup_id = popup_surface.wl_surface().id();
+
+        // Remove from popup overlay layer
+        self.workspaces.popup_overlay.remove_popup(&popup_id);
+
+        if let Some(root_id) = self.popup_root_cache.remove(&popup_id) {
+            if let Some(window) = self.workspaces.get_window_for_surface(&root_id).cloned() {
+                window.on_commit();
+                self.update_window_view(&window);
+            }
+        }
+    }
     fn reposition_request(
         &mut self,
         surface: PopupSurface,
@@ -376,6 +410,10 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 .unwrap()
                 .set(window.clone());
 
+            // Reset buffers to force a full redraw when entering fullscreen
+            // This prevents damage tracking artifacts from the scene-based rendering
+            self.backend_data.reset_buffers(&output);
+
             let (next_workspace_index, next_workspace) = self.workspaces.get_next_free_workspace();
             next_workspace.set_fullscreen_mode(true);
 
@@ -386,6 +424,10 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             let id = window.id();
             if let Some(view) = self.workspaces.get_window_view(&id) {
                 let transition = Transition::ease_in_out_quad(1.4);
+
+                // Fade out layer_shell_overlay when entering fullscreen
+                self.workspaces.set_fullscreen_overlay_visibility(true);
+
                 self.workspaces
                     .move_window_to_workspace(&window, next_workspace_index, (0, 0));
                 window.set_workspace(current_workspace_index);
@@ -394,7 +436,6 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
                 let surface = surface.clone();
                 let wl_output_ref = wl_output.clone();
-                let geometry = geometry;
                 let next_workspace_layer = next_workspace.windows_layer.clone();
 
                 self.workspaces
@@ -466,6 +507,9 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
                     let workspace = self.workspaces.get_current_workspace();
                     workspace.set_fullscreen_mode(false);
+
+                    // Fade in layer_shell_overlay when exiting fullscreen
+                    self.workspaces.set_fullscreen_overlay_visibility(false);
 
                     self.workspaces.move_window_to_workspace(
                         &we,
@@ -592,8 +636,11 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 self.workspaces.set_window_view(&id, view);
             }
 
-            self.workspaces.minimize_window(&window);
-            self.set_keyboard_focus_on_surface(&id);
+            let next_focus = self.workspaces.minimize_window(&window);
+            match next_focus {
+                Some(wid) => self.set_keyboard_focus_on_surface(&wid),
+                None => self.clear_keyboard_focus(),
+            }
         }
 
         // The protocol demands us to always reply with a configure,

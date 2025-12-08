@@ -1542,8 +1542,8 @@ impl ExportMem for SkiaRenderer {
     fn copy_texture(
         &mut self,
         _texture: &Self::TextureId,
-        region: Rectangle<i32, Buffer>,
-        fourcc: Fourcc,
+        _region: Rectangle<i32, Buffer>,
+        _fourcc: Fourcc,
     ) -> Result<Self::TextureMapping, Self::Error> {
         unimplemented!("copy_texture")
     }

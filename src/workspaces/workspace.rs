@@ -5,6 +5,7 @@ use core::fmt;
 use lay_rs::{
     engine::Engine,
     prelude::{taffy, Layer},
+    types::Size,
 };
 use smithay::reexports::wayland_server::backend::ObjectId;
 use std::{
@@ -58,7 +59,12 @@ impl fmt::Debug for WorkspaceView {
 /// ```
 ///
 impl WorkspaceView {
-    pub fn new(index: usize, layers_engine: Arc<Engine>, parent: &Layer) -> Self {
+    pub fn new(
+        index: usize,
+        layers_engine: Arc<Engine>,
+        parent: &Layer,
+        overlay_layer: Layer,
+    ) -> Self {
         println!("add_workspace {}", index);
 
         let workspace_layer = layers_engine.new_layer();
@@ -107,6 +113,7 @@ impl WorkspaceView {
             index,
             layers_engine.clone(),
             background_view.base_layer.clone(),
+            overlay_layer,
         );
 
         let window_selector_view = Arc::new(window_selector_view);
@@ -156,25 +163,14 @@ impl WorkspaceView {
             self.windows_layer
                 .add_sublayer(&window_element.base_layer().id);
 
-            let mirror_window = self.layers_engine.new_layer();
-            mirror_window.set_key(format!(
-                "mirror_window_{}",
-                window_element.base_layer().id.0
-            ));
-            mirror_window.set_layout_style(taffy::Style {
-                position: taffy::Position::Absolute,
-                ..Default::default()
-            });
-            // FIXME this is ruining the damage tracking
-            mirror_window.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+            let mirror_window = window_element.mirror_layer();
+            let size = window_element.base_layer().render_size_transformed();
+            mirror_window.set_size(Size::points(size.x, size.y), None);
             self.window_selector_view
                 .windows_layer
-                .add_sublayer(&mirror_window);
+                .add_sublayer(mirror_window);
 
             let window_base = window_element.base_layer();
-            mirror_window.set_draw_content(window_base.as_content());
-            window_base.add_follower_node(&mirror_window);
-            mirror_window.set_picture_cached(false);
             self.window_selector_view
                 .map_window(wid.clone(), mirror_window);
 
@@ -212,19 +208,27 @@ impl WorkspaceView {
     /// remove the window from the windows list
     /// and remove the window layer from the window selector view
     pub fn unmap_window(&self, window_id: &ObjectId) {
+        self.unmap_window_internal(window_id);
+
+        if let Some(mirror_layer) = self.window_selector_view.unmap_window(window_id) {
+            // Remove both the base_layer mapping and the mirror layer
+            // Don't call remove_follower_node as it may cause accessing freed nodes
+            // when the layer tree is being modified during window destruction
+            self.window_base_layers.write().unwrap().remove(window_id);
+            mirror_layer.remove();
+        } else {
+            self.window_base_layers.write().unwrap().remove(window_id);
+        }
+    }
+
+    /// Internal version of unmap_window that allows controlling whether to remove the mirror layer
+    /// When remove_mirror is false, the mirror layer is not removed to avoid SlotMap key issues
+    /// during drag-and-drop operations when expose_show_all will be called to rebuild the layout
+    pub fn unmap_window_internal(&self, window_id: &ObjectId) {
         let mut window_list = self.windows_list.write().unwrap();
 
         if let Some(index) = window_list.iter().position(|x| x == window_id) {
             window_list.remove(index);
-        }
-
-        if let Some(mirror_layer) = self.window_selector_view.unmap_window(window_id) {
-            if let Some(base_layer) = self.window_base_layers.write().unwrap().remove(window_id) {
-                base_layer.remove_follower_node(&mirror_layer);
-            }
-            mirror_layer.remove();
-        } else {
-            self.window_base_layers.write().unwrap().remove(window_id);
         }
     }
 

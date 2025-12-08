@@ -55,12 +55,13 @@ define_colors!(COLORS, {
     materials_controls_menu => "#28282894",
     materials_controls_popover => "#00000047",
     materials_controls_title_bar => "#EAEAEACC",
-    materials_controls_sidebar => "#EAEAEAD6",
+    materials_controls_sidebar => "#eaeaeaaf",
     materials_controls_selection_focused => "#0A82FFBF",
     materials_controls_selection_unfocused => "#0000001A",
     materials_controls_header_view => "#FFFFFFCC",
-    materials_controls_tooltip => "#F6F6F699",
+    materials_controls_tooltip => "#9c9c9caf",
     materials_controls_under_window_background => "#F6F6F6D6",
     materials_controls_fullscreen => "#28282880",
-    materials_controls_hud => "#28282880"
+    materials_controls_hud => "#28282880",
+    shadow_color => "#00000066",
 });

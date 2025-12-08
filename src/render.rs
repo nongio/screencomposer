@@ -89,7 +89,7 @@ where
 
 #[profiling::function]
 pub fn output_elements<'a, 'frame, R>(
-    output: &Output,
+    _output: &Output,
     window_elements: impl IntoIterator<Item = &'a WindowElement>,
     workspace_elements: impl IntoIterator<
         Item = impl Into<OutputRenderElements<'frame, R, WindowRenderElement<R>>>,

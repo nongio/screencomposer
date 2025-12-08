@@ -178,6 +178,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         let time = Event::time_msec(&evt);
         let mut suppressed_keys = self.suppressed_keys.clone();
         let keyboard = self.seat.get_keyboard().unwrap();
+        let mut updated_modifiers: Option<ModifiersState> = None;
 
         for layer in self.layer_shell_state.layer_surfaces().rev() {
             let data = with_states(layer.wl_surface(), |states| {
@@ -214,6 +215,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             .map(|inhibitor| inhibitor.is_active())
             .unwrap_or(false);
 
+        let modifier_masks = self.modifier_masks;
         let action = keyboard
             .input(
                 self,
@@ -231,22 +233,27 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                         "keysym"
                     );
 
-                    // If the key is pressed and triggered a action
+                    let (remapped_modifiers, shortcut_action) = Config::with(|config| {
+                        let remapped =
+                            config.apply_modifier_remap(*modifiers, Some(&modifier_masks));
+                        let action = if matches!(state, KeyState::Pressed) && !inhibited {
+                            process_keyboard_shortcut(config, remapped, keysym)
+                        } else {
+                            None
+                        };
+                        (remapped, action)
+                    });
+                    updated_modifiers = Some(remapped_modifiers);
+
+                    // If the key is pressed and triggered an action
                     // we will not forward the key to the client.
                     // Additionally add the key to the suppressed keys
                     // so that we can decide on a release if the key
                     // should be forwarded to the client or not.
                     if let KeyState::Pressed = state {
-                        if !inhibited {
-                            let action = process_keyboard_shortcut(*modifiers, keysym);
-
-                            if action.is_some() {
-                                suppressed_keys.push(keysym);
-                            }
-
-                            action
-                                .map(FilterResult::Intercept)
-                                .unwrap_or(FilterResult::Forward)
+                        if let Some(action) = shortcut_action {
+                            suppressed_keys.push(keysym);
+                            FilterResult::Intercept(action)
                         } else {
                             FilterResult::Forward
                         }
@@ -263,21 +270,45 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             )
             .unwrap_or(KeyAction::None);
 
-        // FIXME this keys handling should be moved into the AppSwitcher
-        // by moving the focus to that view
-        if KeyState::Released == state && original_keycode == 56 {
-            // App switcher
-            if self.workspaces.app_switcher.alive() {
-                self.workspaces.app_switcher.hide();
-                if let Some(app_id) = self.workspaces.app_switcher.get_current_app_id() {
-                    self.focus_app(&app_id);
-                    self.workspaces.app_switcher.reset();
-                }
-            }
+        if let Some(modifiers) = updated_modifiers {
+            self.current_modifiers = modifiers;
+        }
+
+        if matches!(state, KeyState::Pressed)
+            && matches!(
+                action,
+                KeyAction::ApplicationSwitchNext
+                    | KeyAction::ApplicationSwitchPrev
+                    | KeyAction::ApplicationSwitchNextWindow
+            )
+        {
+            self.app_switcher_hold_modifiers =
+                capture_app_switcher_hold_modifiers(self.current_modifiers);
+        }
+
+        if KeyState::Released == state
+            && self.workspaces.app_switcher.alive()
+            && !app_switcher_hold_is_active(
+                self.app_switcher_hold_modifiers,
+                self.current_modifiers,
+            )
+        {
+            self.dismiss_app_switcher();
         }
 
         self.suppressed_keys = suppressed_keys;
         action
+    }
+
+    fn dismiss_app_switcher(&mut self) {
+        if self.workspaces.app_switcher.alive() {
+            self.workspaces.app_switcher.hide();
+            if let Some(app_id) = self.workspaces.app_switcher.get_current_app_id() {
+                self.focus_app(&app_id);
+                self.workspaces.app_switcher.reset();
+            }
+        }
+        self.app_switcher_hold_modifiers = None;
     }
 
     fn on_pointer_button<B: InputBackend>(&mut self, evt: B::PointerButtonEvent) {
@@ -354,24 +385,24 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                     }
                 }
 
-                // FIXME add back support for WLR layers
-                // let layers = layer_map_for_output(output);
-                // if let Some(layer) = layers
-                //     .layer_under(WlrLayer::Overlay, self.pointer.current_location())
-                //     .or_else(|| layers.layer_under(WlrLayer::Top, self.pointer.current_location()))
-                // {
-                //     if layer.can_receive_keyboard_focus() {
-                //         if let Some((_, _)) = layer.surface_under(
-                //             self.pointer.current_location()
-                //                 - output_geo.loc.to_f64()
-                //                 - layers.layer_geometry(layer).unwrap().loc.to_f64(),
-                //             WindowSurfaceType::ALL,
-                //         ) {
-                //             keyboard.set_focus(self, Some(layer.clone().into()), serial);
-                //             return;
-                //         }
-                //     }
-                // }
+                // Check if an overlay/top layer surface should receive keyboard focus
+                let layers = layer_map_for_output(output);
+                if let Some(layer) = layers
+                    .layer_under(WlrLayer::Overlay, self.pointer.current_location())
+                    .or_else(|| layers.layer_under(WlrLayer::Top, self.pointer.current_location()))
+                {
+                    if layer.can_receive_keyboard_focus() {
+                        if let Some((_, _)) = layer.surface_under(
+                            self.pointer.current_location()
+                                - output_geo.loc.to_f64()
+                                - layers.layer_geometry(layer).unwrap().loc.to_f64(),
+                            WindowSurfaceType::ALL,
+                        ) {
+                            keyboard.set_focus(self, Some(layer.clone().into()), serial);
+                            return;
+                        }
+                    }
+                }
             }
             let scale = output
                 .as_ref()
@@ -410,28 +441,28 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                 }
             }
 
-            // FIXME add back support for WLR layers
-            // if let Some(output) = output.as_ref() {
-            //     let output_geo = self.workspaces.output_geometry(output).unwrap();
-            //     let layers = layer_map_for_output(output);
-            //     if let Some(layer) = layers
-            //         .layer_under(WlrLayer::Bottom, self.pointer.current_location())
-            //         .or_else(|| {
-            //             layers.layer_under(WlrLayer::Background, self.pointer.current_location())
-            //         })
-            //     {
-            //         if layer.can_receive_keyboard_focus() {
-            //             if let Some((_, _)) = layer.surface_under(
-            //                 self.pointer.current_location()
-            //                     - output_geo.loc.to_f64()
-            //                     - layers.layer_geometry(layer).unwrap().loc.to_f64(),
-            //                 WindowSurfaceType::ALL,
-            //             ) {
-            //                 keyboard.set_focus(self, Some(layer.clone().into()), serial);
-            //             }
-            //         }
-            //     }
-            // };
+            // Check if a bottom/background layer surface should receive keyboard focus
+            if let Some(output) = output.as_ref() {
+                let output_geo = self.workspaces.output_geometry(output).unwrap();
+                let layers = layer_map_for_output(output);
+                if let Some(layer) = layers
+                    .layer_under(WlrLayer::Bottom, self.pointer.current_location())
+                    .or_else(|| {
+                        layers.layer_under(WlrLayer::Background, self.pointer.current_location())
+                    })
+                {
+                    if layer.can_receive_keyboard_focus() {
+                        if let Some((_, _)) = layer.surface_under(
+                            self.pointer.current_location()
+                                - output_geo.loc.to_f64()
+                                - layers.layer_geometry(layer).unwrap().loc.to_f64(),
+                            WindowSurfaceType::ALL,
+                        ) {
+                            keyboard.set_focus(self, Some(layer.clone().into()), serial);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -472,7 +503,6 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                     .workspace_selector_view
                     .layer
                     .render_position();
-
                 return Some((focus, (position.x as f64, position.y as f64).into()));
             }
         }
@@ -484,23 +514,16 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
             return Some((focus, (position.x as f64, position.y as f64).into()));
         }
-        // FIXME add back support for WLR layers
-        // if let Some(window) = output
-        //     .user_data()
-        //     .get::<FullscreenSurface>()
-        //     .and_then(|f| f.get())
-        // {
-        //     under = Some((window.into(), output_geo.loc));
-        // } else if let Some(layer) = layers
-        //     .layer_under(WlrLayer::Overlay, pos)
-        //     .or_else(|| layers.layer_under(WlrLayer::Top, pos))
-        // {
-        //     // WLR Layer
-        //     let layer_loc = layers.layer_geometry(layer).unwrap().loc;
-        //     under = Some((layer.clone().into(), output_geo.loc + layer_loc))
-        // } else
 
-        if self
+        if let Some(layer) = layers
+            .layer_under(WlrLayer::Overlay, pos)
+            .or_else(|| layers.layer_under(WlrLayer::Top, pos))
+        {
+            let layer_loc = layers.layer_geometry(layer).unwrap().loc;
+            under = Some((layer.clone().into(), output_geo.loc + layer_loc));
+        }
+        // Check dock
+        else if self
             .workspaces
             .is_cursor_over_dock(physical_pos.x as f32, physical_pos.y as f32)
         {
@@ -651,9 +674,15 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     self.backend_data.reset_buffers(&output);
                 }
                 KeyAction::ApplicationSwitchNext => {
+                    if self.workspaces.get_show_all() {
+                        self.workspaces.expose_show_all(-1.0, true);
+                    }
                     self.workspaces.app_switcher.next();
                 }
                 KeyAction::ApplicationSwitchPrev => {
+                    if self.workspaces.get_show_all() {
+                        self.workspaces.expose_show_all(-1.0, true);
+                    }
                     self.workspaces.app_switcher.previous();
                 }
                 KeyAction::ApplicationSwitchQuit => {
@@ -679,11 +708,14 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                     if self.workspaces.get_show_all() {
                         self.workspaces.expose_show_all(-1.0, true);
                     } else {
+                        // Dismiss all popups before entering expose mode
+                        // to release pointer grabs that would intercept events
+                        self.dismiss_all_popups();
                         self.workspaces.expose_show_all(1.0, true);
                     }
                 }
                 KeyAction::WorkspaceNum(n) => {
-                    self.workspaces.set_current_workspace_index(n, None);
+                    self.set_current_workspace_index(n);
                 }
 
                 action => match action {
@@ -915,9 +947,15 @@ impl ScreenComposer<UdevData> {
                     }
                 }
                 KeyAction::ApplicationSwitchNext => {
+                    if self.workspaces.get_show_all() {
+                        self.workspaces.expose_show_all(-1.0, true);
+                    }
                     self.workspaces.app_switcher.next();
                 }
                 KeyAction::ApplicationSwitchPrev => {
+                    if self.workspaces.get_show_all() {
+                        self.workspaces.expose_show_all(-1.0, true);
+                    }
                     self.workspaces.app_switcher.previous();
                 }
                 KeyAction::ApplicationSwitchNextWindow => {
@@ -943,8 +981,14 @@ impl ScreenComposer<UdevData> {
                     if self.workspaces.get_show_all() {
                         self.workspaces.expose_show_all(-1.0, true);
                     } else {
+                        // Dismiss all popups before entering expose mode
+                        // to release pointer grabs that would intercept events
+                        self.dismiss_all_popups();
                         self.workspaces.expose_show_all(1.0, true);
                     }
+                }
+                KeyAction::WorkspaceNum(index) => {
+                    self.set_current_workspace_index(index);
                 }
                 action => match action {
                     KeyAction::None
@@ -1011,6 +1055,25 @@ impl ScreenComposer<UdevData> {
         evt: B::PointerMotionEvent,
     ) {
         let mut pointer_location = self.pointer.current_location();
+        let current_scale = self
+            .workspaces
+            .outputs()
+            .find(|o| {
+                self.workspaces
+                    .output_geometry(o)
+                    .map(|geo| geo.contains(pointer_location.to_i32_round()))
+                    .unwrap_or(false)
+            })
+            .map(|o| o.current_scale().fractional_scale())
+            .unwrap_or(1.0);
+        let logical_delta = {
+            let p = evt.delta();
+            Point::from((p.x / current_scale, p.y / current_scale))
+        };
+        let logical_delta_unaccel = {
+            let p = evt.delta_unaccel();
+            Point::from((p.x / current_scale, p.y / current_scale))
+        };
         let serial = SCOUNTER.next_serial();
 
         let pointer = self.pointer.clone();
@@ -1049,8 +1112,8 @@ impl ScreenComposer<UdevData> {
             self,
             under.clone(),
             &RelativeMotionEvent {
-                delta: evt.delta(),
-                delta_unaccel: evt.delta_unaccel(),
+                delta: logical_delta,
+                delta_unaccel: logical_delta_unaccel,
                 utime: evt.time(),
             },
         );
@@ -1061,7 +1124,7 @@ impl ScreenComposer<UdevData> {
             return;
         }
 
-        pointer_location += evt.delta();
+        pointer_location += logical_delta;
 
         // clamp to screen limits
         // this event is never generated by winit
@@ -1317,8 +1380,15 @@ impl ScreenComposer<UdevData> {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
         // tracing::error!("on_gesture_swipe_begin: {:?}", self.swipe_gesture);
+
+        // 3-finger swipe: direction determines behavior (horizontal=workspace, vertical=expose)
         if evt.fingers() == 3 && !self.is_pinching {
-            self.is_swiping = true;
+            // Start tracking but don't activate until direction is determined
+            self.is_workspace_swiping = true;
+            self.workspace_swipe_accumulated = (0.0, 0.0);
+            self.workspace_swipe_active = false;
+            self.workspace_swipe_velocity_samples.clear();
+            self.is_expose_swiping = false;
         }
         // self.background_view.set_debug_text(format!("on_gesture_swipe_begin: {:?}", self.swipe_gesture));
 
@@ -1334,12 +1404,51 @@ impl ScreenComposer<UdevData> {
 
     fn on_gesture_swipe_update<B: InputBackend>(&mut self, evt: B::GestureSwipeUpdateEvent) {
         let pointer = self.pointer.clone();
-        let multiplier = 800.0;
-        let delta = evt.delta_y() as f32 / multiplier;
 
-        if self.is_swiping {
-            self.workspaces.expose_show_all(-delta, false);
+        // Handle 3-finger swipe (direction determines: horizontal=workspace, vertical=expose)
+        if self.is_workspace_swiping || self.is_expose_swiping {
+            let delta_x = evt.delta().x;
+            let delta_y = evt.delta().y;
+
+            // If direction not yet determined, accumulate and check threshold
+            if self.is_workspace_swiping && !self.workspace_swipe_active && !self.is_expose_swiping
+            {
+                self.workspace_swipe_accumulated.0 += delta_x;
+                self.workspace_swipe_accumulated.1 += delta_y;
+
+                let horiz = self.workspace_swipe_accumulated.0.abs();
+                let vert = self.workspace_swipe_accumulated.1.abs();
+                const THRESHOLD: f64 = 20.0;
+
+                if horiz > THRESHOLD && horiz > vert {
+                    // Horizontal swipe -> workspace switching
+                    self.workspace_swipe_active = true;
+                    self.workspaces
+                        .workspace_swipe_update(self.workspace_swipe_accumulated.0 as f32);
+                } else if vert > THRESHOLD {
+                    // Vertical swipe -> expose mode
+                    self.is_workspace_swiping = false;
+                    self.is_expose_swiping = true;
+                    // Apply accumulated vertical delta to expose
+                    let multiplier = 500.0;
+                    let delta = self.workspace_swipe_accumulated.1 as f32 / multiplier;
+                    self.workspaces.expose_show_all(-delta, false);
+                }
+            } else if self.workspace_swipe_active {
+                // Already in workspace swipe mode
+                self.workspace_swipe_velocity_samples.push(delta_x);
+                if self.workspace_swipe_velocity_samples.len() > 4 {
+                    self.workspace_swipe_velocity_samples.remove(0);
+                }
+                self.workspaces.workspace_swipe_update(delta_x as f32);
+            } else if self.is_expose_swiping {
+                // Already in expose mode
+                let multiplier = 500.0;
+                let delta = delta_y as f32 / multiplier;
+                self.workspaces.expose_show_all(-delta, false);
+            }
         }
+
         pointer.gesture_swipe_update(
             self,
             &GestureSwipeUpdateEvent {
@@ -1353,10 +1462,44 @@ impl ScreenComposer<UdevData> {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
 
-        if self.is_swiping {
+        if self.is_expose_swiping {
             self.workspaces.expose_show_all(0.0, true);
-            self.is_swiping = false;
+            self.is_expose_swiping = false;
         }
+
+        // Handle workspace swipe end
+        if self.is_workspace_swiping {
+            let target_index = if self.workspace_swipe_active && !evt.cancelled() {
+                // Calculate smoothed velocity from samples
+                let velocity = if self.workspace_swipe_velocity_samples.is_empty() {
+                    0.0
+                } else {
+                    self.workspace_swipe_velocity_samples.iter().sum::<f64>()
+                        / self.workspace_swipe_velocity_samples.len() as f64
+                };
+                Some(self.workspaces.workspace_swipe_end(velocity as f32))
+            } else if self.workspace_swipe_active {
+                // Gesture cancelled, snap back to current workspace
+                Some(self.workspaces.workspace_swipe_end(0.0))
+            } else {
+                None
+            };
+
+            // Update keyboard focus to top window of the target workspace
+            if let Some(index) = target_index {
+                if let Some(top_wid) = self.workspaces.get_top_window_of_workspace(index) {
+                    self.set_keyboard_focus_on_surface(&top_wid);
+                } else {
+                    self.clear_keyboard_focus();
+                }
+            }
+
+            self.is_workspace_swiping = false;
+            self.workspace_swipe_active = false;
+            self.workspace_swipe_accumulated = (0.0, 0.0);
+            self.workspace_swipe_velocity_samples.clear();
+        }
+
         pointer.gesture_swipe_end(
             self,
             &GestureSwipeEndEvent {
@@ -1371,9 +1514,9 @@ impl ScreenComposer<UdevData> {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
 
-        if evt.fingers() == 4 && !self.is_swiping {
-            self.is_pinching = true;
-        }
+        // if evt.fingers() == 5 && !self.is_expose_swiping {
+        // self.is_pinching = true;
+        // }
 
         pointer.gesture_pinch_begin(
             self,
@@ -1387,8 +1530,8 @@ impl ScreenComposer<UdevData> {
 
     fn on_gesture_pinch_update<B: InputBackend>(&mut self, evt: B::GesturePinchUpdateEvent) {
         let pointer = self.pointer.clone();
-        let multiplier = 1.1;
-        let delta = evt.scale() as f32 * multiplier;
+        let _multiplier = 1.1;
+        let _delta = evt.scale() as f32 * _multiplier;
 
         // if !self.show_desktop {
         //     delta -= 1.0;
@@ -1398,10 +1541,10 @@ impl ScreenComposer<UdevData> {
         //     x: delta,//(self.pinch_gesture.x - delta),
         //     y: delta,//(self.pinch_gesture.y - delta),
         // };
-        if self.is_pinching {
-            // self.background_view.set_debug_text(format!("on_gesture_pinch_update: {:?}", delta));
-            self.workspaces.expose_show_desktop(delta, false);
-        }
+        // if self.is_pinching {
+        // self.background_view.set_debug_text(format!("on_gesture_pinch_update: {:?}", delta));
+        // self.workspaces.expose_show_desktop(delta, false);
+        // }
         pointer.gesture_pinch_update(
             self,
             &GesturePinchUpdateEvent {
@@ -1515,30 +1658,59 @@ enum KeyAction {
     None,
 }
 
-fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Option<KeyAction> {
-    Config::with(|config| {
-        let modifiers = config.apply_modifier_remap(modifiers);
-        if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace
-            || modifiers.logo && keysym == Keysym::q
-        {
-            // ctrl+alt+backspace = quit
-            // logo + q = quit
-            info!("keyboard shortcut activated");
-            return Some(KeyAction::Quit);
-        }
+fn capture_app_switcher_hold_modifiers(mut modifiers: ModifiersState) -> Option<ModifiersState> {
+    modifiers.caps_lock = false;
+    modifiers.num_lock = false;
+    if modifiers.ctrl || modifiers.alt || modifiers.logo || modifiers.shift {
+        Some(modifiers)
+    } else {
+        None
+    }
+}
 
-        if (xkb::KEY_XF86Switch_VT_1..=xkb::KEY_XF86Switch_VT_12).contains(&keysym.raw()) {
-            return Some(KeyAction::VtSwitch(
-                (keysym.raw() - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
-            ));
+fn app_switcher_hold_is_active(hold: Option<ModifiersState>, current: ModifiersState) -> bool {
+    match hold {
+        Some(hold_modifiers) => {
+            let has_primary = hold_modifiers.ctrl || hold_modifiers.alt || hold_modifiers.logo;
+            if has_primary {
+                (hold_modifiers.ctrl && current.ctrl)
+                    || (hold_modifiers.alt && current.alt)
+                    || (hold_modifiers.logo && current.logo)
+            } else if hold_modifiers.shift {
+                current.shift
+            } else {
+                false
+            }
         }
+        None => current.ctrl || current.alt || current.logo || current.shift,
+    }
+}
 
-        config
-            .shortcut_bindings()
-            .iter()
-            .find(|binding| binding.trigger.matches(&modifiers, keysym))
-            .and_then(|binding| resolve_shortcut_action(config, &binding.action))
-    })
+fn process_keyboard_shortcut(
+    config: &Config,
+    modifiers: ModifiersState,
+    keysym: Keysym,
+) -> Option<KeyAction> {
+    if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace
+        || modifiers.logo && keysym == Keysym::q
+    {
+        // ctrl+alt+backspace = quit
+        // logo + q = quit
+        info!("keyboard shortcut activated");
+        return Some(KeyAction::Quit);
+    }
+
+    if (xkb::KEY_XF86Switch_VT_1..=xkb::KEY_XF86Switch_VT_12).contains(&keysym.raw()) {
+        return Some(KeyAction::VtSwitch(
+            (keysym.raw() - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
+        ));
+    }
+
+    config
+        .shortcut_bindings()
+        .iter()
+        .find(|binding| binding.trigger.matches(&modifiers, keysym))
+        .and_then(|binding| resolve_shortcut_action(config, &binding.action))
 }
 
 fn resolve_shortcut_action(config: &Config, action: &ShortcutAction) -> Option<KeyAction> {

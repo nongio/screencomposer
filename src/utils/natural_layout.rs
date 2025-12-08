@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    hash::{Hash, Hasher},
+};
 
 use smithay::reexports::wayland_server::backend::ObjectId;
 
@@ -26,12 +29,21 @@ const WINDOW_PLACEMENT_NATURAL_ACCURACY: f32 = 10.0;
 const WINDOW_PLACEMENT_NATURAL_GAPS: f32 = 20.0;
 const WINDOW_PLACEMENT_NATURAL_MAX_TRANSLATIONS: usize = 5000;
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LayoutRect {
     pub x: f32,
     pub y: f32,
     pub width: f32,
     pub height: f32,
+}
+
+impl Hash for LayoutRect {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.x.to_bits().hash(state);
+        self.y.to_bits().hash(state);
+        self.width.to_bits().hash(state);
+        self.height.to_bits().hash(state);
+    }
 }
 
 impl LayoutRect {
@@ -45,7 +57,7 @@ impl LayoutRect {
     }
 
     fn copy(&self) -> Self {
-        self.clone()
+        *self
     }
 
     fn union(&self, rect2: &LayoutRect) -> Self {
@@ -94,9 +106,9 @@ impl LayoutRect {
 }
 
 #[allow(clippy::mutable_key_type)]
-pub fn natural_layout<'a>(
+pub fn natural_layout(
     slots: &mut HashMap<ObjectId, LayoutRect>,
-    windows: impl IntoIterator<Item = (&'a WindowElement, LayoutRect)>,
+    windows: impl IntoIterator<Item = (ObjectId, LayoutRect)>,
     area: &LayoutRect,
     use_more_screen: bool,
 ) {
@@ -111,12 +123,11 @@ pub fn natural_layout<'a>(
     let mut direction = 0;
     let mut directions = vec![];
     let mut rects = vec![];
-    for (window, rect) in windows {
-        // let rect = window.bounding_box();
+    for (window_id, rect) in windows {
         let layout_rect = LayoutRect::new(rect.x, rect.y, rect.width, rect.height);
         bounds = bounds.union(&layout_rect);
 
-        rects.push((window.id(), layout_rect));
+        rects.push((window_id, layout_rect));
 
         directions.push(direction);
         direction = (direction + 1) % 4;
@@ -235,6 +246,6 @@ pub fn natural_layout<'a>(
         rect.y = rect.y * scale + area_rect.y;
         rect.width *= scale;
         rect.height *= scale;
-        slots.insert(id.clone(), rect.clone());
+        slots.insert(id.clone(), *rect);
     }
 }

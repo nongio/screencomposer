@@ -20,6 +20,9 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
         _data: &mut crate::ScreenComposer<Backend>,
         event: &smithay::input::pointer::MotionEvent,
     ) {
+        if self.dragging.load(std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
         let scale = Config::with(|c| c.screen_scale);
 
         self.update_magnification_position((event.location.x * scale) as f32);
@@ -36,6 +39,12 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
         match event.state {
             ButtonState::Pressed => {
                 // println!("dock Button pressed");
+                if let Some(layer_id) = state.layers_engine.current_hover() {
+                    if let Some((_identifier, _match_id)) = self.get_app_from_layer(&layer_id) {
+                        self.dragging
+                            .store(true, std::sync::atomic::Ordering::SeqCst);
+                    }
+                }
             }
             ButtonState::Released => {
                 if let Some(layer_id) = state.layers_engine.current_hover() {
@@ -56,10 +65,13 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
                         }
                     } else if let Some(wid) = self.get_window_from_layer(&layer_id) {
                         // if we click on a minimized window, unminimize it
-                        state.workspaces.unminimize_window(&wid);
-                        state.set_keyboard_focus_on_surface(&wid);
+                        if let Some(wid) = state.workspaces.unminimize_window(&wid) {
+                            state.set_keyboard_focus_on_surface(&wid);
+                        }
                     }
                 }
+                self.dragging
+                    .store(false, std::sync::atomic::Ordering::SeqCst);
             }
         }
     }

@@ -7,7 +7,8 @@ pub struct GenieEffect {
     pub genie_builder: Arc<RwLock<skia::runtime_effect::RuntimeShaderBuilder>>,
     layer: Arc<RwLock<Option<Layer>>>,
     src: Arc<RwLock<skia::Rect>>,
-    dst: Arc<RwLock<skia::Rect>>,
+    pub dst: Arc<RwLock<skia::Rect>>,
+    offset: Arc<RwLock<(f32, f32)>>,
     progress: Arc<RwLock<f32>>,
 }
 impl Default for GenieEffect {
@@ -30,19 +31,27 @@ impl GenieEffect {
             src: Arc::new(RwLock::new(skia::Rect::default())),
             dst: Arc::new(RwLock::new(skia::Rect::default())),
             progress: Arc::new(RwLock::new(0.0)),
+            offset: Arc::new(RwLock::new((0.0, 0.0))),
         }
     }
 
-    pub fn set_destination(&self, to_rect: skia::Rect) {
-        let offset = {
-            let layer = self.layer.read().unwrap();
-            layer
-                .as_ref()
-                .map(|l| {
-                    let r = l.render_bounds_transformed();
-                    (r.x(), r.y())
-                })
-                .unwrap_or((0.0, 0.0))
+    pub fn set_destination(&self, to_rect: skia::Rect, set_offset: bool) {
+        let offset = if set_offset {
+            let offset = {
+                let layer = self.layer.read().unwrap();
+                layer
+                    .as_ref()
+                    .map(|l| {
+                        let r = l.render_bounds_transformed();
+                        (r.x(), r.y())
+                    })
+                    .unwrap_or((0.0, 0.0))
+            };
+            let mut offset_lock = self.offset.write().unwrap();
+            *offset_lock = offset;
+            offset
+        } else {
+            *self.offset.read().unwrap()
         };
 
         let mut builder = self.genie_builder.write().unwrap();

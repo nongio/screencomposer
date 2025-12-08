@@ -1,0 +1,16 @@
+[package]
+name = "submenu"
+version = "0.1.0"
+edition = "2021"
+authors = ["ScreenComposer Samples"]
+description = "Simple Wayland submenu/subsurface demo for ScreenComposer"
+license = "MIT"
+publish = false
+
+[dependencies]
+anyhow = "1.0"
+memmap2 = "0.9"
+tempfile = "3.13"
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32.9", default-features = false, features = ["client"] }
+wayland-scanner = "0.31.7"

@@ -50,7 +50,7 @@ use smithay::{
 use tracing::{error, info, warn};
 
 use crate::{
-    config::Config,
+    config::{Config, DisplayDescriptor, DisplayKind, DisplayResolution, WINIT_DISPLAY_ID},
     drawing::*,
     render::*,
     render_elements::workspace_render_elements::WorkspaceRenderElements,
@@ -63,6 +63,10 @@ use crate::{
 use smithay::reexports::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 pub const OUTPUT_NAME: &str = "winit";
+const WINIT_FALLBACK_RESOLUTION: DisplayResolution = DisplayResolution {
+    width: 1280,
+    height: 1000,
+};
 
 #[cfg(feature = "perf-counters")]
 static FRAME_TOTAL: AtomicU64 = AtomicU64::new(0);
@@ -213,22 +217,25 @@ pub fn run_winit() {
     let mut display_handle = display.handle();
 
     #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
-    let (mut backend, mut winit) = match winit::init_from_attributes_with_gl_attr::<SkiaRenderer>(
-        WindowAttributes::default()
-            .with_title("Screen Composer".to_string())
-            .with_inner_size(Size::new(LogicalSize::new(1280.0, 1000.0)))
-            .with_visible(true),
-        GlAttributes {
-            version: (3, 0),
-            profile: None,
-            debug: cfg!(debug_assertions),
-            vsync: true,
-        },
-    ) {
-        Ok(ret) => ret,
-        Err(err) => {
-            error!("Failed to initialize Winit backend: {}", err);
-            return;
+    let (mut backend, mut winit) = {
+        let window_size = resolve_winit_window_size();
+        match winit::init_from_attributes_with_gl_attr::<SkiaRenderer>(
+            WindowAttributes::default()
+                .with_title("Screen Composer".to_string())
+                .with_inner_size(Size::new(window_size))
+                .with_visible(true),
+            GlAttributes {
+                version: (3, 0),
+                profile: None,
+                debug: cfg!(debug_assertions),
+                vsync: true,
+            },
+        ) {
+            Ok(ret) => ret,
+            Err(err) => {
+                error!("Failed to initialize Winit backend: {}", err);
+                return;
+            }
         }
     };
     let size = backend.window_size();
@@ -684,9 +691,7 @@ pub fn run_winit() {
         }
         log_frame_stats();
         // Rendering Done, prepare loop
-        let wait_timeout = if needs_redraw_soon {
-            Some(Duration::from_millis(1))
-        } else if scene_has_damage || pointer_active {
+        let wait_timeout = if needs_redraw_soon || scene_has_damage || pointer_active {
             Some(Duration::from_millis(1))
         } else {
             Some(Duration::from_millis(16))
@@ -700,4 +705,22 @@ pub fn run_winit() {
             display_handle.flush_clients().unwrap();
         }
     }
+}
+
+fn resolve_winit_window_size() -> LogicalSize<f64> {
+    let (width, height) = Config::with(|config| {
+        let descriptor = DisplayDescriptor {
+            connector: WINIT_DISPLAY_ID,
+            vendor: None,
+            model: None,
+            kind: Some(DisplayKind::Virtual),
+        };
+        config
+            .resolve_display_profile(WINIT_DISPLAY_ID, &descriptor)
+            .and_then(|profile| profile.resolution)
+            .unwrap_or(WINIT_FALLBACK_RESOLUTION)
+            .as_f64()
+    });
+
+    LogicalSize::new(width, height)
 }

@@ -47,6 +47,7 @@ pub struct WindowElementInner {
     pub is_fullscreen: AtomicBool,
     pub app_id: String,
     pub base_layer: Layer,
+    pub mirror_layer: Layer,
     pub workspace_index: AtomicUsize,
     pub fullscreen_workspace_index: AtomicUsize,
 }
@@ -58,7 +59,7 @@ impl PartialEq for WindowElement {
 }
 
 impl WindowElement {
-    pub fn new(window: Window, layer: Layer) -> Self {
+    pub fn new(window: Window, base_layer: Layer, mirror_layer: Layer) -> Self {
         Self(Arc::new(WindowElementInner {
             window,
             is_maximized: AtomicBool::new(false),
@@ -67,7 +68,8 @@ impl WindowElement {
             workspace_index: AtomicUsize::new(0),
             fullscreen_workspace_index: AtomicUsize::new(0),
             app_id: "".to_string(),
-            base_layer: layer,
+            base_layer,
+            mirror_layer,
         }))
     }
     pub fn id(&self) -> ObjectId {
@@ -199,6 +201,10 @@ impl WindowElement {
 
     pub fn base_layer(&self) -> &Layer {
         &self.0.base_layer
+    }
+
+    pub fn mirror_layer(&self) -> &Layer {
+        &self.0.mirror_layer
     }
 
     pub fn xdg_app_id(&self) -> String {

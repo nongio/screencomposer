@@ -1,10 +1,10 @@
 [package]
 name = "screen-composer"
 authors = ["Riccardo Canalicchio <riccardo.canalicchio@gmail.com>"]
-version = "0.2.0"
+version = "0.9.0"
 edition = "2021"
 license = "MIT"
-rust-version = "1.82.0"
+rust-version = "1.83.0"
 
 [dependencies]
 bitflags = "2.2.1"
@@ -40,6 +40,7 @@ paste = "1.0.15"
 [dependencies.lay-rs]
 # path = "../layers"
 git = "https://github.com/nongio/layers"
+tag = "v1.0.0"
 features = ["export-taffy"]
 
 [dependencies.smithay-drm-extras]
@@ -74,7 +75,7 @@ version = "0.12.0"
 
 [features]
 perf-counters = []
-default = ["egl", "winit", "x11", "udev", "debug", "profile", "debugger"]
+default = ["egl", "winit", "x11", "udev", "debug", "profile", "debugger", "renderer_sync"]
 debug = ["image/png", "renderdoc", "debugger"] # "fps_ticker", 
 debugger = ["lay-rs/debugger"]
 profile = ["profile-with-puffin", "lay-rs/profile-with-puffin"]
@@ -115,5 +116,7 @@ renderer_sync = []
 
 [workspace]
 members = [
-    "projects/client-rainbow"
+    "sample-clients/client-rainbow",
+    "sample-clients/submenu",
+    "sample-clients/submenu-gtk",
 ]

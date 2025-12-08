@@ -109,6 +109,7 @@ pub struct ThemeColors {
     pub materials_controls_under_window_background: Color,
     pub materials_controls_fullscreen: Color,
     pub materials_controls_hud: Color,
+    pub shadow_color: Color,
 }
 
 mod colors_dark;

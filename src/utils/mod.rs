@@ -1,10 +1,10 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Once, RwLock},
+    sync::{Arc, OnceLock, RwLock},
 };
 
 use lay_rs::{
-    prelude::{ContentDrawFunction, Layer, PointerHandlerFunction},
+    prelude::{ContentDrawFunction, Layer, PointerHandlerFunction, Transition},
     skia::{self},
     utils::load_svg_image,
 };
@@ -12,21 +12,12 @@ use lay_rs::{
 use crate::{config::Config, workspaces::utils::FONT_CACHE};
 pub mod natural_layout;
 
-static INIT: Once = Once::new();
-static mut ICON_CACHE: Option<Arc<RwLock<HashMap<String, skia::Image>>>> = None;
-
-fn init_icon_cache() {
-    unsafe {
-        ICON_CACHE = Some(Arc::new(RwLock::new(HashMap::new())));
-    }
-}
+static ICON_CACHE: OnceLock<Arc<RwLock<HashMap<String, skia::Image>>>> = OnceLock::new();
 
 fn icon_cache() -> Arc<RwLock<HashMap<String, skia::Image>>> {
-    let icon_cache = unsafe {
-        INIT.call_once(init_icon_cache);
-        ICON_CACHE.as_ref().unwrap()
-    };
-    icon_cache.clone()
+    ICON_CACHE
+        .get_or_init(|| Arc::new(RwLock::new(HashMap::new())))
+        .clone()
 }
 
 // FIXME check why skia_safe svg is broken
@@ -197,9 +188,29 @@ pub fn button_press_filter() -> PointerHandlerFunction {
     f.into()
 }
 
+pub fn button_press_scale(s: f32) -> PointerHandlerFunction {
+    let f = move |layer: &Layer, _x: f32, _y: f32| {
+        layer.set_scale(
+            lay_rs::types::Point::new(s, s),
+            Transition::spring(0.3, 0.1),
+        );
+    };
+    f.into()
+}
+
 pub fn button_release_filter() -> PointerHandlerFunction {
     let f = |layer: &Layer, _x: f32, _y: f32| {
         layer.set_color_filter(None);
+    };
+    f.into()
+}
+
+pub fn button_release_scale() -> PointerHandlerFunction {
+    let f = |layer: &Layer, _x: f32, _y: f32| {
+        layer.set_scale(
+            lay_rs::types::Point::new(1.0, 1.0),
+            Transition::spring(0.3, 0.1),
+        );
     };
     f.into()
 }

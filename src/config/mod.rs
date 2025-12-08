@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
+use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
@@ -10,12 +11,18 @@ use toml::map::Entry;
 use tracing::warn;
 
 use crate::theme::ThemeScheme;
-use smithay::input::keyboard::{keysyms::KEY_NoSymbol, xkb, Keysym, ModifiersState};
+use smithay::input::keyboard::{
+    keysyms::KEY_NoSymbol,
+    xkb::{self, MOD_INVALID},
+    Keysym, ModifiersState, SerializedMods,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub screen_scale: f64,
+    #[serde(default)]
+    pub displays: DisplaysConfig,
     pub cursor_theme: String,
     pub cursor_size: u32,
     pub natural_scroll: bool,
@@ -47,14 +54,14 @@ pub struct Config {
     #[serde(default)]
     modifier_lookup: HashMap<ModifierKind, ModifierKind>,
 }
-thread_local! {
-    static CONFIG: Config = Config::init();
-}
+
+static CONFIG: OnceLock<Config> = OnceLock::new();
 
 impl Default for Config {
     fn default() -> Self {
         let mut config = Self {
             screen_scale: 2.0,
+            displays: DisplaysConfig::default(),
             cursor_theme: "Notwaita-Black".to_string(),
             cursor_size: 24,
             natural_scroll: true,
@@ -83,9 +90,12 @@ impl Default for Config {
         config
     }
 }
+pub const WINIT_DISPLAY_ID: &str = "winit";
+
 impl Config {
     pub fn with<R>(f: impl FnOnce(&Config) -> R) -> R {
-        CONFIG.with(f)
+        let config = CONFIG.get_or_init(Config::init);
+        f(config)
     }
     fn init() -> Self {
         let mut merged =
@@ -103,6 +113,7 @@ impl Config {
 
         if let Ok(backend) = std::env::var("SCREEN_COMPOSER_BACKEND") {
             for candidate in backend_override_candidates(&backend) {
+                println!("Trying to load backend override config: {}", &candidate);
                 if let Ok(content) = std::fs::read_to_string(&candidate) {
                     match content.parse::<toml::Value>() {
                         Ok(mut value) => {
@@ -131,6 +142,7 @@ impl Config {
         std::env::set_var("XCURSOR_SIZE", (scaled_cursor_size).to_string());
         std::env::set_var("XCURSOR_THEME", config.cursor_theme.clone());
         // std::env::set_var("GDK_DPI_SCALE", (config.screen_scale).to_string());
+        print!("Config initialized: {:#?}", config.theme_scheme);
         config
     }
 
@@ -142,7 +154,11 @@ impl Config {
         &self.shortcut_bindings
     }
 
-    pub fn apply_modifier_remap(&self, state: ModifiersState) -> ModifiersState {
+    pub fn apply_modifier_remap(
+        &self,
+        state: ModifiersState,
+        masks: Option<&ModifierMaskLookup>,
+    ) -> ModifiersState {
         if self.modifier_lookup.is_empty() {
             return state;
         }
@@ -158,8 +174,12 @@ impl Config {
             }
 
             let target = self.modifier_lookup.get(&kind).copied().unwrap_or(kind);
-            let already = target.get(&result);
-            target.set(&mut result, already || true);
+            target.set(&mut result, true);
+        }
+
+        if let Some(mask_lookup) = masks {
+            result.serialized =
+                remap_serialized_modifiers(&self.modifier_lookup, state.serialized, mask_lookup);
         }
 
         result
@@ -184,6 +204,14 @@ impl Config {
                 }
             })
             .collect()
+    }
+
+    pub fn resolve_display_profile(
+        &self,
+        name: &str,
+        descriptor: &DisplayDescriptor<'_>,
+    ) -> Option<DisplayProfile> {
+        self.displays.resolve(name, descriptor)
     }
 
     fn rebuild_remap_tables(&mut self) {
@@ -291,8 +319,159 @@ pub struct DockBookmark {
     pub exec_args: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DisplaysConfig {
+    #[serde(default)]
+    pub named: BTreeMap<String, DisplayProfile>,
+    #[serde(default)]
+    pub generic: Vec<DisplayProfileMatch>,
+}
+
+impl DisplaysConfig {
+    pub fn resolve(
+        &self,
+        name: &str,
+        descriptor: &DisplayDescriptor<'_>,
+    ) -> Option<DisplayProfile> {
+        if let Some(profile) = self.named.get(name) {
+            return Some(profile.clone());
+        }
+
+        self.generic
+            .iter()
+            .find(|entry| entry.matcher.matches(name, descriptor))
+            .map(|entry| entry.profile.clone())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DisplayProfile {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub resolution: Option<DisplayResolution>,
+    #[serde(default)]
+    pub refresh_hz: Option<f64>,
+    #[serde(default)]
+    pub position: Option<DisplayPosition>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DisplayResolution {
+    pub width: u32,
+    pub height: u32,
+}
+
+impl DisplayResolution {
+    pub fn as_f64(self) -> (f64, f64) {
+        (self.width as f64, self.height as f64)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct DisplayPosition {
+    pub x: i32,
+    pub y: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DisplayProfileMatch {
+    #[serde(default, rename = "match")]
+    pub matcher: DisplayMatcher,
+    #[serde(flatten)]
+    pub profile: DisplayProfile,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DisplayMatcher {
+    #[serde(default)]
+    pub connector: Option<String>,
+    #[serde(default)]
+    pub connector_prefix: Option<String>,
+    #[serde(default)]
+    pub vendor: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub kind: Option<DisplayKind>,
+}
+
+impl DisplayMatcher {
+    fn matches(&self, connector: &str, descriptor: &DisplayDescriptor<'_>) -> bool {
+        if let Some(expected) = &self.connector {
+            if expected != connector && descriptor.connector != expected {
+                return false;
+            }
+        }
+
+        if let Some(prefix) = &self.connector_prefix {
+            let matches_actual = connector.starts_with(prefix);
+            let matches_descriptor = descriptor.connector.starts_with(prefix);
+            if !matches_actual && !matches_descriptor {
+                return false;
+            }
+        }
+
+        if let Some(expected_vendor) = &self.vendor {
+            match descriptor.vendor {
+                Some(vendor) if equals_ignore_case(vendor, expected_vendor) => {}
+                _ => return false,
+            }
+        }
+
+        if let Some(expected_model) = &self.model {
+            match descriptor.model {
+                Some(model) if equals_ignore_case(model, expected_model) => {}
+                _ => return false,
+            }
+        }
+
+        if let Some(expected_kind) = self.kind {
+            if descriptor.kind.unwrap_or(DisplayKind::Unknown) != expected_kind {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum DisplayKind {
+    Internal,
+    External,
+    Virtual,
+    #[default]
+    Unknown,
+}
+
+#[derive(Debug, Clone)]
+pub struct DisplayDescriptor<'a> {
+    pub connector: &'a str,
+    pub vendor: Option<&'a str>,
+    pub model: Option<&'a str>,
+    pub kind: Option<DisplayKind>,
+}
+
+impl<'a> DisplayDescriptor<'a> {
+    #[allow(dead_code)]
+    pub fn new(connector: &'a str) -> Self {
+        Self {
+            connector,
+            vendor: None,
+            model: None,
+            kind: None,
+        }
+    }
+}
+
+fn equals_ignore_case(actual: &str, expected: &str) -> bool {
+    actual.eq_ignore_ascii_case(expected)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum ModifierKind {
+pub enum ModifierKind {
     Ctrl,
     Alt,
     Shift,
@@ -334,6 +513,45 @@ impl ModifierKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ModifierMaskLookup {
+    ctrl: Option<u32>,
+    alt: Option<u32>,
+    shift: Option<u32>,
+    logo: Option<u32>,
+    caps_lock: Option<u32>,
+    num_lock: Option<u32>,
+}
+
+impl ModifierMaskLookup {
+    pub fn from_keymap(keymap: &xkb::Keymap) -> Self {
+        fn mask_for(keymap: &xkb::Keymap, name: &str) -> Option<u32> {
+            let idx = keymap.mod_get_index(name);
+            (idx != MOD_INVALID).then(|| 1u32 << idx)
+        }
+
+        Self {
+            ctrl: mask_for(keymap, xkb::MOD_NAME_CTRL),
+            alt: mask_for(keymap, xkb::MOD_NAME_ALT),
+            shift: mask_for(keymap, xkb::MOD_NAME_SHIFT),
+            logo: mask_for(keymap, xkb::MOD_NAME_LOGO),
+            caps_lock: mask_for(keymap, xkb::MOD_NAME_CAPS),
+            num_lock: mask_for(keymap, xkb::MOD_NAME_NUM),
+        }
+    }
+
+    pub fn get(&self, kind: ModifierKind) -> Option<u32> {
+        match kind {
+            ModifierKind::Ctrl => self.ctrl,
+            ModifierKind::Alt => self.alt,
+            ModifierKind::Shift => self.shift,
+            ModifierKind::Logo => self.logo,
+            ModifierKind::CapsLock => self.caps_lock,
+            ModifierKind::NumLock => self.num_lock,
+        }
+    }
+}
+
 fn parse_modifier_kind(input: &str) -> Option<ModifierKind> {
     match input.trim().to_ascii_lowercase().as_str() {
         "ctrl" | "control" | "primary" => Some(ModifierKind::Ctrl),
@@ -344,6 +562,46 @@ fn parse_modifier_kind(input: &str) -> Option<ModifierKind> {
         "num" | "numlock" | "num_lock" => Some(ModifierKind::NumLock),
         _ => None,
     }
+}
+
+fn remap_serialized_modifiers(
+    lookup: &HashMap<ModifierKind, ModifierKind>,
+    original: SerializedMods,
+    masks: &ModifierMaskLookup,
+) -> SerializedMods {
+    fn transfer(field: &mut u32, original: u32, from_mask: u32, to_mask: u32) {
+        if from_mask == to_mask {
+            return;
+        }
+        let from_active = original & from_mask;
+        if from_active == 0 {
+            return;
+        }
+        *field &= !from_mask;
+        *field |= to_mask;
+    }
+
+    let mut serialized = original;
+    for (&from, &to) in lookup {
+        let (Some(from_mask), Some(to_mask)) = (masks.get(from), masks.get(to)) else {
+            continue;
+        };
+        transfer(
+            &mut serialized.depressed,
+            original.depressed,
+            from_mask,
+            to_mask,
+        );
+        transfer(
+            &mut serialized.latched,
+            original.latched,
+            from_mask,
+            to_mask,
+        );
+        transfer(&mut serialized.locked, original.locked, from_mask, to_mask);
+    }
+
+    serialized
 }
 
 fn parse_keysym_name(name: &str) -> Option<Keysym> {
@@ -372,9 +630,45 @@ mod tests {
         let mut mods = ModifiersState::default();
         mods.logo = true;
 
-        let remapped = config.apply_modifier_remap(mods);
+        let remapped = config.apply_modifier_remap(mods, None);
         assert!(remapped.ctrl);
         assert!(!remapped.logo);
+    }
+
+    #[test]
+    fn modifier_swap_preserves_serialized_mods() {
+        let mut config = Config::default();
+        config.modifier_remap.insert("logo".into(), "ctrl".into());
+        config.modifier_remap.insert("ctrl".into(), "logo".into());
+        config.rebuild_remap_tables();
+
+        let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+        let keymap = xkb::Keymap::new_from_names(
+            &context,
+            "",
+            "",
+            "",
+            "",
+            None,
+            xkb::KEYMAP_COMPILE_NO_FLAGS,
+        )
+        .expect("default keymap");
+        let masks = ModifierMaskLookup::from_keymap(&keymap);
+
+        let mut serialized = SerializedMods::default();
+        let logo_mask = masks.get(ModifierKind::Logo).expect("logo mask");
+        serialized.depressed = logo_mask;
+
+        let mut mods = ModifiersState::default();
+        mods.logo = true;
+        mods.serialized = serialized;
+
+        let remapped = config.apply_modifier_remap(mods, Some(&masks));
+        assert!(remapped.ctrl);
+        assert!(!remapped.logo);
+
+        let ctrl_mask = masks.get(ModifierKind::Ctrl).expect("ctrl mask");
+        assert_eq!(remapped.serialized.depressed & ctrl_mask, ctrl_mask);
     }
 
     #[test]
@@ -423,5 +717,21 @@ mod tests {
         assert!(entries.contains(&(backspace, delete)));
 
         assert!(config.key_remap.keys().all(|key| key != "BadEntry"));
+    }
+
+    #[test]
+    fn theme_scheme_defaults_to_light() {
+        let config = Config::default();
+        assert!(matches!(config.theme_scheme, ThemeScheme::Light));
+    }
+
+    #[test]
+    fn theme_scheme_overrides_to_dark_in_toml() {
+        let overrides = r#"
+            theme_scheme = "Dark"
+        "#;
+
+        let config: Config = toml::from_str(overrides).expect("Config should deserialize");
+        assert!(matches!(config.theme_scheme, ThemeScheme::Dark));
     }
 }
