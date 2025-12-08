@@ -1,7 +1,7 @@
 [package]
 name = "screen-composer"
 authors = ["Riccardo Canalicchio <riccardo.canalicchio@gmail.com>"]
-version = "1.0.0"
+version = "0.9.0"
 edition = "2021"
 license = "MIT"
 rust-version = "1.83.0"
