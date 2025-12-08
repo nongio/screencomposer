@@ -121,11 +121,8 @@ pub fn view_render_elements(
         .children(
             render_elements
                 .iter()
-                .filter_map(|render_element| {
-                    if render_element.phy_dst_w <= 0.0 || render_element.phy_dst_h <= 0.0 {
-                        return None;
-                    }
-                    Some(render_element)
+                .filter(|render_element| {
+                    render_element.phy_dst_w > 0.0 && render_element.phy_dst_h > 0.0
                 })
                 .enumerate()
                 .map(|(index, wvs)| {

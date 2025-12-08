@@ -434,7 +434,6 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
                 let surface = surface.clone();
                 let wl_output_ref = wl_output.clone();
-                let geometry = geometry;
                 let next_workspace_layer = next_workspace.windows_layer.clone();
 
                 self.workspaces

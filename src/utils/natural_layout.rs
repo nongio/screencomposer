@@ -57,7 +57,7 @@ impl LayoutRect {
     }
 
     fn copy(&self) -> Self {
-        self.clone()
+        *self
     }
 
     fn union(&self, rect2: &LayoutRect) -> Self {
@@ -106,7 +106,7 @@ impl LayoutRect {
 }
 
 #[allow(clippy::mutable_key_type)]
-pub fn natural_layout<'a>(
+pub fn natural_layout(
     slots: &mut HashMap<ObjectId, LayoutRect>,
     windows: impl IntoIterator<Item = (ObjectId, LayoutRect)>,
     area: &LayoutRect,
@@ -246,6 +246,6 @@ pub fn natural_layout<'a>(
         rect.y = rect.y * scale + area_rect.y;
         rect.width *= scale;
         rect.height *= scale;
-        slots.insert(id.clone(), rect.clone());
+        slots.insert(id.clone(), *rect);
     }
 }

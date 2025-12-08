@@ -134,8 +134,6 @@ pub struct WindowSelectorView {
 /// - `windows_layer`: windows replica container
 /// - `overlay_layer`: draw the window selection and text
 /// - `window_selector_label`: text layer for the window title
-///
-
 impl WindowSelectorView {
     pub fn new(
         index: usize,
@@ -318,10 +316,10 @@ impl WindowSelectorView {
         if let Some(position) = state.rects.iter().position(|r| r.index == target_index) {
             state.rects.remove(position);
             if let Some(current) = state.current_selection {
-                if current == target_index {
-                    state.current_selection = None;
-                } else if current > target_index {
-                    state.current_selection = Some(current - 1);
+                match current.cmp(&target_index) {
+                    std::cmp::Ordering::Equal => state.current_selection = None,
+                    std::cmp::Ordering::Greater => state.current_selection = Some(current - 1),
+                    std::cmp::Ordering::Less => {}
                 }
             }
             for (idx, rect) in state.rects.iter_mut().enumerate() {
@@ -386,9 +384,7 @@ impl WindowSelectorView {
         }
 
         let selection = self.pressed_selection.read().unwrap().clone();
-        let Some(selection) = selection else {
-            return None;
-        };
+        let selection = selection?;
 
         if let Some(window_id) = &selection.window_id {
             let window_in_space = screencomposer
@@ -412,9 +408,7 @@ impl WindowSelectorView {
             .as_ref()
             .and_then(|id| self.layer_for_window(id));
 
-        let Some(window_layer) = window_layer else {
-            return None;
-        };
+        let window_layer = window_layer?;
 
         let bounds = window_layer.render_layer().global_transformed_bounds;
         let original_position = Point::new(bounds.left(), bounds.top());
@@ -462,8 +456,7 @@ impl WindowSelectorView {
 
         self.update_drag_position(pointer_location);
         
-        let window_id = selection.window_id.clone();
-        window_id
+        selection.window_id.clone()
     }
 }
 

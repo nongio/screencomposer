@@ -691,9 +691,7 @@ pub fn run_winit() {
         }
         log_frame_stats();
         // Rendering Done, prepare loop
-        let wait_timeout = if needs_redraw_soon {
-            Some(Duration::from_millis(1))
-        } else if scene_has_damage || pointer_active {
+        let wait_timeout = if needs_redraw_soon || scene_has_damage || pointer_active {
             Some(Duration::from_millis(1))
         } else {
             Some(Duration::from_millis(16))

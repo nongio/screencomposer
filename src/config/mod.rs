@@ -174,8 +174,7 @@ impl Config {
             }
 
             let target = self.modifier_lookup.get(&kind).copied().unwrap_or(kind);
-            let already = target.get(&result);
-            target.set(&mut result, already || true);
+            target.set(&mut result, true);
         }
 
         if let Some(mask_lookup) = masks {
@@ -207,10 +206,10 @@ impl Config {
             .collect()
     }
 
-    pub fn resolve_display_profile<'a>(
+    pub fn resolve_display_profile(
         &self,
         name: &str,
-        descriptor: &DisplayDescriptor<'a>,
+        descriptor: &DisplayDescriptor<'_>,
     ) -> Option<DisplayProfile> {
         self.displays.resolve(name, descriptor)
     }
@@ -329,10 +328,10 @@ pub struct DisplaysConfig {
 }
 
 impl DisplaysConfig {
-    pub fn resolve<'a>(
+    pub fn resolve(
         &self,
         name: &str,
-        descriptor: &DisplayDescriptor<'a>,
+        descriptor: &DisplayDescriptor<'_>,
     ) -> Option<DisplayProfile> {
         if let Some(profile) = self.named.get(name) {
             return Some(profile.clone());
@@ -437,19 +436,14 @@ impl DisplayMatcher {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum DisplayKind {
     Internal,
     External,
     Virtual,
+    #[default]
     Unknown,
-}
-
-impl Default for DisplayKind {
-    fn default() -> Self {
-        DisplayKind::Unknown
-    }
 }
 
 #[derive(Debug, Clone)]

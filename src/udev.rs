@@ -1613,8 +1613,7 @@ impl ScreenComposer<UdevData> {
         
         // Only fetch the fullscreen window if direct scanout is allowed
         let fullscreen_window = if allow_direct_scanout {
-            let window = self.workspaces.get_fullscreen_window();
-            window
+            self.workspaces.get_fullscreen_window()
         } else {
             None
         };

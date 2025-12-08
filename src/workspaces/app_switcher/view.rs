@@ -57,8 +57,6 @@ impl IsAlive for AppSwitcherView {
 ///             ├── App
 ///             ├── App
 /// ```
-///
-
 impl AppSwitcherView {
     pub fn new(layers_engine: Arc<Engine>) -> Self {
         let wrap = layers_engine.new_layer();

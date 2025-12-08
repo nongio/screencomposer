@@ -713,7 +713,7 @@ impl Workspaces {
                                 let y = window_y.interpolate(&to_y, delta_clamped);
 
                                 if let Some(layer) = window_selector.layer_for_window(window_id) {
-                                    if let Some(_) = transition {
+                                    if transition.is_some() {
                                         let translation =
                                             layer.change_position(lay_rs::types::Point { x, y });
                                         let scale_change =
@@ -842,8 +842,8 @@ impl Workspaces {
             .set_opacity(target_opacity, transition);
     }
 
-    /// Recalculates the layout for a single workspace without animation
-    /// Used when windows are added/removed/moved between workspaces
+    // Recalculates the layout for a single workspace without animation
+    // Used when windows are added/removed/moved between workspaces
     // pub fn expose_recalculate_workspace(&self, workspace_index: usize) {
     //     // Only recalculate if we're in expose mode
     //     if !self.get_show_all() {
@@ -861,6 +861,7 @@ impl Workspaces {
     //         self.expose_show_all_animate(workspace_index, delta, transition, true, true, true);
     //     }
     // }
+
     /// Set the mode to show desktop mode using a delta for gestures
     pub fn expose_show_desktop(&self, delta: f32, end_gesture: bool) {
         const MULTIPLIER: f32 = 1000.0;
@@ -1063,10 +1064,7 @@ impl Workspaces {
         let workspace_for_window = workspace_for_window.unwrap();
         let current_workspace_index = self.get_current_workspace_index();
 
-        let ctx = match self.build_unminimize_context(wid) {
-            Some(ctx) => ctx,
-            None => return None,
-        };
+        let ctx = self.build_unminimize_context(wid)?;
 
         if workspace_for_window != current_workspace_index {
             if let Some(tr) = self.set_current_workspace_index(
@@ -1491,14 +1489,14 @@ impl Workspaces {
                 }
             }
         }
-        focus_window.map(|wid| {
+        if let Some(wid) = focus_window {
             if let Some(we) = self.get_window_for_surface(wid) {
                 if !we.is_minimised() {
                     self.raise_element(wid, true, false);
                     focus_wid = Some(wid.clone());
                 }
             }
-        });
+        }
 
         focus_wid
     }
@@ -1872,7 +1870,7 @@ impl Workspaces {
         // Apply rubber-band resistance at edges
         if new_offset < 0.0 {
             // Past first workspace - rubber band effect
-            new_offset = new_offset * 0.3;
+            new_offset *= 0.3;
         } else if new_offset > max_offset {
             // Past last workspace - rubber band effect
             let overshoot = new_offset - max_offset;
@@ -2051,7 +2049,7 @@ impl Workspaces {
         use smithay::wayland::shell::wlr_layer::Layer as WlrLayer;
 
         let layer = self.layers_engine.new_layer();
-        layer.set_key(&format!("layer_shell_{}_{}", wlr_layer_to_str(wlr_layer), namespace));
+        layer.set_key(format!("layer_shell_{}_{}", wlr_layer_to_str(wlr_layer), namespace));
         layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
             ..Default::default()

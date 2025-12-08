@@ -136,7 +136,7 @@ impl WindowView {
             },
             true,
         );
-        tr.clone()
+        tr
     }
 
     pub fn unminimize(&self, from: skia::Rect) -> TransactionRef {
