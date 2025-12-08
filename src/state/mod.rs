@@ -198,6 +198,10 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub workspace_swipe_velocity_samples: Vec<f64>,
     pub is_pinching: bool,
     pub is_resizing: bool,
+
+    // screenshare
+    pub frame_tap_manager: crate::screenshare::FrameTapManager,
+    pub screenshare_sessions: HashMap<String, crate::screenshare::ScreencastSession>,
 }
 
 pub mod data_device_handler;
@@ -433,6 +437,10 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             workspace_swipe_velocity_samples: Vec::new(),
             is_pinching: false,
             is_resizing: false,
+
+            // screenshare
+            frame_tap_manager: crate::screenshare::FrameTapManager::default(),
+            screenshare_sessions: HashMap::new(),
         };
 
         composer.rebuild_keycode_remap();

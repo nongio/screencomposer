@@ -1621,6 +1621,9 @@ impl ScreenComposer<UdevData> {
             None
         };
 
+        // Check if we need to capture frames for screenshare
+        let should_capture = !self.frame_tap_manager.is_empty();
+
         let result = render_surface(
             surface,
             &mut renderer,
@@ -1636,7 +1639,25 @@ impl ScreenComposer<UdevData> {
             self.scene_element.clone(),
             scene_has_damage,
             fullscreen_window.as_ref(),
+            should_capture,
         );
+
+        // Notify frame taps with captured frame
+        if let Ok(outcome) = &result {
+            if let Some(ref frame) = outcome.captured_frame {
+                use smithay::backend::allocator::Fourcc;
+                let time = self.clock.now();
+                self.frame_tap_manager.notify_rgba_with_damage(
+                    &output,
+                    frame.clone(),
+                    Fourcc::Abgr8888,
+                    time.into(),
+                    None, // No sync point needed for RGBA capture
+                    outcome.damage.as_deref(),
+                );
+            }
+        }
+
         {
             self.workspaces.refresh_space();
             self.popups.cleanup();
@@ -1748,15 +1769,31 @@ impl ScreenComposer<UdevData> {
 
 struct RenderOutcome {
     rendered: bool,
+    /// Captured frame for screenshare (RGBA).
+    captured_frame: Option<crate::screenshare::RgbaFrame>,
+    /// Damage regions from the render.
+    damage: Option<Vec<smithay::utils::Rectangle<i32, Physical>>>,
 }
 
 impl RenderOutcome {
     fn skipped() -> Self {
-        Self { rendered: false }
+        Self {
+            rendered: false,
+            captured_frame: None,
+            damage: None,
+        }
     }
 
-    fn drawn(rendered: bool) -> Self {
-        Self { rendered }
+    fn with_frame(
+        rendered: bool,
+        captured_frame: Option<crate::screenshare::RgbaFrame>,
+        damage: Option<Vec<smithay::utils::Rectangle<i32, Physical>>>,
+    ) -> Self {
+        Self {
+            rendered,
+            captured_frame,
+            damage,
+        }
     }
 }
 
@@ -1776,6 +1813,7 @@ fn render_surface<'a, 'b>(
     scene_element: SceneElement,
     scene_has_damage: bool,
     fullscreen_window: Option<&WindowElement>,
+    capture_frame: bool,
 ) -> Result<RenderOutcome, SwapBuffersError> {
     let output_geometry = Rectangle::from_loc_and_size((0, 0), output.current_mode().unwrap().size);
     let scale = Scale::from(output.current_scale().fractional_scale());
@@ -1999,6 +2037,24 @@ fn render_surface<'a, 'b>(
         clear_color,
     )?;
 
+    // Capture frame for screenshare if requested and frame was rendered
+    let captured_frame = if capture_frame && rendered {
+        let size = output
+            .current_mode()
+            .map(|m| (m.size.w as u32, m.size.h as u32))
+            .unwrap_or((0, 0));
+        crate::screenshare::capture_rgba_frame(renderer, size)
+    } else {
+        None
+    };
+
+    // Clone damage for return value before it's consumed
+    let damage_for_return = if capture_frame {
+        damage.map(|d| d.to_vec())
+    } else {
+        None
+    };
+
     // In direct scanout mode, only send frame callbacks to the fullscreen window
     // This prevents off-workspace windows from generating damage that causes glitches
     let post_repaint_elements: Vec<&WindowElement> = if let Some(fs_win) = fullscreen_window {
@@ -2030,7 +2086,7 @@ fn render_surface<'a, 'b>(
             .queue_frame(sync, damage, Some(output_presentation_feedback))?;
     }
 
-    Ok(RenderOutcome::drawn(rendered))
+    Ok(RenderOutcome::with_frame(rendered, captured_frame, damage_for_return))
 }
 
 fn initial_render(

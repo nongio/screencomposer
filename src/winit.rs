@@ -575,7 +575,7 @@ pub fn run_winit() {
                     let all_window_elements: Vec<&WindowElement> =
                         state.workspaces.spaces_elements().collect();
 
-                    render_output(
+                    let render_result = render_output(
                         &output,
                         &all_window_elements,
                         elements,
@@ -585,16 +585,32 @@ pub fn run_winit() {
                         age,
                     )
                     .map_err(|err| match err {
-                        OutputDamageTrackerError::Rendering(err) => err.into(),
+                        OutputDamageTrackerError::Rendering(err) => SwapBuffersError::from(err),
                         _ => unreachable!(),
-                    })
+                    })?;
+
+                    // Capture frame for screenshare if there are registered taps
+                    // Must happen before submit() which swaps the buffer
+                    let captured_frame = if !state.frame_tap_manager.is_empty()
+                        && render_result.damage.is_some()
+                    {
+                        let size = output
+                            .current_mode()
+                            .map(|m| (m.size.w as u32, m.size.h as u32))
+                            .unwrap_or((0, 0));
+                        crate::screenshare::capture_rgba_frame(renderer, size)
+                    } else {
+                        None
+                    };
+
+                    Ok((render_result, captured_frame))
                 });
 
                 match render_res {
-                    Ok(render_output_result) => {
+                    Ok((render_output_result, captured_frame)) => {
                         let has_rendered = render_output_result.damage.is_some();
                         let mut frame_submitted = false;
-                        if let Some(damage) = render_output_result.damage {
+                        if let Some(ref damage) = render_output_result.damage {
                             match backend.submit(Some(damage)) {
                                 Ok(_) => {
                                     frame_submitted = true;
@@ -637,6 +653,27 @@ pub fn run_winit() {
                         record_frame_result(has_rendered, frame_submitted);
                         if has_rendered || frame_submitted {
                             needs_redraw_soon = true;
+                        }
+
+                        // Notify frame taps with captured frame
+                        if let Some(frame) = captured_frame {
+                            use smithay::backend::allocator::Fourcc;
+                            let damage = render_output_result.damage.as_ref().map(|d| {
+                                d.iter()
+                                    .map(|r| smithay::utils::Rectangle {
+                                        loc: smithay::utils::Point::from((r.loc.x, r.loc.y)),
+                                        size: smithay::utils::Size::from((r.size.w, r.size.h)),
+                                    })
+                                    .collect::<Vec<_>>()
+                            });
+                            state.frame_tap_manager.notify_rgba_with_damage(
+                                &output,
+                                frame,
+                                Fourcc::Abgr8888,
+                                time.into(),
+                                None, // No sync point for winit
+                                damage.as_deref(),
+                            );
                         }
 
                         if has_rendered {
