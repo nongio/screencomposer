@@ -69,17 +69,18 @@ The state module also contains protocol handler implementations (`*_handler.rs` 
 - `src/workspaces/` — Workspace logic, window views, dock, app switcher, expose mode
 - `src/workspaces/window_view/` — Individual window rendering and effects (genie minimize)
 
-### Screenshare System (In Progress)
+### Screenshare System
 
 Located in `src/screenshare/`:
+- `mod.rs` — Session state management and command handlers
 - `dbus_service.rs` — D-Bus API (`org.screencomposer.ScreenCast`)
 - `frame_tap.rs` — Frame capture hooks with damage tracking
-- `pipewire_stream.rs` — PipeWire integration (partially implemented)
+- `pipewire_stream.rs` — PipeWire stream with SHM buffer handling
 - `session_tap.rs` — Per-session frame filtering
 
 Portal backend: `components/xdg-desktop-portal-sc/` — separate binary that bridges xdg-desktop-portal to compositor
 
-See [screenshare-plan.md](./screenshare-plan.md) for current implementation status and next steps.
+See [docs/screenshare.md](./docs/screenshare.md) for detailed architecture documentation.
 
 ## Configuration
 
@@ -102,5 +103,6 @@ See `sc_config.example.toml` for all options.
 Detailed design docs in `docs/`:
 - `rendering.md`, `render_loop.md` — Rendering pipeline
 - `wayland.md` — Protocol implementation details
-- `xdg-desktop-portal.md` — Screenshare portal integration
+- `screenshare.md` — Screen sharing architecture and D-Bus API
+- `xdg-desktop-portal.md` — Portal backend integration
 - `expose.md`, `dock-design.md` — UI component design

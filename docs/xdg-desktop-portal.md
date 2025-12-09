@@ -3,6 +3,9 @@
 ScreenComposer includes a custom XDG Desktop Portal backend for integrating with
 desktop applications that use the freedesktop portal APIs.
 
+> **See also:** [screenshare.md](screenshare.md) for detailed compositor-side
+> implementation documentation.
+
 ## Component: xdg-desktop-portal-screencomposer
 
 Located in `components/xdg-desktop-portal-sc/`, this is a standalone binary that
@@ -22,12 +25,15 @@ and other PipeWire-capable clients to share your screen.
 **Supported features:**
 - Monitor (output) capture
 - Cursor modes: Hidden, Embedded, Metadata
-- PipeWire stream creation
+- PipeWire stream creation with SHM buffers
+- Video format negotiation (BGRA/RGBA)
+- Damage tracking for efficient updates
 
 **Not yet implemented:**
 - Window capture
 - Restore tokens (session persistence)
 - Permission dialogs (currently auto-grants)
+- DMA-BUF zero-copy path
 
 ### Architecture
 
