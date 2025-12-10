@@ -166,8 +166,19 @@ impl FrameTap for ScreencastSessionTap {
     }
 
     fn on_frame_rgba(&self, out: &OutputId, frame: &RgbaFrame, meta: &FrameMeta) {
+        tracing::info!(
+            "Session {}: received RGBA frame for output {:?}",
+            self.session_id,
+            out
+        );
         // Filter by output
         if out != &self.target_output {
+            tracing::info!(
+                "Session {}: skipping frame for output {:?} (target is {:?})",
+                self.session_id,
+                out,
+                self.target_output
+            );
             return;
         }
 
@@ -191,9 +202,11 @@ impl FrameTap for ScreencastSessionTap {
             meta: snapshot,
         }) {
             Ok(()) => {
-                tracing::trace!(
-                    "Sent RGBA frame to PipeWire for session {}",
-                    self.session_id
+                tracing::debug!(
+                    "Sent RGBA frame to PipeWire for session {}: {}x{}",
+                    self.session_id,
+                    frame.size().0,
+                    frame.size().1
                 );
             }
             Err(mpsc::error::TrySendError::Full(_)) => {

@@ -17,6 +17,7 @@
 //! The stream thread receives frames and queues them to PipeWire.
 
 use std::cell::RefCell;
+use std::mem::size_of;
 use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::rc::Rc;
 use std::sync::{
@@ -29,8 +30,15 @@ use pipewire as pw;
 use pw::spa::param::format::{FormatProperties, MediaSubtype, MediaType};
 use pw::spa::param::video::VideoFormat;
 use pw::spa::param::ParamType;
-use pw::spa::pod::Pod;
-use pw::spa::utils::{Direction, Fraction, Rectangle, SpaTypes};
+use pw::spa::pod::{ChoiceValue, Pod, Property, Value};
+use pw::spa::utils::{Choice, ChoiceEnum, ChoiceFlags, Direction, Fraction, Rectangle, SpaTypes};
+use pw::spa::sys::{
+    spa_buffer_find_meta_data, spa_meta_header, spa_meta_region, spa_point, spa_rectangle,
+    SPA_META_Header, SPA_META_VideoDamage, SPA_PARAM_BUFFERS_align, SPA_PARAM_BUFFERS_blocks,
+    SPA_PARAM_BUFFERS_buffers, SPA_PARAM_BUFFERS_dataType, SPA_PARAM_BUFFERS_size,
+    SPA_PARAM_BUFFERS_stride, SPA_PARAM_META_size, SPA_PARAM_META_type,
+};
+use pw::spa::buffer::DataType;
 use pw::stream::{StreamFlags, StreamState};
 use tokio::sync::mpsc;
 
@@ -128,10 +136,68 @@ impl PipeWireStream {
         (stream, sender)
     }
 
-    /// Start the PipeWire stream.
+    /// Start the PipeWire stream synchronously.
+    ///
+    /// This spawns a dedicated thread that runs the PipeWire main loop.
+    /// Blocks until the stream is ready and returns the PipeWire node ID.
+    ///
+    /// Use this from synchronous contexts (like the compositor's calloop handler).
+    pub fn start_sync(&mut self) -> Result<u32, PipeWireError> {
+        if self.shared.active.load(Ordering::SeqCst) {
+            return Err(PipeWireError::AlreadyActive);
+        }
+
+        let receiver = self
+            .frame_receiver
+            .take()
+            .ok_or_else(|| PipeWireError::InitFailed("Frame receiver already taken".to_string()))?;
+
+        let config = self.config.clone();
+        let shared = self.shared.clone();
+
+        // Use std::sync channel for synchronous waiting
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+
+        // Spawn the PipeWire thread
+        let handle = thread::spawn(move || {
+            if let Err(e) = run_pipewire_thread_sync(config, shared.clone(), receiver, ready_tx) {
+                tracing::error!("PipeWire thread error: {}", e);
+            }
+            shared.active.store(false, Ordering::SeqCst);
+        });
+
+        self.thread_handle = Some(handle);
+
+        // Wait for the stream to be ready (with timeout)
+        let result = ready_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| {
+                PipeWireError::InitFailed(format!("PipeWire thread failed to initialize: {}", e))
+            })??;
+
+        let (node_id, fd) = result;
+
+        self.shared.node_id.store(node_id, Ordering::SeqCst);
+        self.shared.active.store(true, Ordering::SeqCst);
+        self.pipewire_fd = Some(fd);
+
+        tracing::info!(
+            "PipeWire stream started: {}x{} @ {}/{}fps, node_id={}",
+            self.config.width,
+            self.config.height,
+            self.config.framerate_num,
+            self.config.framerate_denom,
+            node_id
+        );
+
+        Ok(node_id)
+    }
+
+    /// Start the PipeWire stream asynchronously.
     ///
     /// This spawns a dedicated thread that runs the PipeWire main loop.
     /// Returns the PipeWire node ID.
+    #[allow(dead_code)]
     pub async fn start(&mut self) -> Result<u32, PipeWireError> {
         if self.shared.active.load(Ordering::SeqCst) {
             return Err(PipeWireError::AlreadyActive);
@@ -416,16 +482,119 @@ fn run_pipewire_thread(
                 state.format.framerate().denom
             );
 
-            // Buffer allocation is handled by PipeWire with ALLOC_BUFFERS flag
+            // Ask PipeWire to allocate buffers/meta for this format
+            let size = state.format.size();
+            let stride = (size.width * 4) as i32;
+            let frame_bytes = (size.width * size.height * 4) as i32;
+
+            let buffers_obj = pw::spa::pod::object!(
+                SpaTypes::ObjectParamBuffers,
+                ParamType::Buffers,
+                Property::new(
+                    SPA_PARAM_BUFFERS_buffers,
+                    Value::Choice(ChoiceValue::Int(Choice(
+                        ChoiceFlags::empty(),
+                        ChoiceEnum::Range {
+                            default: 8,
+                            min: 2,
+                            max: 16
+                        }
+                    )))
+                ),
+                Property::new(SPA_PARAM_BUFFERS_blocks, Value::Int(1)),
+                Property::new(SPA_PARAM_BUFFERS_size, Value::Int(frame_bytes)),
+                Property::new(SPA_PARAM_BUFFERS_stride, Value::Int(stride)),
+                Property::new(
+                    SPA_PARAM_BUFFERS_dataType,
+                    Value::Choice(ChoiceValue::Int(Choice(
+                        ChoiceFlags::empty(),
+                        ChoiceEnum::Flags {
+                            default: 1 << DataType::MemPtr.as_raw(),
+                            flags: vec![
+                                1 << DataType::MemPtr.as_raw(),
+                                1 << DataType::MemFd.as_raw(),
+                            ],
+                        },
+                    )))
+                ),
+            );
+
+            let meta_header = pw::spa::pod::object!(
+                SpaTypes::ObjectParamMeta,
+                ParamType::Meta,
+                Property::new(
+                    SPA_PARAM_META_type,
+                    Value::Id(pw::spa::utils::Id(SPA_META_Header as u32)),
+                ),
+                Property::new(
+                    SPA_PARAM_META_size,
+                    Value::Int(size_of::<spa_meta_header>() as i32)
+                ),
+            );
+
+            let meta_damage = pw::spa::pod::object!(
+                SpaTypes::ObjectParamMeta,
+                ParamType::Meta,
+                Property::new(
+                    SPA_PARAM_META_type,
+                    Value::Id(pw::spa::utils::Id(SPA_META_VideoDamage as u32))
+                ),
+                Property::new(
+                    SPA_PARAM_META_size,
+                    Value::Int((size_of::<spa_meta_region>() * 2) as i32)
+                ),
+            );
+
+            let mut b1 = Vec::new();
+            let mut b2 = Vec::new();
+            let mut b3 = Vec::new();
+            let buffers_pod = pw::spa::pod::serialize::PodSerializer::serialize(
+                std::io::Cursor::new(Vec::new()),
+                &pw::spa::pod::Value::Object(buffers_obj),
+            )
+            .map(|v| v.0.into_inner())
+            .ok();
+            let header_pod = pw::spa::pod::serialize::PodSerializer::serialize(
+                std::io::Cursor::new(Vec::new()),
+                &pw::spa::pod::Value::Object(meta_header),
+            )
+            .map(|v| v.0.into_inner())
+            .ok();
+            let damage_pod = pw::spa::pod::serialize::PodSerializer::serialize(
+                std::io::Cursor::new(Vec::new()),
+                &pw::spa::pod::Value::Object(meta_damage),
+            )
+            .map(|v| v.0.into_inner())
+            .ok();
+
+            let mut param_refs: Vec<&Pod> = Vec::new();
+            if let Some(bytes) = buffers_pod.as_ref() {
+                if let Some(pod) = Pod::from_bytes(bytes) {
+                    b1 = bytes.clone();
+                    param_refs.push(pod);
+                }
+            }
+            if let Some(bytes) = header_pod.as_ref() {
+                if let Some(pod) = Pod::from_bytes(bytes) {
+                    b2 = bytes.clone();
+                    param_refs.push(pod);
+                }
+            }
+            if let Some(bytes) = damage_pod.as_ref() {
+                if let Some(pod) = Pod::from_bytes(bytes) {
+                    b3 = bytes.clone();
+                    param_refs.push(pod);
+                }
+            }
+
+            if let Err(e) = _stream.update_params(&mut param_refs) {
+                tracing::warn!("Failed to update buffers/meta params: {e}");
+            }
         })
         .process(|stream, state| {
-            // Dequeue a buffer from PipeWire
-            let Some(mut buffer) = stream.dequeue_buffer() else {
-                return;
-            };
-
-            let datas = buffer.datas_mut();
-            if datas.is_empty() {
+            // Dequeue a buffer from PipeWire (raw) so we can explicitly queue it back
+            let buffer_ptr = unsafe { stream.dequeue_raw_buffer() };
+            if buffer_ptr.is_null() {
                 return;
             }
 
@@ -433,51 +602,100 @@ fn run_pipewire_thread(
 
             // Get pending frame data
             let Some((frame_data, meta)) = state.pending_frame.take() else {
-                // No frame ready, return empty buffer
+                unsafe { pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr) };
                 return;
             };
 
-            // Copy frame data to PipeWire buffer
-            let data = &mut datas[0];
+            unsafe {
+                let spa_buf = (*buffer_ptr).buffer;
+                if spa_buf.is_null() {
+                    pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
+                    return;
+                }
 
-            // Get the data pointer and copy
-            if let Some(slice) = data.data() {
-                let copy_len = frame_data.len().min(slice.len());
-                slice[..copy_len].copy_from_slice(&frame_data[..copy_len]);
+                let datas = (*spa_buf).datas;
+                if datas.is_null() || (*spa_buf).n_datas == 0 {
+                    pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
+                    return;
+                }
 
-                // Update chunk metadata after copying
-                let chunk = data.chunk_mut();
-                *chunk.size_mut() = copy_len as u32;
-                *chunk.offset_mut() = 0;
+                let data = datas;
+                let chunk = (*data).chunk;
+                let data_ptr = (*data).data as *mut u8;
+                let maxsize = (*data).maxsize as usize;
 
-                // Calculate stride
-                let stride = meta.size.0 * 4;
-                *chunk.stride_mut() = stride as i32;
+                if data_ptr.is_null() || chunk.is_null() || maxsize == 0 {
+                    pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
+                    return;
+                }
+
+                let stride_bytes = meta.stride.max(meta.size.0 * 4);
+                let expected_size = (stride_bytes * meta.size.1) as usize;
+                let copy_len = frame_data.len().min(maxsize).min(expected_size);
+                std::ptr::copy_nonoverlapping(frame_data.as_ptr(), data_ptr, copy_len);
+
+                (*chunk).size = copy_len as u32;
+                (*chunk).offset = 0;
+                (*chunk).stride = stride_bytes as i32;
+                (*chunk).flags = 0;
+
+                state.sequence += 1;
+
+                // Write SPA meta header if present
+                let header_ptr = spa_buffer_find_meta_data(
+                    spa_buf,
+                    SPA_META_Header,
+                    size_of::<spa_meta_header>(),
+                ) as *mut spa_meta_header;
+                if !header_ptr.is_null() {
+                    (*header_ptr).flags = 0;
+                    (*header_ptr).offset = 0;
+                    (*header_ptr).pts = meta.time_ns as i64;
+                    (*header_ptr).dts_offset = 0;
+                    (*header_ptr).seq = state.sequence;
+                }
+
+                // Write full-frame damage meta if available
+                let damage_ptr = spa_buffer_find_meta_data(
+                    spa_buf,
+                    SPA_META_VideoDamage,
+                    size_of::<spa_meta_region>(),
+                ) as *mut spa_meta_region;
+                if !damage_ptr.is_null() {
+                    // First entry: full frame
+                    (*damage_ptr).region.position = spa_point { x: 0, y: 0 };
+                    (*damage_ptr).region.size = spa_rectangle {
+                        width: meta.size.0,
+                        height: meta.size.1,
+                    };
+                    // Second entry: terminator (invalid region)
+                    let term = damage_ptr.add(1);
+                    (*term).region.position = spa_point { x: 0, y: 0 };
+                    (*term).region.size = spa_rectangle { width: 0, height: 0 };
+                }
+
+                tracing::trace!(
+                    "Queued frame {} to PipeWire: {}x{} ({} bytes)",
+                    state.sequence,
+                    meta.size.0,
+                    meta.size.1,
+                    copy_len
+                );
+
+                // Explicitly queue the buffer back to PipeWire
+                pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
             }
-
-            state.sequence += 1;
-
-            tracing::trace!(
-                "Queued frame {} to PipeWire: {}x{}",
-                state.sequence,
-                meta.size.0,
-                meta.size.1
-            );
         })
         .register()
         .map_err(|e| PipeWireError::InitFailed(format!("Failed to register listener: {}", e)))?;
 
-    // Build format parameters
-    let format_params = build_video_format_params(&config);
-    let format_bytes: Vec<u8> = pw::spa::pod::serialize::PodSerializer::serialize(
-        std::io::Cursor::new(Vec::new()),
-        &pw::spa::pod::Value::Object(format_params),
-    )
-    .map_err(|e| PipeWireError::InitFailed(format!("Failed to serialize format: {:?}", e)))?
-    .0
-    .into_inner();
-
-    let mut params = [Pod::from_bytes(&format_bytes).unwrap()];
+    // Build format/buffer/meta parameters
+    let param_bytes = build_stream_params(&config)
+        .map_err(|e| PipeWireError::InitFailed(format!("Failed to build params: {}", e)))?;
+    let mut param_refs: Vec<&Pod> = param_bytes
+        .iter()
+        .filter_map(|b| Pod::from_bytes(b))
+        .collect();
 
     // Connect the stream as a source (output)
     stream
@@ -485,7 +703,7 @@ fn run_pipewire_thread(
             Direction::Output,
             None,
             StreamFlags::AUTOCONNECT | StreamFlags::MAP_BUFFERS | StreamFlags::ALLOC_BUFFERS,
-            &mut params,
+            &mut param_refs,
         )
         .map_err(|e| PipeWireError::InitFailed(format!("Failed to connect stream: {}", e)))?;
 
@@ -499,28 +717,27 @@ fn run_pipewire_thread(
             break;
         }
 
-        // Poll for frames (non-blocking)
-        match frame_receiver.try_recv() {
-            Ok(frame) => {
-                // Store the frame for the process callback
-                let (data, meta) = match frame {
-                    FrameData::Rgba { data, meta } => (data, meta),
-                    FrameData::DmaBuf { .. } => {
-                        // For now, skip DMA-BUF frames
-                        tracing::trace!("Skipping DMA-BUF frame (not implemented)");
-                        continue;
-                    }
-                };
+        // Poll and drain available frames (non-blocking), keep the latest
+        loop {
+            match frame_receiver.try_recv() {
+                Ok(frame) => {
+                    let (data, meta) = match frame {
+                        FrameData::Rgba { data, meta } => (data, meta),
+                        FrameData::DmaBuf { .. } => {
+                            // For now, skip DMA-BUF frames
+                            tracing::trace!("Skipping DMA-BUF frame (not implemented)");
+                            continue;
+                        }
+                    };
 
-                thread_state.borrow_mut().pending_frame = Some((data, meta));
-            }
-            Err(mpsc::error::TryRecvError::Empty) => {
-                // No frame ready
-            }
-            Err(mpsc::error::TryRecvError::Disconnected) => {
-                // Channel closed, stop
-                tracing::debug!("Frame channel disconnected, stopping PipeWire thread");
-                break;
+                    thread_state.borrow_mut().pending_frame = Some((data, meta));
+                }
+                Err(mpsc::error::TryRecvError::Empty) => break,
+                Err(mpsc::error::TryRecvError::Disconnected) => {
+                    // Channel closed, stop
+                    tracing::debug!("Frame channel disconnected, stopping PipeWire thread");
+                    return Ok(());
+                }
             }
         }
 
@@ -535,21 +752,313 @@ fn run_pipewire_thread(
     Ok(())
 }
 
+/// Run the PipeWire main loop on a dedicated thread (synchronous version).
+///
+/// Uses std::sync::mpsc for the ready signal instead of tokio channels.
+fn run_pipewire_thread_sync(
+    config: StreamConfig,
+    shared: Arc<SharedState>,
+    mut frame_receiver: mpsc::Receiver<FrameData>,
+    ready_tx: std::sync::mpsc::Sender<Result<(u32, OwnedFd), PipeWireError>>,
+) -> Result<(), PipeWireError> {
+    // Initialize PipeWire
+    pw::init();
+
+    // Create main loop (using MainLoopBox for owned version)
+    let mainloop = pw::main_loop::MainLoopBox::new(None)
+        .map_err(|e| PipeWireError::InitFailed(format!("Failed to create main loop: {}", e)))?;
+
+    // Get the loop FD for sharing
+    let loop_fd = mainloop.loop_().fd();
+    let owned_fd = loop_fd.try_clone_to_owned().map_err(|e| {
+        PipeWireError::InitFailed(format!("Failed to clone loop FD: {}", e))
+    })?;
+
+    // Create context (using ContextBox for owned version)
+    let context = pw::context::ContextBox::new(mainloop.loop_(), None)
+        .map_err(|e| PipeWireError::InitFailed(format!("Failed to create context: {}", e)))?;
+
+    // Connect to PipeWire
+    let core = context
+        .connect(None)
+        .map_err(|e| PipeWireError::InitFailed(format!("Failed to connect to PipeWire: {}", e)))?;
+
+    // Create stream
+    let stream = pw::stream::StreamBox::new(
+        &core,
+        "screen-composer-screencast",
+        pw::properties::properties! {
+            *pw::keys::MEDIA_TYPE => "Video",
+            *pw::keys::MEDIA_CATEGORY => "Capture",
+            *pw::keys::MEDIA_ROLE => "Screen",
+            *pw::keys::MEDIA_CLASS => "Video/Source",
+        },
+    )
+    .map_err(|e| PipeWireError::InitFailed(format!("Failed to create stream: {}", e)))?;
+
+    // State for callbacks
+    let thread_state = Rc::new(RefCell::new(PipeWireThreadState {
+        format: Default::default(),
+        pending_frame: None,
+        sequence: 0,
+    }));
+
+    // Track if we've sent the ready signal
+    let ready_sent = Rc::new(RefCell::new(false));
+    let ready_tx = Rc::new(RefCell::new(Some(ready_tx)));
+    let owned_fd = Rc::new(RefCell::new(Some(owned_fd)));
+
+    // Clone for callbacks
+    let shared_cb = shared.clone();
+    let ready_tx_cb = ready_tx.clone();
+    let owned_fd_cb = owned_fd.clone();
+    let ready_sent_cb = ready_sent.clone();
+
+    // Set up stream listener
+    let _listener = stream
+        .add_local_listener_with_user_data(thread_state.clone())
+        .state_changed(move |stream, _state, old, new| {
+            tracing::debug!("PipeWire stream state: {:?} -> {:?}", old, new);
+
+            match new {
+                StreamState::Paused => {
+                    // Stream is ready, get node ID
+                    let node_id = stream.node_id();
+                    tracing::info!("PipeWire stream paused, node_id={}", node_id);
+
+                    // Send ready signal (only once)
+                    if !*ready_sent_cb.borrow() {
+                        *ready_sent_cb.borrow_mut() = true;
+                        if let Some(tx) = ready_tx_cb.borrow_mut().take() {
+                            if let Some(fd) = owned_fd_cb.borrow_mut().take() {
+                                let _ = tx.send(Ok((node_id, fd)));
+                            }
+                        }
+                    }
+                }
+                StreamState::Streaming => {
+                    tracing::info!("PipeWire stream now streaming");
+                }
+                StreamState::Error(ref err) => {
+                    tracing::error!("PipeWire stream error: {}", err);
+                    shared_cb.should_stop.store(true, Ordering::SeqCst);
+
+                    // Send error if not ready yet
+                    if !*ready_sent_cb.borrow() {
+                        *ready_sent_cb.borrow_mut() = true;
+                        if let Some(tx) = ready_tx_cb.borrow_mut().take() {
+                            let _ = tx.send(Err(PipeWireError::StreamError(err.clone())));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        })
+        .param_changed(|_stream, state, id, param| {
+            let Some(param) = param else {
+                return;
+            };
+
+            if id != ParamType::Format.as_raw() {
+                return;
+            }
+
+            // Parse the format
+            let (media_type, media_subtype) =
+                match pw::spa::param::format_utils::parse_format(param) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!("Failed to parse format: {:?}", e);
+                        return;
+                    }
+                };
+
+            if media_type != MediaType::Video || media_subtype != MediaSubtype::Raw {
+                return;
+            }
+
+            // Parse video info
+            let mut state = state.borrow_mut();
+            if let Err(e) = state.format.parse(param) {
+                tracing::warn!("Failed to parse video format: {:?}", e);
+                return;
+            }
+
+            tracing::info!(
+                "PipeWire format negotiated: {:?} {}x{} @ {}/{}",
+                state.format.format(),
+                state.format.size().width,
+                state.format.size().height,
+                state.format.framerate().num,
+                state.format.framerate().denom
+            );
+        })
+        .process(|stream, state| {
+            // Dequeue a buffer from PipeWire (raw) so we can explicitly queue it back
+            let buffer_ptr = unsafe { stream.dequeue_raw_buffer() };
+            if buffer_ptr.is_null() {
+                return;
+            }
+
+            let mut state = state.borrow_mut();
+
+            // Get pending frame data
+            let Some((frame_data, meta)) = state.pending_frame.take() else {
+                return;
+            };
+
+            unsafe {
+                let spa_buf = (*buffer_ptr).buffer;
+                if spa_buf.is_null() {
+                    pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
+                    return;
+                }
+
+                let datas = (*spa_buf).datas;
+                if datas.is_null() || (*spa_buf).n_datas == 0 {
+                    pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
+                    return;
+                }
+
+                let data = datas;
+                let chunk = (*data).chunk;
+                let data_ptr = (*data).data as *mut u8;
+                let maxsize = (*data).maxsize as usize;
+
+                if data_ptr.is_null() || chunk.is_null() || maxsize == 0 {
+                    pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
+                    return;
+                }
+
+                let stride_bytes = meta.stride.max(meta.size.0 * 4);
+                let expected_size = (stride_bytes * meta.size.1) as usize;
+                let copy_len = frame_data.len().min(maxsize).min(expected_size);
+                std::ptr::copy_nonoverlapping(frame_data.as_ptr(), data_ptr, copy_len);
+
+                (*chunk).size = copy_len as u32;
+                (*chunk).offset = 0;
+                (*chunk).stride = stride_bytes as i32;
+                (*chunk).flags = 0;
+
+                state.sequence += 1;
+
+                // Write SPA meta header if present
+                let header_ptr = spa_buffer_find_meta_data(
+                    spa_buf,
+                    SPA_META_Header,
+                    size_of::<spa_meta_header>(),
+                ) as *mut spa_meta_header;
+                if !header_ptr.is_null() {
+                    (*header_ptr).flags = 0;
+                    (*header_ptr).offset = 0;
+                    (*header_ptr).pts = meta.time_ns as i64;
+                    (*header_ptr).dts_offset = 0;
+                    (*header_ptr).seq = state.sequence;
+                }
+
+                // Write full-frame damage meta if available
+                let damage_ptr = spa_buffer_find_meta_data(
+                    spa_buf,
+                    SPA_META_VideoDamage,
+                    size_of::<spa_meta_region>(),
+                ) as *mut spa_meta_region;
+                if !damage_ptr.is_null() {
+                    (*damage_ptr).region.position = spa_point { x: 0, y: 0 };
+                    (*damage_ptr).region.size = spa_rectangle {
+                        width: meta.size.0,
+                        height: meta.size.1,
+                    };
+                    let term = damage_ptr.add(1);
+                    (*term).region.position = spa_point { x: 0, y: 0 };
+                    (*term).region.size = spa_rectangle { width: 0, height: 0 };
+                }
+                tracing::debug!(
+                    "PipeWire process (sync): queued frame {} ({}x{}, {} bytes)",
+                    state.sequence,
+                    meta.size.0,
+                    meta.size.1,
+                    copy_len
+                );
+
+                // Explicitly queue the buffer back to PipeWire
+                pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
+            }
+        })
+        .register()
+        .map_err(|e| PipeWireError::InitFailed(format!("Failed to register listener: {}", e)))?;
+
+    // Build format/buffer/meta parameters
+    let param_bytes = build_stream_params(&config)
+        .map_err(|e| PipeWireError::InitFailed(format!("Failed to build params: {}", e)))?;
+    let mut param_refs: Vec<&Pod> = param_bytes
+        .iter()
+        .filter_map(|b| Pod::from_bytes(b))
+        .collect();
+
+    // Connect the stream as a source (output)
+    stream
+        .connect(
+            Direction::Output,
+            None,
+            StreamFlags::AUTOCONNECT | StreamFlags::MAP_BUFFERS | StreamFlags::ALLOC_BUFFERS,
+            &mut param_refs,
+        )
+        .map_err(|e| PipeWireError::InitFailed(format!("Failed to connect stream: {}", e)))?;
+
+    tracing::info!("PipeWire stream connected");
+
+    // Run the main loop, checking for frames and stop signal
+    let loop_ref = mainloop.loop_();
+    loop {
+        if shared.should_stop.load(Ordering::SeqCst) {
+            break;
+        }
+
+        // Poll and drain available frames (non-blocking), keep the latest
+        loop {
+            match frame_receiver.try_recv() {
+                Ok(frame) => {
+                    let (data, meta) = match frame {
+                        FrameData::Rgba { data, meta } => {
+                            tracing::debug!(
+                                "PipeWire thread (sync): received RGBA frame {}x{}, {} bytes",
+                                meta.size.0,
+                                meta.size.1,
+                                data.len()
+                            );
+                            (data, meta)
+                        }
+                        FrameData::DmaBuf { .. } => {
+                            tracing::trace!("Skipping DMA-BUF frame (not implemented)");
+                            continue;
+                        }
+                    };
+                    thread_state.borrow_mut().pending_frame = Some((data, meta));
+                }
+                Err(mpsc::error::TryRecvError::Empty) => break,
+                Err(mpsc::error::TryRecvError::Disconnected) => {
+                    tracing::debug!("Frame channel disconnected, stopping PipeWire thread");
+                    return Ok(());
+                }
+            }
+        }
+
+        loop_ref.iterate(std::time::Duration::from_millis(10));
+    }
+
+    let _ = stream.disconnect();
+    tracing::info!("PipeWire stream disconnected");
+
+    Ok(())
+}
+
 /// Build video format parameters for the stream.
 fn build_video_format_params(config: &StreamConfig) -> pw::spa::pod::Object {
     pw::spa::pod::object!(
         SpaTypes::ObjectParamFormat,
         ParamType::EnumFormat,
-        pw::spa::pod::property!(
-            FormatProperties::MediaType,
-            Id,
-            MediaType::Video
-        ),
-        pw::spa::pod::property!(
-            FormatProperties::MediaSubtype,
-            Id,
-            MediaSubtype::Raw
-        ),
+        pw::spa::pod::property!(FormatProperties::MediaType, Id, MediaType::Video),
+        pw::spa::pod::property!(FormatProperties::MediaSubtype, Id, MediaSubtype::Raw),
         pw::spa::pod::property!(
             FormatProperties::VideoFormat,
             Choice,
@@ -579,6 +1088,119 @@ fn build_video_format_params(config: &StreamConfig) -> pw::spa::pod::Object {
             }
         )
     )
+}
+
+fn build_buffer_params(config: &StreamConfig) -> pw::spa::pod::Object {
+    let stride = (config.width * 4) as i32;
+    let size = (config.height * config.width * 4) as i32;
+
+    pw::spa::pod::object!(
+        SpaTypes::ObjectParamBuffers,
+        ParamType::Buffers,
+        Property::new(
+            SPA_PARAM_BUFFERS_buffers,
+            Value::Choice(ChoiceValue::Int(Choice(
+                ChoiceFlags::empty(),
+                ChoiceEnum::Range {
+                    default: 8,
+                    min: 2,
+                    max: 16
+                },
+            ))),
+        ),
+        Property::new(SPA_PARAM_BUFFERS_blocks, Value::Int(1)),
+        Property::new(SPA_PARAM_BUFFERS_size, Value::Int(size)),
+        Property::new(SPA_PARAM_BUFFERS_stride, Value::Int(stride)),
+        Property::new(SPA_PARAM_BUFFERS_align, Value::Int(4)),
+        Property::new(
+            SPA_PARAM_BUFFERS_dataType,
+            Value::Choice(ChoiceValue::Int(Choice(
+                ChoiceFlags::empty(),
+                ChoiceEnum::Flags {
+                    default: 1 << DataType::MemFd.as_raw(),
+                    flags: vec![
+                        1 << DataType::MemFd.as_raw(),
+                        1 << DataType::MemPtr.as_raw(),
+                    ],
+                },
+            ))),
+        ),
+    )
+}
+
+fn build_meta_params() -> [pw::spa::pod::Object; 2] {
+    let header = pw::spa::pod::object!(
+        SpaTypes::ObjectParamMeta,
+        ParamType::Meta,
+        Property::new(
+            SPA_PARAM_META_type,
+            Value::Id(pw::spa::utils::Id(SPA_META_Header as u32)),
+        ),
+        Property::new(
+            SPA_PARAM_META_size,
+            Value::Int(size_of::<spa_meta_header>() as i32),
+        )
+    );
+
+    let damage = pw::spa::pod::object!(
+        SpaTypes::ObjectParamMeta,
+        ParamType::Meta,
+        Property::new(
+            SPA_PARAM_META_type,
+            Value::Id(pw::spa::utils::Id(SPA_META_VideoDamage as u32)),
+        ),
+        Property::new(
+            SPA_PARAM_META_size,
+            Value::Int((2 * size_of::<spa_meta_region>()) as i32),
+        )
+    );
+
+    [header, damage]
+}
+
+fn build_stream_params(config: &StreamConfig) -> Result<Vec<Vec<u8>>, String> {
+    let format_params = build_video_format_params(config);
+    let buffer_params = build_buffer_params(config);
+    let meta_params = build_meta_params();
+
+    let format_bytes: Vec<u8> = pw::spa::pod::serialize::PodSerializer::serialize(
+        std::io::Cursor::new(Vec::new()),
+        &pw::spa::pod::Value::Object(format_params),
+    )
+    .map_err(|e| format!("Failed to serialize format: {:?}", e))?
+    .0
+    .into_inner();
+
+    let buffer_bytes: Vec<u8> = pw::spa::pod::serialize::PodSerializer::serialize(
+        std::io::Cursor::new(Vec::new()),
+        &pw::spa::pod::Value::Object(buffer_params),
+    )
+    .map_err(|e| format!("Failed to serialize buffers: {:?}", e))?
+    .0
+    .into_inner();
+
+    let meta_header_bytes: Vec<u8> = pw::spa::pod::serialize::PodSerializer::serialize(
+        std::io::Cursor::new(Vec::new()),
+        &pw::spa::pod::Value::Object(meta_params[0].clone()),
+    )
+    .map_err(|e| format!("Failed to serialize meta header: {:?}", e))?
+    .0
+    .into_inner();
+
+    let meta_damage_bytes: Vec<u8> = pw::spa::pod::serialize::PodSerializer::serialize(
+        std::io::Cursor::new(Vec::new()),
+        &pw::spa::pod::Value::Object(meta_params[1].clone()),
+    )
+    .map_err(|e| format!("Failed to serialize meta damage: {:?}", e))?
+    .0
+    .into_inner();
+
+    Ok(vec![
+        format_bytes,
+        buffer_bytes,
+        meta_header_bytes,
+        meta_damage_bytes,
+    ])
 }
 
 /// Errors from PipeWire operations.
