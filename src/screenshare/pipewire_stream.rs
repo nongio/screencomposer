@@ -1304,8 +1304,8 @@ fn build_video_format_params(config: &StreamConfig) -> pw::spa::pod::Object {
 /// Build format parameters for PipeWire negotiation.
 ///
 /// Offers multiple formats in order of preference:
-/// 1. BGRx (no alpha) - most efficient for opaque desktop capture
-/// 2. BGRA (with alpha) - if consumer needs transparency (optional based on config)
+/// 1. RGBA (with alpha) - matches compositor's native format
+/// 2. BGRx (no alpha) - if consumer prefers opaque format (optional based on config)
 ///
 /// Uses variable framerate (0/1) with max framerate as a range to let the consumer
 /// control the capture rate within our maximum.
@@ -1318,13 +1318,13 @@ fn build_format_params(config: &StreamConfig) -> Vec<Vec<u8>> {
 
     let mut params = Vec::new();
 
-    // Always offer BGRx (opaque) as primary format
-    let bgrx_obj = pw::spa::pod::object!(
+    // Always offer RGBA (matches compositor's native format, no conversion needed)
+    let rgba_obj = pw::spa::pod::object!(
         SpaTypes::ObjectParamFormat,
         ParamType::EnumFormat,
         pw::spa::pod::property!(FormatProperties::MediaType, Id, MediaType::Video),
         pw::spa::pod::property!(FormatProperties::MediaSubtype, Id, MediaSubtype::Raw),
-        pw::spa::pod::property!(FormatProperties::VideoFormat, Id, VideoFormat::BGRx),
+        pw::spa::pod::property!(FormatProperties::VideoFormat, Id, VideoFormat::RGBA),
         pw::spa::pod::property!(
             FormatProperties::VideoSize,
             Rectangle,
@@ -1348,21 +1348,21 @@ fn build_format_params(config: &StreamConfig) -> Vec<Vec<u8>> {
 
     if let Ok(bytes) = PodSerializer::serialize(
         Cursor::new(Vec::new()),
-        &pw::spa::pod::Value::Object(bgrx_obj),
+        &pw::spa::pod::Value::Object(rgba_obj),
     )
     .map(|v| v.0.into_inner())
     {
         params.push(bytes);
     }
 
-    // Optionally offer BGRA (with alpha) if configured
+    // Optionally offer BGRx (opaque) if configured
     if config.offer_alpha {
-        let bgra_obj = pw::spa::pod::object!(
+        let bgrx_obj = pw::spa::pod::object!(
             SpaTypes::ObjectParamFormat,
             ParamType::EnumFormat,
             pw::spa::pod::property!(FormatProperties::MediaType, Id, MediaType::Video),
             pw::spa::pod::property!(FormatProperties::MediaSubtype, Id, MediaSubtype::Raw),
-            pw::spa::pod::property!(FormatProperties::VideoFormat, Id, VideoFormat::BGRA),
+            pw::spa::pod::property!(FormatProperties::VideoFormat, Id, VideoFormat::BGRx),
             pw::spa::pod::property!(
                 FormatProperties::VideoSize,
                 Rectangle,
@@ -1386,7 +1386,7 @@ fn build_format_params(config: &StreamConfig) -> Vec<Vec<u8>> {
 
         if let Ok(bytes) = PodSerializer::serialize(
             Cursor::new(Vec::new()),
-            &pw::spa::pod::Value::Object(bgra_obj),
+            &pw::spa::pod::Value::Object(bgrx_obj),
         )
         .map(|v| v.0.into_inner())
         {
