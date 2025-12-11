@@ -1060,17 +1060,6 @@ fn run_pipewire_thread_sync(
                 return;
             };
 
-            let Some(mut buffer) = stream.dequeue_buffer() else {
-                // Put frame back if we couldn't get a buffer
-                state.pending_frame = Some((frame_data, meta));
-                return;
-            };
-
-            let datas = buffer.datas_mut();
-            if datas.is_empty() {
-                return;
-            }
-
             // Check frame timing to throttle based on negotiated framerate
             let now = Duration::from_nanos(meta.time_ns);
             let min_time = state.min_time_between_frames;
@@ -1087,37 +1076,54 @@ fn run_pipewire_thread_sync(
                     return;
                 }
             }
-            
+
+            // Use raw buffer API to access spa_buffer for metadata
+            let buffer_ptr = unsafe { stream.dequeue_raw_buffer() };
+            if buffer_ptr.is_null() {
+                // Put frame back if we couldn't get a buffer
+                state.pending_frame = Some((frame_data, meta));
+                return;
+            }
+
             let width = size.width as usize;
             let height = size.height as usize;
             let stride = width * 4;
             let frame_len = stride * height;
 
-            // Access PipeWire's buffer directly - need to handle borrows carefully
-            let data_result = {
-                let data = &mut datas[0];
-                data.data().map(|slice| {
-                    let copy_len = frame_data.len().min(slice.len()).min(frame_len);
-                    slice[..copy_len].copy_from_slice(&frame_data[..copy_len]);
-                    copy_len
-                })
-            };
-            
-            if let Some(copy_len) = data_result {
-                // Now we can safely get chunk without conflicting borrows
-                let chunk = datas[0].chunk_mut();
-                *chunk.offset_mut() = 0;
-                *chunk.size_mut() = copy_len as u32;
-                *chunk.stride_mut() = stride as i32;
+            unsafe {
+                let spa_buffer = (*buffer_ptr).buffer;
+                if spa_buffer.is_null() || (*spa_buffer).n_datas == 0 {
+                    pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
+                    state.pending_frame = Some((frame_data, meta));
+                    return;
+                }
+
+                let spa_data = (*spa_buffer).datas;
+                let data_ptr = (*spa_data).data as *mut u8;
+                let maxsize = (*spa_data).maxsize as usize;
+
+                if data_ptr.is_null() || maxsize == 0 {
+                    pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
+                    state.pending_frame = Some((frame_data, meta));
+                    return;
+                }
+
+                // Copy frame data
+                let copy_len = frame_data.len().min(maxsize).min(frame_len);
+                std::ptr::copy_nonoverlapping(frame_data.as_ptr(), data_ptr, copy_len);
+
+                // Set chunk metadata
+                let chunk = (*spa_data).chunk;
+                (*chunk).offset = 0;
+                (*chunk).size = copy_len as u32;
+                (*chunk).stride = stride as i32;
+                (*chunk).flags = 0;
 
                 state.sequence += 1;
                 state.last_frame_time = now;
-                
-                // Write damage metadata if available
-                // Note: We can't easily access the spa_buffer from the safe Buffer API,
-                // so damage metadata writing is currently disabled. This would require
-                // using the raw dequeue_raw_buffer() API instead.
-                // TODO: Implement damage metadata with raw buffer API
+
+                // Write damage metadata
+                write_damage_metadata(spa_buffer, &meta, width as u32, height as u32);
 
                 tracing::trace!(
                     "PW_PROCESS: Queued frame {} to PipeWire: {}x{} ({} bytes), has_damage={}",
@@ -1127,10 +1133,10 @@ fn run_pipewire_thread_sync(
                     copy_len,
                     meta.has_damage
                 );
-            } else {
-                tracing::warn!("PW_PROCESS: buffer has no data pointer");
+
+                // Queue buffer back to PipeWire
+                pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
             }
-            // buffer drops here, gets queued back to PipeWire
         })
         .register()
         .map_err(|e| PipeWireError::InitFailed(format!("Failed to register listener: {}", e)))?;
@@ -1273,7 +1279,6 @@ fn build_video_format_params(config: &StreamConfig) -> pw::spa::pod::Object {
 /// 
 /// This sets the VideoDamage metadata based on the frame's damage rectangles.
 /// If no damage rects are available but damage is indicated, writes a full-frame damage.
-#[allow(dead_code)]
 unsafe fn write_damage_metadata(
     spa_buffer: *mut pw::spa::sys::spa_buffer,
     meta: &FrameMetaSnapshot,
