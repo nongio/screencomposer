@@ -19,9 +19,8 @@
 use std::cell::RefCell;
 use std::mem::size_of;
 use std::os::fd::{AsRawFd, OwnedFd, RawFd};
-
-use memmap2::MmapMut;
 use std::rc::Rc;
+use std::time::Duration;
 use std::sync::{
     atomic::{AtomicBool, AtomicU32, Ordering},
     Arc,
@@ -99,6 +98,10 @@ struct PipeWireThreadState {
     last_frame: Option<(Arc<[u8]>, FrameMetaSnapshot)>,
     /// Frame sequence counter for PTS calculation.
     sequence: u64,
+    /// Minimum time between frames (from negotiated framerate).
+    min_time_between_frames: Duration,
+    /// Timestamp of last sent frame.
+    last_frame_time: Duration,
 }
 
 /// A PipeWire stream for screen casting.
@@ -398,6 +401,8 @@ fn run_pipewire_thread(
         pending_frame: None,
         last_frame: None,
         sequence: 0,
+        min_time_between_frames: Duration::ZERO,
+        last_frame_time: Duration::ZERO,
     }));
 
     // Track if we've sent the ready signal
@@ -797,6 +802,8 @@ fn run_pipewire_thread_sync(
         pending_frame: None,
         last_frame: None,
         sequence: 0,
+        min_time_between_frames: Duration::ZERO,
+        last_frame_time: Duration::ZERO,
     }));
 
     // Track if we've sent the ready signal
@@ -879,13 +886,22 @@ fn run_pipewire_thread_sync(
             }
 
             let size = state.format.size();
+            let framerate = state.format.framerate();
+            
+            // Calculate minimum time between frames from negotiated framerate
+            if framerate.num > 0 && framerate.denom > 0 {
+                let frame_duration_us = 1_000_000 * u64::from(framerate.denom) / u64::from(framerate.num);
+                state.min_time_between_frames = Duration::from_micros(frame_duration_us);
+            }
+            
             tracing::info!(
-                "PipeWire format negotiated: {:?} {}x{} @ {}/{}",
+                "PipeWire format negotiated: {:?} {}x{} @ {}/{} (min_frame_time={:?})",
                 state.format.format(),
                 size.width,
                 size.height,
-                state.format.framerate().num,
-                state.format.framerate().denom
+                framerate.num,
+                framerate.denom,
+                state.min_time_between_frames
             );
 
             // Tell PipeWire buffer requirements with MemFd data type
@@ -1055,6 +1071,23 @@ fn run_pipewire_thread_sync(
                 return;
             }
 
+            // Check frame timing to throttle based on negotiated framerate
+            let now = Duration::from_nanos(meta.time_ns);
+            let min_time = state.min_time_between_frames;
+            if min_time > Duration::ZERO && !state.last_frame_time.is_zero() {
+                let elapsed = now.saturating_sub(state.last_frame_time);
+                if elapsed < min_time {
+                    // Too soon, put frame back and skip
+                    state.pending_frame = Some((frame_data, meta));
+                    tracing::trace!(
+                        "Frame too soon: elapsed={:?}, min={:?}, skipping",
+                        elapsed,
+                        min_time
+                    );
+                    return;
+                }
+            }
+            
             let width = size.width as usize;
             let height = size.height as usize;
             let stride = width * 4;
@@ -1078,13 +1111,21 @@ fn run_pipewire_thread_sync(
                 *chunk.stride_mut() = stride as i32;
 
                 state.sequence += 1;
+                state.last_frame_time = now;
+                
+                // Write damage metadata if available
+                // Note: We can't easily access the spa_buffer from the safe Buffer API,
+                // so damage metadata writing is currently disabled. This would require
+                // using the raw dequeue_raw_buffer() API instead.
+                // TODO: Implement damage metadata with raw buffer API
 
                 tracing::trace!(
-                    "PW_PROCESS: Queued frame {} to PipeWire: {}x{} ({} bytes)",
+                    "PW_PROCESS: Queued frame {} to PipeWire: {}x{} ({} bytes), has_damage={}",
                     state.sequence,
                     meta.size.0,
                     meta.size.1,
-                    copy_len
+                    copy_len,
+                    meta.has_damage
                 );
             } else {
                 tracing::warn!("PW_PROCESS: buffer has no data pointer");
@@ -1226,6 +1267,74 @@ fn build_video_format_params(config: &StreamConfig) -> pw::spa::pod::Object {
             }
         )
     )
+}
+
+/// Write damage metadata to a PipeWire buffer.
+/// 
+/// This sets the VideoDamage metadata based on the frame's damage rectangles.
+/// If no damage rects are available but damage is indicated, writes a full-frame damage.
+#[allow(dead_code)]
+unsafe fn write_damage_metadata(
+    spa_buffer: *mut pw::spa::sys::spa_buffer,
+    meta: &FrameMetaSnapshot,
+    width: u32,
+    height: u32,
+) {
+    use pw::spa::sys::{
+        spa_buffer_find_meta_data, spa_meta_region, spa_point, spa_rectangle,
+        SPA_META_VideoDamage,
+    };
+    use std::mem::size_of;
+
+    let damage_ptr = spa_buffer_find_meta_data(
+        spa_buffer,
+        SPA_META_VideoDamage,
+        size_of::<spa_meta_region>(),
+    ) as *mut spa_meta_region;
+
+    if damage_ptr.is_null() {
+        return;
+    }
+
+    if let Some(ref rects) = meta.damage_rects {
+        // Write specific damage rectangles
+        for (i, rect) in rects.iter().enumerate() {
+            let region_ptr = damage_ptr.add(i);
+            (*region_ptr).region.position = spa_point {
+                x: rect.x,
+                y: rect.y,
+            };
+            (*region_ptr).region.size = spa_rectangle {
+                width: rect.width as u32,
+                height: rect.height as u32,
+            };
+        }
+        // Write terminator (zero size)
+        let term_ptr = damage_ptr.add(rects.len());
+        (*term_ptr).region.position = spa_point { x: 0, y: 0 };
+        (*term_ptr).region.size = spa_rectangle {
+            width: 0,
+            height: 0,
+        };
+    } else if meta.has_damage {
+        // No specific damage rects, but frame has damage - write full-frame damage
+        (*damage_ptr).region.position = spa_point { x: 0, y: 0 };
+        (*damage_ptr).region.size = spa_rectangle { width, height };
+        // Write terminator
+        let term_ptr = damage_ptr.add(1);
+        (*term_ptr).region.position = spa_point { x: 0, y: 0 };
+        (*term_ptr).region.size = spa_rectangle {
+            width: 0,
+            height: 0,
+        };
+    } else {
+        // No damage - write just terminator
+        (*damage_ptr).region.position = spa_point { x: 0, y: 0 };
+        (*damage_ptr).region.size = spa_rectangle {
+            width: 0,
+            height: 0,
+        };
+    }
 }
 
 fn build_buffer_params(config: &StreamConfig) -> pw::spa::pod::Object {

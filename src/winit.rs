@@ -528,7 +528,6 @@ pub fn run_winit() {
 
             // println!("cursor phy size: {:?}, config_phy {:?} should_scale: {}", cursor_phy_size, cursor_config_physical_size, cursor_rescale);
             let pointer_uses_surface = !cursor_visible;
-            let has_screenshare_taps = !state.frame_tap_manager.is_empty();
             let should_draw = scene_has_damage
                 || needs_redraw_soon
                 || pointer_uses_surface
