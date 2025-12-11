@@ -623,89 +623,105 @@ fn run_pipewire_thread(
             let mut state = state.borrow_mut();
 
             // Get pending frame data
-            let Some((frame_data, meta)) = state.pending_frame.take() else {
+            let Some(pending) = state.pending_frame.take() else {
                 unsafe { pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr) };
                 return;
             };
 
-            unsafe {
-                let spa_buf = (*buffer_ptr).buffer;
-                if spa_buf.is_null() {
-                    pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
-                    return;
+            // Handle based on frame type
+            match pending {
+                PendingFrame::Rgba { data: frame_data, meta } => {
+                    // SHM path: copy RGBA data to PipeWire buffer
+                    unsafe {
+                        let spa_buf = (*buffer_ptr).buffer;
+                        if spa_buf.is_null() {
+                            pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
+                            return;
+                        }
+
+                        let datas = (*spa_buf).datas;
+                        if datas.is_null() || (*spa_buf).n_datas == 0 {
+                            pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
+                            return;
+                        }
+
+                        let data = datas;
+                        let chunk = (*data).chunk;
+                        let data_ptr = (*data).data as *mut u8;
+                        let maxsize = (*data).maxsize as usize;
+
+                        if data_ptr.is_null() || chunk.is_null() || maxsize == 0 {
+                            pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
+                            return;
+                        }
+
+                        let stride_bytes = meta.stride.max(meta.size.0 * 4);
+                        let expected_size = (stride_bytes * meta.size.1) as usize;
+                        let copy_len = frame_data.len().min(maxsize).min(expected_size);
+                        std::ptr::copy_nonoverlapping(frame_data.as_ptr(), data_ptr, copy_len);
+
+                        (*chunk).size = copy_len as u32;
+                        (*chunk).offset = 0;
+                        (*chunk).stride = stride_bytes as i32;
+                        (*chunk).flags = 0;
+
+                        state.sequence += 1;
+
+                        // Write SPA meta header if present
+                        let header_ptr = spa_buffer_find_meta_data(
+                            spa_buf,
+                            SPA_META_Header,
+                            size_of::<spa_meta_header>(),
+                        ) as *mut spa_meta_header;
+                        if !header_ptr.is_null() {
+                            (*header_ptr).flags = 0;
+                            (*header_ptr).offset = 0;
+                            (*header_ptr).pts = meta.time_ns as i64;
+                            (*header_ptr).dts_offset = 0;
+                            (*header_ptr).seq = state.sequence;
+                        }
+
+                        // Write full-frame damage meta if available
+                        let damage_ptr = spa_buffer_find_meta_data(
+                            spa_buf,
+                            SPA_META_VideoDamage,
+                            size_of::<spa_meta_region>(),
+                        ) as *mut spa_meta_region;
+                        if !damage_ptr.is_null() {
+                            // First entry: full frame
+                            (*damage_ptr).region.position = spa_point { x: 0, y: 0 };
+                            (*damage_ptr).region.size = spa_rectangle {
+                                width: meta.size.0,
+                                height: meta.size.1,
+                            };
+                            // Second entry: terminator (invalid region)
+                            let term = damage_ptr.add(1);
+                            (*term).region.position = spa_point { x: 0, y: 0 };
+                            (*term).region.size = spa_rectangle { width: 0, height: 0 };
+                        }
+
+                        tracing::trace!(
+                            "Queued RGBA frame {} to PipeWire: {}x{} ({} bytes)",
+                            state.sequence,
+                            meta.size.0,
+                            meta.size.1,
+                            copy_len
+                        );
+
+                        // Explicitly queue the buffer back to PipeWire
+                        pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
+                    }
                 }
-
-                let datas = (*spa_buf).datas;
-                if datas.is_null() || (*spa_buf).n_datas == 0 {
-                    pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
-                    return;
+                PendingFrame::DmaBuf { dmabuf: _, meta: _ } => {
+                    // DMA-BUF path: zero-copy, buffer already has rendered content
+                    tracing::trace!("DMA-BUF frame received, zero-copy path not yet fully implemented");
+                    
+                    // TODO: For now, just queue the buffer back
+                    // Full implementation needs to match dmabuf FD with PipeWire buffer
+                    unsafe {
+                        pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
+                    }
                 }
-
-                let data = datas;
-                let chunk = (*data).chunk;
-                let data_ptr = (*data).data as *mut u8;
-                let maxsize = (*data).maxsize as usize;
-
-                if data_ptr.is_null() || chunk.is_null() || maxsize == 0 {
-                    pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
-                    return;
-                }
-
-                let stride_bytes = meta.stride.max(meta.size.0 * 4);
-                let expected_size = (stride_bytes * meta.size.1) as usize;
-                let copy_len = frame_data.len().min(maxsize).min(expected_size);
-                std::ptr::copy_nonoverlapping(frame_data.as_ptr(), data_ptr, copy_len);
-
-                (*chunk).size = copy_len as u32;
-                (*chunk).offset = 0;
-                (*chunk).stride = stride_bytes as i32;
-                (*chunk).flags = 0;
-
-                state.sequence += 1;
-
-                // Write SPA meta header if present
-                let header_ptr = spa_buffer_find_meta_data(
-                    spa_buf,
-                    SPA_META_Header,
-                    size_of::<spa_meta_header>(),
-                ) as *mut spa_meta_header;
-                if !header_ptr.is_null() {
-                    (*header_ptr).flags = 0;
-                    (*header_ptr).offset = 0;
-                    (*header_ptr).pts = meta.time_ns as i64;
-                    (*header_ptr).dts_offset = 0;
-                    (*header_ptr).seq = state.sequence;
-                }
-
-                // Write full-frame damage meta if available
-                let damage_ptr = spa_buffer_find_meta_data(
-                    spa_buf,
-                    SPA_META_VideoDamage,
-                    size_of::<spa_meta_region>(),
-                ) as *mut spa_meta_region;
-                if !damage_ptr.is_null() {
-                    // First entry: full frame
-                    (*damage_ptr).region.position = spa_point { x: 0, y: 0 };
-                    (*damage_ptr).region.size = spa_rectangle {
-                        width: meta.size.0,
-                        height: meta.size.1,
-                    };
-                    // Second entry: terminator (invalid region)
-                    let term = damage_ptr.add(1);
-                    (*term).region.position = spa_point { x: 0, y: 0 };
-                    (*term).region.size = spa_rectangle { width: 0, height: 0 };
-                }
-
-                tracing::trace!(
-                    "Queued frame {} to PipeWire: {}x{} ({} bytes)",
-                    state.sequence,
-                    meta.size.0,
-                    meta.size.1,
-                    copy_len
-                );
-
-                // Explicitly queue the buffer back to PipeWire
-                pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
             }
         })
         .register()
@@ -746,16 +762,16 @@ fn run_pipewire_thread(
         loop {
             match frame_receiver.try_recv() {
                 Ok(frame) => {
-                    let (data, meta) = match frame {
-                        FrameData::Rgba { data, meta } => (data, meta),
-                        FrameData::DmaBuf { .. } => {
+                    let pending_frame = match frame {
+                        FrameData::Rgba { data, meta } => PendingFrame::Rgba { data, meta },
+                        FrameData::DmaBuf { dmabuf: _, meta: _ } => {
                             // For now, skip DMA-BUF frames
                             tracing::trace!("Skipping DMA-BUF frame (not implemented)");
                             continue;
                         }
                     };
 
-                    thread_state.borrow_mut().pending_frame = Some((data, meta));
+                    thread_state.borrow_mut().pending_frame = Some(pending_frame);
                     got_new_frame = true;
                 }
                 Err(mpsc::error::TryRecvError::Empty) => break,
@@ -1115,9 +1131,15 @@ fn run_pipewire_thread_sync(
             }
 
             // Only dequeue a buffer if we have a frame to send
-            let Some((frame_data, meta)) = state.pending_frame.take() else {
+            let Some(pending_frame) = state.pending_frame.take() else {
                 // No pending frame - don't dequeue, just return
                 return;
+            };
+
+            // Match on the frame type and extract metadata
+            let meta = match &pending_frame {
+                PendingFrame::Rgba { meta, .. } => meta,
+                PendingFrame::DmaBuf { meta, .. } => meta,
             };
 
             // Check frame timing to throttle based on negotiated framerate
@@ -1127,7 +1149,7 @@ fn run_pipewire_thread_sync(
                 let elapsed = now.saturating_sub(state.last_frame_time);
                 if elapsed < min_time {
                     // Too soon, put frame back and skip
-                    state.pending_frame = Some((frame_data, meta));
+                    state.pending_frame = Some(pending_frame);
                     tracing::trace!(
                         "Frame too soon: elapsed={:?}, min={:?}, skipping",
                         elapsed,
@@ -1141,7 +1163,7 @@ fn run_pipewire_thread_sync(
             let buffer_ptr = unsafe { stream.dequeue_raw_buffer() };
             if buffer_ptr.is_null() {
                 // Put frame back if we couldn't get a buffer
-                state.pending_frame = Some((frame_data, meta));
+                state.pending_frame = Some(pending_frame);
                 return;
             }
 
@@ -1154,7 +1176,7 @@ fn run_pipewire_thread_sync(
                 let spa_buffer = (*buffer_ptr).buffer;
                 if spa_buffer.is_null() || (*spa_buffer).n_datas == 0 {
                     pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
-                    state.pending_frame = Some((frame_data, meta));
+                    state.pending_frame = Some(pending_frame);
                     return;
                 }
 
@@ -1164,35 +1186,48 @@ fn run_pipewire_thread_sync(
 
                 if data_ptr.is_null() || maxsize == 0 {
                     pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
-                    state.pending_frame = Some((frame_data, meta));
+                    state.pending_frame = Some(pending_frame);
                     return;
                 }
 
-                // Copy frame data
-                let copy_len = frame_data.len().min(maxsize).min(frame_len);
-                std::ptr::copy_nonoverlapping(frame_data.as_ptr(), data_ptr, copy_len);
+                // Handle different frame types
+                match pending_frame {
+                    PendingFrame::Rgba { data: frame_data, meta } => {
+                        // Copy frame data to SHM buffer
+                        let copy_len = frame_data.len().min(maxsize).min(frame_len);
+                        std::ptr::copy_nonoverlapping(frame_data.as_ptr(), data_ptr, copy_len);
 
-                // Set chunk metadata
-                let chunk = (*spa_data).chunk;
-                (*chunk).offset = 0;
-                (*chunk).size = copy_len as u32;
-                (*chunk).stride = stride as i32;
-                (*chunk).flags = 0;
+                        // Set chunk metadata
+                        let chunk = (*spa_data).chunk;
+                        (*chunk).offset = 0;
+                        (*chunk).size = copy_len as u32;
+                        (*chunk).stride = stride as i32;
+                        (*chunk).flags = 0;
 
-                state.sequence += 1;
-                state.last_frame_time = now;
+                        state.sequence += 1;
+                        state.last_frame_time = now;
 
-                // Write damage metadata
-                write_damage_metadata(spa_buffer, &meta, width as u32, height as u32);
+                        // Write damage metadata
+                        write_damage_metadata(spa_buffer, &meta, width as u32, height as u32);
 
-                tracing::trace!(
-                    "PW_PROCESS: Queued frame {} to PipeWire: {}x{} ({} bytes), has_damage={}",
-                    state.sequence,
-                    meta.size.0,
-                    meta.size.1,
-                    copy_len,
-                    meta.has_damage
-                );
+                        tracing::trace!(
+                            "PW_PROCESS: Queued RGBA frame {} to PipeWire: {}x{} ({} bytes), has_damage={}",
+                            state.sequence,
+                            meta.size.0,
+                            meta.size.1,
+                            copy_len,
+                            meta.has_damage
+                        );
+                    }
+                    PendingFrame::DmaBuf { dmabuf: _, meta: _ } => {
+                        // TODO: Implement DMA-BUF zero-copy path
+                        // For now, just queue the buffer
+                        tracing::trace!("PW_PROCESS: DMA-BUF path not yet implemented");
+                        
+                        state.sequence += 1;
+                        state.last_frame_time = now;
+                    }
+                }
 
                 // Queue buffer back to PipeWire
                 pw::sys::pw_stream_queue_buffer(stream.as_raw_ptr(), buffer_ptr);
