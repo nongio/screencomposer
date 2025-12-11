@@ -105,15 +105,26 @@ enum NegotiationState {
     Ready,
 }
 
+/// Frame type being processed.
+enum PendingFrame {
+    /// RGBA frame (SHM/CPU copy path for winit).
+    Rgba {
+        data: Arc<[u8]>,
+        meta: FrameMetaSnapshot,
+    },
+    /// DMA-BUF frame (zero-copy path for udev).
+    DmaBuf {
+        dmabuf: smithay::backend::allocator::dmabuf::Dmabuf,
+        meta: FrameMetaSnapshot,
+    },
+}
+
 /// Internal state for the PipeWire stream thread.
 struct PipeWireThreadState {
     /// Negotiated video format.
     format: pw::spa::param::video::VideoInfoRaw,
     /// Current frame data waiting to be sent.
-    pending_frame: Option<(Arc<[u8]>, FrameMetaSnapshot)>,
-    /// Last frame data (kept for repeating when no new frame).
-    #[allow(dead_code)]
-    last_frame: Option<(Arc<[u8]>, FrameMetaSnapshot)>,
+    pending_frame: Option<PendingFrame>,
     /// Frame sequence counter for PTS calculation.
     sequence: u64,
     /// Minimum time between frames (from negotiated framerate).
@@ -124,6 +135,8 @@ struct PipeWireThreadState {
     negotiation_state: NegotiationState,
     /// Whether the negotiated format has alpha channel.
     format_has_alpha: bool,
+    /// DMA-BUF support (file descriptor to Dmabuf mapping for ALLOC_BUFFERS mode).
+    dmabuf_map: std::collections::HashMap<i64, smithay::backend::allocator::dmabuf::Dmabuf>,
 }
 
 /// A PipeWire stream for screen casting.
@@ -421,12 +434,12 @@ fn run_pipewire_thread(
     let thread_state = Rc::new(RefCell::new(PipeWireThreadState {
         format: Default::default(),
         pending_frame: None,
-        last_frame: None,
         sequence: 0,
         min_time_between_frames: Duration::ZERO,
         last_frame_time: Duration::ZERO,
         negotiation_state: NegotiationState::Initial,
         format_has_alpha: false,
+        dmabuf_map: std::collections::HashMap::new(),
     }));
 
     // Track if we've sent the ready signal
@@ -824,12 +837,12 @@ fn run_pipewire_thread_sync(
     let thread_state = Rc::new(RefCell::new(PipeWireThreadState {
         format: Default::default(),
         pending_frame: None,
-        last_frame: None,
         sequence: 0,
         min_time_between_frames: Duration::ZERO,
         last_frame_time: Duration::ZERO,
         negotiation_state: NegotiationState::Initial,
         format_has_alpha: false,
+        dmabuf_map: std::collections::HashMap::new(),
     }));
 
     // Track if we've sent the ready signal
@@ -1225,15 +1238,17 @@ fn run_pipewire_thread_sync(
         loop {
             match frame_receiver.try_recv() {
                 Ok(frame) => {
-                    let (data, meta) = match frame {
-                        FrameData::Rgba { data, meta } => (data, meta),
-                        FrameData::DmaBuf { .. } => {
-                            tracing::trace!("Skipping DMA-BUF frame (SHM only for now)");
-                            continue;
+                    let pending = match frame {
+                        FrameData::Rgba { data, meta } => {
+                            tracing::trace!("Received RGBA frame {}x{}", meta.size.0, meta.size.1);
+                            PendingFrame::Rgba { data, meta }
+                        }
+                        FrameData::DmaBuf { dmabuf, meta } => {
+                            tracing::trace!("Received DMA-BUF frame {}x{}", meta.size.0, meta.size.1);
+                            PendingFrame::DmaBuf { dmabuf, meta }
                         }
                     };
-                    tracing::trace!("Received RGBA frame {}x{}", meta.size.0, meta.size.1);
-                    thread_state.borrow_mut().pending_frame = Some((data, meta));
+                    thread_state.borrow_mut().pending_frame = Some(pending);
                     got_new_frame = true;
                 }
                 Err(mpsc::error::TryRecvError::Empty) => break,

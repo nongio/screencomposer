@@ -155,6 +155,7 @@ pub struct WinitData {
     #[cfg(feature = "fps_ticker")]
     pub fps: fps_ticker::Fps,
     last_capture_time: std::time::Instant,
+    offscreen_dmabuf: Option<smithay::backend::allocator::dmabuf::Dmabuf>,
 }
 
 impl DmabufHandler for ScreenComposer<WinitData> {
@@ -343,6 +344,7 @@ pub fn run_winit() {
             #[cfg(feature = "fps_ticker")]
             fps: fps_ticker::Fps::default(),
             last_capture_time: std::time::Instant::now(),
+            offscreen_dmabuf: None,
         }
     };
     let mut state = ScreenComposer::init(display, event_loop.handle(), data, true);
