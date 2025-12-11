@@ -154,6 +154,7 @@ pub struct WinitData {
     full_redraw: u8,
     #[cfg(feature = "fps_ticker")]
     pub fps: fps_ticker::Fps,
+    last_capture_time: std::time::Instant,
 }
 
 impl DmabufHandler for ScreenComposer<WinitData> {
@@ -341,6 +342,7 @@ pub fn run_winit() {
             full_redraw: 0,
             #[cfg(feature = "fps_ticker")]
             fps: fps_ticker::Fps::default(),
+            last_capture_time: std::time::Instant::now(),
         }
     };
     let mut state = ScreenComposer::init(display, event_loop.handle(), data, true);
@@ -603,19 +605,28 @@ pub fn run_winit() {
                     // Capture frame for screenshare if there are registered taps AND there's damage
                     // Must happen before submit() which swaps the buffer
                     // Only send frames when the screen actually changes
+                    // Throttle expensive GPU readback to max 60fps (16.67ms between captures)
                     let captured_frame = if !state.frame_tap_manager.is_empty() && render_result.damage.is_some() {
-                        let size = output
-                            .current_mode()
-                            .map(|m| (m.size.w as u32, m.size.h as u32))
-                            .unwrap_or((0, 0));
-                        tracing::trace!("Capturing frame for screenshare: size={:?}", size);
-                        let frame = crate::screenshare::capture_rgba_frame(renderer, size);
-                        if frame.is_none() {
-                            tracing::warn!("Failed to capture frame for screenshare");
+                        let now = std::time::Instant::now();
+                        let elapsed = now.duration_since(state.backend_data.last_capture_time);
+                        if elapsed >= std::time::Duration::from_millis(16) {
+                            state.backend_data.last_capture_time = now;
+                            let size = output
+                                .current_mode()
+                                .map(|m| (m.size.w as u32, m.size.h as u32))
+                                .unwrap_or((0, 0));
+                            tracing::trace!("Capturing frame for screenshare: size={:?}", size);
+                            let frame = crate::screenshare::capture_rgba_frame(renderer, size);
+                            if frame.is_none() {
+                                tracing::warn!("Failed to capture frame for screenshare");
+                            } else {
+                                tracing::trace!("Successfully captured frame for screenshare");
+                            }
+                            frame
                         } else {
-                            tracing::trace!("Successfully captured frame for screenshare");
+                            tracing::trace!("Skipping capture, too soon (elapsed={:?})", elapsed);
+                            None
                         }
-                        frame
                     } else {
                         None
                     };
