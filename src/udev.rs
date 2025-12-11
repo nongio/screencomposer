@@ -508,6 +508,19 @@ pub fn run_udev() {
     state.start_xwayland();
 
     /*
+     * Start the screenshare D-Bus service
+     */
+    match crate::screenshare::ScreenshareManager::start(&event_loop.handle()) {
+        Ok(manager) => {
+            state.screenshare_manager = Some(manager);
+            tracing::info!("Screenshare D-Bus service started");
+        }
+        Err(e) => {
+            tracing::warn!("Failed to start screenshare D-Bus service: {}", e);
+        }
+    }
+
+    /*
      * And run our loop
      */
 

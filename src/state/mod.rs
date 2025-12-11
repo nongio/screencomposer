@@ -202,6 +202,8 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     // screenshare
     pub frame_tap_manager: crate::screenshare::FrameTapManager,
     pub screenshare_sessions: HashMap<String, crate::screenshare::ScreencastSession>,
+    /// Manager for the screenshare D-Bus service (started lazily when needed).
+    pub screenshare_manager: Option<crate::screenshare::ScreenshareManager>,
 }
 
 pub mod data_device_handler;
@@ -441,6 +443,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             // screenshare
             frame_tap_manager: crate::screenshare::FrameTapManager::default(),
             screenshare_sessions: HashMap::new(),
+            screenshare_manager: None,
         };
 
         composer.rebuild_keycode_remap();

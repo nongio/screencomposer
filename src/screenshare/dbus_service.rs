@@ -289,18 +289,51 @@ impl SessionInterface {
         };
 
         for stream_path in stream_paths {
-            let mut streams = self.streams.write().await;
-            if let Some(stream) = streams.get_mut(&stream_path) {
-                stream.started = true;
+            let connector = {
+                let streams = self.streams.read().await;
+                streams.get(&stream_path).map(|s| s.connector.clone())
+            };
 
-                // Notify compositor to start recording
-                if let Err(e) = self.compositor_tx.send(CompositorCommand::StartRecording {
-                    session_id: self.session_path.clone(),
-                    output_connector: stream.connector.clone(),
-                }) {
-                    error!(?e, "Failed to start recording");
+            let Some(connector) = connector else {
+                continue;
+            };
+
+            // Create response channel for node_id
+            let (tx, rx) = tokio::sync::oneshot::channel();
+
+            // Notify compositor to start recording
+            if let Err(e) = self.compositor_tx.send(CompositorCommand::StartRecording {
+                session_id: self.session_path.clone(),
+                output_connector: connector.clone(),
+                response_tx: tx,
+            }) {
+                error!(?e, "Failed to start recording");
+                return Err(zbus::fdo::Error::Failed(format!(
+                    "Failed to start recording: {e}"
+                )));
+            }
+
+            // Wait for response with node_id
+            match rx.await {
+                Ok(Ok(node_id)) => {
+                    info!(%connector, node_id, "Recording started, got PipeWire node");
+                    let mut streams = self.streams.write().await;
+                    if let Some(stream) = streams.get_mut(&stream_path) {
+                        info!(session = %self.session_path, stream_path = %stream_path, connector = %connector, node_id, "Marking stream as started in session");
+                        stream.started = true;
+                        stream.node_id = Some(node_id);
+                    }
+                }
+                Ok(Err(e)) => {
+                    error!(%connector, %e, "Failed to start recording");
                     return Err(zbus::fdo::Error::Failed(format!(
                         "Failed to start recording: {e}"
+                    )));
+                }
+                Err(e) => {
+                    error!(%connector, ?e, "Response channel error");
+                    return Err(zbus::fdo::Error::Failed(format!(
+                        "Response channel error: {e}"
                     )));
                 }
             }
@@ -315,8 +348,10 @@ impl SessionInterface {
 
         // Stop all streams
         let mut streams = self.streams.write().await;
-        for (_path, stream) in streams.iter_mut() {
+        info!(session = %self.session_path, stream_count = streams.len(), "Stopping {} streams", streams.len());
+        for (path, stream) in streams.iter_mut() {
             if stream.started {
+                info!(session = %self.session_path, stream_path = %path, connector = %stream.connector, "Stopping started stream");
                 stream.started = false;
 
                 if let Err(e) = self.compositor_tx.send(CompositorCommand::StopRecording {
@@ -325,6 +360,8 @@ impl SessionInterface {
                 }) {
                     warn!(?e, "Failed to stop recording");
                 }
+            } else {
+                info!(session = %self.session_path, stream_path = %path, connector = %stream.connector, "Skipping non-started stream");
             }
         }
 

@@ -93,6 +93,8 @@ pub enum CompositorCommand {
     StartRecording {
         session_id: String,
         output_connector: String,
+        /// Response channel for the PipeWire node ID.
+        response_tx: tokio::sync::oneshot::Sender<Result<u32, String>>,
     },
     /// Stop recording on a specific output.
     StopRecording {
@@ -222,6 +224,7 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
         CompositorCommand::StartRecording {
             session_id,
             output_connector,
+            response_tx,
         } => {
             tracing::info!(
                 "StartRecording: session={}, output={}",
@@ -238,7 +241,7 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
             let output = match output {
                 Some(o) => o.clone(),
                 None => {
-                    tracing::error!("Output not found: {}", output_connector);
+                    let _ = response_tx.send(Err(format!("Output not found: {}", output_connector)));
                     return;
                 }
             };
@@ -247,14 +250,14 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
             let session = match state.screenshare_sessions.get_mut(&session_id) {
                 Some(s) => s,
                 None => {
-                    tracing::error!("Session not found: {}", session_id);
+                    let _ = response_tx.send(Err(format!("Session not found: {}", session_id)));
                     return;
                 }
             };
 
             // Check if already recording this output
             if session.streams.contains_key(&output_connector) {
-                tracing::warn!("Already recording output: {}", output_connector);
+                let _ = response_tx.send(Err(format!("Already recording output: {}", output_connector)));
                 return;
             }
 
@@ -272,7 +275,23 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
                 framerate_denom: 1,
                 ..Default::default()
             };
-            let (pipewire_stream, frame_sender) = PipeWireStream::new(config);
+            let (mut pipewire_stream, frame_sender) = PipeWireStream::new(config);
+
+            // Start the PipeWire stream synchronously (spawns a thread and connects to PipeWire)
+            let node_id = match pipewire_stream.start_sync() {
+                Ok(id) => id,
+                Err(e) => {
+                    let _ = response_tx.send(Err(format!("Failed to start PipeWire stream: {}", e)));
+                    return;
+                }
+            };
+
+            tracing::info!(
+                "PipeWire stream started: session={}, output={}, node_id={}",
+                session_id,
+                output_connector,
+                node_id
+            );
 
             // Create output ID for the tap
             let output_id = OutputId::from_output(&output);
@@ -304,6 +323,9 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
                     frame_sender,
                 },
             );
+
+            // Send success response with node_id
+            let _ = response_tx.send(Ok(node_id));
         }
         CompositorCommand::StopRecording {
             session_id,
@@ -327,9 +349,15 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
             // Remove and stop the stream
             if let Some(stream) = session.streams.remove(&output_connector) {
                 // Unregister the tap
+                tracing::info!(
+                    "Unregistering frame tap token={:?} for session={}, output={}",
+                    stream.tap_token,
+                    session_id,
+                    output_connector
+                );
                 state.frame_tap_manager.unregister(stream.tap_token);
                 tracing::info!(
-                    "Unregistered frame tap for session={}, output={}",
+                    "Successfully unregistered frame tap for session={}, output={}",
                     session_id,
                     output_connector
                 );

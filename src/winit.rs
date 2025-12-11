@@ -34,7 +34,7 @@ use smithay::{
         wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
         wayland_server::{protocol::wl_surface, Display},
         winit::{
-            dpi::LogicalSize, dpi::Size, platform::pump_events::PumpStatus,
+            dpi::PhysicalSize, dpi::Size, platform::pump_events::PumpStatus,
             window::WindowAttributes,
         },
     },
@@ -364,6 +364,17 @@ pub fn run_winit() {
     #[cfg(feature = "xwayland")]
     state.start_xwayland();
 
+    // Start the screenshare D-Bus service
+    match crate::screenshare::ScreenshareManager::start(&event_loop.handle()) {
+        Ok(manager) => {
+            state.screenshare_manager = Some(manager);
+            info!("Screenshare D-Bus service started");
+        }
+        Err(e) => {
+            warn!("Failed to start screenshare D-Bus service: {}", e);
+        }
+    }
+
     info!("Initialization completed, starting the main loop.");
 
     let mut pointer_element = PointerElement::<SkiaTexture>::default();
@@ -517,6 +528,7 @@ pub fn run_winit() {
 
             // println!("cursor phy size: {:?}, config_phy {:?} should_scale: {}", cursor_phy_size, cursor_config_physical_size, cursor_rescale);
             let pointer_uses_surface = !cursor_visible;
+            let has_screenshare_taps = !state.frame_tap_manager.is_empty();
             let should_draw = scene_has_damage
                 || needs_redraw_soon
                 || pointer_uses_surface
@@ -589,16 +601,22 @@ pub fn run_winit() {
                         _ => unreachable!(),
                     })?;
 
-                    // Capture frame for screenshare if there are registered taps
+                    // Capture frame for screenshare if there are registered taps AND there's damage
                     // Must happen before submit() which swaps the buffer
-                    let captured_frame = if !state.frame_tap_manager.is_empty()
-                        && render_result.damage.is_some()
-                    {
+                    // Only send frames when the screen actually changes
+                    let captured_frame = if !state.frame_tap_manager.is_empty() && render_result.damage.is_some() {
                         let size = output
                             .current_mode()
                             .map(|m| (m.size.w as u32, m.size.h as u32))
                             .unwrap_or((0, 0));
-                        crate::screenshare::capture_rgba_frame(renderer, size)
+                        tracing::trace!("Capturing frame for screenshare: size={:?}", size);
+                        let frame = crate::screenshare::capture_rgba_frame(renderer, size);
+                        if frame.is_none() {
+                            tracing::warn!("Failed to capture frame for screenshare");
+                        } else {
+                            tracing::trace!("Successfully captured frame for screenshare");
+                        }
+                        frame
                     } else {
                         None
                     };
@@ -666,6 +684,10 @@ pub fn run_winit() {
                                     })
                                     .collect::<Vec<_>>()
                             });
+                            tracing::trace!(
+                                "Notifying frame tap manager with damage: has_damage={}",
+                                damage.is_some()
+                            );
                             state.frame_tap_manager.notify_rgba_with_damage(
                                 &output,
                                 frame,
@@ -744,8 +766,8 @@ pub fn run_winit() {
     }
 }
 
-fn resolve_winit_window_size() -> LogicalSize<f64> {
-    let (width, height) = Config::with(|config| {
+fn resolve_winit_window_size() -> PhysicalSize<u32> {
+    let resolution = Config::with(|config| {
         let descriptor = DisplayDescriptor {
             connector: WINIT_DISPLAY_ID,
             vendor: None,
@@ -756,8 +778,7 @@ fn resolve_winit_window_size() -> LogicalSize<f64> {
             .resolve_display_profile(WINIT_DISPLAY_ID, &descriptor)
             .and_then(|profile| profile.resolution)
             .unwrap_or(WINIT_FALLBACK_RESOLUTION)
-            .as_f64()
     });
 
-    LogicalSize::new(width, height)
+    PhysicalSize::new(resolution.width, resolution.height)
 }

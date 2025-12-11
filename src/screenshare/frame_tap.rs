@@ -439,14 +439,11 @@ impl FrameTapManager {
             return;
         }
 
-        tracing::debug!(
-            "FrameTapManager: notifying {} taps with RGBA ({}x{}, stride={}), damage={}, sync={:?}",
+        tracing::trace!(
+            "Notifying {} taps with RGBA ({}x{})",
             self.taps.len(),
             frame.size().0,
-            frame.size().1,
-            frame.stride(),
-            has_damage,
-            sync.as_ref().map(|_| "Some")
+            frame.size().1
         );
 
         let meta = FrameMeta::from_params_with_damage(

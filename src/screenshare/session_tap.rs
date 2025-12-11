@@ -20,6 +20,8 @@ pub struct ScreencastSessionTap {
     frame_sender: mpsc::Sender<FrameData>,
     /// Whether this tap wants all frames regardless of damage.
     wants_all_frames: bool,
+    /// Avoid spamming logs once the PipeWire channel is closed.
+    channel_closed_logged: std::sync::atomic::AtomicBool,
 }
 
 /// Frame data sent to the PipeWire stream.
@@ -75,7 +77,8 @@ impl ScreencastSessionTap {
             session_id,
             target_output,
             frame_sender,
-            wants_all_frames: false,
+            wants_all_frames: true, // Screenshare needs continuous frames
+            channel_closed_logged: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -166,28 +169,13 @@ impl FrameTap for ScreencastSessionTap {
     }
 
     fn on_frame_rgba(&self, out: &OutputId, frame: &RgbaFrame, meta: &FrameMeta) {
-        tracing::info!(
-            "Session {}: received RGBA frame for output {:?}",
-            self.session_id,
-            out
-        );
         // Filter by output
         if out != &self.target_output {
-            tracing::info!(
-                "Session {}: skipping frame for output {:?} (target is {:?})",
-                self.session_id,
-                out,
-                self.target_output
-            );
             return;
         }
 
         // Skip frames with no damage unless we want all frames
         if !meta.has_damage && !self.wants_all_frames {
-            tracing::trace!(
-                "Skipping RGBA frame for session {}: no damage",
-                self.session_id
-            );
             return;
         }
 
@@ -202,7 +190,7 @@ impl FrameTap for ScreencastSessionTap {
             meta: snapshot,
         }) {
             Ok(()) => {
-                tracing::debug!(
+                tracing::trace!(
                     "Sent RGBA frame to PipeWire for session {}: {}x{}",
                     self.session_id,
                     frame.size().0,
@@ -216,10 +204,15 @@ impl FrameTap for ScreencastSessionTap {
                 );
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
-                tracing::warn!(
-                    "Frame dropped for session {}: PipeWire channel closed",
-                    self.session_id
-                );
+                if !self
+                    .channel_closed_logged
+                    .swap(true, std::sync::atomic::Ordering::Relaxed)
+                {
+                    tracing::warn!(
+                        "Frame dropped for session {}: PipeWire channel closed",
+                        self.session_id
+                    );
+                }
             }
         }
     }
