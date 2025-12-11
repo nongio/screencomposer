@@ -58,6 +58,8 @@ pub struct StreamConfig {
     pub framerate_denom: u32,
     /// Pixel format (FourCC code).
     pub format: u32,
+    /// Whether to offer alpha channel support.
+    pub offer_alpha: bool,
     /// Whether to prefer DMA-BUF over SHM.
     pub prefer_dmabuf: bool,
 }
@@ -70,6 +72,7 @@ impl Default for StreamConfig {
             framerate_num: 60,
             framerate_denom: 1,
             format: 0x34325241, // ARGB8888 as FourCC
+            offer_alpha: false, // BGRx by default (opaque desktop)
             prefer_dmabuf: false, // Use SHM for now (simpler)
         }
     }
@@ -87,6 +90,21 @@ struct SharedState {
 
 // No longer needed - PipeWire allocates buffers when using ALLOC_BUFFERS
 
+/// Negotiation state for format handling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NegotiationState {
+    /// Initial state, waiting for format negotiation.
+    Initial,
+    /// Format received, checking if it needs fixation (for DMA-BUF modifiers).
+    #[allow(dead_code)]
+    CheckingFormat,
+    /// Format fixated, waiting for confirmation.
+    #[allow(dead_code)]
+    AwaitingConfirmation,
+    /// Format confirmed and ready to stream.
+    Ready,
+}
+
 /// Internal state for the PipeWire stream thread.
 struct PipeWireThreadState {
     /// Negotiated video format.
@@ -102,6 +120,10 @@ struct PipeWireThreadState {
     min_time_between_frames: Duration,
     /// Timestamp of last sent frame.
     last_frame_time: Duration,
+    /// Current negotiation state.
+    negotiation_state: NegotiationState,
+    /// Whether the negotiated format has alpha channel.
+    format_has_alpha: bool,
 }
 
 /// A PipeWire stream for screen casting.
@@ -403,6 +425,8 @@ fn run_pipewire_thread(
         sequence: 0,
         min_time_between_frames: Duration::ZERO,
         last_frame_time: Duration::ZERO,
+        negotiation_state: NegotiationState::Initial,
+        format_has_alpha: false,
     }));
 
     // Track if we've sent the ready signal
@@ -804,6 +828,8 @@ fn run_pipewire_thread_sync(
         sequence: 0,
         min_time_between_frames: Duration::ZERO,
         last_frame_time: Duration::ZERO,
+        negotiation_state: NegotiationState::Initial,
+        format_has_alpha: false,
     }));
 
     // Track if we've sent the ready signal
@@ -887,21 +913,42 @@ fn run_pipewire_thread_sync(
 
             let size = state.format.size();
             let framerate = state.format.framerate();
+            let max_framerate = state.format.max_framerate();
+            let video_format = state.format.format();
             
-            // Calculate minimum time between frames from negotiated framerate
-            if framerate.num > 0 && framerate.denom > 0 {
-                let frame_duration_us = 1_000_000 * u64::from(framerate.denom) / u64::from(framerate.num);
+            // Determine if format has alpha based on negotiated format
+            state.format_has_alpha = video_format == VideoFormat::BGRA;
+            
+            // Calculate minimum time between frames from negotiated max framerate
+            // Use max_framerate if set, otherwise fall back to framerate
+            let (rate_num, rate_denom) = if max_framerate.num > 0 && max_framerate.denom > 0 {
+                (max_framerate.num, max_framerate.denom)
+            } else if framerate.num > 0 && framerate.denom > 0 {
+                (framerate.num, framerate.denom)
+            } else {
+                (0, 0)
+            };
+            
+            if rate_num > 0 && rate_denom > 0 {
+                let frame_duration_us = 1_000_000 * u64::from(rate_denom) / u64::from(rate_num);
                 state.min_time_between_frames = Duration::from_micros(frame_duration_us);
             }
             
+            // Mark as ready (for now, no fixation needed for SHM)
+            // When DMA-BUF is added, we'll check for DONT_FIXATE modifiers here
+            state.negotiation_state = NegotiationState::Ready;
+            
             tracing::info!(
-                "PipeWire format negotiated: {:?} {}x{} @ {}/{} (min_frame_time={:?})",
-                state.format.format(),
+                "PipeWire format negotiated: {:?} {}x{} @ {}/{} max={}/{} (min_frame_time={:?}, alpha={})",
+                video_format,
                 size.width,
                 size.height,
                 framerate.num,
                 framerate.denom,
-                state.min_time_between_frames
+                max_framerate.num,
+                max_framerate.denom,
+                state.min_time_between_frames,
+                state.format_has_alpha
             );
 
             // Tell PipeWire buffer requirements with MemFd data type
@@ -1141,34 +1188,13 @@ fn run_pipewire_thread_sync(
         .register()
         .map_err(|e| PipeWireError::InitFailed(format!("Failed to register listener: {}", e)))?;
 
-    // Build format parameters
-    let format_obj = pw::spa::pod::object!(
-        SpaTypes::ObjectParamFormat,
-        ParamType::EnumFormat,
-        pw::spa::pod::property!(FormatProperties::MediaType, Id, MediaType::Video),
-        pw::spa::pod::property!(FormatProperties::MediaSubtype, Id, MediaSubtype::Raw),
-        pw::spa::pod::property!(FormatProperties::VideoFormat, Id, VideoFormat::BGRx),
-        pw::spa::pod::property!(
-            FormatProperties::VideoSize,
-            Rectangle,
-            Rectangle { width: config.width, height: config.height }
-        ),
-        pw::spa::pod::property!(
-            FormatProperties::VideoFramerate,
-            Fraction,
-            Fraction { num: config.framerate_num, denom: config.framerate_denom }
-        )
-    );
-
-    let format_bytes: Vec<u8> = pw::spa::pod::serialize::PodSerializer::serialize(
-        std::io::Cursor::new(Vec::new()),
-        &pw::spa::pod::Value::Object(format_obj),
-    )
-    .map_err(|e| PipeWireError::InitFailed(format!("Failed to serialize format: {:?}", e)))?
-    .0
-    .into_inner();
-
-    let mut params = [Pod::from_bytes(&format_bytes).unwrap()];
+    // Build format parameters - offer both alpha and non-alpha formats
+    // This allows the consumer to choose based on their needs
+    let formats = build_format_params(&config);
+    let mut param_refs: Vec<&Pod> = formats
+        .iter()
+        .filter_map(|b| Pod::from_bytes(b))
+        .collect();
 
     // Connect with DRIVER + ALLOC_BUFFERS (we allocate our own buffers)
     stream
@@ -1176,7 +1202,7 @@ fn run_pipewire_thread_sync(
             Direction::Output,
             None,
             StreamFlags::DRIVER | StreamFlags::ALLOC_BUFFERS,
-            &mut params,
+            &mut param_refs,
         )
         .map_err(|e| PipeWireError::InitFailed(format!("Failed to connect stream: {}", e)))?;
 
@@ -1273,6 +1299,102 @@ fn build_video_format_params(config: &StreamConfig) -> pw::spa::pod::Object {
             }
         )
     )
+}
+
+/// Build format parameters for PipeWire negotiation.
+///
+/// Offers multiple formats in order of preference:
+/// 1. BGRx (no alpha) - most efficient for opaque desktop capture
+/// 2. BGRA (with alpha) - if consumer needs transparency (optional based on config)
+///
+/// Uses variable framerate (0/1) with max framerate as a range to let the consumer
+/// control the capture rate within our maximum.
+///
+/// For future DMA-BUF support, this function will also offer modifiers with DONT_FIXATE.
+fn build_format_params(config: &StreamConfig) -> Vec<Vec<u8>> {
+    use pw::spa::pod::serialize::PodSerializer;
+    use pw::spa::utils::{Fraction, Rectangle};
+    use std::io::Cursor;
+
+    let mut params = Vec::new();
+
+    // Always offer BGRx (opaque) as primary format
+    let bgrx_obj = pw::spa::pod::object!(
+        SpaTypes::ObjectParamFormat,
+        ParamType::EnumFormat,
+        pw::spa::pod::property!(FormatProperties::MediaType, Id, MediaType::Video),
+        pw::spa::pod::property!(FormatProperties::MediaSubtype, Id, MediaSubtype::Raw),
+        pw::spa::pod::property!(FormatProperties::VideoFormat, Id, VideoFormat::BGRx),
+        pw::spa::pod::property!(
+            FormatProperties::VideoSize,
+            Rectangle,
+            Rectangle { width: config.width, height: config.height }
+        ),
+        pw::spa::pod::property!(
+            FormatProperties::VideoFramerate,
+            Fraction,
+            Fraction { num: 0, denom: 1 }  // Variable framerate
+        ),
+        pw::spa::pod::property!(
+            FormatProperties::VideoMaxFramerate,
+            Choice,
+            Range,
+            Fraction,
+            Fraction { num: config.framerate_num, denom: config.framerate_denom },
+            Fraction { num: 1, denom: 1 },  // Min: 1fps
+            Fraction { num: config.framerate_num, denom: config.framerate_denom }  // Max
+        )
+    );
+
+    if let Ok(bytes) = PodSerializer::serialize(
+        Cursor::new(Vec::new()),
+        &pw::spa::pod::Value::Object(bgrx_obj),
+    )
+    .map(|v| v.0.into_inner())
+    {
+        params.push(bytes);
+    }
+
+    // Optionally offer BGRA (with alpha) if configured
+    if config.offer_alpha {
+        let bgra_obj = pw::spa::pod::object!(
+            SpaTypes::ObjectParamFormat,
+            ParamType::EnumFormat,
+            pw::spa::pod::property!(FormatProperties::MediaType, Id, MediaType::Video),
+            pw::spa::pod::property!(FormatProperties::MediaSubtype, Id, MediaSubtype::Raw),
+            pw::spa::pod::property!(FormatProperties::VideoFormat, Id, VideoFormat::BGRA),
+            pw::spa::pod::property!(
+                FormatProperties::VideoSize,
+                Rectangle,
+                Rectangle { width: config.width, height: config.height }
+            ),
+            pw::spa::pod::property!(
+                FormatProperties::VideoFramerate,
+                Fraction,
+                Fraction { num: 0, denom: 1 }  // Variable framerate
+            ),
+            pw::spa::pod::property!(
+                FormatProperties::VideoMaxFramerate,
+                Choice,
+                Range,
+                Fraction,
+                Fraction { num: config.framerate_num, denom: config.framerate_denom },
+                Fraction { num: 1, denom: 1 },
+                Fraction { num: config.framerate_num, denom: config.framerate_denom }
+            )
+        );
+
+        if let Ok(bytes) = PodSerializer::serialize(
+            Cursor::new(Vec::new()),
+            &pw::spa::pod::Value::Object(bgra_obj),
+        )
+        .map(|v| v.0.into_inner())
+        {
+            params.push(bytes);
+        }
+    }
+
+    params
 }
 
 /// Write damage metadata to a PipeWire buffer.
