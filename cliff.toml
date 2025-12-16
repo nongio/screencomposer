@@ -81,6 +81,6 @@ topo_order = false
 # sort the commits inside sections by oldest/newest order
 sort_commits = "oldest"
 [bump]
-features_always_bump_minor = true
+features_always_bump_minor = false
 breaking_always_bump_major = true
 initial_tag = "v0.2.0"

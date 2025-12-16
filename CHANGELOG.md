@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### 🚀 Features
+
+- Xdg-desktop-portal for screencomposer
+- Screenshare fullscreen
+- Session script for dbus and keyring
+- Script for aumated testing
+
+### 🐛 Bug Fixes
+
+- Agent instructions + CLAUDE.md symlink
+- Agents.md
+
+### 📚 Documentation
+
+- Update screenshare
+
+### Review
+
+- Remove unused deps
+
 ## [0.9.0] - 2025-12-08
 
 ### 🚀 Features
