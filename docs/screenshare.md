@@ -1,302 +1,377 @@
-Screensharing and screenshots: plan and phases
+# Screen Sharing in ScreenComposer
 
-This document consolidates the screensharing feature plan. It’s the canonical reference for scope, design, and phased delivery. Issue pages in docs/issues/* link back here.
+This document describes the screen sharing implementation in ScreenComposer, including
+architecture, D-Bus API, and PipeWire integration.
 
-If you’re looking for the quick-start user doc, see docs/screensharing.md.
+## Overview
 
-Contents at a glance
-- Portal-first screencast path (via xdg-desktop-portal + PipeWire)
-- Deterministic headless screenshots for CI
-- Security and UX (recording indicator, sensitive windows)
-- Deliverables and module layout (single-crate)
-- Screencopy server details (zwlr_screencopy_v1)
-- Policy and dynamic cast target
-- Optional PipeWire publisher API
-- CLI subcommands
-- Acceptance tests and constraints
+ScreenComposer implements screen sharing via the xdg-desktop-portal standard, allowing
+applications like OBS, Chromium, Firefox, and GNOME tools to capture screen content
+through PipeWire video streams.
 
-The full plan
-
-Goal: Implement portal-first screen sharing (PipeWire) and UX parity with Niri: screencast monitors/windows via xdg-desktop-portal, support block sensitive windows, and dynamic cast target. Provide deterministic headless screenshots for CI.
-
-Portal path (default for users)
-Make ScreenComposer compatible with xdg-desktop-portal screencasting:
-- Ensure we support zwlr_screencopy_v1 and linux-dmabuf (zero-copy when available).
-- Ensure we expose window/monitor metadata sufficient for window and monitor selection.
-- Add hooks to exclude specific surfaces from screencast ("sensitive windows").
-- Add a control to switch the active cast target at runtime ("dynamic cast target").
-- We do not implement our own portal backend now; we interoperate with existing backends (like xdg-desktop-portal-gnome or wlr).
-
-Deterministic path (CI)
-Add a headless output and a single-frame screenshot CLI for goldens:
-- sc screen screenshot --out <png> [--output <name>] [--region x,y,w,h] [--frame N]
-- This bypasses portals to keep CI reproducible.
-
-Security
-- Portal path: inherit portal prompts/indicators.
-- Direct screencopy/screenshot path disabled by default; only enabled with --automation flag or config key. Add an on-screen "recording" dot overlay while active.
-
-Deliverables / repo layout (single-crate)
-Create or modify these files under the existing src/ tree. No workspace/crates split is required.
-- src/screenshare/frame_tap.rs: A FrameTap that receives every composed frame (after render, before swap). Integrate this into the compositor’s render loop and virtual outputs (in src/udev.rs initially). Keep it behind the screenshare feature flag.
-- src/screencopy/mod.rs (+ protocol.rs): Implement zwlr_screencopy_v1 minimal server side: capture_output, capture_output_region, frame acquire/commit lifecycle. Prefer dmabuf export; fallback to shm using a readback copy. Respect damage; throttle to chosen fps for screencast sessions. If Smithay provides a helper for screencopy at the pinned revision, prefer that. Otherwise, vendor the XML under src/screencopy/protocols/wlr-screencopy-unstable-v1.xml and generate code with wayland-scanner (mirroring src/sc_layer_shell/).
-- src/screenshare/policy.rs: "Sensitive windows" policy + dynamic cast target. Maintain an allow/deny flag per toplevel (by app_id or surface_id). Public API: set_surface_screencast_blocked(surface, blocked) and set_cast_target(target: CastTarget::Output|Window). Screencopy/stream path must skip blocked surfaces when compositing to the screencast buffer.
-- src/screenshare/pipewire.rs (optional): A PipeWirePublisher that can publish a video node from the FrameTap stream. Negotiate caps; use dmabuf planes when available; otherwise copy into SPA buffers. Map pts/time via spa_meta_header.
-
-Simple API (feature = "pipewire")
-pub struct PipeWirePublisher { /* ... */ }
-impl PipeWirePublisher {
-  pub fn new(name: &str, w: u32, h: u32, fps: (u32,u32)) -> anyhow::Result<Self>;
-  pub fn start_with_output(&mut self, out: OutputId) -> anyhow::Result<()>;
-  pub fn stop(self) -> anyhow::Result<()>;
-}
-
-Binary/CLI
-New commands:
-- sc screen stream --pipewire [--output NAME] [--window TITLE|APP_ID] [--fps 30] [--size 1920x1080]
-- sc screen screenshot --out file.png [--output NAME] [--region x,y,w,h] [--frame N]
-- sc screen block-window --window-id TLID --on/--off
-- sc screen set-target --output NAME | --window TLID
-
-Rust crates to use
-- wayland-server, smithay (already in project)
-- pipewire (+ spa) Rust bindings (optional)
-- image (PNG write) for screenshots
-- thiserror, anyhow, tracing for errors/logging
-
-Key coding details
-Screencopy server (Smithay)
-- When client requests a frame: If dmabuf export supported by GPU path, advertise and fill planes. Else allocate shm pool, copy pixels from last composed FBO (use PBO if present) into SHM. Cursor inclusion optional (follow request flag). Ensure per-output capture and region capture both work.
-
-"Sensitive windows"
-- During the "cast composition," skip surfaces with blocked == true. Expose a runtime toggle (CLI + config). Add a visual indicator on blocked windows (e.g., hashed overlay) when a screencast session is active.
-
-Dynamic cast target
-- Store a current CastTarget; on change, rewire the screencopy source and PipeWire stream without tearing down the whole session when possible. If a selected window disappears, emit an event and fall back to "no source" until retargeted.
-
-Headless deterministic screenshots
-- Provide a surfaceless EGL or software path. For --frame N, advance a fixed simulation clock and render deterministically, then dump PNG.
-
-Security & UX
-- Portal path (default): rely on system xdg-desktop-portal for prompts & PipeWire session.
-- Direct path: Hidden unless --automation is present or config enables. Show a red dot overlay while streaming or capturing. Log JSON audit lines to artifacts/agent/audit.jsonl.
-
-Acceptance tests (must pass)
-- Portal interop: On a desktop session with xdg-desktop-portal-(gnome|wlr) running: OBS / Firefox / Chromium should list ScreenComposer in "Share Screen/Window". Selecting a monitor or window captures via PipeWire; sharing works.
-- Block sensitive window: Mark one window blocked; start a window cast on its parent workspace—blocked content must not appear in the stream.
-- Dynamic target: Start a monitor cast, then sc screen set-target --window <TLID> and verify the portal client’s stream switches to that window without restarting the whole compositor.
-- Headless CI: screencomposer --headless --virtual-output 1920x1080@60 --automation and sc screen screenshot --out frame.png --frame 200 produces a deterministic image that matches goldens.
-
-Constraints
-- Keep new code behind feature flags: features = ["screencopy", "pipewire", "screenshare", "headless"]. If dmabuf export is unavailable, automatically fall back to shm; never crash. Code must be well-commented and follow existing project style (rustfmt on).
-
-Implementation notes for this repository
-- Use src/screenshare/* for FrameTap, policy, screenshots, and optional PipeWire.
-- Place the screencopy protocol alongside src/sc_layer_shell style (module with generated protocol code).
-- Hook FrameTap in src/udev.rs after damage_tracker.render_output(...) and before queueing the frame.
-- Add docs in docs/ to explain rendering flow and project structure.
-- If an API detail is missing, use common Smithay/PipeWire patterns and keep interfaces simple and documented.
-<!-- Main screensharing plan moved here from new_feature_screenshare.md -->
-Goal: Implement portal-first screen sharing (PipeWire) and UX parity with Niri: screencast monitors/windows via xdg-desktop-portal, support block sensitive windows, and dynamic cast target. Provide deterministic headless screenshots for CI.
-
-# High-level plan (follow exactly)
-
-## Portal path (default for users)
-
-Make ScreenComposer compatible with xdg-desktop-portal screencasting:
-
-Ensure we support zwlr_screencopy_v1 and linux-dmabuf (zero-copy when available).
-
-Ensure we expose window/monitor metadata sufficient for window and monitor selection.
-
-Add hooks to exclude specific surfaces from screencast (“sensitive windows”).
-
-Add a control to switch the active cast target at runtime (“dynamic cast target”).
-
-We do not implement our own portal backend now; we interoperate with existing backends (like xdg-desktop-portal-gnome or wlr).
-
-## Deterministic path (CI)
-
-Add a headless output and a single-frame screenshot CLI for goldens:
-
-sc screen screenshot --out <png> [--output <name>] [--region x,y,w,h] [--frame N]
-
-This bypasses portals to keep CI reproducible.
-
-## Security
-
-Portal path: inherit portal prompts/indicators.
-
-Direct screencopy/screenshot path disabled by default; only enabled with --automation flag or config key. Add an on-screen “recording” dot overlay while active.
-
-Deliverables / repo layout (single-crate)
-
-Create or modify these files under the existing `src/` tree. No workspace/crates split is required.
-
-src/screenshare/frame_tap.rs
-A FrameTap that receives every composed frame (after render, before swap):
+## Architecture
 
 ```
-pub struct FrameMeta { pub size: (u32,u32), pub stride: u32, pub fourcc: u32, pub time_ns: u64 }
-pub trait FrameTap: Send + Sync {
-    fn on_frame_rgba(&self, out: OutputId, buf: &MappedImage<'_>, meta: &FrameMeta);
-    fn on_frame_dmabuf(&self, out: OutputId, dmabuf: &DmabufHandle<'_>, meta: &FrameMeta);
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Application (OBS, Chromium, Firefox, GNOME Screen Recorder)                │
+│       │                                                                     │
+│       ▼ Portal D-Bus API (org.freedesktop.portal.ScreenCast)                │
+│                                                                             │
+│  xdg-desktop-portal (system service)                                        │
+│       │                                                                     │
+│       ▼ Backend D-Bus API (org.freedesktop.impl.portal.ScreenCast)          │
+│                                                                             │
+│  xdg-desktop-portal-sc                                                      │
+│  (components/xdg-desktop-portal-sc/)                                        │
+│       │                                                                     │
+│       ▼ Compositor D-Bus API (org.screencomposer.ScreenCast)                │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │  ScreenComposer Compositor                                          │    │
+│  │                                                                     │    │
+│  │  ┌─────────────────┐    ┌──────────────────────────────────────┐   │    │
+│  │  │ D-Bus Service   │    │ Render Loop (winit/udev)             │   │    │
+│  │  │ (tokio thread)  │    │                                      │   │    │
+│  │  │                 │    │  ┌────────────────────────────────┐  │   │    │
+│  │  │ CreateSession   │◄───│──│ Direct GPU Blit                │  │   │    │
+│  │  │ StartRecording  │    │  │ (Blit<Dmabuf> trait)           │  │   │    │
+│  │  │ StopRecording   │    │  │ • glBlitFramebuffer            │  │   │    │
+│  │  │ DestroySession  │    │  │ • Damage-aware regions         │  │   │    │
+│  │  └────────┬────────┘    │  │ • GPU-only (no CPU copy)       │  │   │    │
+│  │           │             │  └────────────┬───────────────────┘  │   │    │
+│  │           ▼             └───────────────│──────────────────────┘   │    │
+│  │  calloop channel                        ▼                          │    │
+│  │  ┌─────────────────────────────────────────────────────────────┐   │    │
+│  │  │  Session Management                                         │   │    │
+│  │  │  • Active screenshare sessions                              │   │    │
+│  │  │  • PipeWire buffer pool management                          │   │    │
+│  │  │  • Per-output stream tracking                               │   │    │
+│  │  └────────────────────────┬────────────────────────────────────┘   │    │
+│  │                           │                                        │    │
+│  │                           ▼                                        │    │
+│  │  ┌─────────────────────────────────────────────────────────────┐   │    │
+│  │  │               PipeWireStream (dedicated thread)             │   │    │
+│  │  │  - MainLoop, Context, Core, Stream                          │   │    │
+│  │  │  - DMA-BUF buffer management                                │   │    │
+│  │  │  - Video format negotiation (BGRA preferred)                │   │    │
+│  │  │  - VideoDamage metadata (SPA_META_VideoDamage)              │   │    │
+│  │  └────────────────────────┬────────────────────────────────────┘   │    │
+│  │                           │                                        │    │
+│  └───────────────────────────│────────────────────────────────────────┘    │
+│                              │                                             │
+│                              ▼ PipeWire video stream                       │
+│                                                                             │
+│  Application receives video frames via PipeWire                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Components
+
+### 1. D-Bus Service (`src/screenshare/dbus_service.rs`)
+
+The compositor exposes a D-Bus service at `org.screencomposer.ScreenCast` that the
+portal backend uses to control screen sharing sessions.
+
+**Interfaces:**
+
+| Interface | Path | Description |
+|-----------|------|-------------|
+| `org.screencomposer.ScreenCast` | `/org/screencomposer/ScreenCast` | Main service interface |
+| `org.screencomposer.ScreenCast.Session` | `/org/screencomposer/ScreenCast/session/<id>` | Per-session control |
+| `org.screencomposer.ScreenCast.Stream` | `/org/screencomposer/ScreenCast/stream/<id>` | Per-stream control |
+
+**Methods:**
+
+```
+org.screencomposer.ScreenCast:
+  CreateSession(properties: a{sv}) -> session_path: o
+  ListOutputs() -> connectors: as
+
+org.screencomposer.ScreenCast.Session:
+  RecordMonitor(connector: s, properties: a{sv}) -> stream_path: o
+  RecordWindow(properties: a{sv}) -> stream_path: o
+  Start()
+  Stop()
+  OpenPipeWireRemote(options: a{sv}) -> fd: h
+
+org.screencomposer.ScreenCast.Stream:
+  Start()
+  Stop()
+  PipeWireNode() -> info: a{sv}
+  Metadata() -> info: a{sv}
+```
+
+### 2. PipeWire Stream (`src/screenshare/pipewire_stream.rs`)
+
+The `PipeWireStream` manages the actual PipeWire video stream:
+
+**Features:**
+- Runs on a dedicated thread with its own PipeWire main loop
+- Creates `MainLoopBox`, `ContextBox`, and `StreamBox`
+- Negotiates video format (BGRA preferred for GPU compatibility)
+- Uses DMA-BUF buffers for zero-copy GPU rendering
+- Single buffer mode (min=1, max=1) for optimal damage tracking
+- Advertises VideoDamage metadata (SPA_META_VideoDamage) for client-side optimizations
+- Proper cleanup on stop/drop
+
+**Configuration:**
+
+```rust
+pub struct StreamConfig {
+    pub width: u32,              // Stream width
+    pub height: u32,             // Stream height
+    pub framerate_num: u32,      // Framerate numerator (e.g., 60)
+    pub framerate_denom: u32,    // Framerate denominator (e.g., 1)
+    pub gbm_device: Option<Arc<GbmDevice<DrmDeviceFd>>>,
+    pub capabilities: BackendCapabilities,
 }
 ```
 
-Integrate this into the compositor’s render loop and virtual outputs (in `src/udev.rs` initially). Keep it behind the `screenshare` feature flag.
+### 3. Command Handler (`src/screenshare/mod.rs`)
 
-src/screencopy/mod.rs (and `protocol.rs`)
-Implement zwlr_screencopy_v1 minimal server side:
+The command handler bridges async D-Bus operations with the sync compositor loop:
 
-capture_output, capture_output_region, frame acquire/commit lifecycle.
-
-Prefer dmabuf export; fallback to shm using a readback copy.
-
-Respect damage; throttle to chosen fps for screencast sessions.
-
-Note: if Smithay provides a helper for screencopy at the pinned revision, prefer that. Otherwise, vendor the XML under `src/screencopy/protocols/wlr-screencopy-unstable-v1.xml` and generate code with wayland-scanner (mirroring `src/sc_layer_shell/`).
-
-src/screenshare/policy.rs
-“Sensitive windows” policy + dynamic cast target:
-
-Maintain an allow/deny flag per toplevel (by app_id or surface_id).
-
-Public API:
-```
-    pub fn set_surface_screencast_blocked(surface: SurfaceId, blocked: bool);
-pub fn set_cast_target(target: CastTarget); // enum { Output(OutputId), Window(ToplevelId) }
-```
-
-Screencopy/stream path must skip blocked surfaces when compositing to the screencast buffer.
-
-src/screenshare/pipewire.rs (optional)
-A PipeWirePublisher that can publish a video node from the FrameTap stream:
-
-Create pw::MainLoop, Context, Core, Stream.
-
-Negotiate caps: video/x-raw, format RGBA or BGRx, width/height, fps.
-
-Use dmabuf planes when available; otherwise copy RGBA into SPA buffers.
-
-Map pts/time via spa_meta_header.
-
-## Simple API (feature = "pipewire"):
-```
-pub struct PipeWirePublisher { /* ... */ }
-impl PipeWirePublisher {
-    pub fn new(name: &str, w: u32, h: u32, fps: (u32,u32)) -> anyhow::Result<Self>;
-    pub fn start_with_output(&mut self, out: OutputId) -> anyhow::Result<()>;
-    pub fn stop(self) -> anyhow::Result<()>;
+```rust
+pub enum CompositorCommand {
+    CreateSession { session_id, response_tx },
+    StartRecording { session_id, output_connector, stream_id, response_tx },
+    StopRecording { session_id, stream_id, response_tx },
+    DestroySession { session_id, response_tx },
+    GetPipeWireFd { session_id, response_tx },
 }
 ```
-src/bin/sc.rs (recommended) or extend current binary with subcommands
-## New commands:
 
-sc screen stream --pipewire [--output NAME] [--window TITLE|APP_ID] [--fps 30] [--size 1920x1080]
+Commands are sent via a calloop channel from the tokio D-Bus thread to the
+compositor's main loop.
 
-sc screen screenshot --out file.png [--output NAME] [--region x,y,w,h] [--frame N]
+## Frame Delivery
 
-sc screen block-window --window-id TLID --on/--off
+Screen sharing uses a **direct GPU blit** approach for maximum performance:
 
-sc screen set-target --output NAME | --window TLID
+### Udev Backend (`src/udev.rs`)
 
-docs/screensharing.md
-User doc: how to share screen via portals, how to block a window, how to switch cast target.
+After successful rendering, frames are delivered directly to PipeWire buffers:
 
-## Rust crates to use
+```rust
+// After render_surface() succeeds
+if outcome.rendered && !self.screenshare_sessions.is_empty() {
+    for (_session_id, session) in &self.screenshare_sessions {
+        for (connector, stream) in &session.streams {
+            if connector == &output.name() {
+                let buffer_pool = stream.pipewire_stream.buffer_pool();
+                let mut pool = buffer_pool.lock().unwrap();
+                
+                if let Some(available) = pool.available.pop_front() {
+                    // Direct GPU blit with damage awareness
+                    crate::screenshare::fullscreen_to_dmabuf(
+                        &mut renderer,
+                        available.dmabuf,
+                        size,
+                        outcome.damage.as_deref(),  // Only blit damaged regions
+                    )?;
+                    
+                    pool.to_queue.insert(available.fd, available.pw_buffer);
+                    drop(pool);
+                    stream.pipewire_stream.trigger_frame();
+                }
+            }
+        }
+    }
+}
+```
 
-wayland-server, smithay (already in project)
+**Key Features:**
+- **GPU-only path**: No CPU memcpy, direct FBO→dmabuf blit via `glBlitFramebuffer`
+- **Damage-aware**: Only blits changed regions (or full frame if buffer changed)
+- **Zero-copy**: Compositor renders once, PipeWire consumes GPU buffer directly
+- **Synchronous**: Blit happens on main thread immediately after render
 
-pipewire (+ spa) Rust bindings (optional)
+### Winit Backend (`src/winit.rs`)
 
-image (PNG write) for screenshots
+Similar direct blit pattern using RGBA capture for development/testing.
 
-thiserror, anyhow, tracing for errors/logging
+## Usage
 
-# Key coding details
+### Session Setup and Prerequisites
 
-## Screencopy server (Smithay)
+Screen sharing requires proper D-Bus session setup and PipeWire services. The compositor must share the same D-Bus session with applications.
 
-When client requests a frame:
+**Required Services:**
+- PipeWire (`pipewire.service`)
+- PipeWire PulseAudio (`pipewire-pulse.service`)  
+- WirePlumber (`wireplumber.service`)
+- KDE Wallet or GNOME Keyring (for password management)
 
-If dmabuf export supported by GPU path, advertise and fill planes.
+### Starting the Compositor
 
-Else allocate shm pool, copy pixels from last composed FBO (use PBO if present) into SHM.
+**Production (TTY/bare metal):**
 
-Cursor inclusion optional (follow request flag).
+Use the provided `start_session.sh` script for proper environment setup:
 
-Ensure per-output capture and region capture both work.
+```bash
+./scripts/start_session.sh
+```
 
-## “Sensitive windows”
+This script automatically:
+1. Creates or reuses a D-Bus session
+2. Saves D-Bus info to `$XDG_RUNTIME_DIR/dbus-session` for other terminals
+3. Starts/verifies PipeWire services via systemctl
+4. Launches the xdg-desktop-portal-screencomposer backend
+5. Starts the compositor with correct environment variables
 
-During the “cast composition,” skip surfaces with blocked == true.
+**Development (windowed mode):**
 
-Expose a runtime toggle (CLI + config).
+```bash
+cargo run --release -- --winit
+```
 
-Add a visual indicator on blocked windows (e.g., hashed overlay) when a screencast session is active.
+Note: Windowed mode may have different D-Bus session requirements.
 
-## Dynamic cast target
+### Running Applications with Screen Sharing
 
-Store a current CastTarget; on change, rewire the screencopy source and PipeWire stream without tearing down the whole session when possible.
+To use Chrome, Firefox, OBS, etc. with screen sharing support:
 
-If a selected window disappears, emit an event and fall back to “no source” until retargeted.
+**From another terminal on the same TTY:**
 
-## Headless deterministic screenshots
+```bash
+# Connect to the compositor session
+source ./scripts/connect-to-session.sh
 
-Provide a surfaceless EGL or software path.
+# Now run applications
+google-chrome        # Chrome/Chromium
+firefox             # Firefox
+obs                 # OBS Studio
+```
 
-For --frame N, advance a fixed simulation clock and render deterministically, then dump PNG.
+**Manual connection:**
 
-## Security & UX
+```bash
+# Load D-Bus session environment
+source $XDG_RUNTIME_DIR/dbus-session
 
-Portal path (default): rely on system xdg-desktop-portal for prompts & PipeWire session.
+# Set Wayland display
+export WAYLAND_DISPLAY=wayland-0
+export XDG_SESSION_TYPE=wayland
 
-Direct path:
+# Run application
+google-chrome
+```
 
-Hidden unless --automation is present or config enables.
+### Testing with D-Bus
 
-Show a red dot overlay while streaming or capturing.
+```bash
+# Create a session
+dbus-send --session --print-reply \
+  --dest=org.screencomposer.ScreenCast \
+  /org/screencomposer/ScreenCast \
+  org.screencomposer.ScreenCast.CreateSession \
+  dict:string:variant:
 
-Log JSON audit lines to artifacts/agent/audit.jsonl.
+# List available outputs
+dbus-send --session --print-reply \
+  --dest=org.screencomposer.ScreenCast \
+  /org/screencomposer/ScreenCast \
+  org.screencomposer.ScreenCast.ListOutputs
+```
 
-# Example snippets to generate
+### Verifying PipeWire Stream
 
-PipeWire connect + stream: create pw::stream::Stream, set format, implement process callback, copy/attach the latest FrameTap buffer, set PTS, queue.
+```bash
+# Check if PipeWire node appears
+pw-dump | grep screen-composer
+```
 
-Screencopy handlers: implement frame acquire, copy/export into client buffer (dmabuf/shm), send ready/damage events correctly.
+### Testing with Applications
 
-Blocked-window mask: during offscreen “screencast composition,” skip surfaces flagged blocked; if needed, draw a checkerboard over them.
+After setting up the portal backend (see `docs/xdg-desktop-portal.md`):
 
-# Acceptance tests (must pass)
+1. Start the compositor: `./scripts/start_session.sh`
+2. In another terminal: `source ./scripts/connect-to-session.sh`
+3. Launch an application and test screen sharing:
+   - **Chrome/Chromium**: Visit a meeting site, click share screen
+   - **OBS Studio**: Add a "Screen Capture (PipeWire)" source
+   - **Firefox**: Start screen sharing in a web conference
+   - **GNOME Screen Recorder**: Use built-in screen recorder
 
-Portal interop: On a desktop session with xdg-desktop-portal-(gnome|wlr) running:
+Expected performance: 60 FPS at full resolution (e.g., 2880x1920).
 
-OBS / Firefox / Chromium should list ScreenComposer in “Share Screen/Window”.
+### Troubleshooting
 
-Selecting a monitor or window captures via PipeWire; sharing works.
+**Screen sharing dialog shows no outputs:**
+- Ensure the app is running in the same D-Bus session as the compositor
+- Check `$DBUS_SESSION_BUS_ADDRESS` is set: `echo $DBUS_SESSION_BUS_ADDRESS`
+- Verify portal is registered: `busctl --user list | grep screencomposer`
+- Try: `source ./scripts/connect-to-session.sh` before launching the app
 
-Block sensitive window: Mark one window blocked; start a window cast on its parent workspace—blocked content must not appear in the stream.
+**Video freezes after a few seconds:**
+- Verify PipeWire is running: `pgrep -x pipewire`
+- Check compositor logs: `tail -f screencomposer.log`
+- Ensure systemd user services are enabled:
+  ```bash
+  systemctl --user enable --now pipewire.service pipewire-pulse.service wireplumber.service
+  ```
+- Restart PipeWire: `systemctl --user restart pipewire.service`
 
-Dynamic target: Start a monitor cast, then sc screen set-target --window <TLID> and verify the portal client’s stream switches to that window without restarting the whole compositor.
+**D-Bus connection errors:**
+- The D-Bus session file is created when compositor starts
+- If running from a different TTY, source the session file first
+- Ensure `$XDG_RUNTIME_DIR/dbus-session` exists and is readable
+- Check permissions: `ls -la $XDG_RUNTIME_DIR/dbus-session`
 
-Headless CI: screencomposer --headless --virtual-output 1920x1080@60 --automation and
-sc screen screenshot --out frame.png --frame 200 produces a deterministic image that matches goldens.
+**Portal backend not found:**
+- Verify portal is built: `ls target/release/xdg-desktop-portal-screencomposer`
+- Check portal logs: `tail -f components/xdg-desktop-portal-sc/portal.log`
+- Rebuild if needed: `cargo build -p xdg-desktop-portal-screencomposer --release`
 
-# Constraints
+## File Overview
 
-Keep new code behind feature flags:
+| File | Purpose |
+|------|---------|
+| `src/screenshare/mod.rs` | Module root, session state, command handlers, direct blit utility |
+| `src/screenshare/dbus_service.rs` | D-Bus interface implementation |
+| `src/screenshare/pipewire_stream.rs` | PipeWire stream management, buffer pool, format negotiation |
+| `src/screenshare/frame_tap.rs` | Frame capture utilities (legacy, not used for delivery) |
+| `src/screenshare/session_tap.rs` | Session tap implementation (legacy, not used for delivery) |
+| `src/skia_renderer.rs` | Blit<Dmabuf> trait implementation for direct GPU blitting |
+| `src/udev.rs` | Direct blit integration (udev backend) |
+| `src/winit.rs` | RGBA capture integration (winit backend) |
 
-features = ["screencopy", "pipewire", "screenshare", "headless"]
+## Future Enhancements
 
-If dmabuf export is unavailable, automatically fall back to shm; never crash.
+- **Window capture**: Capture individual windows instead of full outputs
+- **Cursor metadata**: Separate cursor position/image stream
+- **Multiple buffer modes**: Experiment with multi-buffering for specific use cases
 
-Code must be well-commented and follow existing project style (Rustfmt on).
+## Implementation Details
 
-Implementation notes for this repository:
+### GPU-Only Rendering Path (December 2024)
 
-- Use `src/screenshare/*` for FrameTap, policy, screenshots, and optional PipeWire.
-- Place the screencopy protocol alongside `src/sc_layer_shell` style (module with generated protocol code).
-- Hook FrameTap in `src/udev.rs` after `damage_tracker.render_output(...)` and before queueing the frame.
-- Add docs in `docs/` to explain rendering flow and project structure.
-- If an API detail is missing, use common Smithay/PipeWire patterns and keep interfaces simple and documented.
+The screenshare implementation uses a pure GPU rendering path with no CPU roundtrips:
+
+**DMA-BUF Direct Blitting**:
+- Implements `Blit<Dmabuf>` trait for `SkiaRenderer`
+- Direct GPU framebuffer blitting using `glBlitFramebuffer`
+- No CPU memory access or pixel readback
+- Achieves 60 FPS at 2880x1920 resolution
+
+**Damage-Aware Optimization**:
+- Tracks damaged regions from compositor render loop
+- Only blits changed areas when rendering to same buffer
+- Forces full blit on buffer changes
+- Single buffer mode (min=1, max=1) for optimal damage tracking
+
+**Implementation Files**:
+- `src/skia_renderer.rs`: Blit<Dmabuf> trait, lazy SkiaTextureMapping
+- `src/screenshare/mod.rs`: blit_to_dmabuf_direct() helper
+- `src/udev.rs`: Damage-aware blitting in render loop
+
+**PipeWire Integration**:
+- Buffer pool management with single buffer
+- VideoDamage metadata support (SPA_META_VideoDamage)
+- Up to 16 damage rectangles per frame advertised
+- BGRA format negotiation with DRM modifiers
+
+**Performance**:
+- GPU-only blitting: no CPU bottleneck
+- Damage tracking: reduced GPU work for partial updates
+- Verified working at 2880x1920@60fps consistently

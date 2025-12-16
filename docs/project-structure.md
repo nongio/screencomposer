@@ -17,7 +17,10 @@ src/                    # Main crate source
 ├── workspaces/         # Workspace management and UI components
 ├── theme/              # Theming and styling
 ├── utils/              # Shared utilities
-└── sc_layer_shell/     # Custom layer shell protocol
+├── sc_layer_shell/     # Custom layer shell protocol
+└── screenshare/        # Screen sharing via PipeWire (see docs/screenshare.md)
+components/             # Standalone components
+└── xdg-desktop-portal-sc/  # XDG Desktop Portal backend
 
 docs/                   # Design documentation
 assets/                 # Static assets (icons, images)
@@ -32,6 +35,7 @@ sample-clients/         # Example Wayland client applications
 - **State**: Protocol handlers, seat management, data device, and global compositor state
 - **Shell**: XDG toplevel/popup handling, layer shell, server-side decorations
 - **Workspaces**: Multi-workspace support, window views, dock, app switcher
+- **Screenshare**: PipeWire-based screen sharing with D-Bus API for portal integration
 
 ## Build & Run
 
