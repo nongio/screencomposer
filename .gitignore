@@ -1,6 +1,7 @@
 target
 Cargo.lock
 *.bk
+*.log
 .vscode
 .vagga
 resources/backgrounds/*

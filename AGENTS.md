@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to agents when working with code in this repository.
 
 ## Build & Run Commands
 
@@ -27,18 +27,6 @@ RUST_LOG=debug cargo run -- --winit
 ```
 
 **Note:** No test suite exists yet. The project uses Rust 1.83.0 minimum.
-
-## Testing
-
-### Automated Screenshare Test
-
-```sh
-./scripts/test-screenshare.sh
-```
-
-Runs compositor on TTY5 with OBS screenshare test. Check logs:
-- `screencomposer.log` — Compositor output
-- `obs.log` — Should show PipeWire streaming at 2880x1920 @ 60fps BGRA
 
 ## Architecture Overview
 
