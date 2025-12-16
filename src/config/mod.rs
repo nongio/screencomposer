@@ -41,6 +41,7 @@ pub struct Config {
     pub theme_scheme: ThemeScheme,
     pub background_image: String,
     pub locales: Vec<String>,
+    pub use_10bit_color: bool,
     #[serde(default = "shortcuts::default_shortcut_map")]
     pub keyboard_shortcuts: ShortcutMap,
     #[serde(skip)]
@@ -79,6 +80,7 @@ impl Default for Config {
             theme_scheme: ThemeScheme::Light,
             background_image: "./resources/background.jpg".to_string(),
             locales: vec!["en".to_string()],
+            use_10bit_color: false,
             keyboard_shortcuts: shortcuts::default_shortcut_map(),
             shortcut_bindings: Vec::new(),
             modifier_remap: BTreeMap::new(),
@@ -363,6 +365,7 @@ pub struct DisplayResolution {
 }
 
 impl DisplayResolution {
+    #[allow(dead_code)]
     pub fn as_f64(self) -> (f64, f64) {
         (self.width as f64, self.height as f64)
     }

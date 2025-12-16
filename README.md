@@ -37,10 +37,14 @@ Following a draft roadmap of features and improvements.
 - [x] window scaling
 - [x] animated drag and drop
 - [x] minimize windows
+- [ ] fix resize from edge-top
+- [ ] 
+
 ### Applications switcher (hotkey: `alt + Tab`)
 - [x] background search for application metadata and icons (following xdg specs)
 - [x] close applications from application switcher
 - [x] cycle between same app windows
+
 ### Expose windows (hotkey: `alt + f` gesture on udev: `three fingers swipe up`)
 - [x] all windows (algorithm from gnome-shell/kde)
 - [x] preview windows with name
@@ -50,15 +54,22 @@ Following a draft roadmap of features and improvements.
 - [x] show minimized windows
 - [x] show pinned applications
 - [ ] show favorite locations
+- [ ] refactor out of the compositor core
 
 ### Screenshare
-- [ ] enable screenshare xdg-portal
+- [x] XDG Desktop Portal backend (see [docs/xdg-desktop-portal.md](./docs/xdg-desktop-portal.md))
+- [x] ScreenCast portal for PipeWire screen sharing
+- [~] fullscreenshare with dmabuf zero-copy
+- [ ] Window capture support (layers_element)
+- [ ] screenshot support
+- [ ] Permission dialog UI
 
 ### Miscellaneus
+- [x] Theming dark/light
 - [ ] Volume control widget
 - [ ] Brightness control widget
 - [ ] Keyboard light control widget
-- [ ] Theming dark/light
+- [ ] notifications
 
 ### Natural scrolling
 - [x] enable natural scrolling
@@ -69,6 +80,7 @@ Following a draft roadmap of features and improvements.
 - [x] dynamic background
 - [x] multiple workspaces
 - [x] workspace switcher
+- [ ] animate create/delete workspace
 - [ ] enable multiple screens
 - [ ] screen rotation / resolution
 
@@ -102,6 +114,17 @@ ScreenComposer implements a comprehensive set of Wayland protocols, including:
 - XDG foreign: cross-client surface identification
 
 For a complete and up-to-date list, see [docs/wayland.md](./docs/wayland.md).
+
+## Components
+
+ScreenComposer consists of the main compositor and additional components:
+
+| Component | Description |
+|-----------|-------------|
+| `screen-composer` | Main compositor binary |
+| `xdg-desktop-portal-screencomposer` | XDG Desktop Portal backend for screen sharing |
+
+See [docs/xdg-desktop-portal.md](./docs/xdg-desktop-portal.md) for details on the portal integration.
 
 ## Is it open for contributions?
 You can contribute by testing the compositor, reporting bugs, by implementing new features or bring new ideas. Both this project and the LayersEngine are open to contributions. If you have any questions,  open an issue on the repository.

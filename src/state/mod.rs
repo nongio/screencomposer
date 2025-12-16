@@ -198,6 +198,11 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub workspace_swipe_velocity_samples: Vec<f64>,
     pub is_pinching: bool,
     pub is_resizing: bool,
+
+    // screenshare
+    pub screenshare_sessions: HashMap<String, crate::screenshare::ScreencastSession>,
+    /// Manager for the screenshare D-Bus service (started lazily when needed).
+    pub screenshare_manager: Option<crate::screenshare::ScreenshareManager>,
 }
 
 pub mod data_device_handler;
@@ -433,6 +438,10 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             workspace_swipe_velocity_samples: Vec::new(),
             is_pinching: false,
             is_resizing: false,
+
+            // screenshare
+            screenshare_sessions: HashMap::new(),
+            screenshare_manager: None,
         };
 
         composer.rebuild_keycode_remap();
@@ -1237,4 +1246,22 @@ pub trait Backend {
     fn set_cursor(&mut self, image: &CursorImageStatus); //, renderer: &mut SkiaRenderer);
     fn renderer_context(&mut self) -> Option<lay_rs::skia::gpu::DirectContext>;
     fn request_redraw(&mut self) {}
+    /// Get GBM device for DMA-BUF screenshare (None for backends without DMA-BUF support)
+    fn gbm_device(&self) -> Option<smithay::backend::allocator::gbm::GbmDevice<smithay::backend::drm::DrmDeviceFd>> {
+        None
+    }
+    /// Get render format and modifier for screenshare.
+    /// Returns (fourcc, modifier) tuple, or None if not available.
+    fn render_format(&mut self) -> Option<(u32, u64)> {
+        None
+    }
+    /// Get all supported modifiers for a given format from the backend.
+    /// Used for DMA-BUF format negotiation.
+    fn get_format_modifiers(&mut self, _fourcc: smithay::backend::allocator::Fourcc) -> Vec<u64> {
+        vec![]
+    }
+    /// Whether this backend prefers DMA-BUF for screenshare (zero-copy)
+    fn prefers_dmabuf_screenshare(&self) -> bool {
+        false
+    }
 }
