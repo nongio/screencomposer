@@ -42,9 +42,9 @@ memfd = "0.6"
 memmap2 = "0.9"
 
 [dependencies.lay-rs]
-path = "../layers"
-# git = "https://github.com/nongio/layers"
-# tag = "v1.0.0"
+# path = "../layers"
+git = "https://github.com/nongio/layers"
+tag = "v1.0.0"
 features = ["export-taffy"]
 
 [dependencies.smithay-drm-extras]
