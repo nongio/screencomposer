@@ -364,6 +364,17 @@ pub fn run_winit() {
     #[cfg(feature = "xwayland")]
     state.start_xwayland();
 
+    // Start the screenshare D-Bus service
+    match crate::screenshare::ScreenshareManager::start(&event_loop.handle()) {
+        Ok(manager) => {
+            state.screenshare_manager = Some(manager);
+            info!("Screenshare D-Bus service started");
+        }
+        Err(e) => {
+            warn!("Failed to start screenshare D-Bus service: {}", e);
+        }
+    }
+
     info!("Initialization completed, starting the main loop.");
 
     let mut pointer_element = PointerElement::<SkiaTexture>::default();

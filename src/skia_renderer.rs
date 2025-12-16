@@ -36,7 +36,7 @@ use smithay::{
                 Capability, GlesError, GlesRenderbuffer, GlesRenderer, GlesTexture,
             },
             sync::{Fence, Interrupted, SyncPoint},
-            Bind, Color32F, DebugFlags, ExportMem, Frame, ImportDma, ImportDmaWl, ImportEgl,
+            Bind, Blit, Color32F, DebugFlags, ExportMem, Frame, ImportDma, ImportDmaWl, ImportEgl,
             ImportMem, ImportMemWl, Offscreen, Renderer, Texture, TextureFilter, TextureMapping,
             Unbind,
         },
@@ -171,7 +171,7 @@ pub struct SkiaRenderer {
 
     target_renderer: HashMap<SkiaTarget, SkiaSurface>,
     current_target: Option<SkiaTarget>,
-    buffers: HashMap<SkiaTarget, SkiaGLesFbo>,
+    pub buffers: HashMap<SkiaTarget, SkiaGLesFbo>,
     pub context: Option<skia::gpu::DirectContext>,
 
     dmabuf_cache: std::collections::HashMap<WeakDmabuf, SkiaTexture>,
@@ -265,8 +265,10 @@ pub struct SkiaTextureMapping {
     pub flipped: bool,
     pub width: u32,
     pub height: u32,
-    pub image: skia::Image,
-    pub data: RefCell<Vec<u8>>,
+    pub fbo_info: SkiaGLesFbo,
+    pub region: Rectangle<i32, Buffer>,
+    pub image: RefCell<Option<skia::Image>>,
+    pub data: RefCell<Option<Vec<u8>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -1279,6 +1281,39 @@ impl SkiaRenderer {
         }
         Ok(())
     }
+
+    /// Get the FBO info for the current render target
+    pub fn get_current_fbo(&self) -> Result<&SkiaGLesFbo, GlesError> {
+        self.current_target
+            .as_ref()
+            .and_then(|target| self.buffers.get(target))
+            .ok_or(GlesError::FramebufferBindingError)
+    }
+
+    /// Blit between two framebuffers
+    #[profiling::function]
+    pub fn blit_fbo_to_fbo(
+        &self,
+        src_fbo: u32,
+        dst_fbo: u32,
+        size: Size<i32, Buffer>,
+    ) -> Result<(), GlesError> {
+        unsafe {
+            self.gl.BindFramebuffer(ffi::READ_FRAMEBUFFER, src_fbo);
+            self.gl.BindFramebuffer(ffi::DRAW_FRAMEBUFFER, dst_fbo);
+
+            self.gl.BlitFramebuffer(
+                0, 0, size.w, size.h,
+                0, 0, size.w, size.h,
+                ffi::COLOR_BUFFER_BIT,
+                ffi::LINEAR,
+            );
+
+            self.gl.BindFramebuffer(ffi::READ_FRAMEBUFFER, 0);
+            self.gl.BindFramebuffer(ffi::DRAW_FRAMEBUFFER, 0);
+        }
+        Ok(())
+    }
 }
 impl ImportMemWl for SkiaRenderer {
     #[profiling::function]
@@ -1473,10 +1508,10 @@ impl TextureMapping for SkiaTextureMapping {
 
 impl Texture for SkiaTextureMapping {
     fn width(&self) -> u32 {
-        self.image.width() as u32
+        self.width
     }
     fn height(&self) -> u32 {
-        self.image.height() as u32
+        self.height
     }
     fn format(&self) -> Option<Fourcc> {
         Some(self.fourcc_format)
@@ -1491,52 +1526,18 @@ impl ExportMem for SkiaRenderer {
         region: Rectangle<i32, Buffer>,
         fourcc: Fourcc,
     ) -> Result<Self::TextureMapping, <Self as Renderer>::Error> {
-        let renderer = self.current_skia_renderer().unwrap();
+        // Just store the FBO info - don't create image or read pixels yet
+        let fbo_info = self.get_current_fbo()?.clone();
 
-        let mut surface = renderer.surface();
-        // surface.flush_and_submit();
-        let image = surface
-            .image_snapshot_with_bounds(skia::IRect::from_xywh(
-                region.loc.x,
-                region.loc.y,
-                region.size.w,
-                region.size.h,
-            ))
-            .unwrap();
-        let len = region.size.w * region.size.h * 4;
-        let (_, read_format, _) =
-            fourcc_to_gl_formats(fourcc).ok_or(GlesError::UnknownPixelFormat)?;
-        let color_type = match read_format {
-            ffi::BGRA_EXT => skia::ColorType::BGRA8888,
-            _ => skia::ColorType::RGBA8888,
-        };
-        let info = skia::ImageInfo::new(
-            skia::ISize::new(region.size.w, region.size.h),
-            color_type,
-            skia::AlphaType::Premul,
-            None,
-        );
-        let data = RefCell::new(vec![0; len as usize]);
-        {
-            let mut data_vec = data.borrow_mut();
-            let byte_row = info.min_row_bytes();
-
-            // let pixmap = skia::Pixmap::new(&info, &data_vec, byte_row);
-
-            // if !surface.read_pixels_to_pixmap(&pixmap, (0, 0)) {
-            // panic!("read_pixels_to_pixmap failed");
-            // }
-            if !surface.read_pixels(&info, &mut data_vec, byte_row, (0, 0)) {
-                panic!("read_pixels failed");
-            }
-        }
         Ok(Self::TextureMapping {
             fourcc_format: fourcc,
             flipped: false,
             width: region.size.w as u32,
             height: region.size.h as u32,
-            image,
-            data,
+            fbo_info,
+            region,
+            image: RefCell::new(None),
+            data: RefCell::new(None),
         })
     }
     fn copy_texture(
@@ -1552,10 +1553,47 @@ impl ExportMem for SkiaRenderer {
         &mut self,
         texture_mapping: &'a Self::TextureMapping,
     ) -> Result<&'a [u8], <Self as Renderer>::Error> {
-        let data = texture_mapping.data.borrow_mut();
-        let len = data.len();
-
-        let ptr = data.as_ptr();
+        // Lazy-load the pixel data if not already loaded
+        let mut data_opt = texture_mapping.data.borrow_mut();
+        
+        if data_opt.is_none() {
+            // Need to read pixels from the FBO now
+            let region = texture_mapping.region;
+            let fourcc = texture_mapping.fourcc_format;
+            
+            // Get the current surface and read pixels
+            let renderer = self.current_skia_renderer()
+                .ok_or(GlesError::FramebufferBindingError)?;
+            let mut surface = renderer.surface();
+            
+            let (_, read_format, _) =
+                fourcc_to_gl_formats(fourcc).ok_or(GlesError::UnknownPixelFormat)?;
+            let color_type = match read_format {
+                ffi::BGRA_EXT => skia::ColorType::BGRA8888,
+                _ => skia::ColorType::RGBA8888,
+            };
+            let info = skia::ImageInfo::new(
+                skia::ISize::new(region.size.w, region.size.h),
+                color_type,
+                skia::AlphaType::Premul,
+                None,
+            );
+            
+            let len = region.size.w * region.size.h * 4;
+            let mut data_vec = vec![0; len as usize];
+            let byte_row = info.min_row_bytes();
+            
+            if !surface.read_pixels(&info, &mut data_vec, byte_row, (region.loc.x, region.loc.y)) {
+                return Err(GlesError::MappingError);
+            }
+            
+            *data_opt = Some(data_vec);
+        }
+        
+        let data_ref = data_opt.as_ref().unwrap();
+        let len = data_ref.len();
+        let ptr = data_ref.as_ptr();
+        
         unsafe { Ok(std::slice::from_raw_parts(ptr, len)) }
     }
 
@@ -1713,5 +1751,81 @@ impl<'a> AsRef<SkiaFrame<'a>> for SkiaFrame<'a> {
 impl<'a> AsMut<SkiaFrame<'a>> for SkiaFrame<'a> {
     fn as_mut(&mut self) -> &mut SkiaFrame<'a> {
         self
+    }
+}
+
+impl Blit<Dmabuf> for SkiaRenderer {
+    #[profiling::function]
+    fn blit_to(
+        &mut self,
+        to: Dmabuf,
+        src: Rectangle<i32, Physical>,
+        dst: Rectangle<i32, Physical>,
+        _filter: TextureFilter,
+    ) -> Result<(), <Self as Renderer>::Error> {
+        // Get source FBO from current render target
+        let src_fbo = self.get_current_fbo()?.fbo;
+        
+        // Bind destination dmabuf to get its FBO
+        self.bind(to.clone())?;
+        let dst_fbo = self.buffers
+            .get(&SkiaTarget::Dmabuf(to))
+            .ok_or(GlesError::FramebufferBindingError)?
+            .fbo;
+        
+        // Direct FBO-to-FBO blit (GPU only)
+        unsafe {
+            self.gl.BindFramebuffer(ffi::READ_FRAMEBUFFER, src_fbo);
+            self.gl.BindFramebuffer(ffi::DRAW_FRAMEBUFFER, dst_fbo);
+
+            self.gl.BlitFramebuffer(
+                src.loc.x, src.loc.y, src.loc.x + src.size.w, src.loc.y + src.size.h,
+                dst.loc.x, dst.loc.y, dst.loc.x + dst.size.w, dst.loc.y + dst.size.h,
+                ffi::COLOR_BUFFER_BIT,
+                ffi::LINEAR,
+            );
+
+            self.gl.BindFramebuffer(ffi::READ_FRAMEBUFFER, 0);
+            self.gl.BindFramebuffer(ffi::DRAW_FRAMEBUFFER, 0);
+        }
+        
+        Ok(())
+    }
+
+    #[profiling::function]
+    fn blit_from(
+        &mut self,
+        from: Dmabuf,
+        src: Rectangle<i32, Physical>,
+        dst: Rectangle<i32, Physical>,
+        _filter: TextureFilter,
+    ) -> Result<(), <Self as Renderer>::Error> {
+        // Get destination FBO from current render target
+        let dst_fbo = self.get_current_fbo()?.fbo;
+        
+        // Bind source dmabuf to get its FBO
+        self.bind(from.clone())?;
+        let src_fbo = self.buffers
+            .get(&SkiaTarget::Dmabuf(from))
+            .ok_or(GlesError::FramebufferBindingError)?
+            .fbo;
+        
+        // Direct FBO-to-FBO blit (GPU only)
+        unsafe {
+            self.gl.BindFramebuffer(ffi::READ_FRAMEBUFFER, src_fbo);
+            self.gl.BindFramebuffer(ffi::DRAW_FRAMEBUFFER, dst_fbo);
+
+            self.gl.BlitFramebuffer(
+                src.loc.x, src.loc.y, src.loc.x + src.size.w, src.loc.y + src.size.h,
+                dst.loc.x, dst.loc.y, dst.loc.x + dst.size.w, dst.loc.y + dst.size.h,
+                ffi::COLOR_BUFFER_BIT,
+                ffi::LINEAR,
+            );
+
+            self.gl.BindFramebuffer(ffi::READ_FRAMEBUFFER, 0);
+            self.gl.BindFramebuffer(ffi::DRAW_FRAMEBUFFER, 0);
+        }
+        
+        Ok(())
     }
 }
