@@ -1765,6 +1765,8 @@ impl ScreenComposer<UdevData> {
                         if connector == &output.name() {
                             let buffer_pool = stream.pipewire_stream.buffer_pool();
                             let mut pool = buffer_pool.lock().unwrap();
+                            
+                            let had_buffer = !pool.available.is_empty();
 
                             if let Some(available) = pool.available.pop_front() {
                                 let size = output
@@ -1803,7 +1805,13 @@ impl ScreenComposer<UdevData> {
 
                                 pool.to_queue.insert(available.fd, available.pw_buffer);
                                 drop(pool);
+                                // Trigger to queue the buffer we just rendered
                                 stream.pipewire_stream.trigger_frame();
+                            } else {
+                                // No buffer available - trigger to dequeue any released buffers
+                                drop(pool);
+                                stream.pipewire_stream.trigger_frame();
+                                tracing::trace!("No available buffers for screenshare on {}, triggering dequeue", connector);
                             }
                         }
                     }
