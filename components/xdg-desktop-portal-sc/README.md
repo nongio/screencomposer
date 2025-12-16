@@ -38,22 +38,6 @@ On startup the binary prints `ScreenComposer portal running` once it has
 successfully registered on the session bus. The process continues to service
 requests until it receives `Ctrl+C`.
 
-## Quick test
-
-You can verify that the portal responds using `gdbus`:
-
-```
-gdbus call --session \
-  --dest org.freedesktop.portal.Desktop \
-  --object-path /org/freedesktop/portal/desktop \
-  --method org.freedesktop.portal.ScreenCast.CreateSession \
-  "{'handle_token':<'t1'>,'session_handle_token':<'s1'>}"
-```
-
-The command returns immediately because the portal emits the corresponding
-`org.freedesktop.portal.Request::Response` signal with a success payload as soon
-as the method is invoked.
-
 ## Specification Compliance
 
 This implementation follows the
@@ -68,25 +52,3 @@ Current functionality:
 - ✅ PipeWire stream creation and node ID tracking
 - ✅ Cursor mode support (Hidden, Embedded, Metadata)
 - ✅ Monitor (output) selection
-
-
-## Debugging
-
-Logs are written to `/tmp/portal-sc.log`. To monitor in real-time:
-
-```bash
-tail -f /tmp/portal-sc.log
-```
-
-The portal logs:
-- All incoming D-Bus method calls
-- Interactions with the compositor's internal interface  
-- PipeWire node ID tracking and polling
-- Session and stream lifecycle events
-
-## TODO
-
-Not yet implemented:
-- ⚠️ Window selection (RecordWindow)
-- ⚠️ Restore tokens (session persistence)
-- ⚠️ User permission dialogs (currently auto-grants)
