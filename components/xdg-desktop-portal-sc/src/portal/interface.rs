@@ -154,7 +154,7 @@ impl ScreenCastPortal {
             // Return session_handle in response as per XDG Desktop Portal spec
             let mut results = HashMap::new();
             results.insert(
-                "session_handle".to_string(),
+                "session_id".to_string(),
                 OwnedValue::from(Str::from(session_handle.to_string())),
             );
 
