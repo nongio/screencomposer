@@ -122,7 +122,6 @@ renderer_sync = []
 members = [
     "components/xdg-desktop-portal-sc",
     "sample-clients/client-rainbow",
-    "sample-clients/pipewire-video-source",
     "sample-clients/submenu",
     "sample-clients/submenu-gtk",
 ]
