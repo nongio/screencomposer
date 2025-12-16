@@ -246,7 +246,10 @@ impl Backend for UdevData {
         r.context.clone()
     }
 
-    fn gbm_device(&self) -> Option<smithay::backend::allocator::gbm::GbmDevice<smithay::backend::drm::DrmDeviceFd>> {
+    fn gbm_device(
+        &self,
+    ) -> Option<smithay::backend::allocator::gbm::GbmDevice<smithay::backend::drm::DrmDeviceFd>>
+    {
         // Get the GBM device from any available backend
         // The primary_gpu might be a render node, but backends are keyed by primary nodes
         tracing::debug!(
@@ -254,18 +257,18 @@ impl Backend for UdevData {
             self.primary_gpu,
             self.backends.len()
         );
-        
+
         // Try to get from primary_gpu first
         if let Some(backend) = self.backends.get(&self.primary_gpu) {
             return Some(backend.gbm.clone());
         }
-        
+
         // Fallback: get from any backend (usually there's only one)
         if let Some((_key, backend)) = self.backends.iter().next() {
             tracing::debug!("Using GBM device from first available backend");
             return Some(backend.gbm.clone());
         }
-        
+
         None
     }
 
@@ -279,7 +282,8 @@ impl Backend for UdevData {
         let xrgb = smithay::backend::allocator::Fourcc::Xrgb8888;
 
         // Prefer ARGB8888, fall back to XRGB8888
-        let format = formats.iter()
+        let format = formats
+            .iter()
             .find(|f| f.code == argb)
             .or_else(|| formats.iter().find(|f| f.code == xrgb))?;
 
@@ -293,7 +297,8 @@ impl Backend for UdevData {
             Err(_) => return vec![],
         };
 
-        renderer.dmabuf_formats()
+        renderer
+            .dmabuf_formats()
             .iter()
             .filter(|f| f.code == fourcc)
             .map(|f| f.modifier.into())
@@ -1755,48 +1760,51 @@ impl ScreenComposer<UdevData> {
         if let Ok(outcome) = &result {
             if outcome.rendered && !self.screenshare_sessions.is_empty() {
                 // Blit to PipeWire buffers on main thread
-                for (_session_id, session) in &self.screenshare_sessions {
+                for session in self.screenshare_sessions.values() {
                     for (connector, stream) in &session.streams {
                         if connector == &output.name() {
                             let buffer_pool = stream.pipewire_stream.buffer_pool();
                             let mut pool = buffer_pool.lock().unwrap();
-                                
-                                if let Some(available) = pool.available.pop_front() {
-                                    let size = output
-                                        .current_mode()
-                                        .map(|m| m.size)
-                                        .unwrap_or_else(|| (1920, 1080).into());
-                                    
-                                    // Force full frame for first render (when last_rendered_fd is None)
-                                    let is_first_frame = pool.last_rendered_fd.is_none();
-                                    let buffer_changed = pool.last_rendered_fd != Some(available.fd);
-                                    
-                                    pool.last_rendered_fd = Some(available.fd);
-                                    
-                                    // Use damage only if not first frame and same buffer
-                                    let damage_to_use = if is_first_frame || buffer_changed {
-                                        None  // Full frame for first render or buffer change
-                                    } else {
-                                        outcome.damage.as_deref()
-                                    };
-                                    
-                                    if is_first_frame {
-                                        tracing::debug!("First frame for stream on {}, forcing full blit", connector);
-                                    }
-                                    
-                                    if let Err(e) = crate::screenshare::fullscreen_to_dmabuf(
-                                        &mut renderer,
-                                        available.dmabuf,
-                                        size,
-                                        damage_to_use,
-                                    ) {
-                                        tracing::debug!("Screenshare blit failed: {}", e);
-                                    }
-                                    
-                                    pool.to_queue.insert(available.fd, available.pw_buffer);
-                                    drop(pool);
-                                    stream.pipewire_stream.trigger_frame();
+
+                            if let Some(available) = pool.available.pop_front() {
+                                let size = output
+                                    .current_mode()
+                                    .map(|m| m.size)
+                                    .unwrap_or_else(|| (1920, 1080).into());
+
+                                // Force full frame for first render (when last_rendered_fd is None)
+                                let is_first_frame = pool.last_rendered_fd.is_none();
+                                let buffer_changed = pool.last_rendered_fd != Some(available.fd);
+
+                                pool.last_rendered_fd = Some(available.fd);
+
+                                // Use damage only if not first frame and same buffer
+                                let damage_to_use = if is_first_frame || buffer_changed {
+                                    None // Full frame for first render or buffer change
+                                } else {
+                                    outcome.damage.as_deref()
+                                };
+
+                                if is_first_frame {
+                                    tracing::debug!(
+                                        "First frame for stream on {}, forcing full blit",
+                                        connector
+                                    );
                                 }
+
+                                if let Err(e) = crate::screenshare::fullscreen_to_dmabuf(
+                                    &mut renderer,
+                                    available.dmabuf,
+                                    size,
+                                    damage_to_use,
+                                ) {
+                                    tracing::debug!("Screenshare blit failed: {}", e);
+                                }
+
+                                pool.to_queue.insert(available.fd, available.pw_buffer);
+                                drop(pool);
+                                stream.pipewire_stream.trigger_frame();
+                            }
                         }
                     }
                 }
@@ -1897,10 +1905,7 @@ impl RenderOutcome {
         rendered: bool,
         damage: Option<Vec<smithay::utils::Rectangle<i32, Physical>>>,
     ) -> Self {
-        Self {
-            rendered,
-            damage,
-        }
+        Self { rendered, damage }
     }
 }
 

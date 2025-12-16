@@ -3,15 +3,18 @@
 //! Format negotiation-first approach: advertise capabilities based on backend,
 //! negotiate format, then route to appropriate buffer handling path.
 
+use std::collections::{HashMap, VecDeque};
 use std::sync::{
     atomic::{AtomicBool, AtomicU32, Ordering},
     Arc, Mutex,
 };
-use std::collections::{HashMap, VecDeque};
 
-use smithay::backend::allocator::{gbm::GbmDevice, Fourcc, dmabuf::{Dmabuf, AsDmabuf}};
+use smithay::backend::allocator::{
+    dmabuf::{AsDmabuf, Dmabuf},
+    gbm::GbmDevice,
+    Fourcc,
+};
 use smithay::backend::drm::DrmDeviceFd;
-
 
 /// Buffer pool shared between PipeWire thread and main thread
 #[derive(Default)]
@@ -140,6 +143,7 @@ impl PipeWireStream {
             active: AtomicBool::new(false),
             should_stop: AtomicBool::new(false),
             buffer_pool: Arc::new(Mutex::new(BufferPool::default())),
+            #[allow(clippy::arc_with_non_send_sync)]
             stream_ptr: Arc::new(Mutex::new(None)),
         });
 
@@ -179,9 +183,7 @@ impl PipeWireStream {
         // Wait for stream to be ready
         let node_id = ready_rx
             .recv_timeout(std::time::Duration::from_secs(5))
-            .map_err(|e| {
-                PipeWireError::InitFailed(format!("PipeWire init timeout: {}", e))
-            })??;
+            .map_err(|e| PipeWireError::InitFailed(format!("PipeWire init timeout: {}", e)))??;
 
         self.shared.node_id.store(node_id, Ordering::SeqCst);
         self.shared.active.store(true, Ordering::SeqCst);
@@ -299,7 +301,7 @@ fn run_pipewire_thread(
             let ready_sent = ready_sent.clone();
             move |stream, _state, old, new| {
                 use pw::stream::StreamState as PwState;
-                
+
                 tracing::debug!("PipeWire stream state: {:?} -> {:?}", old, new);
 
                 match new {
@@ -316,7 +318,7 @@ fn run_pipewire_thread(
                     }
                     PwState::Streaming => {
                         tracing::debug!("Stream now streaming");
-                        
+
                         // Trigger first frame render
                         unsafe {
                             use pipewire::sys::pw_stream_trigger_process;
@@ -362,20 +364,20 @@ fn run_pipewire_thread(
                     );
 
                     state.borrow_mut().negotiated = Some(negotiated.clone());
-                    
+
                     // If dmabuf, send buffer allocation params
                     if negotiated.is_dmabuf {
                         tracing::debug!("Sending buffer allocation params for dmabuf");
-                        
+
                         // Determine plane count based on format
                         let plane_count = match negotiated.format {
-                            pipewire::spa::param::video::VideoFormat::BGRA |
-                            pipewire::spa::param::video::VideoFormat::BGRx |
-                            pipewire::spa::param::video::VideoFormat::RGBA |
-                            pipewire::spa::param::video::VideoFormat::RGBx => 1,
+                            pipewire::spa::param::video::VideoFormat::BGRA
+                            | pipewire::spa::param::video::VideoFormat::BGRx
+                            | pipewire::spa::param::video::VideoFormat::RGBA
+                            | pipewire::spa::param::video::VideoFormat::RGBx => 1,
                             _ => 1, // Default to 1 plane for unknown formats
                         };
-                        
+
                         if let Err(e) = send_buffer_params(&stream_for_update, plane_count) {
                             tracing::error!("Failed to send buffer params: {}", e);
                         }
@@ -388,39 +390,46 @@ fn run_pipewire_thread(
         .add_buffer({
             let state = stream_state.clone();
             let gbm_device = config.gbm_device.clone();
-            let buffer_pool = shared.buffer_pool.clone();  // ADD: Share buffer pool
+            let buffer_pool = shared.buffer_pool.clone(); // ADD: Share buffer pool
             move |_stream, _user_data, buffer| {
                 let mut state = state.borrow_mut();
                 let Some(ref negotiated) = state.negotiated else {
                     tracing::warn!("add_buffer called but no negotiated format");
                     return;
                 };
-                
+
                 // Only handle dmabuf buffers
                 if !negotiated.is_dmabuf {
                     tracing::debug!("add_buffer called for SHM buffer, skipping");
                     return;
                 }
-                
+
                 let Some(ref gbm) = gbm_device else {
                     tracing::error!("add_buffer called but no GBM device");
                     return;
                 };
-                
-                tracing::debug!("Allocating dmabuf {}x{}", negotiated.size.0, negotiated.size.1);
-                
+
+                tracing::debug!(
+                    "Allocating dmabuf {}x{}",
+                    negotiated.size.0,
+                    negotiated.size.1
+                );
+
                 // Allocate GBM buffer
                 let (width, height) = negotiated.size;
                 let fourcc = video_format_to_fourcc(negotiated.format);
-                let modifier = negotiated.modifier
+                let modifier = negotiated
+                    .modifier
                     .map(|m| smithay::backend::allocator::Modifier::from(m as u64))
                     .unwrap_or(smithay::backend::allocator::Modifier::Linear);
-                
-                use smithay::backend::allocator::gbm::{GbmBufferFlags, GbmBuffer};
+
+                use smithay::backend::allocator::gbm::{GbmBuffer, GbmBufferFlags};
                 let buffer_flags = GbmBufferFlags::RENDERING;
-                
+
                 let bo = match gbm.create_buffer_object_with_modifiers2::<()>(
-                    width, height, fourcc,
+                    width,
+                    height,
+                    fourcc,
                     std::iter::once(modifier),
                     buffer_flags,
                 ) {
@@ -430,7 +439,7 @@ fn run_pipewire_thread(
                         return;
                     }
                 };
-                
+
                 let gbm_buffer = GbmBuffer::from_bo(bo, false);
                 let dmabuf = match gbm_buffer.export() {
                     Ok(d) => d,
@@ -439,62 +448,67 @@ fn run_pipewire_thread(
                         return;
                     }
                 };
-                
+
                 let plane_count = dmabuf.num_planes();
                 tracing::debug!("Exported dmabuf with {} planes", plane_count);
-                
+
                 unsafe {
-                    use pipewire::spa::sys::SPA_DATA_FLAG_READWRITE;
                     use pipewire::spa::buffer::DataType;
+                    use pipewire::spa::sys::SPA_DATA_FLAG_READWRITE;
                     use std::os::fd::AsRawFd;
-                    
+
                     let spa_buffer = (*buffer).buffer;
-                    
+
                     // Verify plane count matches what PipeWire allocated
                     assert_eq!((*spa_buffer).n_datas as usize, plane_count);
-                    
-                    for (i, (fd, (stride, offset))) in 
-                        std::iter::zip(dmabuf.handles(), 
-                            std::iter::zip(dmabuf.strides(), dmabuf.offsets()))
-                        .enumerate() 
+
+                    for (i, (fd, (stride, offset))) in std::iter::zip(
+                        dmabuf.handles(),
+                        std::iter::zip(dmabuf.strides(), dmabuf.offsets()),
+                    )
+                    .enumerate()
                     {
                         let spa_data = (*spa_buffer).datas.add(i);
                         // Verify PipeWire allocated this as a DmaBuf type
                         assert!((*spa_data).type_ & (1 << DataType::DmaBuf.as_raw()) > 0);
-                        
+
                         (*spa_data).type_ = DataType::DmaBuf.as_raw();
                         (*spa_data).maxsize = 1;
                         (*spa_data).fd = fd.as_raw_fd() as i64;
                         (*spa_data).flags = SPA_DATA_FLAG_READWRITE;
-                        
+
                         let chunk = (*spa_data).chunk;
                         (*chunk).stride = stride as i32;
                         (*chunk).offset = offset;
-                        
-                        tracing::debug!("Plane {}: fd={}, stride={}, offset={}", i, (*spa_data).fd, stride, offset);
+
+                        tracing::debug!(
+                            "Plane {}: fd={}, stride={}, offset={}",
+                            i,
+                            (*spa_data).fd,
+                            stride,
+                            offset
+                        );
                     }
-                    
+
                     let fd = (*(*spa_buffer).datas).fd;
-                    
+
                     // Store in local state (for remove_buffer)
                     state.dmabufs.insert(fd, dmabuf.clone());
-                    
+
                     // Also store in shared pool (for main thread access)
                     buffer_pool.lock().unwrap().dmabufs.insert(fd, dmabuf);
-                    
+
                     tracing::debug!("Buffer added fd={}", fd);
                 }
             }
         })
         .remove_buffer({
             let state = stream_state.clone();
-            move |_stream, _user_data, buffer| {
-                unsafe {
-                    let fd = (*(*buffer).buffer).datas.read().fd;
-                    let removed = state.borrow_mut().dmabufs.remove(&fd);
-                    if removed.is_some() {
-                        tracing::debug!("Buffer removed fd={}", fd);
-                    }
+            move |_stream, _user_data, buffer| unsafe {
+                let fd = (*(*buffer).buffer).datas.read().fd;
+                let removed = state.borrow_mut().dmabufs.remove(&fd);
+                if removed.is_some() {
+                    tracing::debug!("Buffer removed fd={}", fd);
                 }
             }
         })
@@ -505,7 +519,7 @@ fn run_pipewire_thread(
             move |stream, _user_data| {
                 use pipewire::sys::pw_stream_dequeue_buffer;
                 use pipewire::sys::pw_stream_queue_buffer;
-                
+
                 // 1. Queue any buffers that main thread finished rendering
                 {
                     let mut pool = buffer_pool.lock().unwrap();
@@ -515,22 +529,24 @@ fn run_pipewire_thread(
                             let spa_buffer = (*pw_buffer).buffer;
                             let chunk = (*(*spa_buffer).datas).chunk;
                             (*chunk).size = 1;
-                            
+
                             pw_stream_queue_buffer(stream.as_raw_ptr(), pw_buffer);
                         }
                         tracing::trace!("Queued buffer fd={}", fd);
                     }
                 }
-                
+
                 // 2. Dequeue all available buffers
                 loop {
                     let buffer = unsafe { pw_stream_dequeue_buffer(stream.as_raw_ptr()) };
-                    if buffer.is_null() { break; }
-                    
+                    if buffer.is_null() {
+                        break;
+                    }
+
                     unsafe {
                         let spa_buffer = (*buffer).buffer;
                         let fd = (*(*spa_buffer).datas).fd;
-                        
+
                         let mut pool = buffer_pool.lock().unwrap();
                         if let Some(dmabuf) = pool.dmabufs.get(&fd).cloned() {
                             pool.available.push_back(AvailableBuffer {
@@ -544,7 +560,7 @@ fn run_pipewire_thread(
                             pw_stream_queue_buffer(stream.as_raw_ptr(), buffer);
                         }
                     }
-                    
+
                     let mut state = state.borrow_mut();
                     state.sequence += 1;
                 }
@@ -555,7 +571,7 @@ fn run_pipewire_thread(
 
     // Build format parameters based on backend capabilities
     let format_params_bytes = build_format_params(&config)?;
-    
+
     let mut format_params: Vec<&pipewire::spa::pod::Pod> = format_params_bytes
         .iter()
         .map(|bytes| pipewire::spa::pod::Pod::from_bytes(bytes).unwrap())
@@ -564,9 +580,13 @@ fn run_pipewire_thread(
     // Connect stream
     // Use DRIVER and ALLOC_BUFFERS like niri
     let flags = pw::stream::StreamFlags::DRIVER | pw::stream::StreamFlags::ALLOC_BUFFERS;
-    
-    tracing::debug!("Connecting stream with flags: {:?}, dmabuf={}", flags, config.capabilities.supports_dmabuf);
-    
+
+    tracing::debug!(
+        "Connecting stream with flags: {:?}, dmabuf={}",
+        flags,
+        config.capabilities.supports_dmabuf
+    );
+
     stream
         .connect(
             pw::spa::utils::Direction::Output,
@@ -590,15 +610,18 @@ fn run_pipewire_thread(
 }
 
 /// Send buffer allocation parameters to PipeWire stream
-fn send_buffer_params(stream: &pipewire::stream::StreamRc, plane_count: i32) -> Result<(), PipeWireError> {
+fn send_buffer_params(
+    stream: &pipewire::stream::StreamRc,
+    plane_count: i32,
+) -> Result<(), PipeWireError> {
+    use pipewire::spa::buffer::DataType;
+    use pipewire::spa::param::ParamType;
     use pipewire::spa::pod::serialize::PodSerializer;
     use pipewire::spa::pod::{self, ChoiceValue, Property};
-    use pipewire::spa::param::ParamType;
-    use pipewire::spa::utils::{Choice, ChoiceEnum, ChoiceFlags, SpaTypes};
-    use pipewire::spa::buffer::DataType;
     use pipewire::spa::sys::*;
+    use pipewire::spa::utils::{Choice, ChoiceEnum, ChoiceFlags, SpaTypes};
     use std::io::Cursor;
-    
+
     // Create Buffers param
     let buffers_param = pod::object!(
         SpaTypes::ObjectParamBuffers,
@@ -626,7 +649,7 @@ fn send_buffer_params(stream: &pipewire::stream::StreamRc, plane_count: i32) -> 
             ))),
         ),
     );
-    
+
     // Create Meta param for header
     let meta_header_param = pod::object!(
         SpaTypes::ObjectParamMeta,
@@ -640,55 +663,73 @@ fn send_buffer_params(stream: &pipewire::stream::StreamRc, plane_count: i32) -> 
             pod::Value::Int(std::mem::size_of::<spa_meta_header>() as i32)
         ),
     );
-    
+
     // Create Meta param for VideoDamage
     let meta_damage_param = pod::object!(
         SpaTypes::ObjectParamMeta,
         ParamType::Meta,
         Property::new(
             SPA_PARAM_META_type,
-            pod::Value::Id(pipewire::spa::utils::Id(pipewire::spa::sys::SPA_META_VideoDamage))
+            pod::Value::Id(pipewire::spa::utils::Id(
+                pipewire::spa::sys::SPA_META_VideoDamage
+            ))
         ),
         Property::new(
             SPA_PARAM_META_size,
             // Size for spa_meta_region with up to 16 damage rectangles
-            pod::Value::Int((std::mem::size_of::<pipewire::spa::sys::spa_meta_region>() + 
-                             16 * std::mem::size_of::<pipewire::spa::sys::spa_rectangle>()) as i32)
+            pod::Value::Int(
+                (std::mem::size_of::<pipewire::spa::sys::spa_meta_region>()
+                    + 16 * std::mem::size_of::<pipewire::spa::sys::spa_rectangle>())
+                    as i32
+            )
         ),
     );
-    
+
     // Serialize params
     let mut buf1 = Vec::new();
     let mut buf2 = Vec::new();
     let mut buf3 = Vec::new();
-    PodSerializer::serialize(Cursor::new(&mut buf1), &pod::Value::Object(buffers_param))
-        .map_err(|e| PipeWireError::InitFailed(format!("Failed to serialize buffers param: {:?}", e)))?;
-    PodSerializer::serialize(Cursor::new(&mut buf2), &pod::Value::Object(meta_header_param))
-        .map_err(|e| PipeWireError::InitFailed(format!("Failed to serialize meta header param: {:?}", e)))?;
-    PodSerializer::serialize(Cursor::new(&mut buf3), &pod::Value::Object(meta_damage_param))
-        .map_err(|e| PipeWireError::InitFailed(format!("Failed to serialize meta damage param: {:?}", e)))?;
-    
+    PodSerializer::serialize(Cursor::new(&mut buf1), &pod::Value::Object(buffers_param)).map_err(
+        |e| PipeWireError::InitFailed(format!("Failed to serialize buffers param: {:?}", e)),
+    )?;
+    PodSerializer::serialize(
+        Cursor::new(&mut buf2),
+        &pod::Value::Object(meta_header_param),
+    )
+    .map_err(|e| {
+        PipeWireError::InitFailed(format!("Failed to serialize meta header param: {:?}", e))
+    })?;
+    PodSerializer::serialize(
+        Cursor::new(&mut buf3),
+        &pod::Value::Object(meta_damage_param),
+    )
+    .map_err(|e| {
+        PipeWireError::InitFailed(format!("Failed to serialize meta damage param: {:?}", e))
+    })?;
+
     let pod1 = pipewire::spa::pod::Pod::from_bytes(&buf1).unwrap();
     let pod2 = pipewire::spa::pod::Pod::from_bytes(&buf2).unwrap();
     let pod3 = pipewire::spa::pod::Pod::from_bytes(&buf3).unwrap();
     let mut params = [pod1, pod2, pod3];
-    
-    tracing::debug!("Updating stream params with Buffers (plane_count={}), Meta Header, and Meta VideoDamage", plane_count);
-    
-    stream.update_params(&mut params)
+
+    tracing::debug!(
+        "Updating stream params with Buffers (plane_count={}), Meta Header, and Meta VideoDamage",
+        plane_count
+    );
+
+    stream
+        .update_params(&mut params)
         .map_err(|e| PipeWireError::InitFailed(format!("Failed to update params: {}", e)))?;
-    
+
     Ok(())
 }
 
 /// Build format parameters based on backend capabilities.
-fn build_format_params(
-    config: &StreamConfig,
-) -> Result<Vec<Vec<u8>>, PipeWireError> {
+fn build_format_params(config: &StreamConfig) -> Result<Vec<Vec<u8>>, PipeWireError> {
+    use pipewire::spa::param::format::{FormatProperties, MediaSubtype, MediaType};
+    use pipewire::spa::param::ParamType;
     use pipewire::spa::pod::serialize::PodSerializer;
     use pipewire::spa::pod::Value;
-    use pipewire::spa::param::format::{FormatProperties, MediaType, MediaSubtype};
-    use pipewire::spa::param::ParamType;
     use pipewire::spa::utils::{Fraction, Rectangle, SpaTypes};
     use std::io::Cursor;
 
@@ -723,13 +764,13 @@ fn build_format_params(
                 &caps.modifiers
             );
 
-            use pipewire::spa::pod::{Property, Value as PodValue, ChoiceValue, PropertyFlags};
+            use pipewire::spa::pod::{ChoiceValue, Property, PropertyFlags, Value as PodValue};
             use pipewire::spa::utils::{Choice, ChoiceEnum, ChoiceFlags, Id};
-            
+
             // For simplicity, only offer LINEAR modifier (0x0) to avoid DONT_FIXATE complexity
             // This matches what OBS negotiates anyway
             let modifier_to_offer = vec![0i64]; // LINEAR modifier
-            
+
             // Create properties vector manually to include modifier choice
             let properties = vec![
                 Property {
@@ -783,7 +824,9 @@ fn build_format_params(
             };
 
             let bytes = PodSerializer::serialize(Cursor::new(Vec::new()), &Value::Object(format))
-                .map_err(|e| PipeWireError::InitFailed(format!("Failed to serialize format: {:?}", e)))?
+                .map_err(|e| {
+                    PipeWireError::InitFailed(format!("Failed to serialize format: {:?}", e))
+                })?
                 .0
                 .into_inner();
             params.push(bytes);
@@ -795,20 +838,34 @@ fn build_format_params(
                 SpaTypes::ObjectParamFormat,
                 ParamType::EnumFormat,
                 pipewire::spa::pod::property!(FormatProperties::MediaType, Id, MediaType::Video),
-                pipewire::spa::pod::property!(FormatProperties::MediaSubtype, Id, MediaSubtype::Raw),
+                pipewire::spa::pod::property!(
+                    FormatProperties::MediaSubtype,
+                    Id,
+                    MediaSubtype::Raw
+                ),
                 pipewire::spa::pod::property!(FormatProperties::VideoFormat, Id, video_format),
-                pipewire::spa::pod::property!(FormatProperties::VideoSize, Rectangle, Rectangle {
-                    width: config.width,
-                    height: config.height,
-                }),
-                pipewire::spa::pod::property!(FormatProperties::VideoFramerate, Fraction, Fraction {
-                    num: config.framerate_num,
-                    denom: config.framerate_denom,
-                }),
+                pipewire::spa::pod::property!(
+                    FormatProperties::VideoSize,
+                    Rectangle,
+                    Rectangle {
+                        width: config.width,
+                        height: config.height,
+                    }
+                ),
+                pipewire::spa::pod::property!(
+                    FormatProperties::VideoFramerate,
+                    Fraction,
+                    Fraction {
+                        num: config.framerate_num,
+                        denom: config.framerate_denom,
+                    }
+                ),
             );
 
             let bytes = PodSerializer::serialize(Cursor::new(Vec::new()), &Value::Object(format))
-                .map_err(|e| PipeWireError::InitFailed(format!("Failed to serialize format: {:?}", e)))?
+                .map_err(|e| {
+                    PipeWireError::InitFailed(format!("Failed to serialize format: {:?}", e))
+                })?
                 .0
                 .into_inner();
             params.push(bytes);
@@ -816,12 +873,12 @@ fn build_format_params(
     }
 
     tracing::debug!("Built {} format params", params.len());
-    
+
     // Log first param bytes for debugging
     if !params.is_empty() {
         tracing::debug!("First format param size: {} bytes", params[0].len());
     }
-    
+
     Ok(params)
 }
 
@@ -836,7 +893,7 @@ fn parse_negotiated_format(
     let (media_type, media_subtype) = format_utils::parse_format(param)
         .map_err(|e| PipeWireError::InitFailed(format!("Failed to parse format: {:?}", e)))?;
 
-    use pipewire::spa::param::format::{MediaType, MediaSubtype};
+    use pipewire::spa::param::format::{MediaSubtype, MediaType};
     if media_type != MediaType::Video || media_subtype != MediaSubtype::Raw {
         return Err(PipeWireError::InitFailed(
             "Not a raw video format".to_string(),
@@ -858,18 +915,21 @@ fn parse_negotiated_format(
     // Check if a modifier was negotiated (indicates DMA-BUF)
     // Parse modifier from the param object if present
     use pipewire::spa::utils::Id;
-    
+
     // DRM_FORMAT_MOD_INVALID = 0x00ffffffffffffff (indicates implicit modifier)
     const DRM_FORMAT_MOD_INVALID: i64 = 0x00ffffffffffffff_u64 as i64;
-    
+
     tracing::debug!("Parsing negotiated format, looking for VideoModifier property");
     let (is_dmabuf, modifier) = if let Ok(obj) = param.as_object() {
         tracing::debug!("Successfully parsed param as object, searching for modifier property");
         let prop = obj.find_prop(Id(FormatProperties::VideoModifier.as_raw()));
         if let Some(p) = prop {
             let value = p.value();
-            tracing::debug!("Found VideoModifier property, raw type: {:?}", value.type_());
-            
+            tracing::debug!(
+                "Found VideoModifier property, raw type: {:?}",
+                value.type_()
+            );
+
             // If VideoModifier property exists, dmabuf was negotiated
             // Try to extract the actual modifier value
             let modifier_val = if let Ok(long_val) = value.get_long() {
@@ -878,10 +938,12 @@ fn parse_negotiated_format(
             } else {
                 // Property exists but we can't read it (probably a Choice type)
                 // This still means dmabuf was negotiated
-                tracing::debug!("VideoModifier exists but couldn't read value - dmabuf is still active");
+                tracing::debug!(
+                    "VideoModifier exists but couldn't read value - dmabuf is still active"
+                );
                 Some(0) // Default to LINEAR modifier
             };
-            
+
             (true, modifier_val)
         } else {
             tracing::debug!("VideoModifier property not found - using SHM");
@@ -891,10 +953,12 @@ fn parse_negotiated_format(
         tracing::warn!("Failed to parse param as object");
         (false, None)
     };
-    
+
     if let Some(mod_value) = modifier {
         if mod_value == DRM_FORMAT_MOD_INVALID {
-            tracing::debug!("Negotiated with DMA-BUF using implicit modifier (DRM_FORMAT_MOD_INVALID)");
+            tracing::debug!(
+                "Negotiated with DMA-BUF using implicit modifier (DRM_FORMAT_MOD_INVALID)"
+            );
         } else {
             tracing::debug!("Negotiated with DMA-BUF modifier: 0x{:x}", mod_value);
         }
@@ -944,4 +1008,3 @@ fn fourcc_to_video_format(fourcc: Fourcc) -> pipewire::spa::param::video::VideoF
         }
     }
 }
-

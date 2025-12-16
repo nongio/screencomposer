@@ -89,7 +89,11 @@ impl ScreenComposerClient {
         debug!("Requesting list_outputs from compositor");
         let proxy = ScreenCastProxy::builder(&self.connection).build().await?;
         let outputs = proxy.list_outputs().await?;
-        debug!("Received {} outputs from compositor: {:?}", outputs.len(), outputs);
+        debug!(
+            "Received {} outputs from compositor: {:?}",
+            outputs.len(),
+            outputs
+        );
         Ok(outputs)
     }
 
@@ -213,7 +217,9 @@ impl ScreenComposerClient {
             }
             Err(e) => {
                 warn!(?e, "Failed to get PipeWire FD");
-                Err(zbus::Error::Failure(format!("Failed to get PipeWire FD: {e:?}")))
+                Err(zbus::Error::Failure(format!(
+                    "Failed to get PipeWire FD: {e:?}"
+                )))
             }
         }
     }

@@ -114,8 +114,8 @@ impl ScreenCastInterface {
             error!(?e, "Failed to notify compositor of session creation");
         }
 
-        Ok(OwnedObjectPath::try_from(session_path)
-            .map_err(|e| zbus::fdo::Error::Failed(format!("Invalid path: {e}")))?)
+        OwnedObjectPath::try_from(session_path)
+            .map_err(|e| zbus::fdo::Error::Failed(format!("Invalid path: {e}")))
     }
 
     /// Lists available output connectors.
@@ -132,12 +132,10 @@ impl ScreenCastInterface {
             })?;
 
         debug!("ListOutputs command sent, waiting for response");
-        let outputs = rx
-            .await
-            .map_err(|e| {
-                error!("Failed to receive ListOutputs response: {}", e);
-                zbus::fdo::Error::Failed(format!("Response channel error: {e}"))
-            })?;
+        let outputs = rx.await.map_err(|e| {
+            error!("Failed to receive ListOutputs response: {}", e);
+            zbus::fdo::Error::Failed(format!("Response channel error: {e}"))
+        })?;
 
         let connectors: Vec<String> = outputs.into_iter().map(|o| o.connector).collect();
         debug!("Received {} outputs: {:?}", connectors.len(), connectors);
@@ -266,8 +264,8 @@ impl SessionInterface {
             .await
             .map_err(|e| zbus::fdo::Error::Failed(format!("Failed to register stream: {e}")))?;
 
-        Ok(OwnedObjectPath::try_from(stream_path)
-            .map_err(|e| zbus::fdo::Error::Failed(format!("Invalid path: {e}")))?)
+        OwnedObjectPath::try_from(stream_path)
+            .map_err(|e| zbus::fdo::Error::Failed(format!("Invalid path: {e}")))
     }
 
     /// Starts recording a window (not implemented).
@@ -476,9 +474,9 @@ impl StreamInterface {
             .get(&self.stream_path)
             .ok_or_else(|| zbus::fdo::Error::Failed("Stream not found".to_string()))?;
 
-        let node_id = stream
-            .node_id
-            .ok_or_else(|| zbus::fdo::Error::Failed("PipeWire stream not yet started".to_string()))?;
+        let node_id = stream.node_id.ok_or_else(|| {
+            zbus::fdo::Error::Failed("PipeWire stream not yet started".to_string())
+        })?;
 
         let mut result = HashMap::new();
         result.insert("node-id".to_string(), OwnedValue::from(node_id));
@@ -494,10 +492,16 @@ impl StreamInterface {
             .ok_or_else(|| zbus::fdo::Error::Failed("Stream not found".to_string()))?;
 
         let mut result = HashMap::new();
-        result.insert("connector".to_string(), Value::from(stream.connector.as_str()).try_into().unwrap());
+        result.insert(
+            "connector".to_string(),
+            Value::from(stream.connector.as_str()).try_into().unwrap(),
+        );
         result.insert("width".to_string(), OwnedValue::from(stream.width));
         result.insert("height".to_string(), OwnedValue::from(stream.height));
-        result.insert("cursor-mode".to_string(), OwnedValue::from(stream.cursor_mode));
+        result.insert(
+            "cursor-mode".to_string(),
+            OwnedValue::from(stream.cursor_mode),
+        );
 
         Ok(result)
     }

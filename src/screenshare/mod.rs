@@ -40,9 +40,11 @@ mod pipewire_stream;
 
 pub use dbus_service::run_dbus_service;
 
-pub use pipewire_stream::{PipeWireStream, StreamConfig, BackendCapabilities, AvailableBuffer};
+pub use pipewire_stream::{AvailableBuffer, BackendCapabilities, PipeWireStream, StreamConfig};
 
-use smithay::reexports::calloop::channel::{Event as ChannelEvent, Sender as ChannelSender, channel};
+use smithay::reexports::calloop::channel::{
+    channel, Event as ChannelEvent, Sender as ChannelSender,
+};
 use zbus::zvariant::OwnedFd;
 
 /// Active screencast session state (compositor side).
@@ -69,9 +71,7 @@ pub struct ActiveStream {
 #[derive(Debug)]
 pub enum CompositorCommand {
     /// Create a new screencast session.
-    CreateSession {
-        session_id: String,
-    },
+    CreateSession { session_id: String },
     /// List available outputs for screen casting.
     ListOutputs {
         response_tx: tokio::sync::oneshot::Sender<Vec<OutputInfo>>,
@@ -94,9 +94,7 @@ pub enum CompositorCommand {
         response_tx: tokio::sync::oneshot::Sender<Result<OwnedFd, String>>,
     },
     /// Destroy a session.
-    DestroySession {
-        session_id: String,
-    },
+    DestroySession { session_id: String },
 }
 
 /// Information about an available output.
@@ -131,7 +129,10 @@ impl ScreenshareManager {
     /// This spawns a dedicated tokio runtime thread that runs the zbus server.
     /// Returns a manager that can be stored in the compositor state.
     pub fn start<B: crate::state::Backend + 'static>(
-        loop_handle: &smithay::reexports::calloop::LoopHandle<'static, crate::state::ScreenComposer<B>>,
+        loop_handle: &smithay::reexports::calloop::LoopHandle<
+            'static,
+            crate::state::ScreenComposer<B>,
+        >,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let (cmd_sender, cmd_receiver) = channel::<CompositorCommand>();
 
@@ -229,7 +230,8 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
             let output = match output {
                 Some(o) => o.clone(),
                 None => {
-                    let _ = response_tx.send(Err(format!("Output not found: {}", output_connector)));
+                    let _ =
+                        response_tx.send(Err(format!("Output not found: {}", output_connector)));
                     return;
                 }
             };
@@ -245,7 +247,10 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
 
             // Check if already recording this output
             if session.streams.contains_key(&output_connector) {
-                let _ = response_tx.send(Err(format!("Already recording output: {}", output_connector)));
+                let _ = response_tx.send(Err(format!(
+                    "Already recording output: {}",
+                    output_connector
+                )));
                 return;
             }
 
@@ -259,16 +264,16 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
             let gbm_device = state.backend_data.gbm_device();
             let capabilities = if let Some(ref _gbm) = gbm_device {
                 use smithay::backend::allocator::Fourcc;
-                
+
                 // For now, advertise ARGB8888 with common modifiers
                 // In production, we'd query the actual supported formats from the backend
                 let formats = vec![Fourcc::Argb8888];
-                
+
                 // Common DRM modifiers - LINEAR and INVALID (for implicit modifier)
                 const DRM_FORMAT_MOD_LINEAR: i64 = 0;
                 const DRM_FORMAT_MOD_INVALID: i64 = 0x00ffffffffffffff_u64 as i64;
                 let modifiers = vec![DRM_FORMAT_MOD_INVALID, DRM_FORMAT_MOD_LINEAR];
-                
+
                 pipewire_stream::BackendCapabilities {
                     supports_dmabuf: true,
                     formats,
@@ -294,7 +299,8 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
             let node_id = match pipewire_stream.start_sync() {
                 Ok(id) => id,
                 Err(e) => {
-                    let _ = response_tx.send(Err(format!("Failed to start PipeWire stream: {}", e)));
+                    let _ =
+                        response_tx.send(Err(format!("Failed to start PipeWire stream: {}", e)));
                     return;
                 }
             };
@@ -387,7 +393,7 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
 }
 
 /// Copy compositor framebuffer to PipeWire buffer using direct GPU blit
-/// 
+///
 /// Uses the Blit trait for GPU-only framebuffer copying with no CPU roundtrip.
 /// If damage regions are provided, only those regions are blitted for efficiency.
 pub fn fullscreen_to_dmabuf<R>(
@@ -400,14 +406,20 @@ where
     R: smithay::backend::renderer::Blit<smithay::backend::allocator::dmabuf::Dmabuf>,
 {
     use smithay::utils::Physical;
-    
+
     // If damage is provided, blit only damaged regions; otherwise blit entire framebuffer
     match damage {
         Some(rects) if !rects.is_empty() => {
             // Blit each damaged region individually
             tracing::debug!("Blitting {} damaged regions", rects.len());
             for rect in rects {
-                renderer.blit_to(dest_dmabuf.clone(), *rect, *rect, smithay::backend::renderer::TextureFilter::Linear)
+                renderer
+                    .blit_to(
+                        dest_dmabuf.clone(),
+                        *rect,
+                        *rect,
+                        smithay::backend::renderer::TextureFilter::Linear,
+                    )
                     .map_err(|e| format!("Blit failed: {:?}", e))?;
             }
             Ok(())
@@ -416,7 +428,13 @@ where
             // No damage info or empty damage - blit entire framebuffer
             tracing::debug!("Blitting entire framebuffer (no damage info)");
             let rect = smithay::utils::Rectangle::<i32, Physical>::from_loc_and_size((0, 0), size);
-            renderer.blit_to(dest_dmabuf, rect, rect, smithay::backend::renderer::TextureFilter::Linear)
+            renderer
+                .blit_to(
+                    dest_dmabuf,
+                    rect,
+                    rect,
+                    smithay::backend::renderer::TextureFilter::Linear,
+                )
                 .map_err(|e| format!("Blit failed: {:?}", e))
         }
     }

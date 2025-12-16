@@ -1247,7 +1247,10 @@ pub trait Backend {
     fn renderer_context(&mut self) -> Option<lay_rs::skia::gpu::DirectContext>;
     fn request_redraw(&mut self) {}
     /// Get GBM device for DMA-BUF screenshare (None for backends without DMA-BUF support)
-    fn gbm_device(&self) -> Option<smithay::backend::allocator::gbm::GbmDevice<smithay::backend::drm::DrmDeviceFd>> {
+    fn gbm_device(
+        &self,
+    ) -> Option<smithay::backend::allocator::gbm::GbmDevice<smithay::backend::drm::DrmDeviceFd>>
+    {
         None
     }
     /// Get render format and modifier for screenshare.

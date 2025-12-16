@@ -19,7 +19,7 @@ pub struct Application {
     pub picture: Option<skia::Picture>,
     pub override_name: Option<String>,
     pub desktop_file_id: Option<String>,
-    desktop_entry: DesktopEntry,
+    desktop_entry: DesktopEntry<'static>,
 }
 
 impl Application {
@@ -113,7 +113,7 @@ impl ApplicationsInfo {
         app
     }
 
-    async fn get_desktop_entry(app_id: &str) -> Option<DesktopEntry> {
+    async fn get_desktop_entry(app_id: &str) -> Option<DesktopEntry<'static>> {
         let entry_path =
             freedesktop_desktop_entry::Iter::new(freedesktop_desktop_entry::default_paths())
                 .find(|path| path.to_string_lossy().contains(app_id));

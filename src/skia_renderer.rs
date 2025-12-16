@@ -1303,8 +1303,14 @@ impl SkiaRenderer {
             self.gl.BindFramebuffer(ffi::DRAW_FRAMEBUFFER, dst_fbo);
 
             self.gl.BlitFramebuffer(
-                0, 0, size.w, size.h,
-                0, 0, size.w, size.h,
+                0,
+                0,
+                size.w,
+                size.h,
+                0,
+                0,
+                size.w,
+                size.h,
                 ffi::COLOR_BUFFER_BIT,
                 ffi::LINEAR,
             );
@@ -1555,17 +1561,18 @@ impl ExportMem for SkiaRenderer {
     ) -> Result<&'a [u8], <Self as Renderer>::Error> {
         // Lazy-load the pixel data if not already loaded
         let mut data_opt = texture_mapping.data.borrow_mut();
-        
+
         if data_opt.is_none() {
             // Need to read pixels from the FBO now
             let region = texture_mapping.region;
             let fourcc = texture_mapping.fourcc_format;
-            
+
             // Get the current surface and read pixels
-            let renderer = self.current_skia_renderer()
+            let renderer = self
+                .current_skia_renderer()
                 .ok_or(GlesError::FramebufferBindingError)?;
             let mut surface = renderer.surface();
-            
+
             let (_, read_format, _) =
                 fourcc_to_gl_formats(fourcc).ok_or(GlesError::UnknownPixelFormat)?;
             let color_type = match read_format {
@@ -1578,22 +1585,22 @@ impl ExportMem for SkiaRenderer {
                 skia::AlphaType::Premul,
                 None,
             );
-            
+
             let len = region.size.w * region.size.h * 4;
             let mut data_vec = vec![0; len as usize];
             let byte_row = info.min_row_bytes();
-            
+
             if !surface.read_pixels(&info, &mut data_vec, byte_row, (region.loc.x, region.loc.y)) {
                 return Err(GlesError::MappingError);
             }
-            
+
             *data_opt = Some(data_vec);
         }
-        
+
         let data_ref = data_opt.as_ref().unwrap();
         let len = data_ref.len();
         let ptr = data_ref.as_ptr();
-        
+
         unsafe { Ok(std::slice::from_raw_parts(ptr, len)) }
     }
 
@@ -1765,22 +1772,29 @@ impl Blit<Dmabuf> for SkiaRenderer {
     ) -> Result<(), <Self as Renderer>::Error> {
         // Get source FBO from current render target
         let src_fbo = self.get_current_fbo()?.fbo;
-        
+
         // Bind destination dmabuf to get its FBO
         self.bind(to.clone())?;
-        let dst_fbo = self.buffers
+        let dst_fbo = self
+            .buffers
             .get(&SkiaTarget::Dmabuf(to))
             .ok_or(GlesError::FramebufferBindingError)?
             .fbo;
-        
+
         // Direct FBO-to-FBO blit (GPU only)
         unsafe {
             self.gl.BindFramebuffer(ffi::READ_FRAMEBUFFER, src_fbo);
             self.gl.BindFramebuffer(ffi::DRAW_FRAMEBUFFER, dst_fbo);
 
             self.gl.BlitFramebuffer(
-                src.loc.x, src.loc.y, src.loc.x + src.size.w, src.loc.y + src.size.h,
-                dst.loc.x, dst.loc.y, dst.loc.x + dst.size.w, dst.loc.y + dst.size.h,
+                src.loc.x,
+                src.loc.y,
+                src.loc.x + src.size.w,
+                src.loc.y + src.size.h,
+                dst.loc.x,
+                dst.loc.y,
+                dst.loc.x + dst.size.w,
+                dst.loc.y + dst.size.h,
                 ffi::COLOR_BUFFER_BIT,
                 ffi::LINEAR,
             );
@@ -1788,7 +1802,7 @@ impl Blit<Dmabuf> for SkiaRenderer {
             self.gl.BindFramebuffer(ffi::READ_FRAMEBUFFER, 0);
             self.gl.BindFramebuffer(ffi::DRAW_FRAMEBUFFER, 0);
         }
-        
+
         Ok(())
     }
 
@@ -1802,22 +1816,29 @@ impl Blit<Dmabuf> for SkiaRenderer {
     ) -> Result<(), <Self as Renderer>::Error> {
         // Get destination FBO from current render target
         let dst_fbo = self.get_current_fbo()?.fbo;
-        
+
         // Bind source dmabuf to get its FBO
         self.bind(from.clone())?;
-        let src_fbo = self.buffers
+        let src_fbo = self
+            .buffers
             .get(&SkiaTarget::Dmabuf(from))
             .ok_or(GlesError::FramebufferBindingError)?
             .fbo;
-        
+
         // Direct FBO-to-FBO blit (GPU only)
         unsafe {
             self.gl.BindFramebuffer(ffi::READ_FRAMEBUFFER, src_fbo);
             self.gl.BindFramebuffer(ffi::DRAW_FRAMEBUFFER, dst_fbo);
 
             self.gl.BlitFramebuffer(
-                src.loc.x, src.loc.y, src.loc.x + src.size.w, src.loc.y + src.size.h,
-                dst.loc.x, dst.loc.y, dst.loc.x + dst.size.w, dst.loc.y + dst.size.h,
+                src.loc.x,
+                src.loc.y,
+                src.loc.x + src.size.w,
+                src.loc.y + src.size.h,
+                dst.loc.x,
+                dst.loc.y,
+                dst.loc.x + dst.size.w,
+                dst.loc.y + dst.size.h,
                 ffi::COLOR_BUFFER_BIT,
                 ffi::LINEAR,
             );
@@ -1825,7 +1846,7 @@ impl Blit<Dmabuf> for SkiaRenderer {
             self.gl.BindFramebuffer(ffi::READ_FRAMEBUFFER, 0);
             self.gl.BindFramebuffer(ffi::DRAW_FRAMEBUFFER, 0);
         }
-        
+
         Ok(())
     }
 }

@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 use tracing::{info, warn};
-use zbus::interface;
 use zbus::fdo;
+use zbus::interface;
 use zbus::object_server::ObjectServer;
 use zbus::zvariant::OwnedObjectPath;
 use zbus::SignalContext;
