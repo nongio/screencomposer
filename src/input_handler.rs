@@ -17,7 +17,7 @@ use crate::udev::UdevData;
 use smithay::{
     backend::input::{
         self, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent, KeyState,
-        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, Keycode,
     },
     desktop::{layer_map_for_output, WindowSurfaceType},
     input::{
@@ -169,11 +169,11 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         let original_keycode = evt.key_code();
         let keycode = self
             .keycode_remap
-            .get(&original_keycode)
-            .copied()
+            .get(&original_keycode.raw())
+            .map(|&raw| Keycode::new(raw))
             .unwrap_or(original_keycode);
         let state = evt.state();
-        debug!(keycode, ?state, "key");
+        debug!(?keycode, ?state, "key");
         let serial = SCOUNTER.next_serial();
         let time = Event::time_msec(&evt);
         let mut suppressed_keys = self.suppressed_keys.clone();
@@ -783,7 +783,7 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
         for keycode in keyboard.pressed_keys() {
             keyboard.input(
                 self,
-                keycode.raw(),
+                keycode,
                 KeyState::Released,
                 SCOUNTER.next_serial(),
                 0,

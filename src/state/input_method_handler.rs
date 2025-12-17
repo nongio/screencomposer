@@ -42,6 +42,15 @@ impl<BackendData: Backend> InputMethodHandler for ScreenComposer<BackendData> {
 delegate_input_method_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 
 impl<BackendData: Backend> PointerConstraintsHandler for ScreenComposer<BackendData> {
+    fn cursor_position_hint(
+        &mut self,
+        _surface: &WlSurface,
+        _pointer: &PointerHandle<Self>,
+        _location: smithay::utils::Point<f64, smithay::utils::Logical>,
+    ) {
+        // Handle cursor position hint if needed
+    }
+
     fn new_constraint(&mut self, surface: &WlSurface, pointer: &PointerHandle<Self>) {
         // XXX region
         let Some(current_focus) = pointer.current_focus() else {

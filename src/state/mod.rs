@@ -32,7 +32,7 @@ use smithay::{
         PopupManager,
     },
     input::{
-        keyboard::{xkb, Keysym, ModifiersState, XkbConfig, XkbContextHandler},
+        keyboard::{xkb, Keysym, ModifiersState, XkbConfig},
         pointer::{CursorIcon, CursorImageAttributes, CursorImageStatus, PointerHandle},
         Seat, SeatState,
     },
@@ -470,8 +470,11 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             return;
         };
 
-        let mapping =
-            keyboard.with_xkb_state(self, |ctx| build_keycode_remap_map(ctx.keymap(), &remaps));
+        let mapping = keyboard.with_xkb_state(self, |ctx| {
+            let xkb = ctx.xkb().lock().unwrap();
+            let keymap = unsafe { xkb.keymap() };
+            build_keycode_remap_map(keymap, &remaps)
+        });
 
         self.keycode_remap = mapping;
     }
@@ -482,8 +485,11 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             return;
         };
 
-        let masks =
-            keyboard.with_xkb_state(self, |ctx| ModifierMaskLookup::from_keymap(ctx.keymap()));
+        let masks = keyboard.with_xkb_state(self, |ctx| {
+            let xkb = ctx.xkb().lock().unwrap();
+            let keymap = unsafe { xkb.keymap() };
+            ModifierMaskLookup::from_keymap(keymap)
+        });
         self.modifier_masks = masks;
     }
 

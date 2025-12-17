@@ -99,10 +99,8 @@ use smithay::{
         },
     },
 };
-use smithay_drm_extras::{
-    drm_scanner::{DrmScanEvent, DrmScanner},
-    edid::EdidInfo,
-};
+use smithay_drm_extras::drm_scanner::{DrmScanEvent, DrmScanner};
+use smithay::wayland::presentation::Refresh;
 use tracing::{debug, error, info, trace, warn};
 
 // we cannot simply pick the first supported format of the intersection of *all* formats, because:
@@ -1087,9 +1085,12 @@ impl ScreenComposer<UdevData> {
             })
             .unwrap_or(false);
 
-        let (make, model) = EdidInfo::for_connector(&device.drm, connector.handle())
-            .map(|info| (info.manufacturer, info.model))
-            .unwrap_or_else(|| ("Unknown".into(), "Unknown".into()));
+        // EDID info is no longer available in smithay-drm-extras
+        // Using connector info instead
+        let (make, model) = (
+            format!("{:?}", connector.interface()),
+            format!("{:?}", connector.interface()),
+        );
 
         if non_desktop {
             info!(
@@ -1468,8 +1469,8 @@ impl ScreenComposer<UdevData> {
                         clock,
                         output
                             .current_mode()
-                            .map(|mode| Duration::from_secs_f64(1_000f64 / mode.refresh as f64))
-                            .unwrap_or_default(),
+                            .map(|mode| Refresh::fixed(Duration::from_nanos(1_000_000_000_000 / mode.refresh as u64)))
+                            .unwrap_or(Refresh::Unknown),
                         seq as u64,
                         flags,
                     );
@@ -1765,8 +1766,6 @@ impl ScreenComposer<UdevData> {
                         if connector == &output.name() {
                             let buffer_pool = stream.pipewire_stream.buffer_pool();
                             let mut pool = buffer_pool.lock().unwrap();
-                            
-                            let had_buffer = !pool.available.is_empty();
 
                             if let Some(available) = pool.available.pop_front() {
                                 let size = output
