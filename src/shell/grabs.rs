@@ -445,10 +445,44 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
                     state.size = Some(self.last_window_size);
                 });
                 xdg.send_pending_configure();
+                
+                // Reposition window during resize if resizing from top or left edges
+                if self.edges.intersects(ResizeEdge::TOP_LEFT) {
+                    let geometry = self.window.geometry();
+                    let mut location = data.workspaces.element_location(&self.window).unwrap();
+
+                    if self.edges.intersects(ResizeEdge::LEFT) {
+                        location.x = self.initial_window_location.x
+                            + (self.initial_window_size.w - geometry.size.w);
+                    }
+                    if self.edges.intersects(ResizeEdge::TOP) {
+                        location.y = self.initial_window_location.y
+                            + (self.initial_window_size.h - geometry.size.h);
+                    }
+
+                    data.workspaces.map_window(&self.window, location, true);
+                }
             }
             #[cfg(feature = "xwayland")]
             WindowSurface::X11(x11) => {
-                let location = data.space.element_location(&self.window).unwrap();
+                let mut location = data.space.element_location(&self.window).unwrap();
+                
+                // Reposition window during resize if resizing from top or left edges
+                if self.edges.intersects(ResizeEdge::TOP_LEFT) {
+                    let geometry = self.window.geometry();
+
+                    if self.edges.intersects(ResizeEdge::LEFT) {
+                        location.x = self.initial_window_location.x
+                            + (self.initial_window_size.w - geometry.size.w);
+                    }
+                    if self.edges.intersects(ResizeEdge::TOP) {
+                        location.y = self.initial_window_location.y
+                            + (self.initial_window_size.h - geometry.size.h);
+                    }
+
+                    data.space.map_element(self.window.clone(), location, true);
+                }
+                
                 x11.configure(Rectangle::from_loc_and_size(
                     location,
                     self.last_window_size,
@@ -492,21 +526,6 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
                         state.size = Some(self.last_window_size);
                     });
                     xdg.send_pending_configure();
-                    if self.edges.intersects(ResizeEdge::TOP_LEFT) {
-                        let geometry = self.window.geometry();
-                        let mut location = state.workspaces.element_location(&self.window).unwrap();
-
-                        if self.edges.intersects(ResizeEdge::LEFT) {
-                            location.x = self.initial_window_location.x
-                                + (self.initial_window_size.w - geometry.size.w);
-                        }
-                        if self.edges.intersects(ResizeEdge::TOP) {
-                            location.y = self.initial_window_location.y
-                                + (self.initial_window_size.h - geometry.size.h);
-                        }
-
-                        state.workspaces.map_window(&self.window, location, true);
-                    }
 
                     with_states(&self.window.wl_surface().unwrap(), |states| {
                         let mut data = states
@@ -524,21 +543,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
                 }
                 #[cfg(feature = "xwayland")]
                 WindowSurface::X11(x11) => {
-                    let mut location = state.space.element_location(&self.window).unwrap();
-                    if self.edges.intersects(ResizeEdge::TOP_LEFT) {
-                        let geometry = self.window.geometry();
-
-                        if self.edges.intersects(ResizeEdge::LEFT) {
-                            location.x = self.initial_window_location.x
-                                + (self.initial_window_size.w - geometry.size.w);
-                        }
-                        if self.edges.intersects(ResizeEdge::TOP) {
-                            location.y = self.initial_window_location.y
-                                + (self.initial_window_size.h - geometry.size.h);
-                        }
-
-                        state.space.map_element(self.window.clone(), location, true);
-                    }
+                    let location = state.space.element_location(&self.window).unwrap();
                     x11.configure(Rectangle::from_loc_and_size(
                         location,
                         self.last_window_size,
@@ -711,21 +716,6 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
                     state.size = Some(self.last_window_size);
                 });
                 xdg.send_pending_configure();
-                if self.edges.intersects(ResizeEdge::TOP_LEFT) {
-                    let geometry = self.window.geometry();
-                    let mut location = state.workspaces.element_location(&self.window).unwrap();
-
-                    if self.edges.intersects(ResizeEdge::LEFT) {
-                        location.x = self.initial_window_location.x
-                            + (self.initial_window_size.w - geometry.size.w);
-                    }
-                    if self.edges.intersects(ResizeEdge::TOP) {
-                        location.y = self.initial_window_location.y
-                            + (self.initial_window_size.h - geometry.size.h);
-                    }
-
-                    state.workspaces.map_window(&self.window, location, true);
-                }
 
                 with_states(&self.window.wl_surface().unwrap(), |states| {
                     let mut data = states
@@ -743,21 +733,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
             }
             #[cfg(feature = "xwayland")]
             WindowSurface::X11(x11) => {
-                let mut location = state.space.element_location(&self.window).unwrap();
-                if self.edges.intersects(ResizeEdge::TOP_LEFT) {
-                    let geometry = self.window.geometry();
-
-                    if self.edges.intersects(ResizeEdge::LEFT) {
-                        location.x = self.initial_window_location.x
-                            + (self.initial_window_size.w - geometry.size.w);
-                    }
-                    if self.edges.intersects(ResizeEdge::TOP) {
-                        location.y = self.initial_window_location.y
-                            + (self.initial_window_size.h - geometry.size.h);
-                    }
-
-                    state.space.map_element(self.window.clone(), location, true);
-                }
+                let location = state.space.element_location(&self.window).unwrap();
                 x11.configure(Rectangle::from_loc_and_size(
                     location,
                     self.last_window_size,
@@ -865,10 +841,44 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
                     state.size = Some(self.last_window_size);
                 });
                 xdg.send_pending_configure();
+                
+                // Reposition window during resize if resizing from top or left edges
+                if self.edges.intersects(ResizeEdge::TOP_LEFT) {
+                    let geometry = self.window.geometry();
+                    let mut location = data.workspaces.element_location(&self.window).unwrap();
+
+                    if self.edges.intersects(ResizeEdge::LEFT) {
+                        location.x = self.initial_window_location.x
+                            + (self.initial_window_size.w - geometry.size.w);
+                    }
+                    if self.edges.intersects(ResizeEdge::TOP) {
+                        location.y = self.initial_window_location.y
+                            + (self.initial_window_size.h - geometry.size.h);
+                    }
+
+                    data.workspaces.map_window(&self.window, location, true);
+                }
             }
             #[cfg(feature = "xwayland")]
             WindowSurface::X11(x11) => {
-                let location = data.space.element_location(&self.window).unwrap();
+                let mut location = data.space.element_location(&self.window).unwrap();
+                
+                // Reposition window during resize if resizing from top or left edges
+                if self.edges.intersects(ResizeEdge::TOP_LEFT) {
+                    let geometry = self.window.geometry();
+
+                    if self.edges.intersects(ResizeEdge::LEFT) {
+                        location.x = self.initial_window_location.x
+                            + (self.initial_window_size.w - geometry.size.w);
+                    }
+                    if self.edges.intersects(ResizeEdge::TOP) {
+                        location.y = self.initial_window_location.y
+                            + (self.initial_window_size.h - geometry.size.h);
+                    }
+
+                    data.space.map_element(self.window.clone(), location, true);
+                }
+                
                 x11.configure(Rectangle::from_loc_and_size(
                     location,
                     self.last_window_size,

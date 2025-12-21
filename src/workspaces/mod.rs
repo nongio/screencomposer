@@ -571,7 +571,7 @@ impl Workspaces {
         let num_workspaces = self.with_model(|m| m.workspaces.len());
         for i in 0..num_workspaces {
             let animated = i == current_workspace;
-            let workspace_transition = if animated { Some(transition.clone()) } else { None };
+            let workspace_transition = if animated { Some(transition) } else { None };
             self.expose_show_all_end(i, current_delta, target_show_all, workspace_transition);
         }
     }
