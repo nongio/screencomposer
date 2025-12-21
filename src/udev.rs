@@ -1696,8 +1696,7 @@ impl ScreenComposer<UdevData> {
         // - Disable during expose gesture
         // - Disable during workspace swipe gesture
         let allow_direct_scanout = self.workspaces.is_fullscreen_and_stable()
-            && !self.is_expose_swiping
-            && !self.is_workspace_swiping;
+            && !self.swipe_gesture.is_active();
 
         // Only fetch the fullscreen window if direct scanout is allowed
         let fullscreen_window = if allow_direct_scanout {

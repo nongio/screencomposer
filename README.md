@@ -48,6 +48,7 @@ Following a draft roadmap of features and improvements.
 ### Expose windows (hotkey: `alt + f` gesture on udev: `three fingers swipe up`)
 - [x] all windows (algorithm from gnome-shell/kde)
 - [x] preview windows with name
+- [ ] show all desktop
 
 ### Dock task manager
 - [x] show running applications in their opening order
@@ -59,7 +60,7 @@ Following a draft roadmap of features and improvements.
 ### Screenshare
 - [x] XDG Desktop Portal backend (see [docs/xdg-desktop-portal.md](./docs/xdg-desktop-portal.md))
 - [x] ScreenCast portal for PipeWire screen sharing
-- [~] fullscreenshare with dmabuf zero-copy
+- [x] fullscreenshare with dmabuf zero-copy
 - [ ] Window capture support (layers_element)
 - [ ] screenshot support
 - [ ] Permission dialog UI

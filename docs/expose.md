@@ -8,6 +8,9 @@ Expose shows scaled previews of every visible window on the current workspace so
 - Updates: `expose_update_if_needed` recalculates when windows change (map/unmap/move/drag/drop) but only when expose is visible.
 - Visibility: The expose layer and overlay layers are kept hidden unless animation or `show_all` is active to avoid unnecessary drawing.
 
+## Gesture direction detection
+Three-finger swipe gestures use accumulated delta values to determine intent: when the gesture begins, both horizontal and vertical deltas are tracked without activating either workspace switching or expose mode. Once the accumulated movement exceeds a 20-pixel threshold in either direction, the compositor commits to that mode based on which axis has greater magnitude—horizontal motion activates workspace switching (`workspace_swipe_update`) while vertical motion triggers expose mode (`expose_update`). This delayed commitment prevents accidental mode activation from minor diagonal movements and ensures the gesture feels responsive once direction is clear. After direction is determined, all subsequent update events feed directly into the active mode (workspace or expose) without re-evaluation, and velocity samples are collected for workspace switching to enable smooth momentum-based snapping on gesture end.
+
 ## Window mirroring
 - Each window is mirrored by a layer created in `WorkspaceView::map_window` (`window_selector_view.map_window` adds it to the expose container). The mirror follows the real window layer via `add_follower_node`, so content stays in sync.
 - Mirrors are excluded from expose while a drag is in progress (`expose_dragging_window`) to avoid double-rendering the dragged item.

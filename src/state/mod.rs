@@ -191,11 +191,7 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub layers_engine: Arc<Engine>,
 
     pub show_desktop: bool,
-    pub is_expose_swiping: bool,
-    pub is_workspace_swiping: bool,
-    pub workspace_swipe_accumulated: (f64, f64),
-    pub workspace_swipe_active: bool,
-    pub workspace_swipe_velocity_samples: Vec<f64>,
+    pub swipe_gesture: SwipeGestureState,
     pub is_pinching: bool,
     pub is_resizing: bool,
 
@@ -215,6 +211,63 @@ pub mod selection_handler;
 pub mod xdg_activation_handler;
 pub mod xdg_decoration_handler;
 pub mod xwayland_handler;
+
+// Gesture constants
+pub const DIRECTION_THRESHOLD: f64 = 5.0;
+pub const EXPOSE_DELTA_MULTIPLIER: f64 = 500.0;
+pub const VELOCITY_SAMPLE_COUNT: usize = 4;
+
+/// Swipe gesture direction detected from accumulated deltas
+#[derive(Debug, Clone, Copy)]
+pub enum SwipeDirection {
+    Horizontal(f64),
+    Vertical(f64),
+    Undetermined,
+}
+
+impl SwipeDirection {
+    pub fn from_accumulated(horiz: f64, vert: f64) -> Self {
+        if horiz > DIRECTION_THRESHOLD && horiz > vert {
+            Self::Horizontal(horiz)
+        } else if vert > DIRECTION_THRESHOLD {
+            Self::Vertical(vert)
+        } else {
+            Self::Undetermined
+        }
+    }
+    
+    pub fn to_expose_delta(&self) -> Option<f32> {
+        match self {
+            Self::Vertical(delta) => Some(*delta as f32 / EXPOSE_DELTA_MULTIPLIER as f32),
+            _ => None,
+        }
+    }
+}
+
+/// State machine for 3-finger swipe gestures
+#[derive(Debug, Clone)]
+pub enum SwipeGestureState {
+    Idle,
+    Detecting {
+        accumulated: (f64, f64),
+    },
+    WorkspaceSwitching {
+        velocity_samples: Vec<f64>,
+    },
+    Expose {
+        velocity_samples: Vec<f64>,
+    },
+}
+
+impl SwipeGestureState {
+    pub fn is_active(&self) -> bool {
+        !matches!(self, Self::Idle)
+    }
+    
+    pub fn is_expose(&self) -> bool {
+        matches!(self, Self::Expose { .. })
+    }
+}
 
 impl<BackendData: Backend> OutputHandler for ScreenComposer<BackendData> {}
 
@@ -431,11 +484,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
 
             show_desktop: false,
             // support variables for gestures
-            is_expose_swiping: false,
-            is_workspace_swiping: false,
-            workspace_swipe_accumulated: (0.0, 0.0),
-            workspace_swipe_active: false,
-            workspace_swipe_velocity_samples: Vec::new(),
+            swipe_gesture: SwipeGestureState::Idle,
             is_pinching: false,
             is_resizing: false,
 

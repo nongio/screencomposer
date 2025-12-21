@@ -675,13 +675,13 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                 }
                 KeyAction::ApplicationSwitchNext => {
                     if self.workspaces.get_show_all() {
-                        self.workspaces.expose_show_all(-1.0, true);
+                        self.workspaces.expose_set_visible(false);
                     }
                     self.workspaces.app_switcher.next();
                 }
                 KeyAction::ApplicationSwitchPrev => {
                     if self.workspaces.get_show_all() {
-                        self.workspaces.expose_show_all(-1.0, true);
+                        self.workspaces.expose_set_visible(false);
                     }
                     self.workspaces.app_switcher.previous();
                 }
@@ -706,12 +706,12 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
                 }
                 KeyAction::ExposeShowAll => {
                     if self.workspaces.get_show_all() {
-                        self.workspaces.expose_show_all(-1.0, true);
+                        self.workspaces.expose_set_visible(false);
                     } else {
                         // Dismiss all popups before entering expose mode
                         // to release pointer grabs that would intercept events
                         self.dismiss_all_popups();
-                        self.workspaces.expose_show_all(1.0, true);
+                        self.workspaces.expose_set_visible(true);
                     }
                 }
                 KeyAction::WorkspaceNum(n) => {
@@ -948,13 +948,13 @@ impl ScreenComposer<UdevData> {
                 }
                 KeyAction::ApplicationSwitchNext => {
                     if self.workspaces.get_show_all() {
-                        self.workspaces.expose_show_all(-1.0, true);
+                        self.workspaces.expose_set_visible(false);
                     }
                     self.workspaces.app_switcher.next();
                 }
                 KeyAction::ApplicationSwitchPrev => {
                     if self.workspaces.get_show_all() {
-                        self.workspaces.expose_show_all(-1.0, true);
+                        self.workspaces.expose_set_visible(false);
                     }
                     self.workspaces.app_switcher.previous();
                 }
@@ -979,12 +979,12 @@ impl ScreenComposer<UdevData> {
                 }
                 KeyAction::ExposeShowAll => {
                     if self.workspaces.get_show_all() {
-                        self.workspaces.expose_show_all(-1.0, true);
+                        self.workspaces.expose_set_visible(false);
                     } else {
                         // Dismiss all popups before entering expose mode
                         // to release pointer grabs that would intercept events
                         self.dismiss_all_popups();
-                        self.workspaces.expose_show_all(1.0, true);
+                        self.workspaces.expose_set_visible(true);
                     }
                 }
                 KeyAction::WorkspaceNum(index) => {
@@ -1379,18 +1379,11 @@ impl ScreenComposer<UdevData> {
     fn on_gesture_swipe_begin<B: InputBackend>(&mut self, evt: B::GestureSwipeBeginEvent) {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
-        // tracing::error!("on_gesture_swipe_begin: {:?}", self.swipe_gesture);
 
-        // 3-finger swipe: direction determines behavior (horizontal=workspace, vertical=expose)
+        // 3-finger swipe: start detecting direction
         if evt.fingers() == 3 && !self.is_pinching {
-            // Start tracking but don't activate until direction is determined
-            self.is_workspace_swiping = true;
-            self.workspace_swipe_accumulated = (0.0, 0.0);
-            self.workspace_swipe_active = false;
-            self.workspace_swipe_velocity_samples.clear();
-            self.is_expose_swiping = false;
+            self.gesture_swipe_begin_3finger();
         }
-        // self.background_view.set_debug_text(format!("on_gesture_swipe_begin: {:?}", self.swipe_gesture));
 
         pointer.gesture_swipe_begin(
             self,
@@ -1401,59 +1394,78 @@ impl ScreenComposer<UdevData> {
             },
         );
     }
+    
+    fn gesture_swipe_begin_3finger(&mut self) {
+        self.swipe_gesture = crate::state::SwipeGestureState::Detecting {
+            accumulated: (0.0, 0.0),
+        };
+    }
 
     fn on_gesture_swipe_update<B: InputBackend>(&mut self, evt: B::GestureSwipeUpdateEvent) {
         let pointer = self.pointer.clone();
-
-        // Handle 3-finger swipe (direction determines: horizontal=workspace, vertical=expose)
-        if self.is_workspace_swiping || self.is_expose_swiping {
-            let delta_x = evt.delta().x;
-            let delta_y = evt.delta().y;
-
-            // If direction not yet determined, accumulate and check threshold
-            if self.is_workspace_swiping && !self.workspace_swipe_active && !self.is_expose_swiping
-            {
-                self.workspace_swipe_accumulated.0 += delta_x;
-                self.workspace_swipe_accumulated.1 += delta_y;
-
-                let horiz = self.workspace_swipe_accumulated.0.abs();
-                let vert = self.workspace_swipe_accumulated.1.abs();
-                const THRESHOLD: f64 = 20.0;
-
-                if horiz > THRESHOLD && horiz > vert {
-                    // Horizontal swipe -> workspace switching
-                    self.workspace_swipe_active = true;
-                    self.workspaces
-                        .workspace_swipe_update(self.workspace_swipe_accumulated.0 as f32);
-                } else if vert > THRESHOLD {
-                    // Vertical swipe -> expose mode
-                    self.is_workspace_swiping = false;
-                    self.is_expose_swiping = true;
-                    // Apply accumulated vertical delta to expose
-                    let multiplier = 500.0;
-                    let delta = self.workspace_swipe_accumulated.1 as f32 / multiplier;
-                    self.workspaces.expose_show_all(-delta, false);
+        let delta = evt.delta();
+        
+        match &mut self.swipe_gesture {
+            crate::state::SwipeGestureState::Detecting { accumulated } => {
+                accumulated.0 += delta.x;
+                accumulated.1 += delta.y;
+                
+                let direction = crate::state::SwipeDirection::from_accumulated(
+                    accumulated.0.abs(),
+                    accumulated.1.abs(),
+                );
+                
+                match direction {
+                    crate::state::SwipeDirection::Horizontal(_) => {
+                        // Initialize workspace switching mode and apply current delta
+                        self.swipe_gesture = crate::state::SwipeGestureState::WorkspaceSwitching {
+                            velocity_samples: vec![delta.x],
+                        };
+                        // Apply the current frame's delta (not accumulated)
+                        self.workspaces.workspace_swipe_update(delta.x as f32);
+                    }
+                    crate::state::SwipeDirection::Vertical(_) => {
+                        // Initialize expose mode and apply current delta
+                        self.dismiss_all_popups();
+                        
+                        // Reset accumulated gesture value to prevent accumulation across repeated gestures
+                        self.workspaces.reset_expose_gesture();
+                        
+                        self.swipe_gesture = crate::state::SwipeGestureState::Expose {
+                            velocity_samples: vec![delta.y],
+                        };
+                        // Apply the current frame's delta (not accumulated)
+                        let expose_delta = (delta.y / crate::state::EXPOSE_DELTA_MULTIPLIER) as f32;
+                        self.workspaces.expose_update(expose_delta);
+                    }
+                    crate::state::SwipeDirection::Undetermined => {}
                 }
-            } else if self.workspace_swipe_active {
-                // Already in workspace swipe mode
-                self.workspace_swipe_velocity_samples.push(delta_x);
-                if self.workspace_swipe_velocity_samples.len() > 4 {
-                    self.workspace_swipe_velocity_samples.remove(0);
-                }
-                self.workspaces.workspace_swipe_update(delta_x as f32);
-            } else if self.is_expose_swiping {
-                // Already in expose mode
-                let multiplier = 500.0;
-                let delta = delta_y as f32 / multiplier;
-                self.workspaces.expose_show_all(-delta, false);
             }
+            crate::state::SwipeGestureState::WorkspaceSwitching { velocity_samples } => {
+                velocity_samples.push(delta.x);
+                if velocity_samples.len() > crate::state::VELOCITY_SAMPLE_COUNT {
+                    velocity_samples.remove(0);
+                }
+                self.workspaces.workspace_swipe_update(delta.x as f32);
+            }
+            crate::state::SwipeGestureState::Expose { velocity_samples } => {
+                // Collect velocity samples for momentum-based spring animation
+                velocity_samples.push(delta.y);
+                if velocity_samples.len() > crate::state::VELOCITY_SAMPLE_COUNT {
+                    velocity_samples.remove(0);
+                }
+                
+                let expose_delta = (delta.y / crate::state::EXPOSE_DELTA_MULTIPLIER) as f32;
+                self.workspaces.expose_update(expose_delta);
+            }
+            crate::state::SwipeGestureState::Idle => {}
         }
 
         pointer.gesture_swipe_update(
             self,
             &GestureSwipeUpdateEvent {
                 time: evt.time_msec(),
-                delta: evt.delta(),
+                delta,
             },
         );
     }
@@ -1461,43 +1473,15 @@ impl ScreenComposer<UdevData> {
     fn on_gesture_swipe_end<B: InputBackend>(&mut self, evt: B::GestureSwipeEndEvent) {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
-
-        if self.is_expose_swiping {
-            self.workspaces.expose_show_all(0.0, true);
-            self.is_expose_swiping = false;
-        }
-
-        // Handle workspace swipe end
-        if self.is_workspace_swiping {
-            let target_index = if self.workspace_swipe_active && !evt.cancelled() {
-                // Calculate smoothed velocity from samples
-                let velocity = if self.workspace_swipe_velocity_samples.is_empty() {
-                    0.0
-                } else {
-                    self.workspace_swipe_velocity_samples.iter().sum::<f64>()
-                        / self.workspace_swipe_velocity_samples.len() as f64
-                };
-                Some(self.workspaces.workspace_swipe_end(velocity as f32))
-            } else if self.workspace_swipe_active {
-                // Gesture cancelled, snap back to current workspace
-                Some(self.workspaces.workspace_swipe_end(0.0))
-            } else {
-                None
-            };
-
-            // Update keyboard focus to top window of the target workspace
-            if let Some(index) = target_index {
-                if let Some(top_wid) = self.workspaces.get_top_window_of_workspace(index) {
-                    self.set_keyboard_focus_on_surface(&top_wid);
-                } else {
-                    self.clear_keyboard_focus();
-                }
+        
+        match std::mem::replace(&mut self.swipe_gesture, crate::state::SwipeGestureState::Idle) {
+            crate::state::SwipeGestureState::Expose { velocity_samples } => {
+                self.gesture_swipe_end_expose(velocity_samples);
             }
-
-            self.is_workspace_swiping = false;
-            self.workspace_swipe_active = false;
-            self.workspace_swipe_accumulated = (0.0, 0.0);
-            self.workspace_swipe_velocity_samples.clear();
+            crate::state::SwipeGestureState::WorkspaceSwitching { velocity_samples } => {
+                self.gesture_swipe_end_workspace(velocity_samples, evt.cancelled());
+            }
+            _ => {}
         }
 
         pointer.gesture_swipe_end(
@@ -1508,6 +1492,39 @@ impl ScreenComposer<UdevData> {
                 cancelled: evt.cancelled(),
             },
         );
+    }
+    
+    fn gesture_swipe_end_expose(&mut self, velocity_samples: Vec<f64>) {
+        // Calculate average velocity from samples
+        let velocity = if velocity_samples.is_empty() {
+            0.0
+        } else {
+            velocity_samples.iter().sum::<f64>() / velocity_samples.len() as f64
+        };
+        
+        self.workspaces.expose_end_with_velocity(velocity as f32);
+    }
+    
+    fn gesture_swipe_end_workspace(&mut self, velocity_samples: Vec<f64>, cancelled: bool) {
+        let target_index = if !cancelled {
+            let velocity = if velocity_samples.is_empty() {
+                0.0
+            } else {
+                velocity_samples.iter().sum::<f64>() / velocity_samples.len() as f64
+            };
+            Some(self.workspaces.workspace_swipe_end(velocity as f32))
+        } else {
+            Some(self.workspaces.workspace_swipe_end(0.0))
+        };
+        
+        // Update keyboard focus to top window of the target workspace
+        if let Some(index) = target_index {
+            if let Some(top_wid) = self.workspaces.get_top_window_of_workspace(index) {
+                self.set_keyboard_focus_on_surface(&top_wid);
+            } else {
+                self.clear_keyboard_focus();
+            }
+        }
     }
 
     fn on_gesture_pinch_begin<B: InputBackend>(&mut self, evt: B::GesturePinchBeginEvent) {

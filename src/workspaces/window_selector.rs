@@ -147,10 +147,14 @@ impl WindowSelectorView {
             ..Default::default()
         });
 
+        window_selector_root.set_key(format!("window_selector_root_{}", index));
+        window_selector_root.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+        // window_selector_root.set_picture_cached(false);
+        // window_selector_root.set_image_cached(false);
+        layers_engine.add_layer(&window_selector_root);
         window_selector_root.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
 
-        window_selector_root.set_key(format!("window_selector_root_{}", index));
-        layers_engine.add_layer(&window_selector_root);
+        // window_selector_root.set_background_color(Color::new_hex("#ff0000ff"), None);
         let overlay_layer = layers_engine.new_layer();
         overlay_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,
@@ -161,6 +165,8 @@ impl WindowSelectorView {
         // overlay_layer.set_background_color(overlay_color, None);
         overlay_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
         overlay_layer.set_pointer_events(false);
+        // overlay_layer.set_picture_cached(false);
+        // overlay_layer.set_image_cached(false);
         overlay_layer.set_hidden(true);
 
         let state = WindowSelectorState {
@@ -191,6 +197,9 @@ impl WindowSelectorView {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
+        // windows_layer.set_pointer_events(false);
+        // windows_layer.set_picture_cached(false);
+        // windows_layer.set_image_cached(false);
         windows_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
 
         window_selector_root.add_sublayer(&clone_background_layer);
@@ -578,6 +587,8 @@ pub fn view_window_selector(
         .position(((0.0, 0.0).into(), None))
         .size(lay_rs::types::Size::percent(1.0, 1.0))
         .content(draw_container)
+        // .picture_cached(false)
+        // .image_cache(false)
         .children(vec![LayerTreeBuilder::default()
             .key("window_selector_label")
             .layout_style(taffy::Style {
@@ -938,7 +949,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                                 // Clear dragging state
                                 *screencomposer
                                     .workspaces
-                                    .expose_dragging_window
+                                    .expose_dragged_window
                                     .lock()
                                     .unwrap() = None;
 
@@ -951,7 +962,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                                 );
 
                                 // Refresh expose view - this will rebuild the layout with updated state
-                                screencomposer.workspaces.expose_show_all(1.0, true);
+                                screencomposer.workspaces.expose_set_visible(true);
                             } else {
                                 tracing::warn!(
                                     "Expose drop: window {:?} not found in windows_map, ending drag only",
@@ -990,7 +1001,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                         }
                     }
                 }
-                screencomposer.workspaces.expose_show_all(-1.0, true);
+                screencomposer.workspaces.expose_set_visible(false);
                 screencomposer.set_cursor(&CursorImageStatus::default_named());
                 let state = WindowSelectorState {
                     current_selection: None,
