@@ -736,6 +736,26 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                     .states
                     .contains(xdg_toplevel::State::Maximized)
                 {
+                    // Get current maximized geometry before unmaximizing
+                    let maximized_geometry = self.workspaces.element_geometry(window).unwrap();
+                    let touch_location = start_data.location;
+                    
+                    // Calculate grab point relative to maximized window
+                    let grab_offset_x = touch_location.x - maximized_geometry.loc.x as f64;
+                    let grab_offset_y = touch_location.y - maximized_geometry.loc.y as f64;
+                    
+                    // Calculate grab ratio (0.0 to 1.0)
+                    let grab_ratio_x = if maximized_geometry.size.w > 0 {
+                        (grab_offset_x / maximized_geometry.size.w as f64).clamp(0.0, 1.0)
+                    } else {
+                        0.5
+                    };
+                    let grab_ratio_y = if maximized_geometry.size.h > 0 {
+                        (grab_offset_y / maximized_geometry.size.h as f64).clamp(0.0, 1.0)
+                    } else {
+                        0.5
+                    };
+
                     surface.with_pending_state(|state| {
                         state.states.unset(xdg_toplevel::State::Maximized);
                         state.size = None;
@@ -743,18 +763,24 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
                     surface.send_configure();
 
-                    // NOTE: In real compositor mouse location should be mapped to a new window size
-                    // For example, you could:
-                    // 1) transform mouse pointer position from compositor space to window space (location relative)
-                    // 2) divide the x coordinate by width of the window to get the percentage
-                    //   - 0.0 would be on the far left of the window
-                    //   - 0.5 would be in middle of the window
-                    //   - 1.0 would be on the far right of the window
-                    // 3) multiply the percentage by new window width
-                    // 4) by doing that, drag will look a lot more natural
-                    //
-                    // but for anvil needs setting location to pointer location is fine
-                    initial_window_location = start_data.location.to_i32_round();
+                    // Get restored window size from unmaximised_rect
+                    let id = surface.wl_surface().id();
+                    if let Some(view) = self.workspaces.get_window_view(&id) {
+                        let restored_size = view.unmaximised_rect.size;
+                        
+                        // Calculate new grab offset based on restored size
+                        let new_grab_offset_x = grab_ratio_x * restored_size.w as f64;
+                        let new_grab_offset_y = grab_ratio_y * restored_size.h as f64;
+                        
+                        // Position window so grab point stays under touch point
+                        let new_x = touch_location.x - new_grab_offset_x;
+                        let new_y = touch_location.y - new_grab_offset_y;
+                        
+                        initial_window_location = (new_x as i32, new_y as i32).into();
+                    } else {
+                        // Fallback: use touch location
+                        initial_window_location = start_data.location.to_i32_round();
+                    }
                 }
 
                 let grab = TouchMoveSurfaceGrab {
@@ -804,6 +830,26 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             .states
             .contains(xdg_toplevel::State::Maximized)
         {
+            // Get current maximized geometry before unmaximizing
+            let maximized_geometry = self.workspaces.element_geometry(window).unwrap();
+            let pointer_location = pointer.current_location();
+            
+            // Calculate grab point relative to maximized window
+            let grab_offset_x = pointer_location.x - maximized_geometry.loc.x as f64;
+            let grab_offset_y = pointer_location.y - maximized_geometry.loc.y as f64;
+            
+            // Calculate grab ratio (0.0 to 1.0)
+            let grab_ratio_x = if maximized_geometry.size.w > 0 {
+                (grab_offset_x / maximized_geometry.size.w as f64).clamp(0.0, 1.0)
+            } else {
+                0.5
+            };
+            let grab_ratio_y = if maximized_geometry.size.h > 0 {
+                (grab_offset_y / maximized_geometry.size.h as f64).clamp(0.0, 1.0)
+            } else {
+                0.5
+            };
+
             surface.with_pending_state(|state| {
                 state.states.unset(xdg_toplevel::State::Maximized);
                 state.size = None;
@@ -811,19 +857,25 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 
             surface.send_configure();
 
-            // NOTE: In real compositor mouse location should be mapped to a new window size
-            // For example, you could:
-            // 1) transform mouse pointer position from compositor space to window space (location relative)
-            // 2) divide the x coordinate by width of the window to get the percentage
-            //   - 0.0 would be on the far left of the window
-            //   - 0.5 would be in middle of the window
-            //   - 1.0 would be on the far right of the window
-            // 3) multiply the percentage by new window width
-            // 4) by doing that, drag will look a lot more natural
-            //
-            // but for anvil needs setting location to pointer location is fine
-            let pos = pointer.current_location();
-            initial_window_location = (pos.x as i32, pos.y as i32).into();
+            // Get restored window size from unmaximised_rect
+            let id = surface.wl_surface().id();
+            if let Some(view) = self.workspaces.get_window_view(&id) {
+                let restored_size = view.unmaximised_rect.size;
+                
+                // Calculate new grab offset based on restored size
+                let new_grab_offset_x = grab_ratio_x * restored_size.w as f64;
+                let new_grab_offset_y = grab_ratio_y * restored_size.h as f64;
+                
+                // Position window so grab point stays under cursor
+                let new_x = pointer_location.x - new_grab_offset_x;
+                let new_y = pointer_location.y - new_grab_offset_y;
+                
+                initial_window_location = (new_x as i32, new_y as i32).into();
+            } else {
+                // Fallback: position window centered under cursor
+                let pos = pointer.current_location();
+                initial_window_location = (pos.x as i32, pos.y as i32).into();
+            }
         }
 
         let grab = PointerMoveSurfaceGrab {
