@@ -107,7 +107,7 @@ pub struct Workspaces {
     pub layer_shell_overlay: Layer,
     expose_layer: Layer,
     observers: Vec<Weak<dyn Observer<WorkspacesModel>>>,
-    expose_dragging_window: Arc<std::sync::Mutex<Option<ObjectId>>>,
+    expose_dragged_window: Arc<std::sync::Mutex<Option<ObjectId>>>,
 }
 
 /// # Workspaces Layer Structure
@@ -155,17 +155,17 @@ pub struct Workspaces {
 ///
 impl Workspaces {
     pub fn start_window_selector_drag(&self, window_id: &ObjectId) {
-        *self.expose_dragging_window.lock().unwrap() = Some(window_id.clone());
+        *self.expose_dragged_window.lock().unwrap() = Some(window_id.clone());
         self.expose_update_if_needed();
     }
 
     pub fn end_window_selector_drag(&self, window_id: &ObjectId) {
-        let mut dragging = self.expose_dragging_window.lock().unwrap();
+        let mut dragging = self.expose_dragged_window.lock().unwrap();
         if dragging.as_ref() == Some(window_id) {
             *dragging = None;
         }
         drop(dragging);
-        self.expose_show_all(1.0, true);
+        self.expose_set_visible(true);
     }
     pub fn new(layers_engine: Arc<Engine>) -> Self {
         let model = WorkspacesModel::default();
@@ -285,7 +285,7 @@ impl Workspaces {
             window_views: Arc::new(RwLock::new(HashMap::new())),
             observers: Vec::new(),
             layers_engine,
-            expose_dragging_window: Arc::new(std::sync::Mutex::new(None)),
+            expose_dragged_window: Arc::new(std::sync::Mutex::new(None)),
         };
         workspaces.add_workspace();
         workspaces.add_workspace();
@@ -416,6 +416,18 @@ impl Workspaces {
     pub fn get_show_all(&self) -> bool {
         self.show_all.load(std::sync::atomic::Ordering::Relaxed)
     }
+    
+    /// Check if expose mode is currently transitioning (either via gesture or animation)
+    /// Returns true if we're in the middle of opening or closing expose mode
+    pub fn is_expose_transitioning(&self) -> bool {
+        let gesture_value = self.show_all_gesture.load(std::sync::atomic::Ordering::Relaxed);
+        let is_animating = self.is_animating.load(std::sync::atomic::Ordering::Relaxed);
+        
+        // We're transitioning if:
+        // 1. Animation is in progress, OR
+        // 2. Gesture value is between 0 and 1000 (not fully closed or fully open)
+        is_animating || (gesture_value > 0 && gesture_value < 1000)
+    }
 
     /// Set the window selection mode
     #[allow(dead_code)]
@@ -450,29 +462,145 @@ impl Workspaces {
     /// but must swipe back past 90% to exit when already active, preventing accidental toggles.
     ///
     /// # Usage Examples
-    /// - Keyboard toggle on: `expose_show_all(1.0, true)`
-    /// - Keyboard toggle off: `expose_show_all(-1.0, true)`
-    /// - Gesture update mid-swipe: `expose_show_all(0.05, false)` (5% progress increment)
-    /// - Gesture completion: `expose_show_all(0.0, true)` (finalize at current position)
+    /// - Keyboard toggle on: `expose_set_visible(true)`
+    /// - Keyboard toggle off: `expose_set_visible(false)`
+    /// - Gesture update mid-swipe: `expose_update(0.05)` (5% progress increment)
+    /// - Gesture completion: `expose_end()` (finalize at current position)
     /// - Update layout during window drag: `expose_show_all(0.0, false)` (recalculate without animation)
     pub fn expose_show_all(&self, delta: f32, end_gesture: bool) {
         let current_workspace_index = self.get_current_workspace_index();
+        let num_workspaces = self.with_model(|m| m.workspaces.len());
 
-        if end_gesture {
-            // When ending the gesture, animate all workspaces so they all transition together
-            let num_workspaces = self.with_model(|m| m.workspaces.len());
-            for i in 0..num_workspaces {
-                self.expose_show_all_workspace(i, delta, end_gesture);
-            }
-        } else {
-            // During gesture, only update the current workspace for performance
-            self.expose_show_all_workspace(current_workspace_index, delta, end_gesture);
+        // Update all workspaces during gesture AND at end for consistent overlay visibility
+        for i in 0..num_workspaces {
+            let animated = end_gesture && i == current_workspace_index;
+            self.expose_show_all_workspace(i, delta, end_gesture, animated);
         }
+    }
+
+    /// Update expose mode during a gesture (no animation).
+    pub fn expose_update(&self, delta: f32) {
+        self.expose_show_all(delta, false);
+    }
+    
+    /// Reset the accumulated expose gesture value.
+    /// Called when starting a new expose gesture to prevent accumulation.
+    pub fn reset_expose_gesture(&self) {
+        let current_state = self.show_all.load(std::sync::atomic::Ordering::Relaxed);
+        let reset_value = if current_state { 1000 } else { 0 };
+        self.show_all_gesture.store(reset_value, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Finalize expose gesture and snap to the nearest state.
+    pub fn expose_end(&self) {
+        self.expose_show_all(0.0, true);
+    }
+    
+    /// Finalize expose gesture with velocity-based spring animation.
+    /// The velocity from the gesture is used to initialize the spring's momentum.
+    pub fn expose_end_with_velocity(&self, raw_velocity: f32) {
+        use lay_rs::prelude::*;
+        
+        const MULTIPLIER: f32 = 1000.0;
+        let current_gesture = self.show_all_gesture.load(std::sync::atomic::Ordering::Relaxed);
+        let current_show_all = self.get_show_all();
+        let gesture_progress = current_gesture as f32 / MULTIPLIER;
+        
+        tracing::debug!(
+            raw_velocity = raw_velocity,
+            gesture_progress = gesture_progress,
+            current_show_all = current_show_all,
+            "Expose gesture ending with velocity"
+        );
+        
+        // Calculate projected position based on velocity
+        // TIME_CONSTANT represents how far into the future (in gesture units) we project
+        const TIME_CONSTANT: f32 = 0.15;
+        let projected_progress = gesture_progress + raw_velocity * TIME_CONSTANT;
+        
+        // Determine if gesture should complete based on:
+        // 1. Current position threshold (10% to open, 90% to close)
+        // 2. Velocity direction and magnitude
+        // 3. Projected final position
+        let should_complete = if current_show_all {
+            // Currently in expose mode - deciding whether to close
+            // Close if: gesture is < 50% OR (< 70% AND velocity is downward)
+            let velocity_suggests_close = raw_velocity < -20.0;
+            gesture_progress < 0.5 || (gesture_progress < 0.7 && velocity_suggests_close) || projected_progress < 0.5
+        } else {
+            // Currently closed - deciding whether to open expose
+            // Open if: gesture is > 50% OR (> 30% AND velocity is upward)
+            let velocity_suggests_open = raw_velocity > 20.0;
+            gesture_progress > 0.5 || (gesture_progress > 0.3 && velocity_suggests_open) || projected_progress > 0.5
+        };
+        
+        let target_show_all = if current_show_all {
+            !should_complete  // If should_complete, we're completing the close action
+        } else {
+            should_complete   // If should_complete, we're completing the open action
+        };
+        
+        // Scale velocity to spring units
+        const VELOCITY_SCALE: f32 = 0.01;
+        let spring_velocity = raw_velocity * VELOCITY_SCALE;
+        
+        // Create spring with initial velocity from gesture
+        let spring = Spring::with_duration_bounce_and_velocity(
+            0.3,                // duration
+            0.1,                // bounce
+            spring_velocity,    // initial velocity from gesture
+        );
+        
+        let transition = Transition {
+            delay: 0.0,
+            timing: TimingFunction::Spring(spring),
+        };
+        
+        let current_workspace = self.get_current_workspace_index();
+        // Use current delta so the spring animation can transition FROM current state TO target state
+        let current_delta = if target_show_all { 1.0 } else { 0.0 };
+        
+        // Update show_all state immediately so next gesture starts from correct position
+        self.show_all.store(target_show_all, std::sync::atomic::Ordering::Relaxed);
+        
+        // Reset gesture value to target state to prevent jumping on next gesture
+        let target_gesture = if target_show_all { 1000 } else { 0 };
+        self.show_all_gesture.store(target_gesture, std::sync::atomic::Ordering::Relaxed);
+        
+        // Update all workspaces so they all transition together
+        let num_workspaces = self.with_model(|m| m.workspaces.len());
+        for i in 0..num_workspaces {
+            let animated = i == current_workspace;
+            let workspace_transition = if animated { Some(transition.clone()) } else { None };
+            self.expose_show_all_end(i, current_delta, target_show_all, workspace_transition);
+        }
+    }
+
+    /// Explicitly show or hide expose mode (keyboard toggle).
+    pub fn expose_set_visible(&self, show: bool) {
+        use lay_rs::prelude::*;
+        
+        // Set the gesture state to target value
+        const MULTIPLIER: f32 = 1000.0;
+        let target_gesture = if show { MULTIPLIER as i32 } else { 0 };
+        self.show_all_gesture.store(target_gesture, std::sync::atomic::Ordering::Relaxed);
+        self.show_all.store(show, std::sync::atomic::Ordering::Relaxed);
+        
+        // Create smooth spring transition (zero velocity for keyboard shortcuts)
+        let spring = Spring::with_duration_and_bounce(0.3, 0.1);
+        let transition = Transition {
+            delay: 0.0,
+            timing: TimingFunction::Spring(spring),
+        };
+        
+        let current_workspace = self.get_current_workspace_index();
+        let delta_normalized = if show { 1.0 } else { 0.0 };
+        self.expose_show_all_end(current_workspace, delta_normalized, show, Some(transition));
     }
 
     /// Process expose mode for a specific workspace
     /// Manages gesture state and delegates to layout/animation functions
-    fn expose_show_all_workspace(&self, workspace_index: usize, delta: f32, end_gesture: bool) {
+    fn expose_show_all_workspace(&self, workspace_index: usize, delta: f32, end_gesture: bool, animated: bool) {
         const MULTIPLIER: f32 = 1000.0;
         let gesture = self
             .show_all_gesture
@@ -480,7 +608,6 @@ impl Workspaces {
 
         let mut new_gesture = gesture + (delta * MULTIPLIER) as i32;
         let mut show_all = self.get_show_all();
-        let previous_show_all = show_all;
 
         if end_gesture {
             if show_all {
@@ -511,15 +638,9 @@ impl Workspaces {
                 .store(show_all, std::sync::atomic::Ordering::Relaxed);
         }
 
-        let gesture_active = show_all || (!end_gesture && new_gesture > 0);
-
         let delta_normalized = new_gesture as f32 / 1000.0;
 
-        let gesture_changed = new_gesture != gesture || show_all != previous_show_all;
-
-        let should_animate = end_gesture || gesture_changed;
-
-        let transition = if should_animate {
+        let transition = if animated {
             Some(Transition {
                 delay: 0.0,
                 timing: TimingFunction::Spring(Spring::with_duration_and_bounce(0.3, 0.1)),
@@ -531,15 +652,17 @@ impl Workspaces {
         self.show_all_gesture
             .store(new_gesture, std::sync::atomic::Ordering::Relaxed);
 
-        // Animate based on current state
-        self.expose_show_all_animate(
-            workspace_index,
-            delta_normalized,
-            transition,
-            show_all,
-            gesture_active,
-            end_gesture,
-        );
+        // Update/animate based on current state
+        if end_gesture {
+            self.expose_show_all_end(
+                workspace_index,
+                delta_normalized,
+                show_all,
+                transition,
+            );
+        } else {
+            self.expose_show_all_update(workspace_index, delta_normalized, show_all);
+        }
     }
 
     /// Update the layout bin and window selector state for a workspace
@@ -568,7 +691,7 @@ impl Workspaces {
             screen_size_w,
             screen_size_h - offset_y,
         );
-        let dragging_window = self.expose_dragging_window.lock().unwrap().clone();
+        let dragging_window = self.expose_dragged_window.lock().unwrap().clone();
         let windows = self.with_model(|model| {
             if let Some(workspace_model) = model.workspaces.get(workspace_index) {
                 let windows_list = workspace_model.windows_list.read().unwrap();
@@ -623,21 +746,51 @@ impl Workspaces {
         true
     }
 
-    /// Animate window positions and UI elements based on current delta and state
-    /// This applies interpolated positions/scales to layers and schedules animations
-    fn expose_show_all_animate(
+    /// Update expose state during gesture (no animation).
+    fn expose_show_all_update(&self, workspace_index: usize, delta: f32, show_all: bool) {
+        self.expose_show_all_apply(workspace_index, delta, None, show_all, false);
+    }
+
+    /// Finalize expose state and animate to the target.
+    fn expose_show_all_end(
+        &self,
+        workspace_index: usize,
+        delta: f32,
+        show_all: bool,
+        transition: Option<Transition>,
+    ) {
+        let velocity = if let Some(Transition { timing: TimingFunction::Spring(spring), .. }) = &transition {
+            spring.initial_velocity
+        } else {
+            0.0
+        };
+        
+        tracing::debug!(
+            workspace = workspace_index,
+            delta = delta,
+            show_all = show_all,
+            animated = transition.is_some(),
+            velocity = velocity,
+            "Ending expose show all gesture animation"
+        );
+        self.expose_show_all_apply(workspace_index, delta, transition, show_all, true);
+    }
+
+    /// Apply expose window positions and UI elements based on current delta and state.
+    fn expose_show_all_apply(
         &self,
         workspace_index: usize,
         delta: f32,
         transition: Option<Transition>,
         show_all: bool,
-        visible: bool,
         end_gesture: bool,
     ) {
         let delta = delta.clamp(0.0, 1.0);
+        let is_gesture_ongoing = delta < 1.0;
+        let is_starting_animation = transition.is_some();
 
         // Hide popup overlay when entering expose mode
-        self.popup_overlay.set_hidden(visible);
+        self.popup_overlay.set_hidden(is_gesture_ongoing);
 
         let scale = Config::with(|c| c.screen_scale);
 
@@ -655,25 +808,41 @@ impl Workspaces {
             .expose_bin
             .read()
             .unwrap();
-        let dragging_window = self.expose_dragging_window.lock().unwrap().clone();
+        let dragged_window = self.expose_dragged_window.lock().unwrap().clone();
 
-        // Keep the overlay hidden unless we're animating or expose should be visible
-        let overlay_layer = workspace_view.window_selector_view.overlay_layer.clone();
-        let is_animating = transition.is_some();
+        // Show overlay only when: not animating, gesture ended, and value is 1.0
+        let window_selector_overlay = workspace_view.window_selector_view.overlay_layer.clone();
         self.is_animating
-            .store(is_animating, std::sync::atomic::Ordering::Relaxed);
-        overlay_layer.set_hidden(!is_animating && !visible);
+            .store(is_starting_animation, std::sync::atomic::Ordering::Relaxed);
+        
+        // Keep layer visible (not hidden) but control opacity
+        // Opacity should be 0 when expose is closed, 1.0 when fully open
+        window_selector_overlay.set_hidden(false);
+        
+        // Calculate overlay opacity:
+        // - During gestures (transition.is_none()): keep at 0.0 (hidden)
+        // - After gesture ends (transition.is_some()): set to target, animation callback will apply it
+        let overlay_opacity = if delta == 1.0 && transition.is_none() {
+            delta
+        } else {
+            0.0  // Keep hidden during entire gesture
+        };
+        
+        // Set opacity immediately for workspaces without animation
+        // Workspaces with animation will have opacity set by the animation callback
+        window_selector_overlay.set_opacity(overlay_opacity, None);
 
-        // Ensure overlay starts at correct opacity for animation
-        if is_animating || visible {
-            overlay_layer.set_opacity(0.0, None);
-        }
+
+
+        workspace_view
+            .window_selector_view
+            .layer
+            .set_hidden(false);
 
         workspace_view
             .window_selector_view
             .windows_layer
             .set_hidden(false);
-        workspace_view.window_selector_view.layer.set_hidden(false);
 
         // Create animation if transition is specified
         let animation = transition
@@ -688,7 +857,7 @@ impl Workspaces {
                 let space = self.spaces.get(workspace_index).unwrap();
 
                 for window_id in windows_list.iter() {
-                    if dragging_window.as_ref() == Some(window_id) {
+                    if dragged_window.as_ref() == Some(window_id) {
                         continue;
                     }
                     if let Some(window) = self.get_window_for_surface(window_id) {
@@ -750,9 +919,22 @@ impl Workspaces {
             let _transactions = self.layers_engine.schedule_changes(&changes, anim_ref);
         };
 
+        // Only animate dock and workspace selector for the current workspace
+        // (they are global UI elements, not per-workspace)
+        let current_workspace_index = self.get_current_workspace_index();
+        let is_current_workspace = workspace_index == current_workspace_index;
+        
+        if !is_current_workspace {
+            tracing::trace!(
+                workspace = workspace_index,
+                current_workspace = current_workspace_index,
+                "Skipping dock/workspace selector animation (not current workspace)"
+            );
+            return;
+        }
+
         // Animate workspace selector and dock
-        let mut delta = delta.max(0.0);
-        delta = delta.powf(0.65);
+        let delta = delta.max(0.0);
 
         // Workspace selector
         let workspace_selector_y = (-400.0).interpolate(&0.0, delta);
@@ -764,18 +946,22 @@ impl Workspaces {
         let layer_shell_overlay_opacity = 1.0.interpolate(&0.0, delta);
         let layer_shell_overlay_opacity = layer_shell_overlay_opacity.clamp(0.0, 1.0);
 
-        // Set overlay opacity to match the workspace selector opacity (fade in as we enter expose)
-        let overlay_opacity = workspace_opacity;
-        workspace_view
-            .window_selector_view
-            .overlay_layer
-            .set_opacity(overlay_opacity, transition);
+        // Set overlay opacity to match the workspace selector opacity (fade in as we enter expose)        
 
-        let window_selector_overlay_ref = workspace_view.window_selector_view.overlay_layer.clone();
+        let window_selector_overlay_ref = window_selector_overlay.clone();
         let expose_layer = self.expose_layer.clone();
         let layer_shell_overlay_ref = self.layer_shell_overlay.clone();
         let show_all_ref = self.show_all.clone();
+        
         expose_layer.set_hidden(false);
+        
+        tracing::debug!(
+            workspace = workspace_index,
+            has_transition = transition.is_some(),
+            workspace_selector_y = workspace_selector_y,
+            "Setting workspace selector position (GLOBAL UI element)"
+        );
+        
         let transaction = self.workspace_selector_view.layer.set_position(
             lay_rs::types::Point {
                 x: 0.0,
@@ -784,13 +970,16 @@ impl Workspaces {
             transition,
         );
         if transition.is_some() {
+            window_selector_overlay_ref.set_position((0.0, 0.0), None);
             transaction.on_finish(
                 move |_: &Layer, _: f32| {
-                    window_selector_overlay_ref.set_hidden(!show_all);
-                    expose_layer.set_hidden(!show_all);
-                    // Restore layer shell overlay when exiting expose mode
-                    layer_shell_overlay_ref.set_opacity(if show_all { 0.0 } else { 1.0 }, None);
-                    show_all_ref.store(show_all, std::sync::atomic::Ordering::Relaxed);
+                let opacity = if show_all { 1.0 } else { 0.0 };
+                window_selector_overlay_ref.set_opacity(opacity, None);
+                
+                // Restore layer shell overlay when exiting expose mode
+                layer_shell_overlay_ref.set_opacity(if show_all { 0.0 } else { 1.0 }, None);
+                
+                show_all_ref.store(show_all, std::sync::atomic::Ordering::Relaxed);
                 },
                 true,
             );
@@ -813,6 +1002,14 @@ impl Workspaces {
             }
             let dock_y = start_position.interpolate(&end_position, delta);
             let dock_y = dock_y.clamp(0.0, 250.0);
+            
+            tracing::debug!(
+                workspace = workspace_index,
+                has_transition = transition.is_some(),
+                dock_y = dock_y,
+                "Setting dock position (GLOBAL UI element)"
+            );
+            
             let tr = self.dock.view_layer.set_position((0.0, dock_y), transition);
 
             if let Some(anim_ref) = animation {
@@ -822,12 +1019,24 @@ impl Workspaces {
                 // let mut bin = self.expose_bin.write().unwrap();
                 // *bin = HashMap::new();
                 let dock_ref = self.dock.clone();
+                let show_all_ref = self.show_all.clone();
+                let show_all_gesture_ref = self.show_all_gesture.clone();
+                let is_animating_ref = self.is_animating.clone();
                 tr.on_finish(
                     move |_: &Layer, _: f32| {
-                        if show_all || current_workspace.get_fullscreen_mode() {
-                            dock_ref.hide(None);
-                        } else {
-                            dock_ref.show(None);
+                        // Check current state, not captured state
+                        let current_show_all = show_all_ref.load(std::sync::atomic::Ordering::Relaxed);
+                        let gesture_value = show_all_gesture_ref.load(std::sync::atomic::Ordering::Relaxed);
+                        let is_anim = is_animating_ref.load(std::sync::atomic::Ordering::Relaxed);
+                        let is_transitioning = is_anim || (gesture_value > 0 && gesture_value < 1000);
+                        
+                        // Only update dock if we're not in the middle of a transition
+                        if !is_transitioning {
+                            if current_show_all || current_workspace.get_fullscreen_mode() {
+                                dock_ref.hide(None);
+                            } else {
+                                dock_ref.show(None);
+                            }
                         }
                     },
                     true,
@@ -863,7 +1072,7 @@ impl Workspaces {
 
     //     // Force relayout and animate
     //     if self.expose_show_all_layout(workspace_index) && self.get_show_all(){
-    //         self.expose_show_all_animate(workspace_index, delta, transition, true, true, true);
+    //         self.expose_show_all_end(workspace_index, delta, true, transition);
     //     }
     // }
 
@@ -943,11 +1152,11 @@ impl Workspaces {
     pub fn expose_update_if_needed_workspace(&self, workspace_index: usize) {
         let relayout = self.expose_show_all_layout(workspace_index);
         if self.get_show_all() && relayout {
-            let transition = Some(Transition {
+            let transition = Transition {
                 delay: 0.0,
                 timing: TimingFunction::Spring(Spring::with_duration_and_bounce(0.3, 0.1)),
-            });
-            self.expose_show_all_animate(workspace_index, 1.0, transition, true, true, true);
+            };
+            self.expose_show_all_end(workspace_index, 1.0, true, Some(transition));
         }
     }
     /// Close all the windows of an app by its id
@@ -1829,10 +2038,14 @@ impl Workspaces {
         });
         let mut x = 0.0;
         if let Some(workspace) = self.get_workspace_at(i) {
-            if workspace.get_fullscreen_mode() || self.get_show_all() {
-                self.dock.hide(Some(transition));
-            } else {
-                self.dock.show(Some(transition));
+            // Only control dock visibility when NOT in expose mode or transitioning
+            // During expose or transitions, expose_show_all_workspace handles dock positioning
+            if !self.get_show_all() && !self.is_expose_transitioning() {
+                if workspace.get_fullscreen_mode() {
+                    self.dock.hide(Some(transition));
+                } else {
+                    self.dock.show(Some(transition));
+                }
             }
 
             // Animate layer_shell_overlay based on target workspace fullscreen state
@@ -1845,7 +2058,9 @@ impl Workspaces {
                 .set_opacity(target_opacity, Some(transition));
 
             if self.get_show_all() {
-                self.expose_show_all_workspace(i, 1.0, true);
+                // In expose mode, ensure the target workspace has its layout calculated
+                // and windows positioned, but don't animate dock (it's shared across workspaces)
+                self.expose_update_if_needed_workspace(i);
             }
 
             let workspace_width = self.with_model(|m| m.width as f32);
@@ -1878,21 +2093,29 @@ impl Workspaces {
         let current_offset = -current_pos.x;
 
         // Calculate new offset - delta is in logical pixels, convert to physical
-        let physical_delta = delta_x * scale;
-        let mut new_offset = current_offset - physical_delta;
-
+        // Apply dampening factor to reduce sensitivity and prevent overshooting
+        const SWIPE_DAMPENING: f32 = 0.6;
+        let physical_delta = delta_x * scale * SWIPE_DAMPENING;
+        
         // Calculate bounds
         let max_offset = (num_workspaces - 1) as f32 * workspace_width;
-
-        // Apply rubber-band resistance at edges
-        if new_offset < 0.0 {
-            // Past first workspace - rubber band effect
-            new_offset *= 0.3;
-        } else if new_offset > max_offset {
-            // Past last workspace - rubber band effect
-            let overshoot = new_offset - max_offset;
-            new_offset = max_offset + overshoot * 0.3;
-        }
+        
+        // Apply rubber-band resistance when already past boundaries
+        // Resistance increases progressively the further past the edge we are
+        let new_offset = if current_offset < 0.0 {
+            // Already past first workspace - apply progressive resistance to delta
+            let distance_past_edge = -current_offset;
+            let resistance_factor = 1.0 / (1.0 + distance_past_edge / 100.0);
+            current_offset - (physical_delta * resistance_factor)
+        } else if current_offset > max_offset {
+            // Already past last workspace - apply progressive resistance to delta
+            let distance_past_edge = current_offset - max_offset;
+            let resistance_factor = 1.0 / (1.0 + distance_past_edge / 100.0);
+            current_offset - (physical_delta * resistance_factor)
+        } else {
+            // Within bounds - normal scrolling
+            current_offset - physical_delta
+        };
 
         // Apply immediately without animation
         self.workspaces_layer.set_position((-new_offset, 0.0), None);
@@ -1991,9 +2214,18 @@ impl Workspaces {
             // Clear animating flag when animation completes
             if let Some(tr) = &tr {
                 let is_animating = self.is_animating.clone();
+
+                let workspace_view = self.get_current_workspace();
+                let window_selector_overlay = workspace_view.window_selector_view.overlay_layer.clone();
+                let show_all = self.get_show_all();
                 tr.on_finish(
                     move |_: &Layer, _: f32| {
                         is_animating.store(false, std::sync::atomic::Ordering::Relaxed);
+                        
+                        // Ensure overlay is visible after workspace scroll animation
+                        if show_all {
+                            window_selector_overlay.set_opacity(1.0, None);
+                        }
                     },
                     true,
                 );
