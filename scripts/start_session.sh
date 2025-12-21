@@ -69,6 +69,12 @@ log_info ""
 log_info "To run commands in this session from another terminal:"
 log_info "  source $DBUS_ENV_FILE"
 
+# Ensure we have an env file to persist session variables for other shells.
+if [ ! -f "$DBUS_ENV_FILE" ]; then
+    touch "$DBUS_ENV_FILE"
+    chmod 600 "$DBUS_ENV_FILE"
+fi
+
 # Create runtime directory if it doesn't exist
 if [ ! -d "$XDG_RUNTIME_DIR" ]; then
     log_warn "XDG_RUNTIME_DIR doesn't exist, creating it"
@@ -91,6 +97,38 @@ else
     # On Arch, kwallet is often D-Bus activated, not a systemd service
     log_info "kwallet not found as systemd service (will be D-Bus activated on demand)"
 fi
+
+# Trigger a KWallet unlock prompt once the compositor is up
+start_kwallet_unlocker() {
+    local qdbus_bin=""
+    local service="org.kde.kwalletd6"
+    local path="/modules/kwalletd6"
+    local wallet="${KDE_WALLET:-kdewallet}"
+
+    if command -v qdbus6 >/dev/null 2>&1; then
+        qdbus_bin="qdbus6"
+    elif command -v qdbus >/dev/null 2>&1; then
+        qdbus_bin="qdbus"
+    else
+        log_info "qdbus not found; skipping KWallet unlock prompt"
+        return
+    fi
+
+    if busctl --user list 2>/dev/null | grep -q "org.kde.kwalletd5"; then
+        service="org.kde.kwalletd5"
+        path="/modules/kwalletd5"
+    fi
+
+    (
+        for _ in {1..100}; do
+            if [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; then
+                break
+            fi
+            sleep 0.1
+        done
+        $qdbus_bin "$service" "$path" org.kde.KWallet.open "$wallet" 0 "screencomposer" >/dev/null 2>&1 || true
+    ) &
+}
 
 # Ensure portal backend is built
 if [ ! -f "target/release/xdg-desktop-portal-screencomposer" ]; then
@@ -155,6 +193,9 @@ if [ ! -f "target/release/screen-composer" ]; then
     log_info "Please run: cargo build --release"
     exit 1
 fi
+
+# Start a background unlock prompt for KWallet once Wayland is available
+start_kwallet_unlocker
 
 # Start the compositor (udev backend only)
 log_info "Starting ScreenComposer compositor (udev backend)"
