@@ -544,7 +544,7 @@ pub fn view_window_selector(
             let color = theme_colors().accents_blue.c4f();
             let mut paint = skia::Paint::new(color, None);
             paint.set_stroke(true);
-            paint.set_stroke_width(10.0 * draw_scale);
+            paint.set_stroke_width(12.0 * draw_scale);
             let rrect = skia::RRect::new_rect_xy(
                 skia::Rect::from_xywh(
                     window_selection.x,
@@ -553,8 +553,8 @@ pub fn view_window_selector(
                     window_selection.h,
                 )
                 .with_outset((draw_scale * 6.0, draw_scale * 6.0)),
-                10.0 * draw_scale,
-                10.0 * draw_scale,
+                12.0 * draw_scale,
+                12.0 * draw_scale,
             );
 
             canvas.draw_rrect(rrect, &paint);

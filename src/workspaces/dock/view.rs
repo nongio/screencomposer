@@ -145,7 +145,7 @@ impl DockView {
 
         let bar_layer = layers_engine.new_layer();
         view_layer.add_sublayer(&bar_layer);
-        const DOCK_BAR_HEIGHT: f32 = 100.0;
+        const DOCK_BAR_HEIGHT: f32 = 130.0;
         let bar_tree = LayerTreeBuilder::default()
             .key("dock-bar")
             .pointer_events(false)
@@ -156,7 +156,7 @@ impl DockView {
             .blend_mode(BlendMode::BackgroundBlur)
             .background_color(theme_colors().materials_thin)
             .border_width((3.0, None))
-            .border_color(Color::new_rgba(0.6, 0.6, 0.6, 0.3))
+            .border_color(Color::new_rgba(0.9, 0.9, 0.9, 0.5))
             .shadow_color(Color::new_rgba(0.0, 0.0, 0.0, 0.2))
             .shadow_offset(((0.0, -5.0).into(), None))
             .shadow_radius((20.0, None))
@@ -196,8 +196,8 @@ impl DockView {
             .key("dock_handle")
             .pointer_events(false)
             .size(Size {
-                width: taffy::Dimension::Length(35.0 * draw_scale),
-                height: taffy::Dimension::Percent(DOCK_BAR_HEIGHT * draw_scale),
+                width: taffy::Dimension::Length(50.0 * draw_scale),
+                height: taffy::Dimension::Length(DOCK_BAR_HEIGHT * draw_scale),
             })
             // .background_color(Color::new_rgba(0.0, 0.0, 0.0, 0.0     ))
             .content(Some(move |canvas: &skia::Canvas, w, h| {
@@ -360,12 +360,13 @@ impl DockView {
         let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
         let state = self.get_state();
         let display_apps = self.display_entries(&state);
-        let app_height = available_icon_width + 30.0;
+        let app_height = available_icon_width + 20.0;
         let miniwindow_height = available_icon_width + 60.0;
-        let bar_height = app_height;
+        const DOCK_BAR_HEIGHT: f32 = 130.0;
+        let bar_height = DOCK_BAR_HEIGHT * draw_scale;
 
         self.bar_layer
-            .set_border_corner_radius(available_icon_width / 4.0, None);
+            .set_border_corner_radius(available_icon_width / 2.0, None);
 
         self.resize_handle.set_size(
             Size {
@@ -594,7 +595,7 @@ impl DockView {
         let draw_scale = Config::with(|config| config.screen_scale) as f32 * 0.8;
         // those are constant like values
         let available_width = state.width as f32 - 20.0 * draw_scale;
-        let icon_size: f32 = 100.0 * draw_scale;
+        let icon_size: f32 = 95.0 * draw_scale;
 
         let apps_len = self.display_entries(&state).len() as f32;
         let windows_len = state.minimized_windows.len() as f32;

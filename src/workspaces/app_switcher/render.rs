@@ -16,7 +16,7 @@ pub fn render_appswitcher_view(
 
     // those are constant like values
     let available_width = state.width as f32 - 20.0 * draw_scale;
-    let ICON_SIZE: f32 = 170.0 * draw_scale;
+    let ICON_SIZE: f32 = 190.0 * draw_scale;
     let ICON_PADDING: f32 = available_width * 0.01 * draw_scale;
     let GAP: f32 = ICON_PADDING / 2.0;
     let apps_len = state.apps.len() as f32;
@@ -40,7 +40,8 @@ pub fn render_appswitcher_view(
     let component_width =
         apps_len * available_icon_size + total_padding + COMPONENT_PADDING_H * 2.0;
     let component_height = available_icon_size + ICON_PADDING * 2.0 + COMPONENT_PADDING_V * 2.0;
-    let background_color = theme_colors().materials_controls_sidebar;
+    let mut background_color = theme_colors().materials_controls_sidebar;
+    background_color.a = (background_color.a * 0.85).min(1.0);
     let current_app = state.current_app as f32;
     let mut app_name = "".to_string();
     if !state.apps.is_empty() && state.current_app < state.apps.len() {
@@ -129,7 +130,7 @@ pub fn render_appswitcher_view(
             None,
         ))
         .content(Some(draw_container))
-        .border_corner_radius((BorderRadius::new_single(component_height / 10.0), None))
+        .border_corner_radius((BorderRadius::new_single(component_height / 8.0), None))
         .layout_style(taffy::Style {
             position: taffy::Position::Relative,
             display: taffy::Display::Flex,

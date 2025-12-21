@@ -38,7 +38,7 @@ pub fn setup_app_icon(
         .size((
             Size {
                 width: taffy::Dimension::Length(icon_width),
-                height: taffy::Dimension::Length(icon_width + 30.0),
+                height: taffy::Dimension::Length(icon_width + 20.0),
             },
             Some(Transition::ease_in_quad(0.2)), // None
         ))
@@ -151,12 +151,12 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
         // choose colors according to theme scheme so tooltip looks correct in dark mode
         let (bg_col, shadow_col, text_col) = Config::with(|c| match c.theme_scheme {
             crate::theme::ThemeScheme::Light => (
-                theme_colors().materials_controls_tooltip.c4f(),
+                lay_rs::skia::Color4f::new(157.0/255.0, 157.0/255.0, 157.0/255.0, 1.0),
                 theme_colors().shadow_color.c4f(),
                 theme_colors().text_primary.c4f(),
             ),
             crate::theme::ThemeScheme::Dark => (
-                theme_colors().materials_controls_tooltip.c4f(),
+                lay_rs::skia::Color4f::new(157.0/255.0, 157.0/255.0, 157.0/255.0, 1.0),
                 theme_colors().shadow_color.c4f(),
                 theme_colors().text_primary.c4f(),
             ),
@@ -244,8 +244,8 @@ pub fn draw_app_icon(application: &Application, running: bool) -> ContentDrawFun
     let application = application.clone();
     let draw_picture = move |canvas: &lay_rs::skia::Canvas, w: f32, h: f32| -> lay_rs::skia::Rect {
         let icon_size = (w).max(0.0);
-        let circle_radius = 6.0;
-        let icon_y = (h - 20.0 - circle_radius * 2.0) / 2.0 - icon_size / 2.0;
+        let circle_radius = 5.0;
+        let icon_y = (h - 15.0 - circle_radius * 2.0) / 2.0 - icon_size / 2.0;
 
         if let Some(image) = &application.icon.clone() {
             let mut paint =
@@ -308,7 +308,9 @@ pub fn draw_app_icon(application: &Application, running: bool) -> ContentDrawFun
         }
         if running {
             // use primary text color for the running indicator (dark on light theme)
-            let mut paint = lay_rs::skia::Paint::new(theme_colors().text_primary.c4f(), None);
+            let mut color = theme_colors().text_primary.c4f();
+            color.a = 0.9;
+            let mut paint = lay_rs::skia::Paint::new(color, None);
             paint.set_anti_alias(true);
             paint.set_style(lay_rs::skia::paint::Style::Fill);
             canvas.draw_circle((w / 2.0, h - (10.0 + circle_radius)), circle_radius, &paint);

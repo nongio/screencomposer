@@ -1157,6 +1157,9 @@ impl Workspaces {
                 timing: TimingFunction::Spring(Spring::with_duration_and_bounce(0.3, 0.1)),
             };
             self.expose_show_all_end(workspace_index, 1.0, true, Some(transition));
+        } else if relayout {
+            // When not in expose mode, update layout instantly without animation
+            self.expose_show_all_end(workspace_index, 0.0, false, None);
         }
     }
     /// Close all the windows of an app by its id
@@ -2038,9 +2041,16 @@ impl Workspaces {
         });
         let mut x = 0.0;
         if let Some(workspace) = self.get_workspace_at(i) {
-            // Only control dock visibility when NOT in expose mode or transitioning
-            // During expose or transitions, expose_show_all_workspace handles dock positioning
-            if !self.get_show_all() && !self.is_expose_transitioning() {
+            // Control dock visibility based on workspace fullscreen state
+            // Only skip dock control when actively IN expose mode (show_all)
+            println!(
+                "scroll_to_workspace_index: {}, fullscreen: {} show_all: {} expose_transitioning: {}",
+                i,
+                workspace.get_fullscreen_mode(),
+                self.get_show_all(),
+                self.is_expose_transitioning()
+            );
+            if !self.get_show_all() {
                 if workspace.get_fullscreen_mode() {
                     self.dock.hide(Some(transition));
                 } else {
