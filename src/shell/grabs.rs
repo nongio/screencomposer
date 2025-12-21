@@ -844,16 +844,15 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
                 
                 // Reposition window during resize if resizing from top or left edges
                 if self.edges.intersects(ResizeEdge::TOP_LEFT) {
-                    let geometry = self.window.geometry();
                     let mut location = data.workspaces.element_location(&self.window).unwrap();
 
                     if self.edges.intersects(ResizeEdge::LEFT) {
                         location.x = self.initial_window_location.x
-                            + (self.initial_window_size.w - geometry.size.w);
+                            + (self.initial_window_size.w - self.last_window_size.w);
                     }
                     if self.edges.intersects(ResizeEdge::TOP) {
                         location.y = self.initial_window_location.y
-                            + (self.initial_window_size.h - geometry.size.h);
+                            + (self.initial_window_size.h - self.last_window_size.h);
                     }
 
                     data.workspaces.map_window(&self.window, location, true);
