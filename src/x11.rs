@@ -32,7 +32,6 @@ use smithay::{
     delegate_dmabuf,
     input::pointer::{CursorImageAttributes, CursorImageStatus},
     output::{Mode, Output, PhysicalProperties, Subpixel},
-    wayland::presentation::Refresh,
     reexports::{
         ash::ext,
         calloop::EventLoop,
@@ -41,6 +40,7 @@ use smithay::{
         wayland_server::{protocol::wl_surface, Display},
     },
     utils::{DeviceFd, IsAlive, Logical, Rectangle, Scale},
+    wayland::presentation::Refresh,
     wayland::{
         compositor,
         dmabuf::{
@@ -480,7 +480,11 @@ pub fn run_x11() {
                             time,
                             output
                                 .current_mode()
-                                .map(|mode| Refresh::fixed(Duration::from_nanos(1_000_000_000_000 / mode.refresh as u64)))
+                                .map(|mode| {
+                                    Refresh::fixed(Duration::from_nanos(
+                                        1_000_000_000_000 / mode.refresh as u64,
+                                    ))
+                                })
                                 .unwrap_or(Refresh::Unknown),
                             0,
                             wp_presentation_feedback::Kind::Vsync,

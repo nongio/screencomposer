@@ -739,11 +739,11 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                     // Get current maximized geometry before unmaximizing
                     let maximized_geometry = self.workspaces.element_geometry(window).unwrap();
                     let touch_location = start_data.location;
-                    
+
                     // Calculate grab point relative to maximized window
                     let grab_offset_x = touch_location.x - maximized_geometry.loc.x as f64;
                     let grab_offset_y = touch_location.y - maximized_geometry.loc.y as f64;
-                    
+
                     // Calculate grab ratio (0.0 to 1.0)
                     let grab_ratio_x = if maximized_geometry.size.w > 0 {
                         (grab_offset_x / maximized_geometry.size.w as f64).clamp(0.0, 1.0)
@@ -767,15 +767,15 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                     let id = surface.wl_surface().id();
                     if let Some(view) = self.workspaces.get_window_view(&id) {
                         let restored_size = view.unmaximised_rect.size;
-                        
+
                         // Calculate new grab offset based on restored size
                         let new_grab_offset_x = grab_ratio_x * restored_size.w as f64;
                         let new_grab_offset_y = grab_ratio_y * restored_size.h as f64;
-                        
+
                         // Position window so grab point stays under touch point
                         let new_x = touch_location.x - new_grab_offset_x;
                         let new_y = touch_location.y - new_grab_offset_y;
-                        
+
                         initial_window_location = (new_x as i32, new_y as i32).into();
                     } else {
                         // Fallback: use touch location
@@ -833,11 +833,11 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             // Get current maximized geometry before unmaximizing
             let maximized_geometry = self.workspaces.element_geometry(window).unwrap();
             let pointer_location = pointer.current_location();
-            
+
             // Calculate grab point relative to maximized window
             let grab_offset_x = pointer_location.x - maximized_geometry.loc.x as f64;
             let grab_offset_y = pointer_location.y - maximized_geometry.loc.y as f64;
-            
+
             // Calculate grab ratio (0.0 to 1.0)
             let grab_ratio_x = if maximized_geometry.size.w > 0 {
                 (grab_offset_x / maximized_geometry.size.w as f64).clamp(0.0, 1.0)
@@ -861,15 +861,15 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             let id = surface.wl_surface().id();
             if let Some(view) = self.workspaces.get_window_view(&id) {
                 let restored_size = view.unmaximised_rect.size;
-                
+
                 // Calculate new grab offset based on restored size
                 let new_grab_offset_x = grab_ratio_x * restored_size.w as f64;
                 let new_grab_offset_y = grab_ratio_y * restored_size.h as f64;
-                
+
                 // Position window so grab point stays under cursor
                 let new_x = pointer_location.x - new_grab_offset_x;
                 let new_y = pointer_location.y - new_grab_offset_y;
-                
+
                 initial_window_location = (new_x as i32, new_y as i32).into();
             } else {
                 // Fallback: position window centered under cursor

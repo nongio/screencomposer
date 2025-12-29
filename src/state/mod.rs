@@ -235,7 +235,7 @@ impl SwipeDirection {
             Self::Undetermined
         }
     }
-    
+
     pub fn to_expose_delta(&self) -> Option<f32> {
         match self {
             Self::Vertical(delta) => Some(*delta as f32 / EXPOSE_DELTA_MULTIPLIER as f32),

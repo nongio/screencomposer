@@ -17,11 +17,11 @@ use crate::udev::UdevData;
 use smithay::{
     backend::input::{
         self, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent, KeyState,
-        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, Keycode,
+        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
     },
     desktop::{layer_map_for_output, WindowSurfaceType},
     input::{
-        keyboard::{keysyms as xkb, FilterResult, Keysym, ModifiersState},
+        keyboard::{keysyms as xkb, FilterResult, Keycode, Keysym, ModifiersState},
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
     },
     output::Scale,
@@ -1394,7 +1394,7 @@ impl ScreenComposer<UdevData> {
             },
         );
     }
-    
+
     fn gesture_swipe_begin_3finger(&mut self) {
         self.swipe_gesture = crate::state::SwipeGestureState::Detecting {
             accumulated: (0.0, 0.0),
@@ -1404,17 +1404,17 @@ impl ScreenComposer<UdevData> {
     fn on_gesture_swipe_update<B: InputBackend>(&mut self, evt: B::GestureSwipeUpdateEvent) {
         let pointer = self.pointer.clone();
         let delta = evt.delta();
-        
+
         match &mut self.swipe_gesture {
             crate::state::SwipeGestureState::Detecting { accumulated } => {
                 accumulated.0 += delta.x;
                 accumulated.1 += delta.y;
-                
+
                 let direction = crate::state::SwipeDirection::from_accumulated(
                     accumulated.0.abs(),
                     accumulated.1.abs(),
                 );
-                
+
                 match direction {
                     crate::state::SwipeDirection::Horizontal(_) => {
                         // Initialize workspace switching mode and apply current delta
@@ -1427,10 +1427,10 @@ impl ScreenComposer<UdevData> {
                     crate::state::SwipeDirection::Vertical(_) => {
                         // Initialize expose mode and apply current delta
                         self.dismiss_all_popups();
-                        
+
                         // Reset accumulated gesture value to prevent accumulation across repeated gestures
                         self.workspaces.reset_expose_gesture();
-                        
+
                         self.swipe_gesture = crate::state::SwipeGestureState::Expose {
                             velocity_samples: vec![delta.y],
                         };
@@ -1454,7 +1454,7 @@ impl ScreenComposer<UdevData> {
                 if velocity_samples.len() > crate::state::VELOCITY_SAMPLE_COUNT {
                     velocity_samples.remove(0);
                 }
-                
+
                 let expose_delta = (delta.y / crate::state::EXPOSE_DELTA_MULTIPLIER) as f32;
                 self.workspaces.expose_update(expose_delta);
             }
@@ -1473,8 +1473,11 @@ impl ScreenComposer<UdevData> {
     fn on_gesture_swipe_end<B: InputBackend>(&mut self, evt: B::GestureSwipeEndEvent) {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
-        
-        match std::mem::replace(&mut self.swipe_gesture, crate::state::SwipeGestureState::Idle) {
+
+        match std::mem::replace(
+            &mut self.swipe_gesture,
+            crate::state::SwipeGestureState::Idle,
+        ) {
             crate::state::SwipeGestureState::Expose { velocity_samples } => {
                 self.gesture_swipe_end_expose(velocity_samples);
             }
@@ -1493,7 +1496,7 @@ impl ScreenComposer<UdevData> {
             },
         );
     }
-    
+
     fn gesture_swipe_end_expose(&mut self, velocity_samples: Vec<f64>) {
         // Calculate average velocity from samples
         let velocity = if velocity_samples.is_empty() {
@@ -1501,10 +1504,10 @@ impl ScreenComposer<UdevData> {
         } else {
             velocity_samples.iter().sum::<f64>() / velocity_samples.len() as f64
         };
-        
+
         self.workspaces.expose_end_with_velocity(velocity as f32);
     }
-    
+
     fn gesture_swipe_end_workspace(&mut self, velocity_samples: Vec<f64>, cancelled: bool) {
         let target_index = if !cancelled {
             let velocity = if velocity_samples.is_empty() {
@@ -1516,7 +1519,7 @@ impl ScreenComposer<UdevData> {
         } else {
             Some(self.workspaces.workspace_swipe_end(0.0))
         };
-        
+
         // Update keyboard focus to top window of the target workspace
         if let Some(index) = target_index {
             if let Some(top_wid) = self.workspaces.get_top_window_of_workspace(index) {

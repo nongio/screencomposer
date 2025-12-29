@@ -445,7 +445,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
                     state.size = Some(self.last_window_size);
                 });
                 xdg.send_pending_configure();
-                
+
                 // Reposition window during resize if resizing from top or left edges
                 if self.edges.intersects(ResizeEdge::TOP_LEFT) {
                     let geometry = self.window.geometry();
@@ -466,7 +466,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
             #[cfg(feature = "xwayland")]
             WindowSurface::X11(x11) => {
                 let mut location = data.space.element_location(&self.window).unwrap();
-                
+
                 // Reposition window during resize if resizing from top or left edges
                 if self.edges.intersects(ResizeEdge::TOP_LEFT) {
                     let geometry = self.window.geometry();
@@ -482,7 +482,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
 
                     data.space.map_element(self.window.clone(), location, true);
                 }
-                
+
                 x11.configure(Rectangle::from_loc_and_size(
                     location,
                     self.last_window_size,
@@ -841,7 +841,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
                     state.size = Some(self.last_window_size);
                 });
                 xdg.send_pending_configure();
-                
+
                 // Reposition window during resize if resizing from top or left edges
                 if self.edges.intersects(ResizeEdge::TOP_LEFT) {
                     let mut location = data.workspaces.element_location(&self.window).unwrap();
@@ -861,7 +861,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
             #[cfg(feature = "xwayland")]
             WindowSurface::X11(x11) => {
                 let mut location = data.space.element_location(&self.window).unwrap();
-                
+
                 // Reposition window during resize if resizing from top or left edges
                 if self.edges.intersects(ResizeEdge::TOP_LEFT) {
                     let geometry = self.window.geometry();
@@ -877,7 +877,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
 
                     data.space.map_element(self.window.clone(), location, true);
                 }
-                
+
                 x11.configure(Rectangle::from_loc_and_size(
                     location,
                     self.last_window_size,

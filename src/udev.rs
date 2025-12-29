@@ -28,6 +28,7 @@ use smithay::backend::drm::compositor::PrimaryPlaneElement;
 use smithay::backend::renderer::ImportEgl;
 #[cfg(feature = "fps_ticker")]
 use smithay::backend::renderer::ImportMem;
+use smithay::wayland::presentation::Refresh;
 use smithay::{
     backend::{
         allocator::{
@@ -100,7 +101,6 @@ use smithay::{
     },
 };
 use smithay_drm_extras::drm_scanner::{DrmScanEvent, DrmScanner};
-use smithay::wayland::presentation::Refresh;
 use tracing::{debug, error, info, trace, warn};
 
 // we cannot simply pick the first supported format of the intersection of *all* formats, because:
@@ -1469,7 +1469,11 @@ impl ScreenComposer<UdevData> {
                         clock,
                         output
                             .current_mode()
-                            .map(|mode| Refresh::fixed(Duration::from_nanos(1_000_000_000_000 / mode.refresh as u64)))
+                            .map(|mode| {
+                                Refresh::fixed(Duration::from_nanos(
+                                    1_000_000_000_000 / mode.refresh as u64,
+                                ))
+                            })
                             .unwrap_or(Refresh::Unknown),
                         seq as u64,
                         flags,
@@ -1695,8 +1699,8 @@ impl ScreenComposer<UdevData> {
         // - Current workspace must be in fullscreen mode and not animating
         // - Disable during expose gesture
         // - Disable during workspace swipe gesture
-        let allow_direct_scanout = self.workspaces.is_fullscreen_and_stable()
-            && !self.swipe_gesture.is_active();
+        let allow_direct_scanout =
+            self.workspaces.is_fullscreen_and_stable() && !self.swipe_gesture.is_active();
 
         // Only fetch the fullscreen window if direct scanout is allowed
         let fullscreen_window = if allow_direct_scanout {
