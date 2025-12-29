@@ -7,16 +7,14 @@ The dock is a task manager that shows minimized windows and apps. It is a layer 
 ### Taskbar
 - list running applications
 - list minimized windows
+
 ### Bookmarking
 - list favourite application launchers
   - application launchers and running applications are mixed
-- list shortcuts to folders
 
 A dock element is:
-- draggable
 - clickable
 - hoverable
-- has a submenu associated with it
 
 
 ## Taskbar
@@ -32,28 +30,25 @@ Few dependencies are required to load the application icons and names:
 - freedesktop-desktop-entry
 
 ## Bookmarking
-File previews are shown in the dock.
-Listing favourite places and files, requires the dock to be able to render files previews.
-This task should be done in a separate application that communicates with the dock.
-
 Bookmarks can now be declared in `sc_config.toml` under the `[dock]` table. Each entry supplies a desktop file id plus optional label/extra arguments, for example:
 
 ```toml
 [dock]
 bookmarks = [
   { desktop_id = "org.kde.dolphin.desktop" },
-  { desktop_id = "org.mozilla.firefox.desktop", label = "Web", exec_args = ["--private-window"] }
 ]
 ```
 Configured launchers are preloaded into the dock and share the same icon/hover behaviour as running apps. Clicking a bookmark focuses an existing instance or launches the desktop entry if nothing is running.
 
+
 ## Dock submenu
 This feature could make the case for a separate application that communicates with the dock.
 
+Open questions:
 Should the compositor be responsible for the dock submenu?
 
 ## Configuration / Storage
-The bookmaking and taskbar configuration needs to be persisted.
+The bookmaking and taskbar configuration is stored in the `sc_config.toml` file under the `[dock]` table.
 
 ## Future considerations
 A Wayland protocol to retrieve the application icon and name would be more efficient than reading the desktop file.

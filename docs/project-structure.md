@@ -40,9 +40,8 @@ sample-clients/         # Example Wayland client applications
 ## Build & Run
 
 ```sh
-cargo build --release
+cargo build
 ./target/release/screen-composer --winit   # Winit backend (development)
-./target/release/screen-composer --x11     # X11 backend
 ./target/release/screen-composer --tty-udev # Native DRM/GBM (production)
 ```
 

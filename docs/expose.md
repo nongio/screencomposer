@@ -1,7 +1,7 @@
 # Expose mode
 
 ## What it is
-Expose shows scaled previews of every visible window on the current workspace so they can be clicked or dragged. It is triggered by `Workspaces::expose_show_all` (keyboard toggle or gesture) which drives both the layout calculation and the transition animation.
+Expose shows scaled previews of every visible window on the current workspace so they can be clicked or dragged between workspaces. It is triggered by `Workspaces::expose_show_all` (keyboard toggle or gesture) which drives both the layout calculation and the transition animation.
 
 ## Lifecycle
 - Enter/exit: `expose_show_all_workspace` computes gesture state, then calls `expose_show_all_layout` to build/update the layout bin and `expose_show_all_animate` to drive the animation and visibility.
