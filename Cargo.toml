@@ -9,9 +9,9 @@ rust-version = "1.83.0"
 [dependencies]
 bitflags = "2.2.1"
 gl-rs = { package = "gl", version = "0.14.0" }
-wayland-server = "0.30.0"
-wayland-scanner = "0.30.0"
-wayland-backend = "0.1.0"
+wayland-server = "0.31"
+wayland-scanner = "0.31"
+wayland-backend = "0.3"
 image = { version = "0.24.5", optional = true }
 xcursor = { version = "0.3.3", optional = true }
 xkbcommon = "0.6.0"
@@ -127,6 +127,8 @@ members = [
     "components/xdg-desktop-portal-sc",
     "components/apps-manager",
     "sample-clients/client-rainbow",
+    "sample-clients/hello-layers",
+    "sample-clients/hello-design",
     "sample-clients/submenu",
     "sample-clients/submenu-gtk",
 ]

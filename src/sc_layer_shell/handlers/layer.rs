@@ -121,6 +121,39 @@ impl<BackendData: Backend> Dispatch<ScLayerV1, ScLayerUserData> for ScreenCompos
                 }
             }
 
+            sc_layer_v1::Request::SetBorder {
+                width,
+                red,
+                green,
+                blue,
+                alpha,
+            } => {
+                let width = wl_fixed_to_f32(width);
+                let red = wl_fixed_to_f32(red);
+                let green = wl_fixed_to_f32(green);
+                let blue = wl_fixed_to_f32(blue);
+                let alpha = wl_fixed_to_f32(alpha);
+
+                let color = lay_rs::types::Color::new_rgba(red, green, blue, alpha);
+
+                if let Some(txn_id) = active_transaction {
+                    // Create both changes before accumulating
+                    let layer = sc_layer.layer.clone();
+                    let width_change = layer.change_border_width(width);
+                    let color_change = layer.change_border_color(color);
+                    
+                    // Accumulate both changes
+                    accumulate_change(state, txn_id.clone(), width_change);
+                    accumulate_change(state, txn_id, color_change);
+                } else {
+                    // Apply immediately
+                    sc_layer.layer.set_border_width(width, None);
+                    sc_layer.layer.set_border_color(color, None);
+                    trigger_window_update(state, &sc_layer.surface.id());
+                }
+            }
+
+
             sc_layer_v1::Request::SetShadow {
                 opacity,
                 radius,
