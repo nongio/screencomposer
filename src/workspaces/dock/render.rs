@@ -134,8 +134,8 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
     let text_padding_v = 14.0;
     let safe_margin = 100.0;
     let label_size_width = text_bounds.width() + text_padding_h * 2.0 + safe_margin * 2.0;
-    let label_size_height =
-        text_bounds.height() + arrow_height + text_padding_v * 2.0 + safe_margin * 2.0;
+    // Fixed height based on font size, not measured text bounds
+    let label_size_height = text_size + arrow_height + text_padding_v * 2.0 + safe_margin * 2.0;
 
     let draw_label = move |canvas: &lay_rs::skia::Canvas, w: f32, h: f32| -> lay_rs::skia::Rect {
         // Tooltip parameters
@@ -151,12 +151,12 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
         // choose colors according to theme scheme so tooltip looks correct in dark mode
         let (bg_col, shadow_col, text_col) = Config::with(|c| match c.theme_scheme {
             crate::theme::ThemeScheme::Light => (
-                lay_rs::skia::Color4f::new(157.0/255.0, 157.0/255.0, 157.0/255.0, 1.0),
+                lay_rs::skia::Color4f::new(157.0 / 255.0, 157.0 / 255.0, 157.0 / 255.0, 1.0),
                 theme_colors().shadow_color.c4f(),
                 theme_colors().text_primary.c4f(),
             ),
             crate::theme::ThemeScheme::Dark => (
-                lay_rs::skia::Color4f::new(157.0/255.0, 157.0/255.0, 157.0/255.0, 1.0),
+                lay_rs::skia::Color4f::new(157.0 / 255.0, 157.0 / 255.0, 157.0 / 255.0, 1.0),
                 theme_colors().shadow_color.c4f(),
                 theme_colors().text_primary.c4f(),
             ),
@@ -203,7 +203,8 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
 
         // // Draw the text inside the tooltip
         let text_x = safe_margin + text_padding_h;
-        let text_y = text_bounds.height() + text_padding_v + safe_margin - text_size * 0.2;
+        // Position text baseline at 68% of content area (excluding arrow)
+        let text_y = safe_margin + (tooltip_height - arrow_height) * 0.68;
         canvas.draw_str(text.as_str(), (text_x, text_y), &font, &text_paint);
         lay_rs::skia::Rect::from_xywh(0.0, 0.0, w, h)
     };

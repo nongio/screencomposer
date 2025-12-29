@@ -362,11 +362,11 @@ impl DockView {
         let display_apps = self.display_entries(&state);
         let app_height = available_icon_width + 20.0;
         let miniwindow_height = available_icon_width + 60.0;
-        const DOCK_BAR_HEIGHT: f32 = 130.0;
+        const DOCK_BAR_HEIGHT: f32 = 125.0;
         let bar_height = DOCK_BAR_HEIGHT * draw_scale;
 
         self.bar_layer
-            .set_border_corner_radius(available_icon_width / 2.0, None);
+            .set_border_corner_radius(available_icon_width / 3.0, None);
 
         self.resize_handle.set_size(
             Size {
