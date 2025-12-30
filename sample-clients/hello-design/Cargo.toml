@@ -18,3 +18,7 @@ calloop = "0.13"
 [dependencies.skia-safe]
 version = "=0.88"
 features = ["gl", "textlayout"]
+
+[[example]]
+name = "simple_window"
+path = "examples/simple_window.rs"
