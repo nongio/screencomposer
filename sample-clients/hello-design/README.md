@@ -1,6 +1,51 @@
 # Hello Design - Wayland Skia Client
 
-A simple Wayland client demonstrating how to create surfaces with Skia-based rendering.
+A simple Wayland client demonstrating how to create surfaces with Skia-based rendering, plus a design system with reusable UI components.
+
+## Components
+
+Hello Design includes the following UI components:
+
+### MenuBar
+
+A horizontal menu bar with toggleable menu labels. Each label controls showing/hiding a separate menu component.
+
+**Features:**
+- Horizontal layout with auto-calculated bounds
+- Toggle behavior (click to open/close)
+- Mutual exclusion (only one menu open at a time)
+- Customizable colors and styling
+- Skia-based rendering
+
+**Documentation:** See [docs/MenuBar.md](docs/MenuBar.md)
+
+**Example:**
+```rust
+let mut menu_bar = MenuBar::new()
+    .with_height(32.0)
+    .with_background(Color::from_rgb(240, 240, 240));
+
+menu_bar.add_item("File", vec![
+    MenuItem::action("file.new", "New").build(),
+    MenuItem::action("file.open", "Open...").build(),
+]);
+
+menu_bar.render(canvas, width);
+```
+
+**Run example:** `cargo run --example menu_bar`
+
+### Menu
+
+A popup menu component with support for items, separators, and submenus.
+
+**Run example:** `cargo run --example simple_menu`
+
+### SimpleWindow
+
+A basic window component with simple rendering capabilities.
+
+**Run example:** `cargo run --example simple_window`
 
 ## Architecture
 

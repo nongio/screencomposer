@@ -41,7 +41,6 @@ impl SimpleWindow {
 
     /// Render the simple window content
     pub fn render(&self, canvas: &skia_safe::Canvas) {
-        println!("Rendering SimpleWindow content");
         // Clear with background color
         canvas.clear(self.background_color);
 

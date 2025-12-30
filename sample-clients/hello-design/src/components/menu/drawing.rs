@@ -9,27 +9,29 @@ pub fn draw_menu(
     hovered_index: Option<usize>,
     style: &MenuStyle,
 ) {
-    println!("Drawing menu with {} items, width {}, hovered_index {:?}", items.len(), width, hovered_index);
     // Clear to transparent
     canvas.clear(Color4f::new(0.0, 0.0, 0.0, 0.0));
     
-    // Draw background
-    let height = style.calculate_menu_height(items);
-    let bg = style.background_color;
-    let bg_paint = Paint::new(Color4f::new(bg[0], bg[1], bg[2], bg[3]), None);
-    let bg_rect = RRect::new_rect_xy(
-        Rect::from_xywh(0.0, 0.0, width, height),
-        style.corner_radius, 
-        style.corner_radius,
-    );
-    canvas.draw_rrect(&bg_rect, &bg_paint);
-    
-    // Draw border
-    let mut border_paint = Paint::new(Color4f::new(0.0, 0.0, 0.0, 0.1), None);
-    border_paint.set_style(PaintStyle::Stroke);
-    border_paint.set_stroke_width(1.0);
-    border_paint.set_anti_alias(true);
-    canvas.draw_rrect(&bg_rect, &border_paint);
+    // Only draw background and border if sc-layer is not handling it
+    if !style.sc_layer {
+        // Draw background
+        let height = style.calculate_menu_height(items);
+        let bg = style.background_color;
+        let bg_paint = Paint::new(Color4f::new(bg[0], bg[1], bg[2], bg[3]), None);
+        let bg_rect = RRect::new_rect_xy(
+            Rect::from_xywh(0.0, 0.0, width, height),
+            style.corner_radius, 
+            style.corner_radius,
+        );
+        canvas.draw_rrect(&bg_rect, &bg_paint);
+        
+        // Draw border
+        let mut border_paint = Paint::new(Color4f::new(0.0, 0.0, 0.0, 0.1), None);
+        border_paint.set_style(PaintStyle::Stroke);
+        border_paint.set_stroke_width(1.0);
+        border_paint.set_anti_alias(true);
+        canvas.draw_rrect(&bg_rect, &border_paint);
+    }
     
     // Setup fonts
     let font_mgr = FontMgr::new();
@@ -103,7 +105,6 @@ fn draw_menu_item(
             y_position + style.separator_height
         }
         MenuItem::Action { label, shortcut, enabled, .. } => {
-            let is_submenu = false;
             
             // Draw highlight background if hovered and enabled
             if is_hovered && *enabled {
@@ -170,7 +171,6 @@ fn draw_menu_item(
             y_position + style.item_height
         }
         MenuItem::Submenu { label, enabled, .. } => {
-            let is_submenu = true;
             
             // Draw highlight background if hovered and enabled
             if is_hovered && *enabled {

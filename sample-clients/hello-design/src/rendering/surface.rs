@@ -23,7 +23,6 @@ impl SkiaSurface {
         width: i32,
         height: i32,
     ) -> Self {
-        println!("Creating SkiaSurface with dimensions: {}x{}", width, height);
         Self {
             wl_surface,
             egl_surface,
@@ -36,7 +35,6 @@ impl SkiaSurface {
 
     /// Resize the surface
     pub fn resize(&mut self, width: i32, height: i32) {
-        println!("Resizing SkiaSurface from {}x{} to {}x{}", self.width, self.height, width, height);
         self.width = width;
         self.height = height;
         self.wl_egl_surface.resize(width, height, 0, 0);

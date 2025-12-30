@@ -1,4 +1,4 @@
-use hello_design::{rendering::{SkiaContext, SkiaSurface}, components::simple_window::SimpleWindow};
+use hello_design::{rendering::{SkiaContext, SkiaSurface}, components::window::SimpleWindow};
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     output::{OutputHandler, OutputState},
@@ -102,11 +102,7 @@ impl WindowHandler for AppData {
     ) {
         println!("Window configure: configured={}, new_size={:?}, serial={}", 
                  self.configured, configure.new_size, serial);
-        
-        // Acknowledge the configure event
-        window.xdg_surface().ack_configure(serial);
-        println!("Acknowledged configure with serial {}", serial);
-        
+                
         if !self.configured {
             self.configured = true;
             
@@ -209,7 +205,7 @@ fn main() {
     let surface = app.compositor_state.create_surface(&qh);
     let window = app.xdg_shell_state.create_window(
         surface,
-        WindowDecorations::RequestServer,
+        WindowDecorations::None,
         &qh,
     );
     

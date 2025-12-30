@@ -1,2 +1,3 @@
 pub mod menu;
-pub mod simple_window;
+pub mod menu_bar;
+pub mod window;

@@ -215,6 +215,9 @@ pub struct MenuStyle {
     pub item_hover_text: [f32; 4],
     pub separator_color: [f32; 4],
     pub disabled_text_color: [f32; 4],
+
+    // Protocol support
+    pub sc_layer: bool, // Whether sc-layer protocol is available for background effects
 }
 
 impl Default for MenuStyle {
@@ -236,6 +239,7 @@ impl Default for MenuStyle {
             item_hover_text: [1.0, 1.0, 1.0, 1.0],
             separator_color: [0.0, 0.0, 0.0, 0.1],
             disabled_text_color: [0.0, 0.0, 0.0, 0.25],
+            sc_layer: false,
         }
     }
 }

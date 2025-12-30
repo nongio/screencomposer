@@ -2,7 +2,7 @@ mod rendering;
 mod wayland_handlers;
 mod components;
 
-use components::menu::{Menu, MenuItem, MenuItemId, Position};
+use components::menu::{Menu, MenuItem, MenuItemId, Position, sc_layer_shell_v1, sc_layer_v1};
 use rendering::{SkiaContext, SkiaSurface};
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
@@ -59,6 +59,7 @@ struct AppData {
     compositor_state: CompositorState,
     shm_state: Shm,
     xdg_shell_state: XdgShell,
+    sc_layer_shell: Option<sc_layer_shell_v1::ScLayerShellV1>,
     keyboard: Option<wl_keyboard::WlKeyboard>,
     pointer: Option<wl_pointer::WlPointer>,
     cursor_theme: Option<CursorTheme>,
@@ -101,6 +102,7 @@ impl AppData {
             compositor_state,
             shm_state,
             xdg_shell_state,
+            sc_layer_shell: None,
             keyboard: None,
             pointer: None,
             cursor_theme: None,
@@ -227,13 +229,13 @@ impl WindowHandler for AppData {
 impl PopupHandler for AppData {
     fn configure(
         &mut self,
-        _conn: &Connection,
+        conn: &Connection,
         qh: &QueueHandle<Self>,
         popup: &smithay_client_toolkit::shell::xdg::popup::Popup,
         config: PopupConfigure,
     ) {
         println!("Popup configure: {:?}", config);
-        self.menu.on_configure(popup, config);
+        self.menu.on_configure(popup, config, qh, conn);
         // TODO: Implement menu frame handling
         // self.menu.on_frame(qh);
     }
@@ -366,7 +368,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for AppData {
                 // Only process menu motion if we're over a menu surface
                 if let Some(ref current_surface) = state.current_surface {
                     if state.menu.owns_surface(current_surface) {
-                        state.menu.on_pointer_motion(current_surface, surface_x, surface_y);
+                        state.menu.on_pointer_motion(current_surface, surface_x, surface_y, qh);
                     }
                 }
                 
@@ -379,6 +381,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for AppData {
                             submenu_idx,
                             &state.compositor_state,
                             &state.xdg_shell_state,
+                            state.sc_layer_shell.as_ref(),
                             qh,
                             display_ptr,
                         );
@@ -411,6 +414,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for AppData {
                                     qh,
                                     &state.compositor_state,
                                     &state.xdg_shell_state,
+                                    state.sc_layer_shell.as_ref(),
                                     _conn,
                                     display_ptr,
                                 ) {
@@ -444,6 +448,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let seat_state = SeatState::new(&globals, &qh);
     let output_state = OutputState::new(&globals, &qh);
     let registry_state = RegistryState::new(&globals);
+    
+    // Bind sc_layer_shell (optional - graceful degradation if not available)
+    let sc_layer_shell = globals.bind::<sc_layer_shell_v1::ScLayerShellV1, _, _>(&qh, 1..=1, ()).ok();
+    
+    if sc_layer_shell.is_none() {
+        eprintln!("Warning: sc_layer_shell_v1 not available, menu will not have blur/shadow effects");
+    }
 
     let mut app_data = AppData::new(
         registry_state,
@@ -453,6 +464,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         shm_state,
         xdg_shell_state,
     );
+    
+    app_data.sc_layer_shell = sc_layer_shell;
 
     // Create window
     let surface = app_data.compositor_state.create_surface(&qh);
