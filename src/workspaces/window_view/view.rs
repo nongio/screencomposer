@@ -8,7 +8,7 @@ use lay_rs::{
 use smithay::{reexports::wayland_server::backend::ObjectId, utils::Logical};
 use std::sync::{atomic::AtomicBool, Arc};
 
-use crate::{shell::WindowElement, workspaces::utils::view_render_elements};
+use crate::{shell::WindowElement, workspaces::utils::view_render_elements_wrapper};
 
 use super::{
     effects::GenieEffect,
@@ -76,7 +76,7 @@ impl WindowView {
         view_base.mount_layer(shadow_layer.clone());
         let mirror_layer = window.mirror_layer().clone();
         mirror_layer.set_size(shadow_layer.render_layer().bounds.size(), None);
-        let view_content = View::new("window_content", render_elements, view_render_elements);
+        let view_content = View::new("window_content", render_elements, view_render_elements_wrapper);
         view_content.mount_layer(content_layer.clone());
 
         layer.set_image_cached(true);

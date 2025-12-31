@@ -204,6 +204,13 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
 
     // foreign toplevel list - maps surface ObjectId to toplevel handle
     pub foreign_toplevels: HashMap<ObjectId, smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle>,
+
+    // sc_layer protocol
+    // Map from surface ID to list of sc-layers augmenting that surface
+    pub sc_layers: HashMap<ObjectId, Vec<crate::sc_layer_shell::ScLayer>>,
+    pub sc_transactions: HashMap<ObjectId, crate::sc_layer_shell::ScTransaction>,
+    // Map from surface ID to its rendering layer in the scene graph
+    pub surface_layers: HashMap<ObjectId, lay_rs::prelude::Layer>,
 }
 
 pub mod data_device_handler;
@@ -254,22 +261,16 @@ impl SwipeDirection {
 #[derive(Debug, Clone)]
 pub enum SwipeGestureState {
     Idle,
-    Detecting {
-        accumulated: (f64, f64),
-    },
-    WorkspaceSwitching {
-        velocity_samples: Vec<f64>,
-    },
-    Expose {
-        velocity_samples: Vec<f64>,
-    },
+    Detecting { accumulated: (f64, f64) },
+    WorkspaceSwitching { velocity_samples: Vec<f64> },
+    Expose { velocity_samples: Vec<f64> },
 }
 
 impl SwipeGestureState {
     pub fn is_active(&self) -> bool {
         !matches!(self, Self::Idle)
     }
-    
+
     pub fn is_expose(&self) -> bool {
         matches!(self, Self::Expose { .. })
     }
@@ -405,6 +406,9 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         let xdg_foreign_state = XdgForeignState::new::<Self>(&dh);
         let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
 
+        // Create minimal sc_layer shell global
+        crate::sc_layer_shell::create_layer_shell_global::<BackendData>(&dh);
+
         // init input
         let seat_name = backend_data.seat_name();
         let mut seat = seat_state.new_wl_seat(&dh, seat_name.clone());
@@ -502,6 +506,11 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
 
             // foreign toplevel list
             foreign_toplevels: HashMap::new(),
+
+            // sc_layer minimal protocol
+            sc_layers: HashMap::new(),
+            sc_transactions: HashMap::new(),
+            surface_layers: HashMap::new(),
         };
 
         composer.rebuild_keycode_remap();
@@ -877,7 +886,15 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 window_view.view_base.update_state(&model);
                 window_view
                     .view_content
-                    .update_state(&render_elements.into());
+                    .update_state(&render_elements.iter().cloned().collect());
+
+                // Extract and store surface layers for sc_layer protocol
+                let render_elements_vec: Vec<_> = render_elements.into();
+                let (_, surface_layers) = crate::workspaces::utils::view_render_elements(
+                    &render_elements_vec,
+                    &window_view.view_content,
+                );
+                self.surface_layers.extend(surface_layers);
 
                 self.workspaces.expose_update_if_needed();
             }

@@ -26,7 +26,12 @@ impl<BackendData: Backend> ClientDndGrabHandler for ScreenComposer<BackendData> 
             .layer
             .set_opacity(0.8, Some(Transition::default()));
     }
-    fn dropped(&mut self, _target: Option<WlSurface>, _validated: bool, _seat: smithay::input::Seat<Self>) {
+    fn dropped(
+        &mut self,
+        _target: Option<WlSurface>,
+        _validated: bool,
+        _seat: smithay::input::Seat<Self>,
+    ) {
         self.dnd_icon = None;
         self.workspaces
             .dnd_view

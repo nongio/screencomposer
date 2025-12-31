@@ -203,6 +203,10 @@ impl WindowElement {
         &self.0.base_layer
     }
 
+    pub fn layer(&self) -> &Layer {
+        &self.0.base_layer
+    }
+
     pub fn mirror_layer(&self) -> &Layer {
         &self.0.mirror_layer
     }
