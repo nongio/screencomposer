@@ -97,6 +97,18 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
     fn toplevel_destroyed(&mut self, toplevel: ToplevelSurface) {
         let id = toplevel.wl_surface().id();
 
+        // Cascade destroy all sc-layers attached to this window
+        if let Some(layers) = self.sc_layers.remove(&id) {
+            for layer in layers {
+                self.layers_engine.mark_for_delete(layer.layer.id());
+                tracing::info!(
+                    "Cascade destroyed sc-layer {:?} with parent window {:?}",
+                    layer.wl_layer.id(),
+                    id
+                );
+            }
+        }
+
         if let Some(window) = self.workspaces.get_window_for_surface(&id) {
             if window.is_fullscreen() {
                 let fullscreen_workspace = window.get_fullscreen_workspace();

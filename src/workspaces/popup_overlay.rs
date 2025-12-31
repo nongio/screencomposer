@@ -7,7 +7,7 @@ use lay_rs::{
 use smithay::reexports::wayland_server::backend::ObjectId;
 use std::{collections::HashMap, sync::Arc};
 
-use crate::workspaces::{utils::view_render_elements, WindowViewSurface};
+use crate::workspaces::{utils::view_render_elements_wrapper, WindowViewSurface};
 
 /// A popup with its layer and root window reference
 pub struct PopupLayer {
@@ -82,7 +82,7 @@ impl PopupOverlayView {
                 let view_content = View::new(
                     format!("popup_content_{:?}", popup_id),
                     Vec::new(),
-                    view_render_elements,
+                    view_render_elements_wrapper,
                 );
                 view_content.mount_layer(content_layer.clone());
 

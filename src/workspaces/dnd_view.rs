@@ -6,7 +6,7 @@ use lay_rs::{
 };
 use std::sync::Arc;
 
-use crate::workspaces::utils::view_render_elements;
+use crate::workspaces::utils::view_render_elements_wrapper;
 use crate::workspaces::WindowViewSurface;
 
 #[derive(Clone)]
@@ -39,7 +39,7 @@ impl DndView {
 
         let render_elements = Vec::new();
 
-        let view_content = View::new("dnd", render_elements, view_render_elements);
+        let view_content = View::new("dnd", render_elements, view_render_elements_wrapper);
         view_content.mount_layer(content_layer.clone());
 
         Self {
