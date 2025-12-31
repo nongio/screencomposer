@@ -2,7 +2,7 @@
 
 This file provides guidance to agents when working with code in this repository.
 
-## Build & Run Commands
+## Build & Run Commands for ScreenComposer
 
 ```sh
 # Development (debug build, faster compilation)
@@ -19,11 +19,30 @@ cargo fmt --all -- --check   # Check formatting
 cargo fmt --all              # Auto-format
 cargo clippy --features "default" -- -D warnings
 
-# Build specific workspace members
-cargo build -p xdg-desktop-portal-screencomposer  # Portal backend component
-
 # Run with tracing
 RUST_LOG=debug cargo run -- --winit
+
+# Run logging into a file
+RUST_LOG=debug cargo run -- --winit 2> winit.log
+```
+
+## Build apps and tools
+when working with the apps/tools in `components/apps-manager` and `components/xdg-desktop-portal-sc`, use these commands:
+```sh
+cargo build -p apps-manager
+
+cargo run -p apps-manager
+
+cargo build -p xdg-desktop-portal-sc
+cargo run -p xdg-desktop-portal-sc
+```
+
+sometimes we need to test a component together with ScreenComposer, in that case use:
+```sh
+# First, run ScreenComposer in one terminal
+cargo run -- --winit &
+# Then, in another terminal, run the app/tool
+WAYLAND_DISPLAY=wayland-1 cargo run -p apps-manager
 ```
 
 **Note:** No test suite exists yet. The project uses Rust 1.83.0 minimum.
@@ -37,7 +56,6 @@ ScreenComposer is a Wayland compositor built on Smithay with a Skia-based render
 Three interchangeable backends implement the same compositor logic:
 - `src/udev.rs` — Production backend using DRM/GBM/libinput for bare-metal display
 - `src/winit.rs` — Development backend running as a window inside another compositor
-- `src/x11.rs` — X11 backend for running inside an X session
 
 Each backend:
 1. Sets up its display/input subsystem
