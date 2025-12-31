@@ -57,6 +57,7 @@ impl PopupOverlayView {
         &mut self,
         popup_id: ObjectId,
         root_window_id: ObjectId,
+        warm_cache: Option<HashMap<String, std::collections::VecDeque<lay_rs::prelude::NodeRef>>>,
     ) -> &mut PopupLayer {
         self.popup_layers
             .entry(popup_id.clone())
@@ -86,6 +87,12 @@ impl PopupOverlayView {
                 );
                 view_content.mount_layer(content_layer.clone());
 
+                // Inject warm cache into newly created View
+                if let Some(cache) = warm_cache {
+                    view_content.set_viewlayer_node_map(cache);
+                    tracing::debug!("Injected warm cache into new PopupView for {:?}", popup_id);
+                }
+
                 PopupLayer {
                     popup_id,
                     root_window_id,
@@ -103,10 +110,25 @@ impl PopupOverlayView {
         root_window_id: &ObjectId,
         position: Point,
         surfaces: Vec<WindowViewSurface>,
-    ) {
-        let popup = self.get_or_create_popup_layer(popup_id.clone(), root_window_id.clone());
+        warm_cache: Option<HashMap<String, std::collections::VecDeque<lay_rs::prelude::NodeRef>>>,
+    ) -> HashMap<ObjectId, Layer>{
+        let popup = self.get_or_create_popup_layer(popup_id.clone(), root_window_id.clone(), warm_cache);
         popup.layer.set_position(position, None);
+
         popup.view_content.update_state(&surfaces);
+
+        let render_elements_vec: Vec<_> = surfaces.into();
+        let (_, surface_layers) = crate::workspaces::utils::view_render_elements(
+            &render_elements_vec,
+            &popup.view_content,
+        );
+
+        surface_layers
+    }
+
+    /// Get the View for a popup (if it exists)
+    pub fn get_popup_view(&self, popup_id: &ObjectId) -> Option<&View<Vec<WindowViewSurface>>> {
+        self.popup_layers.get(popup_id).map(|p| &p.view_content)
     }
 
     /// Remove a popup layer
@@ -117,7 +139,7 @@ impl PopupOverlayView {
     }
 
     /// Remove all popups belonging to a specific root window
-    pub fn remove_popups_for_window(&mut self, root_window_id: &ObjectId) {
+    pub fn remove_popups_for_window(&mut self, root_window_id: &ObjectId) -> Vec<ObjectId> {
         let to_remove: Vec<ObjectId> = self
             .popup_layers
             .iter()
@@ -125,9 +147,11 @@ impl PopupOverlayView {
             .map(|(id, _)| id.clone())
             .collect();
 
-        for id in to_remove {
+        for id in to_remove.iter() {
             self.remove_popup(&id);
         }
+
+        to_remove
     }
 
     /// Clear all popup layers
