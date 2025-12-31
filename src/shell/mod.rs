@@ -176,12 +176,38 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
                     });
 
                 let window = root_id
-                    .and_then(|id| self.workspaces.get_window_for_surface(&id).cloned())
+                    .as_ref()
+                    .and_then(|id| self.workspaces.get_window_for_surface(id).cloned())
                     .or_else(|| self.workspaces.get_window_for_surface(&surface_id).cloned());
 
                 if let Some(window) = window {
                     window.on_commit();
                     self.update_window_view(&window);
+                    
+                    // Update foreign toplevel list only if title or app_id actually changed
+                    if let Some(handle) = root_id
+                        .or(Some(surface_id))
+                        .and_then(|id| self.foreign_toplevels.get(&id))
+                    {
+                        let title = window.xdg_title();
+                        let app_id = window.xdg_app_id();
+                        
+                        // Only send updates if the values have changed
+                        // Note: send_title/send_app_id internally check if values changed
+                        // but we still need to avoid sending unnecessary done events
+                        let title_changed = handle.title() != title;
+                        let app_id_changed = handle.app_id() != app_id;
+                        
+                        if title_changed || app_id_changed {
+                            if title_changed {
+                                handle.send_title(&title);
+                            }
+                            if app_id_changed {
+                                handle.send_app_id(&app_id);
+                            }
+                            handle.send_done();
+                        }
+                    }
                 }
             }
         }

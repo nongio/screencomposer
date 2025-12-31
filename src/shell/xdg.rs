@@ -83,6 +83,13 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
         self.workspaces.map_window(&window_element, location, true);
 
+        // Register with foreign toplevel list
+        let surface_id = surface.wl_surface().id();
+        let app_id = window_element.xdg_app_id();
+        let title = window_element.xdg_title();
+        let handle = self.foreign_toplevel_list_state.new_toplevel::<Self>(&app_id, &title);
+        self.foreign_toplevels.insert(surface_id.clone(), handle);
+
         let keyboard = self.seat.get_keyboard().unwrap();
         keyboard.set_focus(self, Some(window_element.into()), Serial::from(0));
     }
@@ -104,6 +111,11 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             }
         }
         self.workspaces.unmap_window(&id);
+
+        // Notify foreign toplevel list that this toplevel is closed
+        if let Some(handle) = self.foreign_toplevels.remove(&id) {
+            handle.send_closed();
+        }
 
         if let Some(keyboard) = self.seat.get_keyboard() {
             if let Some(focus) = keyboard.current_focus() {

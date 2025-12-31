@@ -57,6 +57,7 @@ use smithay::{
             TraversalAction,
         },
         dmabuf::DmabufFeedback,
+        foreign_toplevel_list::ForeignToplevelListState,
         fractional_scale::{with_fractional_scale, FractionalScaleManagerState},
         input_method::InputMethodManagerState,
         keyboard_shortcuts_inhibit::{
@@ -159,6 +160,7 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub presentation_state: PresentationState,
     pub fractional_scale_manager_state: FractionalScaleManagerState,
     pub xdg_foreign_state: XdgForeignState,
+    pub foreign_toplevel_list_state: ForeignToplevelListState,
 
     #[cfg(feature = "xwayland")]
     pub xwayland_shell_state: xwayland_shell::XWaylandShellState,
@@ -199,10 +201,14 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub screenshare_sessions: HashMap<String, crate::screenshare::ScreencastSession>,
     /// Manager for the screenshare D-Bus service (started lazily when needed).
     pub screenshare_manager: Option<crate::screenshare::ScreenshareManager>,
+
+    // foreign toplevel list - maps surface ObjectId to toplevel handle
+    pub foreign_toplevels: HashMap<ObjectId, smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle>,
 }
 
 pub mod data_device_handler;
 pub mod dnd_grab_handler;
+pub mod foreign_toplevel_list_handler;
 pub mod fractional_scale_handler;
 pub mod input_method_handler;
 pub mod seat_handler;
@@ -397,6 +403,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 .is_none_or(|client_state| client_state.security_context.is_none())
         });
         let xdg_foreign_state = XdgForeignState::new::<Self>(&dh);
+        let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
 
         // init input
         let seat_name = backend_data.seat_name();
@@ -458,6 +465,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             presentation_state,
             fractional_scale_manager_state,
             xdg_foreign_state,
+            foreign_toplevel_list_state,
             dnd_icon: None,
             suppressed_keys: Vec::new(),
             keycode_remap: HashMap::new(),
@@ -491,6 +499,9 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             // screenshare
             screenshare_sessions: HashMap::new(),
             screenshare_manager: None,
+
+            // foreign toplevel list
+            foreign_toplevels: HashMap::new(),
         };
 
         composer.rebuild_keycode_remap();
