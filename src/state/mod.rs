@@ -211,6 +211,9 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub sc_transactions: HashMap<ObjectId, crate::sc_layer_shell::ScTransaction>,
     // Map from surface ID to its rendering layer in the scene graph
     pub surface_layers: HashMap<ObjectId, lay_rs::prelude::Layer>,
+    // Pre-warmed View caches: surface_id -> (layer_key -> NodeRef)
+    // Built during surface creation, moved into Views when they're created
+    pub view_warm_cache: HashMap<ObjectId, HashMap<String, std::collections::VecDeque<lay_rs::prelude::NodeRef>>>,
 }
 
 pub mod data_device_handler;
@@ -511,6 +514,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             sc_layers: HashMap::new(),
             sc_transactions: HashMap::new(),
             surface_layers: HashMap::new(),
+            view_warm_cache: HashMap::new(),
         };
 
         composer.rebuild_keycode_remap();
@@ -822,13 +826,21 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                     }
                 });
 
-                // Send popup to the overlay layer
-                self.workspaces.popup_overlay.update_popup(
+                // Remove warm cache for this popup if it exists
+                let warm_cache = self.view_warm_cache.remove(&popup_id);
+
+                // Send popup to the overlay layer with warm cache and register its surface layers
+                let popup_layers = self.workspaces.popup_overlay.update_popup(
                     &popup_id,
                     &id,
                     popup_position,
                     popup_surfaces,
+                    warm_cache,
                 );
+
+                self.surface_layers.extend(popup_layers);
+
+                
             });
 
             let initial_location: smithay::utils::Point<f64, smithay::utils::Physical> =
@@ -1120,6 +1132,32 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         }
     }
 
+    /// Inject pre-created surface layers into a View's cache
+    /// This allows the View builder to find existing layers instead of creating new ones
+    pub fn inject_surface_layers_into_view<S: std::hash::Hash + Clone>(
+        &self,
+        surface: &WlSurface,
+        view: &lay_rs::prelude::View<S>,
+    ) {
+        use smithay::wayland::compositor::with_surface_tree_downward;
+        use smithay::wayland::compositor::TraversalAction;
+        
+        with_surface_tree_downward(
+            surface,
+            (),
+            |_, _, _| TraversalAction::DoChildren(()),
+            |sub_surface, _, _| {
+                let sub_id = sub_surface.id();
+                if let Some(layer) = self.surface_layers.get(&sub_id) {
+                    let key = format!("surface_{:?}", sub_id);
+                    view.viewlayer_node_map_insert(key, layer.id.into());
+                    tracing::debug!("Injected layer into view cache for {:?}", sub_id);
+                }
+            },
+            |_, _, _| true,
+        );
+    }
+
     /// Dismiss all active popups and release any pointer/keyboard grabs
     pub fn dismiss_all_popups(&mut self) {
         let serial = SERIAL_COUNTER.next_serial();
@@ -1226,7 +1264,6 @@ pub fn post_repaint<'a>(
             Some(output.clone())
         });
         // Send frame to all windows since we're processing all workspaces
-        window.send_frame(output, time, throttle, surface_primary_scanout_output);
         if let Some(dmabuf_feedback) = dmabuf_feedback {
             window.send_dmabuf_feedback(output, surface_primary_scanout_output, |surface, _| {
                 select_dmabuf_feedback(

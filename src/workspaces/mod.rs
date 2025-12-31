@@ -804,12 +804,11 @@ impl Workspaces {
         end_gesture: bool,
     ) {
         let delta = delta.clamp(0.0, 1.0);
-        let is_gesture_ongoing = delta < 1.0;
+        let is_gesture_ongoing = delta > 0.0 && delta < 1.0 && !end_gesture;
         let is_starting_animation = transition.is_some();
 
         // Hide popup overlay when entering expose mode
         self.popup_overlay.set_hidden(is_gesture_ongoing);
-
         let scale = Config::with(|c| c.screen_scale);
 
         let offset_y = 200.0;
@@ -1432,7 +1431,8 @@ impl Workspaces {
 
     /// remove a WindowElement from the workspace model,
     /// remove the window layer from the scene,
-    pub fn unmap_window(&mut self, window_id: &ObjectId) {
+    /// Returns the surface IDs from removed popups that need cleanup
+    pub fn unmap_window(&mut self, window_id: &ObjectId) -> Vec<ObjectId> {
         tracing::info!("workspaces::unmap_window: {:?}", window_id);
 
         let mut workspace_index = None;
@@ -1454,7 +1454,7 @@ impl Workspaces {
         self.windows_map.remove(window_id);
         // Remove debug texture snapshot for this surface
         crate::textures_storage::remove(window_id);
-        self.remove_window_view(window_id);
+        let removed_surface_ids = self.remove_window_view(window_id);
 
         self.refresh_space();
         self.update_workspace_model();
@@ -1463,6 +1463,9 @@ impl Workspaces {
         if let Some(index) = workspace_index {
             self.expose_update_if_needed_workspace(index);
         }
+        
+        // Return the surface IDs so the compositor can clean up surface_layers and sc_layers
+        removed_surface_ids
     }
     /// Return if the current coordinates are over the dock
     pub fn is_cursor_over_dock(&self, x: f32, y: f32) -> bool {
@@ -1542,14 +1545,17 @@ impl Workspaces {
     }
 
     /// Remove a WindowView from the scene and delete it from the window_views map
-    pub fn remove_window_view(&mut self, object_id: &ObjectId) {
+    /// Returns the surface IDs from removed popups that need cleanup
+    pub fn remove_window_view(&mut self, object_id: &ObjectId) -> Vec<ObjectId> {
         // Remove any popups that belong to this window
-        self.popup_overlay.remove_popups_for_window(object_id);
+        let removed_surface_ids = self.popup_overlay.remove_popups_for_window(object_id);
 
         let mut window_views = self.window_views.write().unwrap();
         if let Some(view) = window_views.remove(object_id) {
             view.window_layer.remove();
         }
+        
+        removed_surface_ids
     }
 
     pub fn get_window_view(&self, id: &ObjectId) -> Option<WindowView> {
