@@ -24,6 +24,7 @@ pub fn setup_app_icon(
         .unwrap_or(application.identifier.clone());
 
     let draw_picture = Some(draw_app_icon(&application, running));
+    let height_padding = icon_width * 0.20;
     let container_tree = LayerTreeBuilder::default()
         .key(app_name)
         .layout_style(taffy::Style {
@@ -38,7 +39,7 @@ pub fn setup_app_icon(
         .size((
             Size {
                 width: taffy::Dimension::Length(icon_width),
-                height: taffy::Dimension::Length(icon_width + 20.0),
+                height: taffy::Dimension::Length(icon_width + height_padding),
             },
             Some(Transition::ease_in_quad(0.2)), // None
         ))
@@ -245,8 +246,9 @@ pub fn draw_app_icon(application: &Application, running: bool) -> ContentDrawFun
     let application = application.clone();
     let draw_picture = move |canvas: &lay_rs::skia::Canvas, w: f32, h: f32| -> lay_rs::skia::Rect {
         let icon_size = (w).max(0.0);
-        let circle_radius = 5.0;
-        let icon_y = (h - 15.0 - circle_radius * 2.0) / 2.0 - icon_size / 2.0;
+        // Scale indicator with icon size (base ratio from 95.0)
+        let circle_radius = icon_size * 0.025;
+        let icon_y = h / 2.0 - icon_size / 2.0;
 
         if let Some(image) = &application.icon.clone() {
             let mut paint =
@@ -314,7 +316,8 @@ pub fn draw_app_icon(application: &Application, running: bool) -> ContentDrawFun
             let mut paint = lay_rs::skia::Paint::new(color, None);
             paint.set_anti_alias(true);
             paint.set_style(lay_rs::skia::paint::Style::Fill);
-            canvas.draw_circle((w / 2.0, h - (10.0 + circle_radius)), circle_radius, &paint);
+            let indicator_y_offset = icon_size * 0.04;
+            canvas.draw_circle((w / 2.0, h - (indicator_y_offset + circle_radius)), circle_radius, &paint);
         }
 
         lay_rs::skia::Rect::from_xywh(0.0, 0.0, w, h)
