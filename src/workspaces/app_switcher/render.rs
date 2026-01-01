@@ -36,7 +36,7 @@ pub fn render_appswitcher_view(
         (available_width - total_padding - COMPONENT_PADDING_H * 2.0) / state.apps.len() as f32;
     let available_icon_size = ICON_SIZE.min(available_icon_size);
 
-    let FONT_SIZE: f32 = available_icon_size / 6.0;
+    let FONT_SIZE: f32 = available_icon_size / 7.0;
     let component_width =
         apps_len * available_icon_size + total_padding + COMPONENT_PADDING_H * 2.0;
     let component_height = available_icon_size + ICON_PADDING * 2.0 + COMPONENT_PADDING_V * 2.0;
