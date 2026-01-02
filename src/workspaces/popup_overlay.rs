@@ -170,4 +170,22 @@ impl PopupOverlayView {
     pub fn set_hidden(&self, hidden: bool) {
         self.layer.set_hidden(hidden);
     }
+
+    /// Hide all popups belonging to a specific root window
+    pub fn hide_popups_for_window(&self, root_window_id: &ObjectId) {
+        for popup in self.popup_layers.values() {
+            if &popup.root_window_id == root_window_id {
+                popup.layer.set_hidden(true);
+            }
+        }
+    }
+
+    /// Show all popups belonging to a specific root window
+    pub fn show_popups_for_window(&self, root_window_id: &ObjectId) {
+        for popup in self.popup_layers.values() {
+            if &popup.root_window_id == root_window_id {
+                popup.layer.set_hidden(false);
+            }
+        }
+    }
 }
