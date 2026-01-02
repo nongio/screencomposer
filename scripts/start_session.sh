@@ -4,6 +4,13 @@
 
 set -e
 
+# Parse command line arguments
+DEBUG_MODE=false
+if [ "$1" = "--debug" ]; then
+    DEBUG_MODE=true
+    shift
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -22,35 +29,12 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# D-Bus session setup
-# When running on a TTY, we need to either connect to an existing session
-# or create a new one and persist it for other processes
-DBUS_ENV_FILE="$XDG_RUNTIME_DIR/dbus-session"
-
-if [ -n "$DBUS_SESSION_BUS_ADDRESS" ]; then
-    log_info "D-Bus session already set: $DBUS_SESSION_BUS_ADDRESS"
-elif [ -f "$DBUS_ENV_FILE" ]; then
-    log_info "Loading D-Bus session from $DBUS_ENV_FILE"
-    source "$DBUS_ENV_FILE"
-    export DBUS_SESSION_BUS_ADDRESS
-    log_info "D-Bus session loaded: $DBUS_SESSION_BUS_ADDRESS"
-else
-    log_info "Starting new D-Bus session"
-    # Start D-Bus session and export the address
-    if ! eval $(dbus-launch --sh-syntax); then
-        log_error "Failed to start D-Bus session"
-        exit 1
-    fi
-    
-    # Save D-Bus address for other processes on this TTY
-    echo "export DBUS_SESSION_BUS_ADDRESS='$DBUS_SESSION_BUS_ADDRESS'" > "$DBUS_ENV_FILE"
-    echo "export DBUS_SESSION_BUS_PID='$DBUS_SESSION_BUS_PID'" >> "$DBUS_ENV_FILE"
-    chmod 600 "$DBUS_ENV_FILE"
-    
-    log_info "D-Bus session started: $DBUS_SESSION_BUS_ADDRESS"
-    log_info "D-Bus environment saved to $DBUS_ENV_FILE"
-    log_info "Run 'source $DBUS_ENV_FILE' in other terminals to connect"
-fi
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/wifi.sh"
+source "$SCRIPT_DIR/kwallet.sh"
+source "$SCRIPT_DIR/dbus.sh"
+source "$SCRIPT_DIR/pipewire.sh"
+source "$SCRIPT_DIR/portal.sh"
 
 # Export essential environment variables
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -60,6 +44,8 @@ export XDG_CURRENT_DESKTOP="screencomposer"
 
 # Wayland display will be set by compositor
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+
+setup_dbus_session
 
 log_info "Environment setup:"
 log_info "  XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
@@ -76,78 +62,19 @@ if [ ! -d "$XDG_RUNTIME_DIR" ]; then
     chmod 700 "$XDG_RUNTIME_DIR"
 fi
 
-# Ensure KDE Wallet service is running
-# On Arch, kwallet may be started on-demand via D-Bus activation
-if systemctl --user is-active --quiet kwallet5.service 2>/dev/null; then
-    log_info "kwallet5 service is active"
-elif systemctl --user is-active --quiet org.kde.kwalletd5.service 2>/dev/null; then
-    log_info "org.kde.kwalletd5 service is active"
-elif systemctl --user list-unit-files | grep -qE 'kwallet5|kwalletd5'; then
-    log_info "Starting kwallet service via systemctl"
-    systemctl --user start kwallet5.service 2>/dev/null || \
-    systemctl --user start org.kde.kwalletd5.service 2>/dev/null || \
-    log_warn "Failed to start kwallet service"
-else
-    # On Arch, kwallet is often D-Bus activated, not a systemd service
-    log_info "kwallet not found as systemd service (will be D-Bus activated on demand)"
+start_kwallet_service
+
+LOG_LEVEL="info"
+if [ "$DEBUG_MODE" = true ]; then
+    LOG_LEVEL="debug"
+    log_info "Debug mode enabled - using RUST_LOG=debug"
 fi
 
-# Ensure portal backend is built
-if [ ! -f "target/release/xdg-desktop-portal-screencomposer" ]; then
-    log_error "Portal backend not built in release mode!"
-    log_info "Please run: cargo build -p xdg-desktop-portal-screencomposer --release"
-    exit 1
-fi
+portal_setup
 
-# Start portal backend in background
-log_info "Starting xdg-desktop-portal-screencomposer"
-PORTAL_LOG="$PWD/components/xdg-desktop-portal-sc/portal.log"
-mkdir -p "$(dirname "$PORTAL_LOG")"
+pipewire_setup
 
-# Kill existing portal if running
-pkill -f xdg-desktop-portal-screencomposer || true
-sleep 0.5
-
-# Start portal backend
-RUST_LOG=info target/release/xdg-desktop-portal-screencomposer > "$PORTAL_LOG" 2>&1 &
-PORTAL_PID=$!
-log_info "Portal backend started (PID: $PORTAL_PID, log: $PORTAL_LOG)"
-
-# Wait a moment for portal to register
-sleep 1
-
-# Verify portal is running
-if ! busctl --user list | grep -q "org.freedesktop.impl.portal.desktop.screencomposer"; then
-    log_error "Portal backend failed to start!"
-    cat "$PORTAL_LOG"
-    exit 1
-fi
-log_info "Portal backend registered on D-Bus"
-
-# Ensure PipeWire services are running
-# On Arch, PipeWire is typically managed via systemd user services
-for service in pipewire.service pipewire-pulse.service wireplumber.service; do
-    if systemctl --user is-active --quiet "$service" 2>/dev/null; then
-        log_info "$service is active"
-    elif systemctl --user list-unit-files | grep -q "^$service"; then
-        log_info "Starting $service via systemctl"
-        systemctl --user start "$service" || log_warn "Failed to start $service"
-    else
-        log_warn "$service not found in systemd user services"
-    fi
-done
-
-# Wait a moment for services to initialize
-sleep 1
-
-# Verify PipeWire is running
-if ! pgrep -x pipewire > /dev/null; then
-    log_error "PipeWire not running - screenshare will not work!"
-    log_info "Install pipewire and enable user services:"
-    log_info "  systemctl --user enable --now pipewire.service pipewire-pulse.service wireplumber.service"
-else
-    log_info "PipeWire is running"
-fi
+wifi_autoconnect
 
 # Ensure compositor is built in release mode
 if [ ! -f "target/release/screen-composer" ]; then
@@ -157,17 +84,17 @@ if [ ! -f "target/release/screen-composer" ]; then
 fi
 
 # Start the compositor (udev backend only)
-log_info "Starting ScreenComposer compositor (udev backend)"
+log_info "Starting ScreenComposer compositor (udev backend, RUST_LOG=$LOG_LEVEL)"
 COMPOSITOR_LOG="$PWD/screencomposer.log"
 
 if [ "$EUID" -ne 0 ] && [ -z "$LIBSEAT_BACKEND" ]; then
     log_warn "Running DRM backend without root - you may need libseat or run with sudo"
 fi
 
-RUST_LOG=info target/release/screen-composer --tty-udev 2>&1 | tee "$COMPOSITOR_LOG"
+RUST_LOG=$LOG_LEVEL target/release/screen-composer --tty-udev 2>&1 | tee "$COMPOSITOR_LOG"
 
-RUST_LOG=info cargo run --release -- --tty-udev 2>&1 | tee "$COMPOSITOR_LOG"    ;;
-esac
+# RUST_LOG=info cargo run --release -- --tty-udev 2>&1 | tee "$COMPOSITOR_LOG"    ;;
+# esac
 
 
 # Clean up D-Bus session file
