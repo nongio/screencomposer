@@ -14,10 +14,10 @@ static GLOBAL: profiling::tracy_client::ProfiledAllocator<std::alloc::System> =
 
 #[tokio::main]
 async fn main() {
-    if let Ok(_env_filter) = tracing_subscriber::EnvFilter::try_from_default_env() {
+    if let Ok(env_filter) = tracing_subscriber::EnvFilter::try_from_default_env() {
         tracing_subscriber::fmt()
             .compact()
-            .with_env_filter("info")
+            .with_env_filter(env_filter)
             .init();
     } else {
         tracing_subscriber::fmt()

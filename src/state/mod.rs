@@ -439,7 +439,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         });
         layers_engine.add_layer(&root_layer);
         let scene_element = SceneElement::with_engine(layers_engine.clone());
-        let workspaces = Workspaces::new(layers_engine.clone());
+        let workspaces = Workspaces::new(layers_engine.clone(), dh.clone());
 
         #[cfg(feature = "debugger")]
         layers_engine.start_debugger();
