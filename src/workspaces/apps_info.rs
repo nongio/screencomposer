@@ -19,7 +19,7 @@ pub struct Application {
     pub picture: Option<skia::Picture>,
     pub override_name: Option<String>,
     pub desktop_file_id: Option<String>,
-    desktop_entry: DesktopEntry,
+    desktop_entry: Option<DesktopEntry>,
 }
 
 impl Application {
@@ -29,12 +29,13 @@ impl Application {
         }
         Config::with(|c| {
             self.desktop_entry
-                .name(&c.locales)
+                .as_ref()
+                .and_then(|entry| entry.name(&c.locales))
                 .map(|name| name.to_string())
         })
     }
     pub fn command(&self, extra_args: &[String]) -> Option<(String, Vec<String>)> {
-        let exec = self.desktop_entry.exec()?;
+        let exec = self.desktop_entry.as_ref()?.exec()?;
         let mut parts = shell_words::split(exec).ok()?;
         if parts.is_empty() {
             return None;
@@ -101,35 +102,63 @@ pub struct ApplicationsInfo;
 impl ApplicationsInfo {
     pub async fn get_app_info_by_id(app_id: impl Into<String>) -> Option<Application> {
         let app_id = app_id.into();
+        tracing::debug!("[ApplicationsInfo] Requesting app info for: {}", app_id);
         let mut applications = applications_info().write().await;
         let mut app = { applications.get(&app_id).cloned() };
         if app.is_none() {
+            tracing::debug!("[ApplicationsInfo] App not in cache, loading: {}", app_id);
             if let Some(new_app) = ApplicationsInfo::load_app_info(&app_id).await {
+                tracing::info!("[ApplicationsInfo] Successfully loaded app: {} (has_icon: {})", app_id, new_app.icon.is_some());
                 applications.insert(app_id.clone(), new_app.clone());
                 app = Some(new_app);
+            } else {
+                tracing::error!("[ApplicationsInfo] Failed to load app info for: {}", app_id);
             }
+        } else {
+            tracing::trace!("[ApplicationsInfo] App found in cache: {}", app_id);
         }
 
         app
     }
 
     async fn get_desktop_entry(app_id: &str) -> Option<DesktopEntry> {
+        // Normalize the app_id - remove .desktop suffix if present
+        let normalized_id = if app_id.ends_with(".desktop") {
+            &app_id[..app_id.len() - 8]
+        } else {
+            app_id
+        };
+        
+        tracing::debug!("[get_desktop_entry] Looking for desktop entry: '{}'", normalized_id);
+        
+        // Exact filename match (case-insensitive)
         let entry_path =
             freedesktop_desktop_entry::Iter::new(freedesktop_desktop_entry::default_paths())
-                .find(|path| path.to_string_lossy().contains(app_id));
+                .find(|path| {
+                    if let Some(file_stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        file_stem.eq_ignore_ascii_case(normalized_id)
+                    } else {
+                        false
+                    }
+                });
 
-        entry_path.as_ref()?;
-        let entry_path = entry_path.unwrap();
-        let locales = &["en"];
-        DesktopEntry::from_path(entry_path, Some(locales)).ok()
+        if let Some(entry_path) = entry_path {
+            tracing::debug!("[get_desktop_entry] Found: {:?}", entry_path);
+            let locales = &["en"];
+            return DesktopEntry::from_path(entry_path, Some(locales)).ok();
+        }
+
+        tracing::debug!("[get_desktop_entry] No desktop entry found for '{}'", normalized_id);
+        None
     }
 
     async fn load_app_info(app_id: impl Into<String>) -> Option<Application> {
         let app_id = app_id.into();
 
-        tracing::info!("load_app_info: {}", app_id);
+        tracing::info!("[load_app_info] Starting load for: {}", app_id);
 
         let desktop_entry = ApplicationsInfo::get_desktop_entry(&app_id).await;
+        tracing::info!("[load_app_info] Desktop entry found: {}", desktop_entry.is_some());
 
         if let Some(desktop_entry) = desktop_entry {
             let match_id = desktop_entry.id().to_string();
@@ -138,20 +167,45 @@ impl ApplicationsInfo {
             } else {
                 app_id.clone()
             };
-            let icon_path = desktop_entry
-                .icon()
-                .map(|icon| icon.to_string())
+            let icon_name = desktop_entry.icon().map(|icon| icon.to_string());
+            tracing::info!("[load_app_info] Icon name from desktop entry: {:?}", icon_name);
+            
+            let icon_path = icon_name
                 .and_then(|icon_name| xdgkit::icon_finder::find_icon(icon_name, 512, 1))
                 .map(|icon| icon.to_str().unwrap().to_string());
+            tracing::info!("[load_app_info] Icon path resolved: {:?}", icon_path);
 
-            let icon = icon_path.as_ref().and_then(|icon_path| {
-                // let icon_path = "/home/riccardo/.local/share/icons/WhiteSur/apps/scalable/org.gnome.gedit.svg";
-                image_from_path(icon_path, (512, 512))
+            let mut icon = icon_path.as_ref().and_then(|icon_path| {
+                let result = image_from_path(icon_path, (512, 512));
+                tracing::info!("[load_app_info] Icon loaded from path: {}", result.is_some());
+                result
             });
+            
+            // If icon loading failed, try to use the fallback icon
             if icon.is_none() {
-                tracing::warn!("icon loading failed: {:?}", icon_path);
+                tracing::warn!("[load_app_info] Icon loading failed for {:?}, trying fallback icon", icon_path);
+                let fallback_path = xdgkit::icon_finder::find_icon("application-default-icon".into(), 512, 1)
+                    .or_else(|| {
+                        tracing::warn!("[load_app_info] application-default-icon not found, trying application-x-executable");
+                        xdgkit::icon_finder::find_icon("application-x-executable".into(), 512, 1)
+                    })
+                    .map(|icon| icon.to_str().unwrap().to_string());
+                
+                tracing::info!("[load_app_info] Fallback icon path: {:?}", fallback_path);
+                
+                icon = fallback_path.as_ref().and_then(|fallback_path| {
+                    let result = image_from_path(fallback_path, (512, 512));
+                    tracing::info!("[load_app_info] Fallback icon loaded: {}", result.is_some());
+                    result
+                });
+                
+                if icon.is_some() {
+                    tracing::info!("[load_app_info] ✓ Fallback icon loaded successfully: {:?}", fallback_path);
+                } else {
+                    tracing::error!("[load_app_info] ✗ Fallback icon loading also failed");
+                }
             } else {
-                tracing::info!("icon loaded: {:?}", icon_path);
+                tracing::info!("[load_app_info] ✓ Icon loaded successfully: {:?}", icon_path);
             }
             // let picture = icon_path
             //     .as_ref()
@@ -184,12 +238,69 @@ impl ApplicationsInfo {
                 picture: None,
                 override_name: None,
                 desktop_file_id,
-                desktop_entry,
+                desktop_entry: Some(desktop_entry),
             };
 
             return Some(app);
         }
-        None
+        
+        // No desktop entry found - create minimal Application with fallback icon
+        tracing::warn!("[load_app_info] Desktop entry not found for {}, creating fallback application", app_id);
+        
+        let fallback_icon_path = xdgkit::icon_finder::find_icon("application-default-icon".into(), 512, 1)
+            .or_else(|| {
+                tracing::warn!("[load_app_info] application-default-icon not found for fallback, trying application-x-executable");
+                xdgkit::icon_finder::find_icon("application-x-executable".into(), 512, 1)
+            })
+            .map(|icon| icon.to_str().unwrap().to_string());
+        
+        tracing::info!("[load_app_info] Fallback application icon path: {:?}", fallback_icon_path);
+        
+        let fallback_icon = fallback_icon_path.as_ref().and_then(|path| {
+            let result = image_from_path(path, (512, 512));
+            tracing::info!("[load_app_info] Fallback application icon loaded: {}", result.is_some());
+            result
+        });
+        
+        // Format the app_id (executable name) as a nice display name
+        let display_name = app_id
+            .split('/')
+            .last()
+            .unwrap_or(&app_id)
+            .split('-')
+            .map(|word| {
+                let mut c = word.chars();
+                match c.next() {
+                    None => String::new(),
+                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        
+        if fallback_icon.is_some() {
+            tracing::info!(
+                "[load_app_info] ✓ Fallback application created: '{}' with icon: {:?}",
+                display_name,
+                fallback_icon_path
+            );
+        } else {
+            tracing::error!(
+                "[load_app_info] ✗ Fallback application created: '{}' WITHOUT icon",
+                display_name
+            );
+        }
+        
+        Some(Application {
+            identifier: app_id.clone(),
+            match_id: app_id.clone(),
+            icon_path: fallback_icon_path,
+            icon: fallback_icon,
+            picture: None,
+            override_name: Some(display_name),
+            desktop_file_id: None,
+            desktop_entry: None,
+        })
     }
 }
 
@@ -203,4 +314,44 @@ async fn async_load_app_information() {
     assert!(app_info.desktop_name().is_some());
     assert!(app_info.icon_path.is_some());
     println!("{:?}", app_info);
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_desktop_entry_matching_logic() {
+        // Test exact filename matching (case-insensitive)
+        let test_cases = vec![
+            // (app_id, desktop_file_stem, should_match)
+            ("thunar", "thunar", true),
+            ("thunar", "thunar-bulk-rename", false),
+            ("thunar", "thunar-settings", false),
+            ("firefox", "firefox", true),
+            ("firefox", "firefox-esr", false),
+            ("code", "code", true),
+            ("code", "code-url-handler", false),
+            ("Thunar", "thunar", true),  // Case insensitive
+            ("THUNAR", "thunar", true),
+            ("org.kde.dolphin", "org.kde.dolphin", true),
+            ("org.gnome.gedit", "org.gnome.gedit", true),
+            ("io.elementary.files", "io.elementary.files", true),
+            ("com.mitchellh.ghostty", "com.mitchellh.ghostty", true),
+        ];
+
+        for (app_id, file_stem, expected_match) in test_cases {
+            let normalized_id = if app_id.ends_with(".desktop") {
+                &app_id[..app_id.len() - 8]
+            } else {
+                app_id
+            };
+
+            let exact_match = file_stem.eq_ignore_ascii_case(normalized_id);
+
+            assert_eq!(
+                exact_match, expected_match,
+                "Match failed for app_id='{}' vs file_stem='{}' (expected: {})",
+                app_id, file_stem, expected_match
+            );
+        }
+    }
 }

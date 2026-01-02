@@ -1432,10 +1432,10 @@ impl ScreenComposer<UdevData> {
                         self.workspaces.reset_expose_gesture();
 
                         self.swipe_gesture = crate::state::SwipeGestureState::Expose {
-                            velocity_samples: vec![delta.y],
+                            velocity_samples: vec![-delta.y],
                         };
                         // Apply the current frame's delta (not accumulated)
-                        let expose_delta = (delta.y / crate::state::EXPOSE_DELTA_MULTIPLIER) as f32;
+                        let expose_delta = (-delta.y / crate::state::EXPOSE_DELTA_MULTIPLIER) as f32;
                         self.workspaces.expose_update(expose_delta);
                     }
                     crate::state::SwipeDirection::Undetermined => {}
@@ -1450,12 +1450,12 @@ impl ScreenComposer<UdevData> {
             }
             crate::state::SwipeGestureState::Expose { velocity_samples } => {
                 // Collect velocity samples for momentum-based spring animation
-                velocity_samples.push(delta.y);
+                velocity_samples.push(-delta.y);
                 if velocity_samples.len() > crate::state::VELOCITY_SAMPLE_COUNT {
                     velocity_samples.remove(0);
                 }
 
-                let expose_delta = (delta.y / crate::state::EXPOSE_DELTA_MULTIPLIER) as f32;
+                let expose_delta = (-delta.y / crate::state::EXPOSE_DELTA_MULTIPLIER) as f32;
                 self.workspaces.expose_update(expose_delta);
             }
             crate::state::SwipeGestureState::Idle => {}
