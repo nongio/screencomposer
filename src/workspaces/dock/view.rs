@@ -46,7 +46,7 @@ pub struct DockView {
     // layers
     pub wrap_layer: lay_rs::prelude::Layer,
     pub view_layer: lay_rs::prelude::Layer,
-    bar_layer: lay_rs::prelude::Layer,
+    pub bar_layer: lay_rs::prelude::Layer,
     pub resize_handle: lay_rs::prelude::Layer,
     dock_apps_container: lay_rs::prelude::Layer,
     dock_windows_container: lay_rs::prelude::Layer,
@@ -153,8 +153,8 @@ impl DockView {
             .background_color(theme_colors().materials_thin)
             .border_width((3.0, None))
             .border_color(Color::new_rgba(0.9, 0.9, 0.9, 0.5))
-            .shadow_color(Color::new_rgba(0.0, 0.0, 0.0, 0.2))
-            .shadow_offset(((0.0, -5.0).into(), None))
+            .shadow_color(theme_colors().shadow_color)
+            .shadow_offset(((0.0, 0.0).into(), None))
             .shadow_radius((20.0, None))
             .layout_style(taffy::Style {
                 position: taffy::Position::Absolute,
@@ -391,7 +391,7 @@ impl DockView {
         });
 
         self.bar_layer
-            .set_border_corner_radius(bar_height / 3.0, None);
+            .set_border_corner_radius(bar_height / 3.5, None);
 
         self.resize_handle.set_size(
             Size {
@@ -816,7 +816,7 @@ impl DockView {
             height: taffy::Dimension::Length(bar_height),
         });
         self.bar_layer
-            .set_border_corner_radius(bar_height / 4.0, None);
+            .set_border_corner_radius(bar_height / 3.5, None);
         
         self.resize_handle.set_size(
             Size {

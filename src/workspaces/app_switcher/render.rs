@@ -16,8 +16,8 @@ pub fn render_appswitcher_view(
 
     // those are constant like values
     let available_width = state.width as f32 - 20.0 * draw_scale;
-    let ICON_SIZE: f32 = 190.0 * draw_scale;
-    let ICON_PADDING: f32 = available_width * 0.01 * draw_scale;
+    let ICON_SIZE: f32 = 160.0 * draw_scale;
+    let ICON_PADDING: f32 = available_width * 0.006 * draw_scale;
     let GAP: f32 = ICON_PADDING / 2.0;
     let apps_len = state.apps.len() as f32;
     let total_gaps = (apps_len - 1.0) * GAP; // gaps between items
@@ -28,7 +28,7 @@ pub fn render_appswitcher_view(
     if COMPONENT_PADDING_H > 15.0 * draw_scale {
         COMPONENT_PADDING_H = 15.0 * draw_scale;
     }
-    let mut COMPONENT_PADDING_V: f32 = container_available_width * 0.05 * draw_scale;
+    let mut COMPONENT_PADDING_V: f32 = container_available_width * 0.014 * draw_scale;
     if COMPONENT_PADDING_V > 50.0 * draw_scale {
         COMPONENT_PADDING_V = 50.0 * draw_scale;
     }
@@ -36,12 +36,11 @@ pub fn render_appswitcher_view(
         (available_width - total_padding - COMPONENT_PADDING_H * 2.0) / state.apps.len() as f32;
     let available_icon_size = ICON_SIZE.min(available_icon_size);
 
-    let FONT_SIZE: f32 = available_icon_size / 7.0;
+    let FONT_SIZE: f32 = available_icon_size / 8.0;
     let component_width =
         apps_len * available_icon_size + total_padding + COMPONENT_PADDING_H * 2.0;
     let component_height = available_icon_size + ICON_PADDING * 2.0 + COMPONENT_PADDING_V * 2.0;
-    let mut background_color = theme_colors().materials_controls_sidebar;
-    background_color.a = (background_color.a * 0.85).min(1.0);
+    let background_color = theme_colors().materials_thin;
     let current_app = state.current_app as f32;
     let mut app_name = "".to_string();
     if !state.apps.is_empty() && state.current_app < state.apps.len() {
@@ -51,7 +50,7 @@ pub fn render_appswitcher_view(
             .unwrap_or("".to_string());
     }
     let draw_container = move |canvas: &lay_rs::skia::Canvas, w, h| {
-        let selection_background_color = theme_colors().materials_controls_popover.c4f();
+        let selection_background_color = theme_colors().fills_primary.c4f();
         let paint = lay_rs::skia::Paint::new(selection_background_color, None);
         // let available_icon_size = h - COMPONENT_PADDING_V * 2.0 - ICON_PADDING * 2.0;
         // let icon_size = ICON_SIZE.min(available_icon_size);
@@ -74,42 +73,26 @@ pub fn render_appswitcher_view(
         if apps_len > 0.0 {
             canvas.draw_rrect(rrect, &paint);
 
-            let mut text_style = lay_rs::skia::textlayout::TextStyle::new();
-
-            text_style.set_font_size(FONT_SIZE);
+            // Create font with subpixel rendering
+            let font_family = Config::with(|c| c.font_family.clone());
             let font_style = lay_rs::skia::FontStyle::new(
                 lay_rs::skia::font_style::Weight::MEDIUM,
                 lay_rs::skia::font_style::Width::CONDENSED,
                 lay_rs::skia::font_style::Slant::Upright,
             );
-            text_style.set_font_style(font_style);
-            text_style.set_letter_spacing(-1.0);
-            // use primary text color (dark on light theme)
-            let foreground_paint =
-                lay_rs::skia::Paint::new(theme_colors().text_primary.c4f(), None);
-            text_style.set_foreground_paint(&foreground_paint);
-            let ff = Config::with(|c| c.font_family.clone());
-            text_style.set_font_families(&[ff]);
+            let font = FONT_CACHE
+                .with(|font_cache| font_cache.make_font(font_family, font_style, FONT_SIZE))
+                .unwrap();
 
-            let mut paragraph_style = lay_rs::skia::textlayout::ParagraphStyle::new();
-            paragraph_style.set_text_style(&text_style);
-            paragraph_style.set_max_lines(1);
-            paragraph_style.set_text_align(lay_rs::skia::textlayout::TextAlign::Center);
-            paragraph_style.set_text_direction(lay_rs::skia::textlayout::TextDirection::LTR);
-            paragraph_style.set_ellipsis("…");
-
-            let mut builder = FONT_CACHE.with(|font_cache| {
-                lay_rs::skia::textlayout::ParagraphBuilder::new(
-                    &paragraph_style,
-                    font_cache.font_collection.clone(),
-                )
-            });
-            let mut paragraph = builder.add_text(&app_name).build();
-            paragraph.layout(selection_width);
-            let text_x = selection_x;
-            let text_y = selection_y + selection_height + FONT_SIZE * 0.2;
-            paragraph.paint(canvas, (text_x, text_y));
-            // };
+            // Draw text with improved rendering
+            let mut text_paint = lay_rs::skia::Paint::new(theme_colors().text_secondary.c4f(), None);
+            text_paint.set_anti_alias(true);
+            
+            let text_bounds = font.measure_str(&app_name, Some(&text_paint)).1;
+            let text_x = selection_x + (selection_width - text_bounds.width()) / 2.0;
+            let text_y = selection_y + selection_height + FONT_SIZE * 1.2;
+            
+            canvas.draw_str(&app_name, (text_x, text_y), &font, &text_paint);
         }
         lay_rs::skia::Rect::from_xywh(0.0, 0.0, w, h)
     };

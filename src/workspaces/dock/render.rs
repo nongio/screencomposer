@@ -116,14 +116,11 @@ pub fn setup_miniwindow_icon(layer: &Layer, inner_layer: &Layer, _icon_width: f3
 pub fn setup_label(new_layer: &Layer, label_text: String) {
     let text_size = 26.0;
     let font_family = Config::with(|config| config.font_family.clone());
-    let typeface = FONT_CACHE
+    let font = FONT_CACHE
         .with(|font_cache| {
-            font_cache
-                .font_mgr
-                .match_family_style(font_family, lay_rs::skia::FontStyle::default())
+            font_cache.make_font(font_family, lay_rs::skia::FontStyle::default(), text_size)
         })
         .unwrap();
-    let font = lay_rs::skia::Font::from_typeface_with_params(typeface, text_size, 1.0, 0.0);
 
     let text = label_text.clone();
     let paint = lay_rs::skia::Paint::default();
@@ -245,11 +242,11 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
 pub fn draw_app_icon(application: &Application, running: bool) -> ContentDrawFunction {
     let application = application.clone();
     let draw_picture = move |canvas: &lay_rs::skia::Canvas, w: f32, h: f32| -> lay_rs::skia::Rect {
-        let icon_size = (w).max(0.0);
+        let icon_size = (w * 0.95).max(0.0);
         // Scale indicator with icon size (base ratio from 95.0)
         let circle_radius = icon_size * 0.025;
-        let icon_y = h / 2.0 - icon_size / 2.0;
-
+        let icon_y = h / 2.0 - icon_size / 2.0 - icon_size * 0.04;
+        let icon_x = (w - icon_size) / 2.0;
         if let Some(image) = &application.icon.clone() {
             let mut paint =
                 lay_rs::skia::Paint::new(lay_rs::skia::Color4f::new(1.0, 1.0, 1.0, 1.0), None);
@@ -276,7 +273,7 @@ pub fn draw_app_icon(application: &Application, running: bool) -> ContentDrawFun
             canvas.draw_image_rect(
                 image,
                 None,
-                lay_rs::skia::Rect::from_xywh(0.0, icon_y, icon_size, icon_size),
+                lay_rs::skia::Rect::from_xywh(icon_x, icon_y, icon_size, icon_size),
                 &shadow_paint,
             );
             let resampler = lay_rs::skia::CubicResampler::catmull_rom();
@@ -284,7 +281,7 @@ pub fn draw_app_icon(application: &Application, running: bool) -> ContentDrawFun
             canvas.draw_image_rect_with_sampling_options(
                 image,
                 None,
-                lay_rs::skia::Rect::from_xywh(0.0, icon_y, icon_size, icon_size),
+                lay_rs::skia::Rect::from_xywh(icon_x, icon_y, icon_size, icon_size),
                 lay_rs::skia::SamplingOptions::from(resampler),
                 &paint,
             );

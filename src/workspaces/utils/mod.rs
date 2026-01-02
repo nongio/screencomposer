@@ -16,6 +16,22 @@ pub struct FontCache {
     pub type_face_font_provider: RefCell<lay_rs::skia::textlayout::TypefaceFontProvider>,
 }
 
+impl FontCache {
+    /// Create a Font with subpixel rendering and antialiasing enabled
+    pub fn make_font(
+        &self,
+        family: impl AsRef<str>,
+        style: lay_rs::skia::FontStyle,
+        size: f32,
+    ) -> Option<lay_rs::skia::Font> {
+        let typeface = self.font_mgr.match_family_style(family.as_ref(), style)?;
+        let mut font = lay_rs::skia::Font::from_typeface(typeface, size);
+        font.set_subpixel(true);
+        font.set_edging(lay_rs::skia::font::Edging::SubpixelAntiAlias);
+        Some(font)
+    }
+}
+
 thread_local! {
     pub static FONT_CACHE: FontCache = {
         let font_mgr = lay_rs::skia::FontMgr::new();
