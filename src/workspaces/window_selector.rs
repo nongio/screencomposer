@@ -479,7 +479,7 @@ pub fn get_paragraph_for_text(text: &str, font_size: f32) -> skia::textlayout::P
 
     text_style.set_font_size(font_size);
     let font_style = skia::FontStyle::new(
-        skia::font_style::Weight::BOLD,
+        skia::font_style::Weight::SEMI_BOLD,
         skia::font_style::Width::CONDENSED,
         skia::font_style::Slant::Upright,
     );
