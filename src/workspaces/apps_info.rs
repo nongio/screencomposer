@@ -8,7 +8,7 @@ use freedesktop_desktop_entry::DesktopEntry;
 
 use lay_rs::skia;
 
-use crate::{config::Config, utils::image_from_path};
+use crate::{config::Config, utils::{image_from_path, find_icon_with_theme}};
 
 #[derive(Clone)]
 pub struct Application {
@@ -171,8 +171,7 @@ impl ApplicationsInfo {
             tracing::info!("[load_app_info] Icon name from desktop entry: {:?}", icon_name);
             
             let icon_path = icon_name
-                .and_then(|icon_name| xdgkit::icon_finder::find_icon(icon_name, 512, 1))
-                .map(|icon| icon.to_str().unwrap().to_string());
+                .and_then(|icon_name| find_icon_with_theme(&icon_name, 512, 1));
             tracing::info!("[load_app_info] Icon path resolved: {:?}", icon_path);
 
             let mut icon = icon_path.as_ref().and_then(|icon_path| {
@@ -184,12 +183,11 @@ impl ApplicationsInfo {
             // If icon loading failed, try to use the fallback icon
             if icon.is_none() {
                 tracing::warn!("[load_app_info] Icon loading failed for {:?}, trying fallback icon", icon_path);
-                let fallback_path = xdgkit::icon_finder::find_icon("application-default-icon".into(), 512, 1)
+                let fallback_path = find_icon_with_theme("application-default-icon", 512, 1)
                     .or_else(|| {
                         tracing::warn!("[load_app_info] application-default-icon not found, trying application-x-executable");
-                        xdgkit::icon_finder::find_icon("application-x-executable".into(), 512, 1)
-                    })
-                    .map(|icon| icon.to_str().unwrap().to_string());
+                        find_icon_with_theme("application-x-executable", 512, 1)
+                    });
                 
                 tracing::info!("[load_app_info] Fallback icon path: {:?}", fallback_path);
                 
@@ -247,12 +245,11 @@ impl ApplicationsInfo {
         // No desktop entry found - create minimal Application with fallback icon
         tracing::warn!("[load_app_info] Desktop entry not found for {}, creating fallback application", app_id);
         
-        let fallback_icon_path = xdgkit::icon_finder::find_icon("application-default-icon".into(), 512, 1)
+        let fallback_icon_path = find_icon_with_theme("application-default-icon", 512, 1)
             .or_else(|| {
                 tracing::warn!("[load_app_info] application-default-icon not found for fallback, trying application-x-executable");
-                xdgkit::icon_finder::find_icon("application-x-executable".into(), 512, 1)
-            })
-            .map(|icon| icon.to_str().unwrap().to_string());
+                find_icon_with_theme("application-x-executable", 512, 1)
+            });
         
         tracing::info!("[load_app_info] Fallback application icon path: {:?}", fallback_icon_path);
         

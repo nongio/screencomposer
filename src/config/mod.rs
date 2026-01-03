@@ -24,6 +24,7 @@ pub struct Config {
     #[serde(default)]
     pub displays: DisplaysConfig,
     pub cursor_theme: String,
+    pub icon_theme: Option<String>,
     pub cursor_size: u32,
     pub natural_scroll: bool,
     #[serde(default)]
@@ -62,6 +63,7 @@ impl Default for Config {
             screen_scale: 2.0,
             displays: DisplaysConfig::default(),
             cursor_theme: "Notwaita-Black".to_string(),
+            icon_theme: None,
             cursor_size: 24,
             natural_scroll: true,
             dock: DockConfig::default(),
