@@ -27,8 +27,8 @@ pub struct Config {
     pub cursor_size: u32,
     pub natural_scroll: bool,
     #[serde(default)]
-    pub dock: DockConfig,
-    pub terminal_bin: String,
+    pub dock: DockConfig,    #[serde(default)]
+    pub layer_shell: LayerShellConfig,    pub terminal_bin: String,
     pub file_manager_bin: String,
     pub browser_bin: String,
     pub browser_args: Vec<String>,
@@ -65,6 +65,7 @@ impl Default for Config {
             cursor_size: 24,
             natural_scroll: true,
             dock: DockConfig::default(),
+            layer_shell: LayerShellConfig::default(),
             terminal_bin: "kitty".to_string(),
             file_manager_bin: "dolphin".to_string(),
             browser_bin: "firefox".to_string(),
@@ -312,6 +313,49 @@ pub struct DockConfig {
     pub genie_span: f64,
     #[serde(default)]
     pub bookmarks: Vec<DockBookmark>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LayerShellConfig {
+    /// Maximum exclusive zone allowed for top edge in logical points (0 = unlimited)
+    #[serde(default = "default_max_top")]
+    pub max_top: i32,
+    /// Maximum exclusive zone allowed for bottom edge in logical points (0 = unlimited)
+    #[serde(default = "default_max_bottom")]
+    pub max_bottom: i32,
+    /// Maximum exclusive zone allowed for left edge in logical points (0 = unlimited)
+    #[serde(default = "default_max_left")]
+    pub max_left: i32,
+    /// Maximum exclusive zone allowed for right edge in logical points (0 = unlimited)
+    #[serde(default = "default_max_right")]
+    pub max_right: i32,
+}
+
+impl Default for LayerShellConfig {
+    fn default() -> Self {
+        Self {
+            max_top: default_max_top(),
+            max_bottom: default_max_bottom(),
+            max_left: default_max_left(),
+            max_right: default_max_right(),
+        }
+    }
+}
+
+fn default_max_top() -> i32 {
+    100 // Max 100 logical points for top panels
+}
+
+fn default_max_bottom() -> i32 {
+    100 // Max 100 logical points for bottom panels/docks
+}
+
+fn default_max_left() -> i32 {
+    50 // Max 50 logical points for side panels
+}
+
+fn default_max_right() -> i32 {
+    50 // Max 50 logical points for side panels
 }
 
 fn default_dock_size() -> f64 {
