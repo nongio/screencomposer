@@ -16,6 +16,7 @@ position = { x = 1920, y = 0 }
 cursor_size = 24
 font_family = "Inter"
 cursor_theme = "Notwaita-Black"
+icon_theme = "GNUstep"  # Uncomment to override auto-detection (e.g., "WhiteSur", "Papirus", "Adwaita")
 theme_scheme = "Light"
 background_image = "./resources/background.jpg"
 
