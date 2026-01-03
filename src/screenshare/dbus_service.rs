@@ -507,6 +507,22 @@ impl StreamInterface {
     }
 }
 
+/// Compositor health monitoring interface.
+///
+/// Provides a simple ping/pong mechanism for watchdog health checks.
+pub struct CompositorHealthInterface;
+
+#[interface(name = "org.screencomposer.Compositor")]
+impl CompositorHealthInterface {
+    /// Ping method for watchdog health checks.
+    ///
+    /// Returns "pong" if the compositor is responsive.
+    async fn ping(&self) -> zbus::fdo::Result<String> {
+        debug!("Ping received from watchdog");
+        Ok("pong".to_string())
+    }
+}
+
 /// Starts the D-Bus service on the session bus.
 pub async fn run_dbus_service(compositor_tx: Sender<CompositorCommand>) -> zbus::Result<()> {
     let connection = Connection::session().await?;
@@ -520,6 +536,17 @@ pub async fn run_dbus_service(compositor_tx: Sender<CompositorCommand>) -> zbus:
 
     connection
         .request_name("org.screencomposer.ScreenCast")
+        .await?;
+
+    // Register the health interface for watchdog
+    let health = CompositorHealthInterface;
+    connection
+        .object_server()
+        .at("/org/screencomposer/Compositor", health)
+        .await?;
+
+    connection
+        .request_name("org.screencomposer.Compositor")
         .await?;
 
     info!("D-Bus service started at org.screencomposer.ScreenCast");
