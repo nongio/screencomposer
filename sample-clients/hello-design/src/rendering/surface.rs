@@ -1,7 +1,7 @@
-use wayland_client::{protocol::wl_surface, backend::ObjectId, Proxy};
 use skia_safe::Canvas;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
+use wayland_client::{backend::ObjectId, protocol::wl_surface, Proxy};
 
 /// EGL resources stored separately in global HashMap
 /// Only accessed during commit, resize, and cleanup
@@ -34,7 +34,7 @@ impl SkiaSurface {
         height: i32,
     ) -> Self {
         let surface_id = wl_surface.id();
-        
+
         // Store EGL resources in global HashMap
         let resources = EglSurfaceResources {
             wl_surface,
@@ -44,7 +44,7 @@ impl SkiaSurface {
             height,
         };
         crate::app_runner::AppContext::insert_egl_resources(surface_id.clone(), resources);
-        
+
         Self {
             surface_id,
             cached_surface: Rc::new(RefCell::new(None)),
@@ -72,78 +72,82 @@ impl SkiaSurface {
         if self.cached_surface.borrow().is_none() {
             self.initialize_skia_surface(ctx);
         }
-        
+
         // Hot path: direct access to cached surface, zero lookup overhead
         if let Some(ref mut skia_surface) = *self.cached_surface.borrow_mut() {
             let canvas = skia_surface.canvas();
-            
+
             // Scale canvas by 2x for HiDPI rendering (buffers are 2x size)
             canvas.save();
             canvas.scale((2.0, 2.0));
-            
+
             // Call user's drawing function
             draw_fn(canvas);
-            
+
             // Restore canvas state to prevent scale accumulation
             canvas.restore();
         }
     }
-    
+
     /// Initialize the Skia surface (cold path - called once)
     fn initialize_skia_surface(&self, ctx: &mut super::SkiaContext) {
         crate::app_runner::AppContext::with_egl_resources(&self.surface_id, |res| {
             unsafe {
                 // Load EGL - this is cached internally after first load, so cheap
-                let egl = khronos_egl::DynamicInstance::<khronos_egl::EGL1_4>::load_required().unwrap();
-                
+                let egl =
+                    khronos_egl::DynamicInstance::<khronos_egl::EGL1_4>::load_required().unwrap();
+
                 // Make this surface's EGL surface current
                 egl.make_current(
                     ctx.egl_display(),
                     Some(res.egl_surface),
                     Some(res.egl_surface),
                     Some(ctx.egl_context()),
-                ).ok();
-                
+                )
+                .ok();
+
                 // Query framebuffer info
                 let mut fboid: gl::types::GLint = 0;
                 gl::GetIntegerv(gl::FRAMEBUFFER_BINDING, &mut fboid);
-                
+
                 let stencil = 8;
-                
+
                 // Create Skia backend render target
                 let fb_info = skia_safe::gpu::gl::FramebufferInfo {
                     fboid: fboid as u32,
                     format: skia_safe::gpu::gl::Format::RGBA8.into(),
                     protected: skia_safe::gpu::Protected::No,
                 };
-                
+
                 let backend_render_target = skia_safe::gpu::backend_render_targets::make_gl(
                     (res.width, res.height),
                     0,
                     stencil as usize,
                     fb_info,
                 );
-                
-                *self.cached_surface.borrow_mut() = skia_safe::gpu::surfaces::wrap_backend_render_target(
-                    ctx.skia_context(),
-                    &backend_render_target,
-                    skia_safe::gpu::SurfaceOrigin::BottomLeft,
-                    skia_safe::ColorType::RGBA8888,
-                    None,
-                    None,
-                );
+
+                *self.cached_surface.borrow_mut() =
+                    skia_safe::gpu::surfaces::wrap_backend_render_target(
+                        ctx.skia_context(),
+                        &backend_render_target,
+                        skia_safe::gpu::SurfaceOrigin::BottomLeft,
+                        skia_safe::ColorType::RGBA8888,
+                        None,
+                        None,
+                    );
             }
         });
     }
-    
+
     /// Swap buffers after drawing (cold path)
     pub fn swap_buffers(&self, ctx: &mut super::SkiaContext) {
         crate::app_runner::AppContext::with_egl_resources(&self.surface_id, |res| {
             unsafe {
                 // Flush to GPU
                 ctx.skia_context().flush_and_submit();
-                
-                let egl = khronos_egl::DynamicInstance::<khronos_egl::EGL1_4>::load_required().unwrap();
+
+                let egl =
+                    khronos_egl::DynamicInstance::<khronos_egl::EGL1_4>::load_required().unwrap();
                 egl.swap_buffers(ctx.egl_display(), res.egl_surface).ok();
             }
         });
@@ -161,23 +165,22 @@ impl SkiaSurface {
     pub fn wl_surface(&self) -> wl_surface::WlSurface {
         crate::app_runner::AppContext::with_egl_resources(&self.surface_id, |res| {
             res.wl_surface.clone()
-        }).unwrap()
+        })
+        .unwrap()
     }
 
     /// Get current width
     pub fn width(&self) -> i32 {
-        crate::app_runner::AppContext::with_egl_resources(&self.surface_id, |res| {
-            res.width
-        }).unwrap_or(0)
+        crate::app_runner::AppContext::with_egl_resources(&self.surface_id, |res| res.width)
+            .unwrap_or(0)
     }
 
     /// Get current height
     pub fn height(&self) -> i32 {
-        crate::app_runner::AppContext::with_egl_resources(&self.surface_id, |res| {
-            res.height
-        }).unwrap_or(0)
+        crate::app_runner::AppContext::with_egl_resources(&self.surface_id, |res| res.height)
+            .unwrap_or(0)
     }
-    
+
     /// Get surface ID
     pub fn surface_id(&self) -> &ObjectId {
         &self.surface_id

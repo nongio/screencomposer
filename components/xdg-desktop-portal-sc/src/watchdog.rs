@@ -74,7 +74,7 @@ impl Watchdog {
 
         // Wait for compositor to fully initialize
         sleep(self.config.startup_delay).await;
-        
+
         // Wait for the compositor D-Bus service to be available
         info!("Waiting for compositor D-Bus service to be available...");
         let proxy = self.wait_for_service().await?;
@@ -98,11 +98,15 @@ impl Watchdog {
                     error!(
                         consecutive_failures,
                         max_failures = self.config.max_failures,
-                        "Ping failed with D-Bus error: {}", e
+                        "Ping failed with D-Bus error: {}",
+                        e
                     );
-                    
+
                     if consecutive_failures >= self.config.max_failures {
-                        warn!("Compositor appears unresponsive after {} failures, terminating...", consecutive_failures);
+                        warn!(
+                            "Compositor appears unresponsive after {} failures, terminating...",
+                            consecutive_failures
+                        );
                         Self::kill_compositor()?;
                         return Ok(());
                     }
@@ -115,9 +119,12 @@ impl Watchdog {
                         timeout_ms = self.config.ping_timeout.as_millis(),
                         "Ping timeout exceeded"
                     );
-                    
+
                     if consecutive_failures >= self.config.max_failures {
-                        warn!("Compositor not responding after {} timeouts, terminating...", consecutive_failures);
+                        warn!(
+                            "Compositor not responding after {} timeouts, terminating...",
+                            consecutive_failures
+                        );
                         Self::kill_compositor()?;
                         return Ok(());
                     }

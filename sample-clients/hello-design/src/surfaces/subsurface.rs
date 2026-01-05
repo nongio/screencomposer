@@ -1,17 +1,17 @@
 use smithay_client_toolkit::{
     compositor::{CompositorState, SurfaceData},
-    reexports::client::{QueueHandle, protocol::wl_surface},
+    reexports::client::{protocol::wl_surface, QueueHandle},
 };
 use wayland_client::{
     protocol::{wl_subcompositor, wl_subsurface},
     Dispatch,
 };
 
+use super::common::{sc_layer_shell_v1, sc_layer_v1, ScLayerAugment, Surface, SurfaceError};
 use crate::rendering::SkiaSurface;
-use super::common::{Surface, ScLayerAugment, SurfaceError, sc_layer_shell_v1, sc_layer_v1};
 
 /// Manages a Wayland subsurface with Skia rendering
-/// 
+///
 /// This surface type represents a child surface positioned relative to a parent.
 /// It's useful for elements like menubars, decorations, or overlays that need
 /// to be part of a window but managed separately.
@@ -30,7 +30,7 @@ pub struct SubsurfaceSurface {
 
 impl SubsurfaceSurface {
     /// Create a new subsurface
-    /// 
+    ///
     /// # Arguments
     /// * `parent_surface` - The parent Wayland surface
     /// * `x` - X position relative to parent in logical pixels
@@ -51,36 +51,34 @@ impl SubsurfaceSurface {
         qh: &QueueHandle<D>,
     ) -> Result<Self, SurfaceError>
     where
-        D: Dispatch<wl_surface::WlSurface, SurfaceData> + 
-           Dispatch<wl_subsurface::WlSubsurface, ()> + 
-           Dispatch<sc_layer_v1::ScLayerV1, ()> +
-           Dispatch<sc_layer_shell_v1::ScLayerShellV1, ()> +
-           'static,
+        D: Dispatch<wl_surface::WlSurface, SurfaceData>
+            + Dispatch<wl_subsurface::WlSubsurface, ()>
+            + Dispatch<sc_layer_v1::ScLayerV1, ()>
+            + Dispatch<sc_layer_shell_v1::ScLayerShellV1, ()>
+            + 'static,
     {
         // Create the Wayland surface
         let wl_surface = compositor.create_surface(qh);
-        
+
         // Create subsurface
         let subsurface = subcompositor.get_subsurface(&wl_surface, parent_surface, qh, ());
-        
+
         // Position the subsurface
         subsurface.set_position(x, y);
         subsurface.set_desync();
-        
+
         // Use 2x buffer for HiDPI rendering
         let buffer_scale = 2;
         wl_surface.set_buffer_scale(buffer_scale);
-        
+
         // Create Skia surface using shared context
         use crate::app_runner::AppContext;
         let skia_surface = AppContext::skia_context(|ctx| {
-            ctx.create_surface(
-                &wl_surface,
-                width * buffer_scale,
-                height * buffer_scale,
-            )
+            ctx.create_surface(&wl_surface, width * buffer_scale, height * buffer_scale)
         })
-        .ok_or(SurfaceError::SkiaError("SkiaContext not initialized".to_string()))?
+        .ok_or(SurfaceError::SkiaError(
+            "SkiaContext not initialized".to_string(),
+        ))?
         .map_err(|e| SurfaceError::SkiaError(e))?;
 
         let mut subsurface_surface = Self {
@@ -122,14 +120,14 @@ impl SubsurfaceSurface {
     /// Resize the subsurface
     pub fn resize(&mut self, width: i32, height: i32) -> Result<(), SurfaceError> {
         use crate::app_runner::AppContext;
-        
+
         if self.width == width && self.height == height {
             return Ok(());
         }
 
         self.width = width;
         self.height = height;
-        
+
         // Recreate Skia surface with new dimensions using shared context
         let new_surface = AppContext::skia_context(|ctx| {
             ctx.create_surface(
@@ -138,7 +136,9 @@ impl SubsurfaceSurface {
                 height * self.buffer_scale,
             )
         })
-        .ok_or(SurfaceError::SkiaError("SkiaContext not initialized".to_string()))?
+        .ok_or(SurfaceError::SkiaError(
+            "SkiaContext not initialized".to_string(),
+        ))?
         .map_err(|e| SurfaceError::SkiaError(e))?;
 
         self.skia_surface = Some(new_surface);
@@ -158,7 +158,7 @@ impl Surface for SubsurfaceSurface {
         F: FnOnce(&skia_safe::Canvas),
     {
         use crate::app_runner::AppContext;
-        
+
         if let Some(surface) = &self.skia_surface {
             AppContext::skia_context(|ctx| {
                 surface.draw(ctx, |canvas| {
@@ -183,16 +183,16 @@ impl ScLayerAugment for SubsurfaceSurface {
     fn has_sc_layer(&self) -> bool {
         self.sc_layer.is_some()
     }
-    
+
     fn sc_layer_mut(&mut self) -> Option<&mut Option<sc_layer_v1::ScLayerV1>> {
         Some(&mut self.sc_layer)
     }
-    
+
     fn sc_layer_shell(&self) -> Option<&sc_layer_shell_v1::ScLayerShellV1> {
         use crate::app_runner::AppContext;
         AppContext::sc_layer_shell()
     }
-    
+
     fn is_configured(&self) -> bool {
         true // Subsurfaces don't have explicit configuration
     }

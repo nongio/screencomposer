@@ -1,23 +1,23 @@
 use smithay_client_toolkit::{
     compositor::{CompositorState, SurfaceData},
-    reexports::client::{QueueHandle, protocol::wl_surface},
+    reexports::client::{protocol::wl_surface, QueueHandle},
     shell::{
-        WaylandSurface,
         xdg::{
-            window::{Window, WindowConfigure, WindowDecorations, WindowData, WindowHandler},
+            window::{Window, WindowConfigure, WindowData, WindowDecorations, WindowHandler},
             XdgShell,
         },
+        WaylandSurface,
     },
 };
 use wayland_client::Dispatch;
-use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel};
 use wayland_protocols::xdg::decoration::zv1::client::zxdg_toplevel_decoration_v1;
+use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel};
 
+use super::common::{sc_layer_shell_v1, sc_layer_v1, ScLayerAugment, Surface, SurfaceError};
 use crate::rendering::{SkiaContext, SkiaSurface};
-use super::common::{Surface, ScLayerAugment, SurfaceError, sc_layer_shell_v1, sc_layer_v1};
 
 /// Manages an XDG toplevel window surface with Skia rendering
-/// 
+///
 /// This surface type represents a top-level application window.
 /// It handles window configuration, provides a Skia canvas for drawing,
 /// and supports optional sc_layer protocol augmentation for visual effects.
@@ -37,7 +37,7 @@ pub struct ToplevelSurface {
 
 impl ToplevelSurface {
     /// Create a new toplevel surface
-    /// 
+    ///
     /// # Arguments
     /// * `title` - Window title
     /// * `width` - Initial width in logical pixels
@@ -54,14 +54,14 @@ impl ToplevelSurface {
         qh: &QueueHandle<D>,
     ) -> Result<Self, SurfaceError>
     where
-        D: Dispatch<wl_surface::WlSurface, SurfaceData> + 
-           Dispatch<xdg_surface::XdgSurface, WindowData> +
-           Dispatch<xdg_toplevel::XdgToplevel, WindowData> +
-           Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, WindowData> +
-           Dispatch<sc_layer_v1::ScLayerV1, ()> +
-           Dispatch<sc_layer_shell_v1::ScLayerShellV1, ()> +
-           WindowHandler +
-           'static,
+        D: Dispatch<wl_surface::WlSurface, SurfaceData>
+            + Dispatch<xdg_surface::XdgSurface, WindowData>
+            + Dispatch<xdg_toplevel::XdgToplevel, WindowData>
+            + Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, WindowData>
+            + Dispatch<sc_layer_v1::ScLayerV1, ()>
+            + Dispatch<sc_layer_shell_v1::ScLayerShellV1, ()>
+            + WindowHandler
+            + 'static,
     {
         // Create the window
         let window = xdg_shell.create_window(
@@ -97,7 +97,7 @@ impl ToplevelSurface {
     }
 
     /// Handle window configure event
-    /// 
+    ///
     /// This should be called from the WindowHandler::configure callback.
     /// It initializes or resizes the Skia rendering context.
     pub fn handle_configure(
@@ -106,7 +106,7 @@ impl ToplevelSurface {
         _serial: u32,
     ) -> Result<(), SurfaceError> {
         use crate::app_runner::AppContext;
-        
+
         // Get configured size or use initial size
         println!("ToplevelSurface handling configure: {:?}", self.configured);
         let (width, height) = match configure.new_size {
@@ -125,10 +125,11 @@ impl ToplevelSurface {
                     height * self.buffer_scale,
                 )
             });
-            
+
             if let Some(result) = surface {
                 // Shared context exists, use it
-                self.skia_surface = Some(result.map_err(|e| SurfaceError::SkiaError(e.to_string()))?);
+                self.skia_surface =
+                    Some(result.map_err(|e| SurfaceError::SkiaError(e.to_string()))?);
             } else {
                 // No shared context yet - create it with this first surface
                 let (new_ctx, new_surface) = SkiaContext::new(
@@ -138,7 +139,7 @@ impl ToplevelSurface {
                     height * self.buffer_scale,
                 )
                 .map_err(|e| SurfaceError::SkiaError(e.to_string()))?;
-                
+
                 // Store the shared context
                 AppContext::set_skia_context(new_ctx);
                 self.skia_surface = Some(new_surface);
@@ -153,9 +154,11 @@ impl ToplevelSurface {
                     height * self.buffer_scale,
                 )
             })
-            .ok_or(SurfaceError::SkiaError("SkiaContext not initialized".to_string()))?
+            .ok_or(SurfaceError::SkiaError(
+                "SkiaContext not initialized".to_string(),
+            ))?
             .map_err(|e| SurfaceError::SkiaError(e.to_string()))?;
-            
+
             self.skia_surface = Some(surface);
         }
 
@@ -188,7 +191,7 @@ impl Surface for ToplevelSurface {
         F: FnOnce(&skia_safe::Canvas),
     {
         use crate::app_runner::AppContext;
-        
+
         if !self.configured {
             eprintln!("Warning: Drawing on unconfigured ToplevelSurface");
             return;
@@ -221,16 +224,16 @@ impl ScLayerAugment for ToplevelSurface {
         use crate::app_runner::AppContext;
         AppContext::sc_layer_shell().is_some()
     }
-    
+
     fn sc_layer_mut(&mut self) -> Option<&mut Option<sc_layer_v1::ScLayerV1>> {
         Some(&mut self.sc_layer)
     }
-    
+
     fn sc_layer_shell(&self) -> Option<&sc_layer_shell_v1::ScLayerShellV1> {
         use crate::app_runner::AppContext;
         AppContext::sc_layer_shell()
     }
-    
+
     fn is_configured(&self) -> bool {
         self.configured
     }
@@ -238,7 +241,7 @@ impl ScLayerAugment for ToplevelSurface {
 
 impl ToplevelSurface {
     /// Apply sc_layer augmentation with queue handle
-    /// 
+    ///
     /// This version can be called from the configure handler where
     /// we have access to the queue handle.
     pub fn augment_with_qh<F, D>(
@@ -251,13 +254,13 @@ impl ToplevelSurface {
         D: Dispatch<sc_layer_v1::ScLayerV1, ()> + 'static,
     {
         use crate::app_runner::AppContext;
-        
+
         if !self.configured {
             return Err(SurfaceError::NotConfigured);
         }
 
-        let sc_layer_shell = AppContext::sc_layer_shell()
-            .ok_or(SurfaceError::ScLayerNotAvailable)?;
+        let sc_layer_shell =
+            AppContext::sc_layer_shell().ok_or(SurfaceError::ScLayerNotAvailable)?;
 
         // Create sc_layer if not exists
         if self.sc_layer.is_none() {

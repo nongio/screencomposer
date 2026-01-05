@@ -29,7 +29,6 @@ use smithay::{
     delegate_dmabuf,
     input::pointer::{CursorImageAttributes, CursorImageStatus},
     output::{Mode, Output, PhysicalProperties, Subpixel},
-    wayland::presentation::Refresh,
     reexports::{
         calloop::EventLoop,
         wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
@@ -40,6 +39,7 @@ use smithay::{
         },
     },
     utils::{IsAlive, Transform},
+    wayland::presentation::Refresh,
     wayland::{
         compositor::{self, with_states},
         dmabuf::{
@@ -663,7 +663,11 @@ pub fn run_winit() {
                                 time,
                                 output
                                     .current_mode()
-                                    .map(|mode| Refresh::fixed(Duration::from_nanos(1_000_000_000_000 / mode.refresh as u64)))
+                                    .map(|mode| {
+                                        Refresh::fixed(Duration::from_nanos(
+                                            1_000_000_000_000 / mode.refresh as u64,
+                                        ))
+                                    })
                                     .unwrap_or(Refresh::Unknown),
                                 0,
                                 wp_presentation_feedback::Kind::Vsync,

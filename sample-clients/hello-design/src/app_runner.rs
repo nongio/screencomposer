@@ -1,12 +1,9 @@
 //! AppRunner - High-level application framework
-//! 
+//!
 //! Hides all Wayland boilerplate and provides a simple trait-based API
 //! for creating window-based applications.
 
-use std::cell::RefCell;
-use std::marker::PhantomData;
-use std::collections::HashMap;
-use wayland_client::backend::ObjectId;
+use crate::components::menu::{sc_layer_shell_v1, sc_layer_v1};
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     output::{OutputHandler, OutputState},
@@ -19,12 +16,15 @@ use smithay_client_toolkit::{
     },
     shm::{Shm, ShmHandler},
 };
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::marker::PhantomData;
+use wayland_client::backend::ObjectId;
 use wayland_client::{
-    Connection, QueueHandle, globals::registry_queue_init,
-    protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface}
+    globals::registry_queue_init,
+    protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface},
+    Connection, QueueHandle,
 };
-use crate::components::menu::{sc_layer_shell_v1, sc_layer_v1};
-
 
 thread_local! {
     static APP_CONTEXT: RefCell<Option<RawAppContext>> = RefCell::new(None);
@@ -59,7 +59,7 @@ struct RawAppContext {
     output_state_ptr: *mut OutputState,
     sc_layer_shell_ptr: *const Option<sc_layer_shell_v1::ScLayerShellV1>,
     display_ptr: *mut std::ffi::c_void,
-    queue_handle_ptr: *const std::ffi::c_void,  // Type-erased QueueHandle pointer
+    queue_handle_ptr: *const std::ffi::c_void, // Type-erased QueueHandle pointer
 }
 // Store the actual typed queue handle in a separate thread-local
 // This allows us to return it with the proper type without requiring turbofish
@@ -82,7 +82,7 @@ struct AppContextData<A: App + 'static> {
 }
 
 /// Global application context - provides access to Wayland states
-/// 
+///
 /// This is accessible from within your App methods.
 pub struct AppContext;
 
@@ -95,7 +95,7 @@ impl AppContext {
             unsafe { &*raw.compositor_state_ptr }
         })
     }
-    
+
     /// Get XDG shell state
     pub fn xdg_shell_state() -> &'static XdgShell {
         APP_CONTEXT.with(|ctx| {
@@ -104,7 +104,7 @@ impl AppContext {
             unsafe { &*raw.xdg_shell_state_ptr }
         })
     }
-    
+
     /// Get SC layer shell if available
     pub fn sc_layer_shell() -> Option<&'static sc_layer_shell_v1::ScLayerShellV1> {
         APP_CONTEXT.with(|ctx| {
@@ -113,7 +113,7 @@ impl AppContext {
             unsafe { (*raw.sc_layer_shell_ptr).as_ref() }
         })
     }
-    
+
     /// Get display pointer
     pub fn display_ptr() -> *mut std::ffi::c_void {
         APP_CONTEXT.with(|ctx| {
@@ -122,53 +122,49 @@ impl AppContext {
             raw.display_ptr
         })
     }
-    
+
     /// Get mutable reference to the shared SkiaContext
     /// Returns None if not yet initialized
     pub fn skia_context<R, F>(f: F) -> Option<R>
     where
         F: FnOnce(&mut crate::rendering::SkiaContext) -> R,
     {
-        SHARED_SKIA_CONTEXT.with(|ctx| {
-            ctx.borrow_mut().as_mut().map(f)
-        })
+        SHARED_SKIA_CONTEXT.with(|ctx| ctx.borrow_mut().as_mut().map(f))
     }
-    
+
     /// Initialize or replace the shared Skia context
     pub fn set_skia_context(context: crate::rendering::SkiaContext) {
         SHARED_SKIA_CONTEXT.with(|ctx| {
             *ctx.borrow_mut() = Some(context);
         });
     }
-    
+
     /// Store EGL resources for a surface (cold path)
-    pub fn insert_egl_resources(surface_id: ObjectId, resources: crate::rendering::EglSurfaceResources) {
+    pub fn insert_egl_resources(
+        surface_id: ObjectId,
+        resources: crate::rendering::EglSurfaceResources,
+    ) {
         EGL_RESOURCES.with(|map| {
             map.borrow_mut().insert(surface_id, resources);
         });
     }
-    
+
     /// Access EGL resources for a surface (cold path - only for commit, resize, etc.)
     pub fn with_egl_resources<R, F>(surface_id: &ObjectId, f: F) -> Option<R>
     where
         F: FnOnce(&mut crate::rendering::EglSurfaceResources) -> R,
     {
-        EGL_RESOURCES.with(|map| {
-            map.borrow_mut().get_mut(surface_id).map(f)
-        })
+        EGL_RESOURCES.with(|map| map.borrow_mut().get_mut(surface_id).map(f))
     }
-    
+
     /// Remove EGL resources when surface is destroyed
     pub fn remove_egl_resources(surface_id: &ObjectId) {
         EGL_RESOURCES.with(|map| {
             map.borrow_mut().remove(surface_id);
         });
     }
-    
-    fn set<A: App + 'static>(
-        context: &AppContextData<A>,
-        queue_handle: &QueueHandle<AppData<A>>,
-    ) {
+
+    fn set<A: App + 'static>(context: &AppContextData<A>, queue_handle: &QueueHandle<AppData<A>>) {
         let raw = RawAppContext {
             compositor_state_ptr: &context.compositor_state as *const _,
             xdg_shell_state_ptr: &context.xdg_shell_state as *const _,
@@ -187,7 +183,7 @@ impl AppContext {
             *qh.borrow_mut() = Some(queue_handle as *const _ as *const std::ffi::c_void);
         });
     }
-    
+
     /// Get the typed queue handle (type determined by the AppRunner)
     pub fn queue_handle<A: App + 'static>() -> &'static QueueHandle<AppData<A>> {
         TYPED_QUEUE_HANDLE.with(|qh| {
@@ -195,16 +191,14 @@ impl AppContext {
             unsafe { &*(ptr as *const QueueHandle<AppData<A>>) }
         })
     }
-    
+
     /// Get the current surface configure event (WindowConfigure is a SurfaceConfigure)
     /// Called by surface components during configure handling
     /// Returns (surface_id, configure, serial) so handlers can check if it's for their surface  
     pub fn current_surface_configure() -> Option<(ObjectId, WindowConfigure, u32)> {
-        CURRENT_CONFIGURE.with(|cfg| {
-            cfg.borrow().clone()
-        })
+        CURRENT_CONFIGURE.with(|cfg| cfg.borrow().clone())
     }
-    
+
     /// Internal: Register a configure handler
     /// Called by surface components to automatically handle configuration
     pub fn register_configure_handler<F>(handler: F)
@@ -215,7 +209,7 @@ impl AppContext {
             handlers.borrow_mut().push(Box::new(handler));
         });
     }
-    
+
     fn clear() {
         APP_CONTEXT.with(|ctx| {
             *ctx.borrow_mut() = None;
@@ -230,7 +224,7 @@ impl AppContext {
 }
 
 /// The App trait - implement this to create a runnable application
-/// 
+///
 /// This trait defines the lifecycle of your application:
 /// - `on_app_ready()`: Called once when the app launches
 /// - `on_configure()`: Called when a window configure event occurs
@@ -239,13 +233,13 @@ pub trait App {
     /// Called when the app is ready to run
     /// This is where you create your window and setup your UI
     fn on_app_ready(&mut self) -> Result<(), Box<dyn std::error::Error>>;
-    
+
     /// Called when a window configure event occurs
     /// Override this to handle window configuration
     fn on_configure(&mut self, _configure: WindowConfigure, _serial: u32) {
         // Default: do nothing
     }
-    
+
     /// Called when the user requests to close the app
     /// Return `true` to allow closing, `false` to prevent it
     fn on_close(&mut self) -> bool;
@@ -261,9 +255,9 @@ impl<A: App + 'static> AppRunner<A> {
     pub fn new(app: A) -> Self {
         Self { app }
     }
-    
+
     /// Run the application
-    /// 
+    ///
     /// This method:
     /// 1. Connects to Wayland
     /// 2. Initializes all required protocols (compositor, xdg-shell, etc.)
@@ -286,7 +280,7 @@ impl<A: App + 'static> AppRunner<A> {
 
         // Get display pointer for creating surfaces
         let display_ptr = conn.backend().display_ptr() as *mut std::ffi::c_void;
-        
+
         // Move states into the context data structure
         let context = AppContextData {
             compositor_state,
@@ -298,7 +292,7 @@ impl<A: App + 'static> AppRunner<A> {
             display_ptr,
             _phantom: PhantomData,
         };
-        
+
         // Create the internal app data (now minimal, just holds app and registry)
         let mut app_data = AppData {
             app: self.app,
@@ -306,7 +300,7 @@ impl<A: App + 'static> AppRunner<A> {
             context_data: context,
             exit: false,
         };
-        
+
         // Set up the global context with pointers - type A is captured here
         AppContext::set::<A>(&app_data.context_data, &qh);
 
@@ -318,7 +312,7 @@ impl<A: App + 'static> AppRunner<A> {
         while !app_data.exit {
             event_queue.blocking_dispatch(&mut app_data)?;
         }
-        
+
         // Clean up global context
         AppContext::clear();
 
@@ -336,11 +330,46 @@ pub struct AppData<A: App + 'static> {
 
 // Wayland protocol handler implementations
 impl<A: App + 'static> CompositorHandler for AppData<A> {
-    fn scale_factor_changed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _surface: &wl_surface::WlSurface, _new_factor: i32) {}
-    fn frame(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _surface: &wl_surface::WlSurface, _time: u32) {}
-    fn transform_changed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _surface: &wl_surface::WlSurface, _new_transform: wl_output::Transform) {}
-    fn surface_enter(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _surface: &wl_surface::WlSurface, _output: &wl_output::WlOutput) {}
-    fn surface_leave(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _surface: &wl_surface::WlSurface, _output: &wl_output::WlOutput) {}
+    fn scale_factor_changed(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &wl_surface::WlSurface,
+        _new_factor: i32,
+    ) {
+    }
+    fn frame(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &wl_surface::WlSurface,
+        _time: u32,
+    ) {
+    }
+    fn transform_changed(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &wl_surface::WlSurface,
+        _new_transform: wl_output::Transform,
+    ) {
+    }
+    fn surface_enter(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &wl_surface::WlSurface,
+        _output: &wl_output::WlOutput,
+    ) {
+    }
+    fn surface_leave(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _surface: &wl_surface::WlSurface,
+        _output: &wl_output::WlOutput,
+    ) {
+    }
 }
 
 impl<A: App + 'static> OutputHandler for AppData<A> {
@@ -348,9 +377,27 @@ impl<A: App + 'static> OutputHandler for AppData<A> {
         &mut self.context_data.output_state
     }
 
-    fn new_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: wl_output::WlOutput) {}
-    fn update_output(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: wl_output::WlOutput) {}
-    fn output_destroyed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: wl_output::WlOutput) {}
+    fn new_output(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _output: wl_output::WlOutput,
+    ) {
+    }
+    fn update_output(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _output: wl_output::WlOutput,
+    ) {
+    }
+    fn output_destroyed(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _output: wl_output::WlOutput,
+    ) {
+    }
 }
 
 impl<A: App + 'static> WindowHandler for AppData<A> {
@@ -376,19 +423,18 @@ impl<A: App + 'static> WindowHandler for AppData<A> {
         CURRENT_CONFIGURE.with(|cfg| {
             *cfg.borrow_mut() = Some((surface_id, configure, serial));
         });
-        
+
         // Call all registered configure handlers
         CONFIGURE_HANDLERS.with(|handlers| {
             for handler in handlers.borrow_mut().iter_mut() {
                 handler();
             }
         });
-        
+
         // Get the configure back from thread-local storage to pass to app
-        let (_surface_id, configure, serial) = CURRENT_CONFIGURE.with(|cfg| {
-            cfg.borrow_mut().take().expect("Configure was just set")
-        });
-        
+        let (_surface_id, configure, serial) =
+            CURRENT_CONFIGURE.with(|cfg| cfg.borrow_mut().take().expect("Configure was just set"));
+
         // Forward to app's configure handler
         self.app.on_configure(configure, serial);
     }
@@ -400,9 +446,24 @@ impl<A: App + 'static> SeatHandler for AppData<A> {
     }
 
     fn new_seat(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _seat: wl_seat::WlSeat) {}
-    fn new_capability(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _seat: wl_seat::WlSeat, _capability: Capability) {}
-    fn remove_capability(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _seat: wl_seat::WlSeat, _capability: Capability) {}
-    fn remove_seat(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _seat: wl_seat::WlSeat) {}
+    fn new_capability(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _seat: wl_seat::WlSeat,
+        _capability: Capability,
+    ) {
+    }
+    fn remove_capability(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _seat: wl_seat::WlSeat,
+        _capability: Capability,
+    ) {
+    }
+    fn remove_seat(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _seat: wl_seat::WlSeat) {
+    }
 }
 
 impl<A: App + 'static> ShmHandler for AppData<A> {

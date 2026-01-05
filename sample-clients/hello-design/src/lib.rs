@@ -1,26 +1,25 @@
-pub mod rendering;
-pub mod components;
-pub mod surfaces;
 pub mod app_runner;
+pub mod components;
+pub mod rendering;
+pub mod surfaces;
 
 // Re-export commonly used items
-pub use components::window::{Window, SimpleWindow};
-pub use components::menu_bar::{MenuBar, MenuBarItem, surface::MenuBarSurface};
-pub use components::layer::{Layer, surface::LayerSurface};
+pub use components::layer::{surface::LayerSurface, Layer};
+pub use components::menu_bar::{surface::MenuBarSurface, MenuBar, MenuBarItem};
+pub use components::window::{SimpleWindow, Window};
 
 // Re-export new surface types
 pub use surfaces::{
-    Surface, ScLayerAugment, SurfaceError,
-    ToplevelSurface, SubsurfaceSurface, PopupSurface,
+    PopupSurface, ScLayerAugment, SubsurfaceSurface, Surface, SurfaceError, ToplevelSurface,
 };
 
 // Re-export app framework
-pub use app_runner::{App, AppRunner, AppContext};
+pub use app_runner::{App, AppContext, AppRunner};
 
 /// Convenience prelude for application development
 pub mod prelude {
-    pub use crate::app_runner::{App, AppRunner, AppContext};
+    pub use crate::app_runner::{App, AppContext, AppRunner};
     pub use crate::components::window::Window;
-    pub use skia_safe::{Color, Paint, Canvas, Font, Rect};
+    pub use skia_safe::{Canvas, Color, Font, Paint, Rect};
     // Add more common types as needed
 }

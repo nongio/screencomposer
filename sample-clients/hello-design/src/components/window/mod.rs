@@ -1,22 +1,19 @@
-use smithay_client_toolkit::{
-    reexports::client::QueueHandle,
-    shell::xdg::window::WindowConfigure,
-};
-use wayland_client::Dispatch;
+use smithay_client_toolkit::{reexports::client::QueueHandle, shell::xdg::window::WindowConfigure};
 use std::sync::{Arc, Mutex, RwLock};
+use wayland_client::Dispatch;
 
 // Import from the surfaces module (sibling to components in src/)
-use super::super::surfaces::{ToplevelSurface, Surface, SurfaceError};
 use super::super::app_runner::{App, AppContext};
+use super::super::surfaces::{Surface, SurfaceError, ToplevelSurface};
 use crate::ScLayerAugment;
 // Re-export sc-layer protocol for convenience
 pub use crate::components::menu::{sc_layer_shell_v1, sc_layer_v1};
 
 /// Window component using ToplevelSurface
-/// 
+///
 /// This is a high-level window component that uses ToplevelSurface for
 /// surface management while providing a simple API for window content.
-/// 
+///
 /// Window is Clone-able, allowing it to be shared across the application.
 #[derive(Clone)]
 pub struct Window {
@@ -28,29 +25,20 @@ pub struct Window {
 
 impl Window {
     /// Create a new window with ToplevelSurface
-    /// 
+    ///
     /// Uses AppContext to access all required Wayland states.
     /// Automatically registers with AppRunner to handle configuration.
     pub fn new<A: App + 'static>(
         title: &str,
         width: i32,
         height: i32,
-    ) -> Result<Self, SurfaceError>
-    {
-       
+    ) -> Result<Self, SurfaceError> {
         // Get all required states from AppContext
         let compositor = AppContext::compositor_state();
         let xdg_shell = AppContext::xdg_shell_state();
         let qh = AppContext::queue_handle::<A>();
-        
-        let surface = ToplevelSurface::new(
-            title,
-            width,
-            height,
-            compositor,
-            xdg_shell,
-            qh,
-        )?;
+
+        let surface = ToplevelSurface::new(title, width, height, compositor, xdg_shell, qh)?;
 
         let window = Self {
             surface: Arc::new(RwLock::new(Some(surface))),
@@ -152,7 +140,7 @@ impl Window {
 
                 let bg_color = self.background_color;
                 let on_draw_fn = self.on_draw_fn.clone();
-                
+
                 surface.draw(|canvas| {
                     // Clear with background color
                     // if self.
@@ -176,14 +164,18 @@ impl Window {
 
     /// Check if the window is configured
     pub fn is_configured(&self) -> bool {
-        self.surface.read().ok()
+        self.surface
+            .read()
+            .ok()
             .and_then(|s| s.as_ref().map(|surf| surf.is_configured()))
             .unwrap_or(false)
     }
 
     /// Get window dimensions
     pub fn dimensions(&self) -> (i32, i32) {
-        self.surface.read().ok()
+        self.surface
+            .read()
+            .ok()
             .and_then(|s| s.as_ref().map(|surf| surf.dimensions()))
             .unwrap_or((0, 0))
     }
@@ -199,7 +191,7 @@ impl Window {
 }
 
 /// Legacy SimpleWindow type alias for backwards compatibility
-/// 
+///
 /// This allows existing code using SimpleWindow to continue working
 /// while we migrate to the new Window component.
 pub struct SimpleWindow {

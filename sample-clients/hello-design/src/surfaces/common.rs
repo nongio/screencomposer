@@ -1,5 +1,5 @@
-use wayland_client::{protocol::wl_surface, QueueHandle, Dispatch};
 use std::fmt;
+use wayland_client::{protocol::wl_surface, Dispatch, QueueHandle};
 
 // Re-export sc-layer protocol from menu component for convenience
 pub use crate::components::menu::{sc_layer_shell_v1, sc_layer_v1};
@@ -54,18 +54,18 @@ pub trait Surface {
 pub trait ScLayerAugment: Surface {
     /// Check if sc_layer is available for this surface
     fn has_sc_layer(&self) -> bool;
-    
+
     /// Get mutable access to the sc_layer storage
     fn sc_layer_mut(&mut self) -> Option<&mut Option<sc_layer_v1::ScLayerV1>>;
-    
+
     /// Get reference to the sc_layer_shell
     fn sc_layer_shell(&self) -> Option<&sc_layer_shell_v1::ScLayerShellV1>;
-    
+
     /// Check if surface is configured
     fn is_configured(&self) -> bool;
-    
+
     /// Apply sc_layer augmentation with queue handle
-    /// 
+    ///
     /// This version can be called from the configure handler where
     /// we have access to the queue handle. It automatically applies
     /// default menu styling and then calls the optional augment_fn
@@ -84,35 +84,30 @@ pub trait ScLayerAugment: Surface {
         }
 
         // Clone the sc_layer_shell to avoid borrow conflicts
-        let sc_layer_shell = self.sc_layer_shell()
-            .ok_or(SurfaceError::ScLayerNotAvailable)?  
+        let sc_layer_shell = self
+            .sc_layer_shell()
+            .ok_or(SurfaceError::ScLayerNotAvailable)?
             .clone();
 
         // Get wl_surface before mutable borrow
         let wl_surface = self.wl_surface().clone();
-            
-        let sc_layer = self.sc_layer_mut()
+
+        let sc_layer = self
+            .sc_layer_mut()
             .ok_or(SurfaceError::ScLayerNotAvailable)?;
 
-        augment_surface_with_sc_layer(
-            &wl_surface,
-            &sc_layer_shell,
-            sc_layer,
-            augment_fn,
-            qh,
-        );
+        augment_surface_with_sc_layer(&wl_surface, &sc_layer_shell, sc_layer, augment_fn, qh);
 
         Ok(())
     }
 }
 
-
 /// Create or get an sc_layer for a surface and apply styling
-/// 
+///
 /// This is a generic helper that can be used by any surface type to apply
 /// sc_layer augmentation. It will create the sc_layer if it doesn't exist,
 /// apply default menu styling, and optionally call a custom augment function.
-/// 
+///
 /// # Arguments
 /// * `wl_surface` - The Wayland surface to augment
 /// * `sc_layer_shell` - The sc_layer_shell protocol object
@@ -135,7 +130,7 @@ pub fn augment_surface_with_sc_layer<F, D>(
         *sc_layer = Some(layer);
     }
 
-    if let Some(ref layer) = sc_layer {       
+    if let Some(ref layer) = sc_layer {
         // Allow caller to override or add more properties
         if let Some(f) = augment_fn {
             f(layer);

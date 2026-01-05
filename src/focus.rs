@@ -411,7 +411,8 @@ impl<B: Backend> KeyboardTarget<ScreenComposer<B>> for KeyboardFocusTarget<B> {
             KeyboardFocusTarget::View(d) => KeyboardTarget::enter(d, seat, data, keys, serial),
         }
     }
-    fn leave(&self, seat: &Seat<ScreenComposer<B>>, data: &mut ScreenComposer<B>, serial: Serial) {        // Show popups for the window gaining focus
+    fn leave(&self, seat: &Seat<ScreenComposer<B>>, data: &mut ScreenComposer<B>, serial: Serial) {
+        // Show popups for the window gaining focus
         if let KeyboardFocusTarget::Window(w) = self {
             let window_id = w.wl_surface().map(|s| s.id());
             if let Some(id) = window_id {

@@ -314,7 +314,11 @@ pub fn draw_app_icon(application: &Application, running: bool) -> ContentDrawFun
             paint.set_anti_alias(true);
             paint.set_style(lay_rs::skia::paint::Style::Fill);
             let indicator_y_offset = icon_size * 0.04;
-            canvas.draw_circle((w / 2.0, h - (indicator_y_offset + circle_radius)), circle_radius, &paint);
+            canvas.draw_circle(
+                (w / 2.0, h - (indicator_y_offset + circle_radius)),
+                circle_radius,
+                &paint,
+            );
         }
 
         lay_rs::skia::Rect::from_xywh(0.0, 0.0, w, h)

@@ -8,10 +8,10 @@ use skia_safe::Canvas;
 pub use crate::components::menu::{sc_layer_shell_v1, sc_layer_v1};
 
 /// Layer component - a drawable subsurface that can be positioned on top of a parent surface
-/// 
+///
 /// The Layer is a subsurface where you can draw custom content. It can be used for
 /// overlays, decorations, or custom UI elements like menubars.
-/// 
+///
 /// The layer can be augmented with custom drawing functions at any time.
 /// The layer surface can also be augmented on configure with sc_layer properties.
 pub struct Layer {

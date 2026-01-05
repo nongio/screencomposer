@@ -1,22 +1,19 @@
 use smithay_client_toolkit::{
     compositor::{CompositorState, SurfaceData},
-    reexports::client::{QueueHandle, protocol::wl_surface},
+    reexports::client::{protocol::wl_surface, QueueHandle},
     shell::xdg::{
         popup::{Popup, PopupConfigure, PopupData},
         XdgPositioner, XdgShell,
     },
 };
 use wayland_client::{Dispatch, Proxy};
-use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_popup};
+use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_surface};
 
+use super::common::{sc_layer_shell_v1, sc_layer_v1, ScLayerAugment, Surface, SurfaceError};
 use crate::rendering::SkiaSurface;
-use super::common::{
-    Surface, ScLayerAugment, SurfaceError, 
-    sc_layer_shell_v1, sc_layer_v1, 
-};
 
 /// Manages an XDG popup surface with Skia rendering
-/// 
+///
 /// This surface type represents a popup menu or tooltip that appears
 /// relative to a parent surface. It handles popup positioning and
 /// configuration, provides a Skia canvas for drawing, and supports
@@ -35,7 +32,7 @@ pub struct PopupSurface {
 
 impl PopupSurface {
     /// Create a new popup surface
-    /// 
+    ///
     /// # Arguments
     /// * `parent_surface` - The parent XDG surface
     /// * `positioner` - XDG positioner defining popup position and size
@@ -54,12 +51,12 @@ impl PopupSurface {
         qh: &QueueHandle<D>,
     ) -> Result<Self, SurfaceError>
     where
-        D: Dispatch<wl_surface::WlSurface, SurfaceData> + 
-           Dispatch<xdg_surface::XdgSurface, PopupData> +
-           Dispatch<xdg_popup::XdgPopup, PopupData> +
-           Dispatch<sc_layer_v1::ScLayerV1, ()> +
-           Dispatch<sc_layer_shell_v1::ScLayerShellV1, ()> +
-           'static,
+        D: Dispatch<wl_surface::WlSurface, SurfaceData>
+            + Dispatch<xdg_surface::XdgSurface, PopupData>
+            + Dispatch<xdg_popup::XdgPopup, PopupData>
+            + Dispatch<sc_layer_v1::ScLayerV1, ()>
+            + Dispatch<sc_layer_shell_v1::ScLayerShellV1, ()>
+            + 'static,
     {
         let wl_surface = compositor.create_surface(qh);
 
@@ -83,13 +80,11 @@ impl PopupSurface {
         // Create Skia surface using shared context
         use crate::app_runner::AppContext;
         let skia_surface = AppContext::skia_context(|ctx| {
-            ctx.create_surface(
-                &wl_surface,
-                width * buffer_scale,
-                height * buffer_scale,
-            )
+            ctx.create_surface(&wl_surface, width * buffer_scale, height * buffer_scale)
         })
-        .ok_or(SurfaceError::SkiaError("SkiaContext not initialized".to_string()))?
+        .ok_or(SurfaceError::SkiaError(
+            "SkiaContext not initialized".to_string(),
+        ))?
         .map_err(|e| SurfaceError::SkiaError(e))?;
 
         let popup_surface = Self {
@@ -110,13 +105,17 @@ impl PopupSurface {
     }
 
     /// Handle popup configure event
-    /// 
+    ///
     /// This should be called from the popup configure event handler.
-    pub fn handle_configure(&mut self, _configure: PopupConfigure, serial: u32) -> Result<(), SurfaceError> {
+    pub fn handle_configure(
+        &mut self,
+        _configure: PopupConfigure,
+        serial: u32,
+    ) -> Result<(), SurfaceError> {
         if let Some(ref popup) = self.popup {
             popup.xdg_surface().ack_configure(serial);
         }
-        
+
         self.configured = true;
         Ok(())
     }
@@ -147,7 +146,7 @@ impl PopupSurface {
     pub fn close(&mut self) {
         // Destroy the wl_surface to fully reset for next show()
         self.wl_surface.destroy();
-        
+
         // Drop the popup - this will destroy xdg_popup and xdg_surface
         self.popup.take();
         self.sc_layer.take();
@@ -165,20 +164,20 @@ impl PopupSurface {
         qh: &QueueHandle<D>,
     ) -> Result<(), SurfaceError>
     where
-        D: Dispatch<wl_surface::WlSurface, SurfaceData> + 
-           Dispatch<xdg_surface::XdgSurface, PopupData> +
-           Dispatch<xdg_popup::XdgPopup, PopupData> +
-           'static,
+        D: Dispatch<wl_surface::WlSurface, SurfaceData>
+            + Dispatch<xdg_surface::XdgSurface, PopupData>
+            + Dispatch<xdg_popup::XdgPopup, PopupData>
+            + 'static,
     {
         // If popup already exists, nothing to do
         if self.popup.is_some() {
             return Ok(());
         }
-        
+
         // If surface was destroyed, recreate everything
         if !self.wl_surface.is_alive() {
             use crate::app_runner::AppContext;
-            
+
             // Create new wl_surface
             self.wl_surface = compositor.create_surface(qh);
             self.wl_surface.set_buffer_scale(self.buffer_scale);
@@ -191,7 +190,9 @@ impl PopupSurface {
                     self.height * self.buffer_scale,
                 )
             })
-            .ok_or(SurfaceError::SkiaError("SkiaContext not initialized".to_string()))?
+            .ok_or(SurfaceError::SkiaError(
+                "SkiaContext not initialized".to_string(),
+            ))?
             .map_err(|e| SurfaceError::SkiaError(e))?;
 
             self.skia_surface = Some(skia_surface);
@@ -208,14 +209,16 @@ impl PopupSurface {
 
             self.popup = Some(popup);
         }
-        
+
         // Set window geometry
         if let Some(popup) = &self.popup {
-            popup.xdg_surface().set_window_geometry(0, 0, self.width, self.height);
+            popup
+                .xdg_surface()
+                .set_window_geometry(0, 0, self.width, self.height);
         }
 
         self.configured = false;
-        
+
         // Commit to trigger configure
         self.wl_surface.commit();
 
@@ -243,7 +246,7 @@ impl Surface for PopupSurface {
         F: FnOnce(&skia_safe::Canvas),
     {
         use crate::app_runner::AppContext;
-        
+
         if !self.configured {
             eprintln!("Warning: Drawing on unconfigured PopupSurface");
             return;
@@ -273,16 +276,16 @@ impl ScLayerAugment for PopupSurface {
     fn has_sc_layer(&self) -> bool {
         self.sc_layer.is_some()
     }
-    
+
     fn sc_layer_mut(&mut self) -> Option<&mut Option<sc_layer_v1::ScLayerV1>> {
         Some(&mut self.sc_layer)
     }
-    
+
     fn sc_layer_shell(&self) -> Option<&sc_layer_shell_v1::ScLayerShellV1> {
         use crate::app_runner::AppContext;
         AppContext::sc_layer_shell()
     }
-    
+
     fn is_configured(&self) -> bool {
         self.configured
     }

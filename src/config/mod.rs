@@ -28,8 +28,10 @@ pub struct Config {
     pub cursor_size: u32,
     pub natural_scroll: bool,
     #[serde(default)]
-    pub dock: DockConfig,    #[serde(default)]
-    pub layer_shell: LayerShellConfig,    pub terminal_bin: String,
+    pub dock: DockConfig,
+    #[serde(default)]
+    pub layer_shell: LayerShellConfig,
+    pub terminal_bin: String,
     pub file_manager_bin: String,
     pub browser_bin: String,
     pub browser_args: Vec<String>,

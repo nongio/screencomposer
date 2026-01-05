@@ -1,6 +1,6 @@
 use smithay_client_toolkit::{
     compositor::{CompositorState, SurfaceData},
-    reexports::client::{QueueHandle, protocol::wl_surface, Connection},
+    reexports::client::{protocol::wl_surface, Connection, QueueHandle},
 };
 use wayland_client::{
     protocol::{wl_subcompositor, wl_subsurface},
@@ -14,7 +14,7 @@ use super::Layer;
 use crate::components::menu::{sc_layer_shell_v1, sc_layer_v1};
 
 /// LayerSurface - manages the Wayland subsurface and rendering for a Layer component
-/// 
+///
 /// This handles the creation and management of the subsurface, including positioning
 /// and rendering through the Skia rendering system.
 pub struct LayerSurface {
@@ -32,7 +32,7 @@ pub struct LayerSurface {
 
 impl LayerSurface {
     /// Create a new LayerSurface as a subsurface of the given parent
-    /// 
+    ///
     /// # Arguments
     /// * `parent_surface` - The parent Wayland surface
     /// * `layer` - The Layer component with drawing logic
@@ -49,43 +49,39 @@ impl LayerSurface {
         conn: &Connection,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
-        D: Dispatch<wl_surface::WlSurface, SurfaceData> + 
-           Dispatch<wl_subsurface::WlSubsurface, ()> + 
-           Dispatch<sc_layer_v1::ScLayerV1, ()> +
-           Dispatch<sc_layer_shell_v1::ScLayerShellV1, ()> +
-           'static,
+        D: Dispatch<wl_surface::WlSurface, SurfaceData>
+            + Dispatch<wl_subsurface::WlSubsurface, ()>
+            + Dispatch<sc_layer_v1::ScLayerV1, ()>
+            + Dispatch<sc_layer_shell_v1::ScLayerShellV1, ()>
+            + 'static,
     {
         let x = layer.x();
         let y = layer.y();
         let width = layer.width();
         let height = layer.height();
-        
+
         // Create the Wayland surface
         let wl_surface = compositor.create_surface(qh);
-        
+
         // Create subsurface
         let subsurface = subcompositor.get_subsurface(&wl_surface, parent_surface, qh, ());
-        
+
         // Position the subsurface
         subsurface.set_position(x, y);
         subsurface.set_desync();
-        
+
         // Use 2x buffer for HiDPI rendering
         let buffer_scale = 2;
         wl_surface.set_buffer_scale(buffer_scale);
-        
+
         // Create Skia surface using shared context
         use crate::app_runner::AppContext;
         let skia_surface = AppContext::skia_context(|ctx| {
-            ctx.create_surface(
-                &wl_surface,
-                width * buffer_scale,
-                height * buffer_scale,
-            )
+            ctx.create_surface(&wl_surface, width * buffer_scale, height * buffer_scale)
         })
         .ok_or("SkiaContext not initialized")?
         .map_err(|e| e)?;
-        
+
         let mut layer_surface = Self {
             wl_surface: wl_surface.clone(),
             subsurface,
@@ -102,7 +98,7 @@ impl LayerSurface {
         // Commit and wait for first configure
         wl_surface.commit();
         conn.roundtrip()?;
-        
+
         // Apply augmentation if sc_layer_shell is available and augment_fn is set
         if let Some(sc_layer_shell) = AppContext::sc_layer_shell() {
             if let Some(augment_fn) = layer_surface.layer.augment_fn() {
@@ -118,7 +114,7 @@ impl LayerSurface {
     /// Render the layer content
     pub fn render(&mut self) {
         use crate::app_runner::AppContext;
-        
+
         if let Some(surface) = &mut self.skia_surface {
             AppContext::skia_context(|ctx| {
                 surface.draw(ctx, |canvas| {
@@ -140,21 +136,24 @@ impl LayerSurface {
     /// Resize the subsurface
     pub fn resize(&mut self, width: i32, height: i32) {
         use crate::app_runner::AppContext;
-        
+
         if self.width != width || self.height != height {
             self.width = width;
             self.height = height;
-            
+
             // Recreate Skia surface with new dimensions using shared context
             let buffer_scale = 2;
-            
+
             if let Some(new_surface) = AppContext::skia_context(|ctx| {
                 ctx.create_surface(
                     &self.wl_surface,
                     width * buffer_scale,
                     height * buffer_scale,
-                ).ok()
-            }).flatten() {
+                )
+                .ok()
+            })
+            .flatten()
+            {
                 self.skia_surface = Some(new_surface);
                 self.render();
             }

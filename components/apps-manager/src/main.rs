@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use wayland_client::{protocol::wl_registry, Connection, Dispatch, QueueHandle, Proxy};
+use wayland_client::{protocol::wl_registry, Connection, Dispatch, Proxy, QueueHandle};
 use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
     ext_foreign_toplevel_handle_v1::{self, ExtForeignToplevelHandleV1},
     ext_foreign_toplevel_list_v1::{self, ExtForeignToplevelListV1},
