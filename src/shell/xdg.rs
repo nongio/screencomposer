@@ -87,7 +87,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
         self.workspaces.map_window(&window_element, location, true);
 
-        // Register with foreign toplevel list
+        // Register with foreign toplevel protocols (both ext and wlr)
         let surface_id = surface.wl_surface().id();
         let app_id = window_element.xdg_app_id();
         let title = window_element.xdg_title();
