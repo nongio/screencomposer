@@ -191,6 +191,7 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub fractional_scale_manager_state: FractionalScaleManagerState,
     pub xdg_foreign_state: XdgForeignState,
     pub foreign_toplevel_list_state: ForeignToplevelListState,
+    pub wlr_foreign_toplevel_state: wlr_foreign_toplevel::WlrForeignToplevelManagerState,
 
     #[cfg(feature = "xwayland")]
     pub xwayland_shell_state: xwayland_shell::XWaylandShellState,
@@ -232,9 +233,9 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     /// Manager for the screenshare D-Bus service (started lazily when needed).
     pub screenshare_manager: Option<crate::screenshare::ScreenshareManager>,
 
-    // foreign toplevel list - maps surface ObjectId to toplevel handle
+    // foreign toplevel list - maps surface ObjectId to unified toplevel handles (both protocols)
     pub foreign_toplevels:
-        HashMap<ObjectId, smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle>,
+        HashMap<ObjectId, foreign_toplevel_shared::ForeignToplevelHandles>,
 
     // sc_layer protocol
     // Map from surface ID to list of sc-layers augmenting that surface
@@ -251,6 +252,8 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
 pub mod data_device_handler;
 pub mod dnd_grab_handler;
 pub mod foreign_toplevel_list_handler;
+pub mod foreign_toplevel_shared;
+pub mod wlr_foreign_toplevel;
 pub mod fractional_scale_handler;
 pub mod input_method_handler;
 pub mod seat_handler;
@@ -440,6 +443,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         });
         let xdg_foreign_state = XdgForeignState::new::<Self>(&dh);
         let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
+        let wlr_foreign_toplevel_state = wlr_foreign_toplevel::WlrForeignToplevelManagerState::new::<Self>(&dh);
 
         // Create minimal sc_layer shell global
         crate::sc_layer_shell::create_layer_shell_global::<BackendData>(&dh);
@@ -506,6 +510,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             fractional_scale_manager_state,
             xdg_foreign_state,
             foreign_toplevel_list_state,
+            wlr_foreign_toplevel_state,
             dnd_icon: None,
             suppressed_keys: Vec::new(),
             keycode_remap: HashMap::new(),

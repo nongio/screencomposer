@@ -87,14 +87,23 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
         self.workspaces.map_window(&window_element, location, true);
 
-        // Register with foreign toplevel list
+        // Register with foreign toplevel protocols (both ext and wlr)
         let surface_id = surface.wl_surface().id();
         let app_id = window_element.xdg_app_id();
         let title = window_element.xdg_title();
-        let handle = self
+        
+        let ext_handle = self
             .foreign_toplevel_list_state
             .new_toplevel::<Self>(&app_id, &title);
-        self.foreign_toplevels.insert(surface_id.clone(), handle);
+        let wlr_handle = self
+            .wlr_foreign_toplevel_state
+            .new_toplevel::<Self>(&self.display_handle, &app_id, &title);
+        
+        let handles = crate::state::foreign_toplevel_shared::ForeignToplevelHandles::new(
+            ext_handle,
+            wlr_handle,
+        );
+        self.foreign_toplevels.insert(surface_id.clone(), handles);
 
         // Pre-populate surface_layers for toplevel and all subsurfaces
         self.prepopulate_surface_layers(surface.wl_surface());
