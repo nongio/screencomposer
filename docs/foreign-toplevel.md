@@ -6,12 +6,10 @@ ScreenComposer implements dual-protocol support for foreign toplevel management,
 
 ### ext-foreign-toplevel-list-v1 (Newer)
 - **Status**: ✅ Fully implemented via Smithay
-- **Clients**: Future GNOME/KDE tools, modern Wayland utilities
 - **Features**: Window list with title and app_id
 
 ### wlr-foreign-toplevel-management-unstable-v1 (Older)
 - **Status**: ✅ Basic implementation complete
-- **Clients**: rofi, waybar, sfwbar, nwg-panel, most wlroots-based tools
 - **Features**: Window list with title, app_id, and control actions
 
 ## Architecture
@@ -140,8 +138,61 @@ WAYLAND_DISPLAY=wayland-1 waybar
 3. Output tracking not implemented
 4. Parent window relationships not tracked
 
+## Dock Migration to External App
+
+### Current State
+ScreenComposer has a built-in dock implementation (`src/workspaces/dock/`) that's tightly integrated with the compositor's internal window management.
+
+### Migration Path
+With wlr-foreign-toplevel-management protocol support, the dock can be migrated to an external standalone application. This provides several benefits:
+
+**Advantages:**
+- **Separation of concerns**: Dock becomes an independent component
+- **User choice**: Users can use alternative docks (waybar, sfwbar, etc.)
+- **Simplified compositor**: Reduces compositor complexity and code size
+- **Easier customization**: Dock styling/behavior without compositor changes
+- **Independent updates**: Dock can be updated without recompiling compositor
+
+**Requirements for Migration:**
+To fully replace the built-in dock with an external app, the following must be implemented:
+
+1. **Window Activation** (High Priority)
+   - Implement `Activate` request handler
+   - Required for: Clicking dock items to focus windows
+
+2. **Window State Events** (High Priority)
+   - Send `state` events with `activated` state
+   - Required for: Highlighting active window in dock
+
+3. **Window Close** (Medium Priority)
+   - Implement `Close` request handler
+   - Required for: Close button on dock items
+
+4. **Minimize Actions** (Medium Priority)
+   - Implement `SetMinimized`/`UnsetMinimized` handlers
+   - Required for: Minimize to dock functionality
+   - Note: Current built-in dock uses genie minimize effect
+
+5. **Set Rectangle** (Nice to Have)
+   - Implement `SetRectangle` handler
+   - Required for: Genie effect minimize animation target
+
+### External Dock Implementation
+
+A standalone dock app would:
+- Bind to `zwlr_foreign_toplevel_manager_v1`
+- Use `sc-layer-shell` protocol for positioning/layout
+- Implement click handlers that call protocol actions
+- Subscribe to window state changes for visual feedback
+
+
+### Compatibility Notes
+- External dock requires fully implemented wlr-foreign-toplevel protocol
+- Should also support ext-foreign-toplevel-list for future compatibility
+
 ## References
 
 - [ext-foreign-toplevel-list-v1 spec](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/blob/main/staging/ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1.xml)
 - [wlr-foreign-toplevel-management spec](https://gitlab.freedesktop.org/wlroots/wlr-protocols/-/blob/master/unstable/wlr-foreign-toplevel-management-unstable-v1.xml)
 - [Smithay foreign_toplevel_list module](https://smithay.github.io/smithay/smithay/wayland/foreign_toplevel_list/)
+- [Built-in dock implementation](../src/workspaces/dock/)
