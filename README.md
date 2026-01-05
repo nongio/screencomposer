@@ -191,6 +191,30 @@ This allows you to maintain different display settings, keyboard shortcuts, or o
 
 For detailed configuration options, see the [configuration documentation](./docs/configuration.md).
 
+## Profiling
+
+ScreenComposer includes built-in support for profiling using [puffin](https://github.com/EmbarkStudios/puffin). The profiler is enabled by default through the `profile` feature.
+
+### Using the Profiler
+
+1. **Run the compositor** - The puffin HTTP server starts automatically on port 8585:
+   ```bash
+   cargo run -- --winit
+   ```
+
+2. **Install puffin_viewer** (if you haven't already):
+   ```bash
+   cargo install puffin_viewer
+   ```
+
+3. **Connect to the profiler**:
+   - Launch `puffin_viewer`
+   - Connect to `127.0.0.1:8585`
+
+The profiler will show frame timing, render performance, and other metrics to help identify performance bottlenecks.
+
+**Note:** Make sure your `puffin_viewer` version matches the puffin version used by ScreenComposer (0.19.x requires puffin_viewer 0.22.0 or later).
+
 ## Build and run
 
 You can run it with cargo after having cloned this repository:
