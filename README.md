@@ -30,6 +30,13 @@ Following a draft roadmap of features and improvements.
 
 ## Features / Roadmap
 
+### Core
+- [ ] login?
+- [ ] enable multiple screens (maybe virtual?)
+- [ ] fullscreen animation bug (try animated resize)
+- [ ] listen to animations in LayersEngine
+- [ ] custom shape layers
+
 ### Basic window management
 - [x] move windows
 - [x] resize windows
@@ -37,13 +44,15 @@ Following a draft roadmap of features and improvements.
 - [x] window scaling
 - [x] animated drag and drop
 - [x] minimize windows
-- [ ] fix resize from edge-top
+- [x] fix resize from edge-top
 - [ ] 
 
 ### Applications switcher (hotkey: `alt + Tab`)
 - [x] background search for application metadata and icons (following xdg specs)
 - [x] close applications from application switcher
 - [x] cycle between same app windows
+- [ ] Fullscreen app switcher
+- [ ] 
 
 ### Expose windows (hotkey: `alt + f` gesture on udev: `three fingers swipe up`)
 - [x] all windows (algorithm from gnome-shell/kde)
@@ -54,6 +63,7 @@ Following a draft roadmap of features and improvements.
 - [x] show running applications in their opening order
 - [x] show minimized windows
 - [x] show pinned applications
+- [ ] enable custom shape layers
 - [ ] show favorite locations
 - [ ] refactor out of the compositor core
 
@@ -67,6 +77,9 @@ Following a draft roadmap of features and improvements.
 
 ### Miscellaneus
 - [x] Theming dark/light
+- [x] toplevel manager protocol
+- [~] sc protocol
+- [ ] menu bar component with sc-protocol
 - [ ] Volume control widget
 - [ ] Brightness control widget
 - [ ] Keyboard light control widget
@@ -81,15 +94,25 @@ Following a draft roadmap of features and improvements.
 - [x] dynamic background
 - [x] multiple workspaces
 - [x] workspace switcher
+
 - [ ] animate create/delete workspace
-- [ ] enable multiple screens
 - [ ] screen rotation / resolution
 
 ### Config
 - [x] centralized config manager
 - [x] persistent config from text files
 - [x] setup keybindings from config
+- [ ] reload config at runtime
+- [ ] 
 - [ ] setup screen mode
+
+### Sc protocol
+
+
+### Rename
+- [ ] Rename compositor to Silver
+- [ ] Rename protocol to SilverLayers
+- [ ] 
 
 ### Keyboard Shortcuts
 Hotkeys are now fully configurable via the `sc_config.toml` file. See the `[keyboard_shortcuts]` section to customize keybindings for your setup. Example:
