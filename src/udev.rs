@@ -366,6 +366,10 @@ pub fn run_udev() {
         debug_flags: DebugFlags::empty(),
         cursor_manager: Cursor::load(),
     };
+
+    // Create virtual outputs before initializing state (display will be moved)
+    let virtual_outputs = crate::virtual_output::create_virtual_outputs::<UdevData>(&display.handle());
+
     let mut state = ScreenComposer::init(display, event_loop.handle(), data, true);
 
     /*
@@ -562,6 +566,14 @@ pub fn run_udev() {
             }
         })
         .unwrap();
+
+    /*
+     * Map virtual outputs
+     */
+    for virtual_output in virtual_outputs {
+        state.workspaces.map_output(&virtual_output, (0, 0));
+        info!("Mapped virtual output: {}", virtual_output.name());
+    }
 
     /*
      * Start XWayland if supported

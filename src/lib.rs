@@ -19,6 +19,7 @@ pub mod shell;
 pub mod skia_renderer;
 pub mod state;
 pub mod textures_storage;
+pub mod virtual_output;
 #[cfg(feature = "udev")]
 pub mod udev;
 #[cfg(feature = "winit")]

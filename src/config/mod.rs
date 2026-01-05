@@ -53,6 +53,8 @@ pub struct Config {
     #[serde(skip)]
     #[serde(default)]
     modifier_lookup: HashMap<ModifierKind, ModifierKind>,
+    #[serde(default)]
+    pub virtual_screens: Vec<VirtualScreenConfig>,
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
@@ -85,6 +87,7 @@ impl Default for Config {
             modifier_remap: BTreeMap::new(),
             key_remap: BTreeMap::new(),
             modifier_lookup: HashMap::new(),
+            virtual_screens: Vec::new(),
         };
         config.rebuild_shortcut_bindings();
         config.rebuild_remap_tables();
@@ -370,6 +373,41 @@ fn default_genie_scale() -> f64 {
 
 fn default_genie_span() -> f64 {
     10.0
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VirtualScreenConfig {
+    pub name: String,
+    #[serde(default = "default_virtual_width")]
+    pub width: u32,
+    #[serde(default = "default_virtual_height")]
+    pub height: u32,
+    #[serde(default = "default_virtual_refresh")]
+    pub refresh_rate: u32,
+    #[serde(default = "default_virtual_scale")]
+    pub scale: f64,
+    #[serde(default = "default_virtual_enabled")]
+    pub enabled: bool,
+}
+
+fn default_virtual_width() -> u32 {
+    1920
+}
+
+fn default_virtual_height() -> u32 {
+    1080
+}
+
+fn default_virtual_refresh() -> u32 {
+    60
+}
+
+fn default_virtual_scale() -> f64 {
+    1.0
+}
+
+fn default_virtual_enabled() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

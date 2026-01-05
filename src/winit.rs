@@ -344,6 +344,10 @@ pub fn run_winit() {
             fps: fps_ticker::Fps::default(),
         }
     };
+
+    // Create virtual outputs before initializing state (display will be moved)
+    let virtual_outputs = crate::virtual_output::create_virtual_outputs::<WinitData>(&display.handle());
+
     let mut state = ScreenComposer::init(display, event_loop.handle(), data, true);
 
     let root = state.scene_element.root_layer().unwrap();
@@ -361,6 +365,12 @@ pub fn run_winit() {
         .update_formats(state.backend_data.backend.renderer().shm_formats());
 
     state.workspaces.map_output(&output, (0, 0));
+
+    // Map virtual outputs
+    for virtual_output in virtual_outputs {
+        state.workspaces.map_output(&virtual_output, (0, 0));
+        info!("Mapped virtual output: {}", virtual_output.name());
+    }
 
     #[cfg(feature = "xwayland")]
     state.start_xwayland();

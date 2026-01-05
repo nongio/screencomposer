@@ -188,7 +188,7 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
         }
         CompositorCommand::ListOutputs { response_tx } => {
             tracing::info!("ListOutputs command received");
-            let outputs: Vec<OutputInfo> = state
+            let mut outputs: Vec<OutputInfo> = state
                 .workspaces
                 .outputs()
                 .map(|output| {
@@ -207,6 +207,8 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
                     info
                 })
                 .collect();
+            // Reverse order so virtual outputs (added last) appear first
+            outputs.reverse();
             tracing::info!("Returning {} outputs", outputs.len());
             let _ = response_tx.send(outputs);
         }

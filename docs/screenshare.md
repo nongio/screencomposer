@@ -259,19 +259,30 @@ google-chrome
 
 ### Testing with D-Bus
 
+**List available outputs:**
 ```bash
-# Create a session
+dbus-send --print-reply \
+  --dest=org.screencomposer.ScreenCast \
+  /org/screencomposer/ScreenCast \
+  org.screencomposer.ScreenCast.ListOutputs
+```
+
+**Create a session:**
+```bash
 dbus-send --session --print-reply \
   --dest=org.screencomposer.ScreenCast \
   /org/screencomposer/ScreenCast \
   org.screencomposer.ScreenCast.CreateSession \
   dict:string:variant:
+```
 
-# List available outputs
-dbus-send --session --print-reply \
-  --dest=org.screencomposer.ScreenCast \
-  /org/screencomposer/ScreenCast \
-  org.screencomposer.ScreenCast.ListOutputs
+**Example output:**
+```
+method return time=1767438526.774208 sender=:1.504 -> destination=:1.537 serial=57
+   array [
+      string "virtual-1"
+      string "eDP-1"
+   ]
 ```
 
 ### Verifying PipeWire Stream
