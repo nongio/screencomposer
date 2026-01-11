@@ -1108,16 +1108,71 @@ impl ScreenComposer<UdevData> {
                 );
             }
         } else {
-            let mode_id = connector
-                .modes()
-                .iter()
-                .position(|mode| mode.mode_type().contains(ModeTypeFlags::PREFERRED))
-                .unwrap_or(0);
+            // Try to get mode from config first
+            let config_profile = Config::with(|config| {
+                let descriptor = crate::config::DisplayDescriptor {
+                    connector: &output_name,
+                    vendor: Some(&make),
+                    model: Some(&model),
+                    kind: None,
+                };
+                config.displays.resolve(&output_name, &descriptor)
+            });
+
+            let mode_id = if let Some(ref profile) = config_profile {
+                // Try to find matching resolution from config
+                if let Some(desired_res) = profile.resolution {
+                    connector
+                        .modes()
+                        .iter()
+                        .position(|mode| {
+                            let size = mode.size();
+                            size.0 as u32 == desired_res.width && size.1 as u32 == desired_res.height
+                        })
+                        .or_else(|| {
+                            warn!(
+                                "Requested resolution {}x{} not available for {}, using preferred mode",
+                                desired_res.width, desired_res.height, output_name
+                            );
+                            connector
+                                .modes()
+                                .iter()
+                                .position(|mode| mode.mode_type().contains(ModeTypeFlags::PREFERRED))
+                        })
+                        .unwrap_or(0)
+                } else {
+                    connector
+                        .modes()
+                        .iter()
+                        .position(|mode| mode.mode_type().contains(ModeTypeFlags::PREFERRED))
+                        .unwrap_or(0)
+                }
+            } else {
+                connector
+                    .modes()
+                    .iter()
+                    .position(|mode| mode.mode_type().contains(ModeTypeFlags::PREFERRED))
+                    .unwrap_or(0)
+            };
 
             let drm_mode = connector.modes()[mode_id];
+            info!(
+                "Selected mode for {}: {}x{} @ {}Hz",
+                output_name,
+                drm_mode.size().0,
+                drm_mode.size().1,
+                drm_mode.vrefresh()
+            );
             let mut wl_mode = WlMode::from(drm_mode);
-            // FIXME monitor get preferred mode or from config
-            wl_mode.refresh = 60 * 1000;
+            // Use config refresh rate or fallback to 60Hz
+            if let Some(ref profile) = config_profile {
+                if let Some(refresh_hz) = profile.refresh_hz {
+                    wl_mode.refresh = (refresh_hz * 1000.0) as i32;
+                }
+            }
+            if wl_mode.refresh == 0 {
+                wl_mode.refresh = 60 * 1000;
+            }
             let surface = match device
                 .drm
                 .create_surface(crtc, drm_mode, &[connector.handle()])
