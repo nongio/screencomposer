@@ -151,5 +151,7 @@ where
         renderer,
     );
 
-    damage_tracker.render_output(renderer, age, &elements, clear_color)
+    let result = damage_tracker.render_output(renderer, age, &elements, clear_color);
+
+    result
 }
