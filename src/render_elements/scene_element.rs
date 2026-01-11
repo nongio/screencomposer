@@ -233,7 +233,7 @@ impl RenderElement<SkiaRenderer> for SceneElement {
         &self,
         frame: &mut <SkiaRenderer as Renderer>::Frame<'_>,
         _src: Rectangle<f64, Buffer>,
-        _dst: Rectangle<i32, Physical>,
+        dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
         _opaque_regions: &[Rectangle<i32, Physical>],
     ) -> Result<(), <SkiaRenderer as Renderer>::Error> {
@@ -249,28 +249,51 @@ impl RenderElement<SkiaRenderer> for SceneElement {
 
         scene.with_arena(|arena| {
             scene.with_renderable_arena(|renderable_arena| {
-                // Clip drawing to the damaged region to avoid full-scene redraws
-                let mut damage_rect = lay_rs::skia::Rect::default();
-                for d in damage.iter() {
-                    if d.size.w <= 0 || d.size.h <= 0 {
-                        continue;
-                    }
-
-                    let r = lay_rs::skia::Rect::from_xywh(
-                        d.loc.x as f32,
-                        d.loc.y as f32,
-                        d.size.w as f32,
-                        d.size.h as f32,
-                    );
-                    damage_rect.join(r);
-                }
-                // if !damage_rect.is_empty() {
-                //     canvas.clip_rect(damage_rect, Some(lay_rs::skia::ClipOp::Intersect), None);
-                // }
                 if let Some(root_id) = root_id {
-                    // canvas.clear(lay_rs::skia::Color::TRANSPARENT);
-                    // canvas.clip_rect(damage_rect, None, None);
-                    render_node_tree(root_id, arena, renderable_arena, canvas, 1.0);
+                    // Check if we should use damage clipping or render full scene
+                    // Only use damage clipping when:
+                    // 1. Damage is provided (not empty)
+                    // 2. Damage is partial (not covering entire element)
+                    // This ensures buffer preservation is working correctly
+
+                    let should_clip = if damage.is_empty() {
+                        false // No damage info, render full
+                    } else {
+                        // Check if damage covers the entire element
+                        let total_damage_area: i32 =
+                            damage.iter().map(|r| r.size.w * r.size.h).sum();
+                        let element_area = dst.size.w * dst.size.h;
+
+                        // If damage is less than 95% of element, use clipping
+                        // (95% threshold to account for rounding)
+                        total_damage_area < (element_area * 95 / 100)
+                    };
+
+                    println!("should_clip: {}", should_clip);
+                    if should_clip {
+                        // Use Skia Region for efficient multi-rect clipping
+                        let mut clip_region = lay_rs::skia::Region::new();
+                        for d in damage.iter() {
+                            if d.size.w <= 0 || d.size.h <= 0 {
+                                continue;
+                            }
+                            let irect = lay_rs::skia::IRect::from_xywh(
+                                d.loc.x, d.loc.y, d.size.w, d.size.h,
+                            );
+                            clip_region.op_rect(&irect, lay_rs::skia::region::RegionOp::Union);
+                        }
+
+                        // Render scene once with complex clip region
+                        if !clip_region.is_empty() {
+                            canvas.save();
+                            canvas.clip_region(&clip_region, Some(lay_rs::skia::ClipOp::Intersect));
+                            render_node_tree(root_id, arena, renderable_arena, canvas, 1.0);
+                            canvas.restore();
+                        }
+                    } else {
+                        // No damage or full screen damage - render everything
+                        render_node_tree(root_id, arena, renderable_arena, canvas, 1.0);
+                    }
                     // Optional debug: outline damage rect
                     // let mut paint = lay_rs::skia::Paint::default();
                     // paint.set_color(lay_rs::skia::Color::from_argb(255, 255, 0, 0));

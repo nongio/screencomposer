@@ -116,11 +116,13 @@ pub fn setup_miniwindow_icon(layer: &Layer, inner_layer: &Layer, _icon_width: f3
 pub fn setup_label(new_layer: &Layer, label_text: String) {
     let text_size = 26.0;
     let font_family = Config::with(|config| config.font_family.clone());
-    let font = FONT_CACHE
-        .with(|font_cache| {
-            font_cache.make_font(font_family, lay_rs::skia::FontStyle::default(), text_size)
-        })
-        .unwrap();
+    let font = FONT_CACHE.with(|font_cache| {
+        font_cache.make_font_with_fallback(
+            font_family,
+            lay_rs::skia::FontStyle::default(),
+            text_size,
+        )
+    });
 
     let text = label_text.clone();
     let paint = lay_rs::skia::Paint::default();
