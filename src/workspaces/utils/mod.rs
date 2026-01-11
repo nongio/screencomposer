@@ -41,7 +41,7 @@ impl FontCache {
         if let Some(font) = self.make_font(&family, style, size) {
             return font;
         }
-        
+
         // Try common fallback fonts
         for fallback in ["sans-serif", "DejaVu Sans", "Liberation Sans", "Arial"] {
             if let Some(font) = self.make_font(fallback, style, size) {
@@ -53,10 +53,15 @@ impl FontCache {
                 return font;
             }
         }
-        
+
         // Last resort: use default typeface from font manager
-        tracing::error!("Font '{}' and all fallbacks failed, using default", family.as_ref());
-        let typeface = self.font_mgr.legacy_make_typeface(None, style)
+        tracing::error!(
+            "Font '{}' and all fallbacks failed, using default",
+            family.as_ref()
+        );
+        let typeface = self
+            .font_mgr
+            .legacy_make_typeface(None, style)
             .expect("Failed to create default typeface");
         let mut font = lay_rs::skia::Font::from_typeface(typeface, size);
         font.set_subpixel(true);

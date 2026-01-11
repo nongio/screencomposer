@@ -2,16 +2,13 @@
 ///
 /// This implements the older wlroots protocol for taskbars and window management.
 /// Used by rofi, waybar, and other wlroots-based tools.
-
 use std::sync::{Arc, Mutex};
 
-use wayland_server::{
-    Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
-};
+use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource};
 
 use wayland_protocols_wlr::foreign_toplevel::v1::server::{
-    zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1},
     zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1},
+    zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1},
 };
 
 use crate::state::{Backend, ScreenComposer};
@@ -29,13 +26,18 @@ impl WlrForeignToplevelManagerState {
             + 'static,
     {
         display.create_global::<D, ZwlrForeignToplevelManagerV1, ()>(3, ());
-        
+
         Self {
             instances: Vec::new(),
         }
     }
 
-    pub fn new_toplevel<D>(&mut self, dh: &DisplayHandle, app_id: &str, title: &str) -> WlrForeignToplevelHandle
+    pub fn new_toplevel<D>(
+        &mut self,
+        dh: &DisplayHandle,
+        app_id: &str,
+        title: &str,
+    ) -> WlrForeignToplevelHandle
     where
         D: Dispatch<ZwlrForeignToplevelHandleV1, Arc<Mutex<WlrToplevelData>>> + 'static,
     {
@@ -55,15 +57,15 @@ impl WlrForeignToplevelManagerState {
                         handle_data.clone(),
                     )
                     .ok();
-                
+
                 if let Some(handle) = handle {
                     manager.toplevel(&handle);
-                    
+
                     // Send initial state
                     handle.app_id(app_id.to_string());
                     handle.title(title.to_string());
                     handle.done();
-                    
+
                     handle_data.lock().unwrap().resources.push(handle);
                 }
             }
@@ -135,7 +137,8 @@ impl WlrForeignToplevelHandle {
 }
 
 // Implement GlobalDispatch for manager
-impl<BackendData: Backend> GlobalDispatch<ZwlrForeignToplevelManagerV1, (), ScreenComposer<BackendData>>
+impl<BackendData: Backend>
+    GlobalDispatch<ZwlrForeignToplevelManagerV1, (), ScreenComposer<BackendData>>
     for ScreenComposer<BackendData>
 {
     fn bind(
@@ -147,7 +150,9 @@ impl<BackendData: Backend> GlobalDispatch<ZwlrForeignToplevelManagerV1, (), Scre
         data_init: &mut DataInit<'_, ScreenComposer<BackendData>>,
     ) {
         let manager = data_init.init(resource, ());
-        state.wlr_foreign_toplevel_state.register_manager(manager.clone());
+        state
+            .wlr_foreign_toplevel_state
+            .register_manager(manager.clone());
 
         // Send all existing toplevels to this new manager
         for (surface_id, handles) in &state.foreign_toplevels {
@@ -161,16 +166,16 @@ impl<BackendData: Backend> GlobalDispatch<ZwlrForeignToplevelManagerV1, (), Scre
                             wlr_handle.data.clone(),
                         )
                         .ok();
-                    
+
                     if let Some(handle) = handle {
                         manager.toplevel(&handle);
-                        
+
                         // Send initial state
                         let data = wlr_handle.data.lock().unwrap();
                         handle.app_id(data.app_id.clone());
                         handle.title(data.title.clone());
                         handle.done();
-                        
+
                         // Store handle reference
                         drop(data);
                         wlr_handle.data.lock().unwrap().resources.push(handle);
@@ -196,7 +201,9 @@ impl<BackendData: Backend> Dispatch<ZwlrForeignToplevelManagerV1, (), ScreenComp
     ) {
         match request {
             zwlr_foreign_toplevel_manager_v1::Request::Stop => {
-                state.wlr_foreign_toplevel_state.unregister_manager(resource);
+                state
+                    .wlr_foreign_toplevel_state
+                    .unregister_manager(resource);
             }
             _ => {}
         }
@@ -208,12 +215,15 @@ impl<BackendData: Backend> Dispatch<ZwlrForeignToplevelManagerV1, (), ScreenComp
         resource: &ZwlrForeignToplevelManagerV1,
         _data: &(),
     ) {
-        state.wlr_foreign_toplevel_state.unregister_manager(resource);
+        state
+            .wlr_foreign_toplevel_state
+            .unregister_manager(resource);
     }
 }
 
 // Implement Dispatch for handle
-impl<BackendData: Backend> Dispatch<ZwlrForeignToplevelHandleV1, Arc<Mutex<WlrToplevelData>>, ScreenComposer<BackendData>>
+impl<BackendData: Backend>
+    Dispatch<ZwlrForeignToplevelHandleV1, Arc<Mutex<WlrToplevelData>>, ScreenComposer<BackendData>>
     for ScreenComposer<BackendData>
 {
     fn request(
@@ -250,7 +260,13 @@ impl<BackendData: Backend> Dispatch<ZwlrForeignToplevelHandleV1, Arc<Mutex<WlrTo
                 // TODO: implement close
                 tracing::debug!("wlr foreign toplevel: close requested");
             }
-            zwlr_foreign_toplevel_handle_v1::Request::SetRectangle { surface: _surface, x: _x, y: _y, width: _width, height: _height } => {
+            zwlr_foreign_toplevel_handle_v1::Request::SetRectangle {
+                surface: _surface,
+                x: _x,
+                y: _y,
+                width: _width,
+                height: _height,
+            } => {
                 // TODO: implement set_rectangle (for minimize animation)
                 tracing::debug!("wlr foreign toplevel: set_rectangle requested");
             }

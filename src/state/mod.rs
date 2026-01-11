@@ -234,8 +234,7 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub screenshare_manager: Option<crate::screenshare::ScreenshareManager>,
 
     // foreign toplevel list - maps surface ObjectId to unified toplevel handles (both protocols)
-    pub foreign_toplevels:
-        HashMap<ObjectId, foreign_toplevel_shared::ForeignToplevelHandles>,
+    pub foreign_toplevels: HashMap<ObjectId, foreign_toplevel_shared::ForeignToplevelHandles>,
 
     // sc_layer protocol
     // Map from surface ID to list of sc-layers augmenting that surface
@@ -247,18 +246,21 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     // Built during surface creation, moved into Views when they're created
     pub view_warm_cache:
         HashMap<ObjectId, HashMap<String, std::collections::VecDeque<lay_rs::prelude::NodeRef>>>,
+
+    // Rendering metrics
+    pub render_metrics: Arc<crate::render_metrics::RenderMetrics>,
 }
 
 pub mod data_device_handler;
 pub mod dnd_grab_handler;
 pub mod foreign_toplevel_list_handler;
 pub mod foreign_toplevel_shared;
-pub mod wlr_foreign_toplevel;
 pub mod fractional_scale_handler;
 pub mod input_method_handler;
 pub mod seat_handler;
 pub mod security_context_handler;
 pub mod selection_handler;
+pub mod wlr_foreign_toplevel;
 pub mod xdg_activation_handler;
 pub mod xdg_decoration_handler;
 pub mod xwayland_handler;
@@ -443,7 +445,8 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         });
         let xdg_foreign_state = XdgForeignState::new::<Self>(&dh);
         let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
-        let wlr_foreign_toplevel_state = wlr_foreign_toplevel::WlrForeignToplevelManagerState::new::<Self>(&dh);
+        let wlr_foreign_toplevel_state =
+            wlr_foreign_toplevel::WlrForeignToplevelManagerState::new::<Self>(&dh);
 
         // Create minimal sc_layer shell global
         crate::sc_layer_shell::create_layer_shell_global::<BackendData>(&dh);
@@ -479,6 +482,9 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
 
         #[cfg(feature = "debugger")]
         layers_engine.start_debugger();
+
+        // Get backend name before moving backend_data
+        let backend_name = backend_data.backend_name();
 
         let mut composer = ScreenComposer {
             backend_data,
@@ -553,6 +559,9 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             sc_transactions: HashMap::new(),
             surface_layers: HashMap::new(),
             view_warm_cache: HashMap::new(),
+
+            // render metrics
+            render_metrics: Arc::new(crate::render_metrics::RenderMetrics::new(backend_name)),
         };
 
         composer.rebuild_keycode_remap();
@@ -1472,6 +1481,7 @@ pub trait Backend {
     const HAS_RELATIVE_MOTION: bool = false;
     const HAS_GESTURES: bool = false;
     fn seat_name(&self) -> String;
+    fn backend_name(&self) -> &'static str;
     fn reset_buffers(&mut self, output: &Output);
     fn early_import(&mut self, surface: &WlSurface);
     fn texture_for_surface(&self, surface: &RendererSurfaceState) -> Option<SkiaTextureImage>;

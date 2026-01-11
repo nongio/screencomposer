@@ -3,6 +3,8 @@ static POSSIBLE_BACKENDS: &[&str] = &[
     "--winit : Run anvil as a X11 or Wayland client using winit.",
     #[cfg(feature = "udev")]
     "--tty-udev : Run anvil as a tty udev client (requires root if without logind).",
+    #[cfg(feature = "udev")]
+    "--probe : Probe available displays and resolutions, then exit.",
     #[cfg(feature = "x11")]
     "--x11 : Run anvil as an X11 client.",
 ];
@@ -32,7 +34,8 @@ async fn main() {
     profiling::register_thread!("Main Thread");
 
     #[cfg(feature = "profile-with-puffin")]
-    let _server = puffin_http::Server::new(&format!("0.0.0.0:{}", puffin_http::DEFAULT_PORT)).unwrap();
+    let _server =
+        puffin_http::Server::new(&format!("0.0.0.0:{}", puffin_http::DEFAULT_PORT)).unwrap();
     #[cfg(feature = "profile-with-puffin")]
     profiling::puffin::set_scopes_on(true);
 
@@ -49,6 +52,11 @@ async fn main() {
             tracing::info!("Starting screen-composer on a tty using udev");
             std::env::set_var("SCREEN_COMPOSER_BACKEND", "tty-udev");
             screen_composer::udev::run_udev();
+        }
+        #[cfg(feature = "udev")]
+        Some("--probe") => {
+            tracing::info!("Probing available displays and resolutions");
+            screen_composer::udev::probe_displays();
         }
         #[cfg(feature = "x11")]
         Some("--x11") => {

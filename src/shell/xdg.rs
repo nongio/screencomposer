@@ -91,17 +91,18 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         let surface_id = surface.wl_surface().id();
         let app_id = window_element.xdg_app_id();
         let title = window_element.xdg_title();
-        
+
         let ext_handle = self
             .foreign_toplevel_list_state
             .new_toplevel::<Self>(&app_id, &title);
-        let wlr_handle = self
-            .wlr_foreign_toplevel_state
-            .new_toplevel::<Self>(&self.display_handle, &app_id, &title);
-        
+        let wlr_handle = self.wlr_foreign_toplevel_state.new_toplevel::<Self>(
+            &self.display_handle,
+            &app_id,
+            &title,
+        );
+
         let handles = crate::state::foreign_toplevel_shared::ForeignToplevelHandles::new(
-            ext_handle,
-            wlr_handle,
+            ext_handle, wlr_handle,
         );
         self.foreign_toplevels.insert(surface_id.clone(), handles);
 

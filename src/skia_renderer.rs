@@ -700,50 +700,50 @@ impl Frame for SkiaFrame<'_> {
         damage: &[Rectangle<i32, Physical>],
         color: Color32F,
     ) -> Result<(), Self::Error> {
+        if damage.is_empty() {
+            return Ok(());
+        }
+
         let dest_rect = skia::Rect::from_xywh(
             dst.loc.x as f32,
             dst.loc.y as f32,
             dst.size.w as f32,
             dst.size.h as f32,
         );
-        let instances = damage
-            .iter()
-            .map(|rect| {
-                let dest_size = dst.size;
 
-                let rect_constrained_loc = rect
-                    .loc
-                    .constrain(Rectangle::from_extemities((0, 0), dest_size.to_point()));
-                let rect_clamped_size = rect.size.clamp(
-                    (0, 0),
-                    (dest_size.to_point() - rect_constrained_loc).to_size(),
-                );
-
-                let rect = Rectangle::from_loc_and_size(rect_constrained_loc, rect_clamped_size);
-                skia::Rect::from_xywh(
-                    (dst.loc.x + rect.loc.x) as f32,
-                    (dst.loc.y + rect.loc.y) as f32,
-                    (rect.size.w) as f32,
-                    (rect.size.h) as f32,
-                )
-            })
-            .collect::<Vec<skia::Rect>>();
         let color = skia::Color4f::new(color.r(), color.g(), color.b(), color.a());
-        // let red_color = skia::Color4f::new(1.0, 0.0, 0.0, 1.0);
         let mut paint = skia::Paint::new(color, None);
         paint.set_blend_mode(skia::BlendMode::Src);
 
         let mut surface = self.skia_surface.clone();
-
         let canvas = surface.canvas();
-        let mut damage_rect = skia::Rect::default();
-        for rect in instances.iter() {
-            damage_rect.join(rect);
+
+        // Render each damage rect with clipping for true partial rendering
+        for rect in damage.iter() {
+            let rect_constrained_loc = rect
+                .loc
+                .constrain(Rectangle::from_extemities((0, 0), dst.size.to_point()));
+            let rect_clamped_size = rect.size.clamp(
+                (0, 0),
+                (dst.size.to_point() - rect_constrained_loc).to_size(),
+            );
+
+            if rect_clamped_size.w <= 0 || rect_clamped_size.h <= 0 {
+                continue;
+            }
+
+            let clip_rect = skia::Rect::from_xywh(
+                (dst.loc.x + rect_constrained_loc.x) as f32,
+                (dst.loc.y + rect_constrained_loc.y) as f32,
+                rect_clamped_size.w as f32,
+                rect_clamped_size.h as f32,
+            );
+
+            canvas.save();
+            canvas.clip_rect(clip_rect, None, None);
+            canvas.draw_rect(dest_rect, &paint);
+            canvas.restore();
         }
-        canvas.save();
-        canvas.clip_rect(damage_rect, None, None);
-        canvas.draw_rect(dest_rect, &paint);
-        canvas.restore();
 
         Ok(())
     }
@@ -758,28 +758,9 @@ impl Frame for SkiaFrame<'_> {
         src_transform: Transform,
         alpha: f32,
     ) -> Result<(), Self::Error> {
-        let instances = damage
-            .iter()
-            .map(|rect| {
-                let dest_size = dst.size;
-
-                let rect_constrained_loc = rect
-                    .loc
-                    .constrain(Rectangle::from_extemities((0, 0), dest_size.to_point()));
-                let rect_clamped_size = rect.size.clamp(
-                    (0, 0),
-                    (dest_size.to_point() - rect_constrained_loc).to_size(),
-                );
-
-                let rect = Rectangle::from_loc_and_size(rect_constrained_loc, rect_clamped_size);
-                skia::Rect::from_xywh(
-                    rect.loc.x as f32,
-                    rect.loc.y as f32,
-                    rect.size.w as f32,
-                    rect.size.h as f32,
-                )
-            })
-            .collect::<Vec<skia::Rect>>();
+        if damage.is_empty() {
+            return Ok(());
+        }
 
         let image = &texture.image;
 
@@ -789,10 +770,11 @@ impl Frame for SkiaFrame<'_> {
         let mut matrix = skia::Matrix::new_identity();
 
         let mut surface = self.skia_surface.clone();
-
         let canvas = surface.canvas();
+
         let scale_x = dst.size.w as f32 / src.size.w as f32;
         let scale_y = dst.size.h as f32 / src.size.h as f32;
+
         match src_transform {
             Transform::Normal => {
                 matrix.pre_scale((scale_x, scale_y), None);
@@ -819,21 +801,45 @@ impl Frame for SkiaFrame<'_> {
             }
         }
 
-        for rect in instances.iter() {
-            let dst_rect = skia::Rect::from_xywh(
-                dst.loc.x as f32 + rect.x(),
-                dst.loc.y as f32 + rect.y(),
-                rect.width(),
-                rect.height(),
+        // Setup shader once outside loop
+        paint.set_shader(image.to_shader(
+            (skia::TileMode::Repeat, skia::TileMode::Repeat),
+            skia::SamplingOptions::default(),
+            &matrix,
+        ));
+
+        let draw_rect = skia::Rect::from_xywh(
+            dst.loc.x as f32,
+            dst.loc.y as f32,
+            dst.size.w as f32,
+            dst.size.h as f32,
+        );
+
+        // Render only damaged regions with per-rect clipping
+        for rect in damage.iter() {
+            let rect_constrained_loc = rect
+                .loc
+                .constrain(Rectangle::from_extemities((0, 0), dst.size.to_point()));
+            let rect_clamped_size = rect.size.clamp(
+                (0, 0),
+                (dst.size.to_point() - rect_constrained_loc).to_size(),
             );
 
-            paint.set_shader(image.to_shader(
-                (skia::TileMode::Repeat, skia::TileMode::Repeat),
-                skia::SamplingOptions::default(),
-                &matrix,
-            ));
+            if rect_clamped_size.w <= 0 || rect_clamped_size.h <= 0 {
+                continue;
+            }
 
-            canvas.draw_rect(dst_rect, &paint);
+            let clip_rect = skia::Rect::from_xywh(
+                (dst.loc.x + rect_constrained_loc.x) as f32,
+                (dst.loc.y + rect_constrained_loc.y) as f32,
+                rect_clamped_size.w as f32,
+                rect_clamped_size.h as f32,
+            );
+
+            canvas.save();
+            canvas.clip_rect(clip_rect, None, None);
+            canvas.draw_rect(draw_rect, &paint);
+            canvas.restore();
         }
 
         Ok(())

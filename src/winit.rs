@@ -187,6 +187,9 @@ impl Backend for WinitData {
     fn seat_name(&self) -> String {
         String::from("winit")
     }
+    fn backend_name(&self) -> &'static str {
+        "winit"
+    }
     fn reset_buffers(&mut self, _output: &Output) {
         self.full_redraw = 4;
     }
@@ -539,6 +542,9 @@ pub fn run_winit() {
             let mut renderdoc = state.renderdoc.as_mut();
 
             if should_draw {
+                // Start frame timing
+                let _frame_timer = state.render_metrics.start_frame();
+
                 let render_res = backend.bind().and_then(|_| {
                     #[cfg(feature = "debug")]
                     if let Some(renderdoc) = renderdoc.as_mut() {
@@ -606,7 +612,12 @@ pub fn run_winit() {
                     Ok(render_output_result) => {
                         let has_rendered = render_output_result.damage.is_some();
                         let mut frame_submitted = false;
-                        if let Some(damage) = render_output_result.damage {
+                        if let Some(ref damage) = render_output_result.damage {
+                            // Record damage metrics
+                            let mode = output.current_mode().unwrap();
+                            let output_size = (mode.size.w, mode.size.h);
+                            state.render_metrics.record_damage(output_size, damage);
+
                             match backend.submit(Some(damage)) {
                                 Ok(_) => {
                                     frame_submitted = true;
@@ -704,6 +715,10 @@ pub fn run_winit() {
             }
         }
         log_frame_stats();
+
+        // Log rendering metrics periodically
+        state.render_metrics.maybe_log_stats(false);
+
         // Rendering Done, prepare loop
         let wait_timeout = if needs_redraw_soon || scene_has_damage || pointer_active {
             Some(Duration::from_millis(1))
