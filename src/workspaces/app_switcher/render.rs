@@ -81,8 +81,7 @@ pub fn render_appswitcher_view(
                 lay_rs::skia::font_style::Slant::Upright,
             );
             let font = FONT_CACHE
-                .with(|font_cache| font_cache.make_font(font_family, font_style, FONT_SIZE))
-                .unwrap();
+                .with(|font_cache| font_cache.make_font_with_fallback(font_family, font_style, FONT_SIZE));
 
             // Draw text with improved rendering
             let mut text_paint =
