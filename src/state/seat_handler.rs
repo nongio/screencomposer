@@ -38,7 +38,8 @@ impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
     }
 
     fn cursor_image(&mut self, _seat: &smithay::input::Seat<Self>, image: CursorImageStatus) {
-        *self.cursor_status.lock().unwrap() = image;
+        *self.cursor_status.lock().unwrap() = image.clone();
+        self.cursor_manager.set_cursor_image(image);
     }
     fn led_state_changed(
         &mut self,
@@ -51,9 +52,9 @@ impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
 
 impl<BackendData: Backend> TabletSeatHandler for ScreenComposer<BackendData> {
     fn tablet_tool_image(&mut self, _tool: &TabletToolDescriptor, image: CursorImageStatus) {
-        // TODO: tablet tools should have their own cursors
         let mut cursor_status = self.cursor_status.lock().unwrap();
-        *cursor_status = image;
+        *cursor_status = image.clone();
+        self.cursor_manager.set_cursor_image(image);
     }
 }
 

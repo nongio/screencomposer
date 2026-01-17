@@ -19,9 +19,9 @@ use smithay::{
         },
         utils::{RendererSurfaceState, RendererSurfaceStateUserData},
     },
-    delegate_compositor, delegate_keyboard_shortcuts_inhibit, delegate_layer_shell,
-    delegate_output, delegate_pointer_gestures, delegate_presentation, delegate_relative_pointer,
-    delegate_shm, delegate_text_input_manager, delegate_viewporter,
+    delegate_compositor, delegate_cursor_shape, delegate_keyboard_shortcuts_inhibit,
+    delegate_layer_shell, delegate_output, delegate_pointer_gestures, delegate_presentation,
+    delegate_relative_pointer, delegate_shm, delegate_text_input_manager, delegate_viewporter,
     delegate_virtual_keyboard_manager, delegate_xdg_foreign, delegate_xdg_shell,
     desktop::{
         utils::{
@@ -56,6 +56,7 @@ use smithay::{
             self, CompositorClientState, CompositorState, SurfaceAttributes, SurfaceData,
             TraversalAction,
         },
+        cursor_shape::CursorShapeManagerState,
         dmabuf::DmabufFeedback,
         foreign_toplevel_list::ForeignToplevelListState,
         fractional_scale::{with_fractional_scale, FractionalScaleManagerState},
@@ -89,8 +90,7 @@ use smithay::{
     },
 };
 
-#[cfg(feature = "xwayland")]
-use crate::cursor::Cursor;
+use crate::cursor::{CursorManager, CursorTextureCache};
 use crate::{
     config::{Config, ModifierMaskLookup},
     focus::KeyboardFocusTarget,
@@ -192,6 +192,7 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub xdg_foreign_state: XdgForeignState,
     pub foreign_toplevel_list_state: ForeignToplevelListState,
     pub wlr_foreign_toplevel_state: wlr_foreign_toplevel::WlrForeignToplevelManagerState,
+    pub cursor_shape_manager_state: CursorShapeManagerState,
 
     #[cfg(feature = "xwayland")]
     pub xwayland_shell_state: xwayland_shell::XWaylandShellState,
@@ -205,6 +206,8 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub app_switcher_hold_modifiers: Option<ModifiersState>,
     pub modifier_masks: ModifierMaskLookup,
     pub cursor_status: Arc<Mutex<CursorImageStatus>>,
+    pub cursor_manager: CursorManager,
+    pub cursor_texture_cache: CursorTextureCache,
     pub seat_name: String,
     pub seat: Seat<ScreenComposer<BackendData>>,
     pub clock: Clock<Monotonic>,
@@ -340,6 +343,7 @@ impl<BackendData: Backend> XdgForeignHandler for ScreenComposer<BackendData> {
 delegate_compositor!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 delegate_output!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 delegate_shm!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_cursor_shape!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 delegate_text_input_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 delegate_keyboard_shortcuts_inhibit!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 delegate_virtual_keyboard_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
@@ -451,12 +455,16 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         let mut seat = seat_state.new_wl_seat(&dh, seat_name.clone());
 
         let cursor_status = Arc::new(Mutex::new(CursorImageStatus::default_named()));
+        let (cursor_theme, cursor_size) = Config::with(|c| (c.cursor_theme.clone(), c.cursor_size));
+        let cursor_manager = CursorManager::new(&cursor_theme, cursor_size as u8);
+        let cursor_texture_cache = CursorTextureCache::default();
         let pointer = seat.add_pointer();
         let k = Config::with(|c| (c.keyboard_repeat_delay, c.keyboard_repeat_rate));
         seat.add_keyboard(XkbConfig::default(), k.0, k.1)
             .expect("Failed to initialize the keyboard");
 
         let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
+        let cursor_shape_manager_state = CursorShapeManagerState::new::<Self>(&dh);
 
         #[cfg(feature = "xwayland")]
         let xwayland_shell_state = xwayland_shell::XWaylandShellState::new::<Self>(&dh.clone());
@@ -512,6 +520,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             xdg_foreign_state,
             foreign_toplevel_list_state,
             wlr_foreign_toplevel_state,
+            cursor_shape_manager_state,
             dnd_icon: None,
             suppressed_keys: Vec::new(),
             keycode_remap: HashMap::new(),
@@ -519,6 +528,8 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             app_switcher_hold_modifiers: None,
             modifier_masks: ModifierMaskLookup::default(),
             cursor_status,
+            cursor_manager,
+            cursor_texture_cache,
             seat_name,
             seat,
             pointer,

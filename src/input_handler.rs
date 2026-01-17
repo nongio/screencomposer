@@ -1167,6 +1167,9 @@ impl ScreenComposer<UdevData> {
         self.layers_engine
             .pointer_move(&(pos.x as f32, pos.y as f32).into(), None);
 
+        // Schedule a redraw to update the cursor position
+        self.schedule_event_loop_dispatch();
+
         // If pointer is now in a constraint region, activate it
         // TODO Anywhere else pointer is moved needs to do this
         if let Some((under, surface_location)) =
@@ -1228,6 +1231,15 @@ impl ScreenComposer<UdevData> {
             },
         );
         pointer.frame(self);
+
+        let scale = Config::with(|c| c.screen_scale);
+        let pos = pointer_location.to_physical(scale);
+
+        self.layers_engine
+            .pointer_move(&(pos.x as f32, pos.y as f32).into(), None);
+
+        // Schedule a redraw to update the cursor position
+        self.schedule_event_loop_dispatch();
     }
 
     fn on_tablet_tool_axis<B: InputBackend>(&mut self, evt: B::TabletToolAxisEvent) {

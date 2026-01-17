@@ -269,7 +269,6 @@ impl RenderElement<SkiaRenderer> for SceneElement {
                         total_damage_area < (element_area * 95 / 100)
                     };
 
-                    println!("should_clip: {}", should_clip);
                     if should_clip {
                         // Use Skia Region for efficient multi-rect clipping
                         let mut clip_region = lay_rs::skia::Region::new();
@@ -280,7 +279,7 @@ impl RenderElement<SkiaRenderer> for SceneElement {
                             let irect = lay_rs::skia::IRect::from_xywh(
                                 d.loc.x, d.loc.y, d.size.w, d.size.h,
                             );
-                            clip_region.op_rect(&irect, lay_rs::skia::region::RegionOp::Union);
+                            clip_region.op_rect(irect, lay_rs::skia::region::RegionOp::Union);
                         }
 
                         // Render scene once with complex clip region
@@ -298,9 +297,17 @@ impl RenderElement<SkiaRenderer> for SceneElement {
                     // let mut paint = lay_rs::skia::Paint::default();
                     // paint.set_color(lay_rs::skia::Color::from_argb(255, 255, 0, 0));
                     // paint.set_stroke(true);
-                    // paint.set_stroke_width(5.0);
-                    // if !damage_rect.is_empty() {
-                    //     canvas.draw_rect(damage_rect, &paint);
+                    // paint.set_stroke_width(1.0);
+                    // for damage_rect in damage.iter() {
+                    //     if !damage_rect.is_empty() {
+                    //         let r = lay_rs::skia::Rect::from_xywh(
+                    //             damage_rect.loc.x as f32,
+                    //             damage_rect.loc.y as f32,
+                    //             damage_rect.size.w as f32,
+                    //             damage_rect.size.h as f32,
+                    //         );
+                    //         canvas.draw_rect(r, &paint);
+                    //     }
                     // }
                     // let typeface = crate::workspace::utils::FONT_CACHE
                     // .with(|font_cache| {

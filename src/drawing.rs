@@ -2,16 +2,9 @@
 
 use smithay::{
     backend::renderer::{
-        element::{
-            surface::WaylandSurfaceRenderElement,
-            texture::{TextureBuffer, TextureRenderElement},
-            AsRenderElements, Kind,
-        },
-        ImportAll, ImportMem, Renderer, Texture,
+        element::surface::WaylandSurfaceRenderElement, ImportAll, ImportMem, Renderer,
     },
-    input::pointer::{CursorIcon, CursorImageStatus},
     render_elements,
-    utils::{Physical, Point, Scale},
 };
 #[cfg(feature = "fps_ticker")]
 use smithay::{
@@ -23,108 +16,24 @@ use smithay::{
     utils::{Buffer, Logical, Rectangle, Size, Transform},
 };
 
-use crate::cursor::Cursor;
-
 pub static CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 pub static CLEAR_COLOR_FULLSCREEN: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
 
-pub struct PointerElement<T: Texture> {
-    texture: Option<TextureBuffer<T>>,
-    status: CursorImageStatus,
-    pub cursor_manager: Cursor,
-}
-
-impl<T: Texture> Default for PointerElement<T> {
-    fn default() -> Self {
-        Self {
-            texture: Default::default(),
-            status: CursorImageStatus::default_named(),
-            cursor_manager: Cursor::load(),
-        }
-    }
-}
-
-impl<T: Texture> PointerElement<T> {
-    pub fn set_status(&mut self, status: CursorImageStatus) {
-        if let CursorImageStatus::Named(cursor_name) = status {
-            self.cursor_manager.load_icon(cursor_name.name());
-            if cursor_name != CursorIcon::Default {
-                // println!("Loading name: {:?}", status);
-            }
-        }
-        self.status = status;
-    }
-
-    pub fn set_texture(&mut self, texture: TextureBuffer<T>) {
-        self.texture = Some(texture);
-    }
-}
+// Old PointerElement removed - cursor rendering now handled directly in backends using CursorManager
 
 render_elements! {
     pub PointerRenderElement<R> where
-        R: ImportAll;
+        R: ImportAll + ImportMem;
     Surface=WaylandSurfaceRenderElement<R>,
-    Texture=TextureRenderElement<<R as Renderer>::TextureId>,
+    Memory=smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement<R>,
 }
 
 impl<R: Renderer> std::fmt::Debug for PointerRenderElement<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Surface(arg0) => f.debug_tuple("Surface").field(arg0).finish(),
-            Self::Texture(arg0) => f.debug_tuple("Texture").field(arg0).finish(),
+            Self::Memory(arg0) => f.debug_tuple("Memory").field(arg0).finish(),
             Self::_GenericCatcher(arg0) => f.debug_tuple("_GenericCatcher").field(arg0).finish(),
-        }
-    }
-}
-
-impl<T: Texture + Clone + 'static, R> AsRenderElements<R> for PointerElement<T>
-where
-    R: Renderer<TextureId = T> + ImportAll + ImportMem,
-{
-    type RenderElement = PointerRenderElement<R>;
-    fn render_elements<E>(
-        &self,
-        renderer: &mut R,
-        location: Point<i32, Physical>,
-        scale: Scale<f64>,
-        alpha: f32,
-    ) -> Vec<E>
-    where
-        E: From<PointerRenderElement<R>>,
-    {
-        match &self.status {
-            CursorImageStatus::Hidden => vec![],
-            // Always render `Default` for a named shape.
-            CursorImageStatus::Named(_) => {
-                if let Some(texture) = self.texture.as_ref() {
-                    vec![PointerRenderElement::<R>::from(
-                        TextureRenderElement::from_texture_buffer(
-                            location.to_f64(),
-                            texture,
-                            None,
-                            None,
-                            None,
-                            Kind::Cursor,
-                        ),
-                    )
-                    .into()]
-                } else {
-                    vec![]
-                }
-            }
-            CursorImageStatus::Surface(surface) => {
-                let elements: Vec<PointerRenderElement<R>> =
-                    smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
-                        renderer,
-                        surface,
-                        location,
-                        scale,
-                        alpha,
-                        Kind::Cursor,
-                    );
-
-                elements.into_iter().map(E::from).collect()
-            }
         }
     }
 }

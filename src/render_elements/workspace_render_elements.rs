@@ -1,6 +1,9 @@
 use smithay::{
     backend::renderer::{
-        element::{Element, Id, RenderElement},
+        element::{
+            memory::MemoryRenderBufferRenderElement, surface::WaylandSurfaceRenderElement, Element,
+            Id, RenderElement,
+        },
         utils::{CommitCounter, DamageSet},
         ImportAll, ImportMem,
     },
@@ -19,6 +22,8 @@ smithay::backend::renderer::element::render_elements! {
         R: ImportAll + ImportMem + 'a,
         SceneElement: (RenderElement<R>);
     Pointer=PointerRenderElement<R>,
+    Cursor=MemoryRenderBufferRenderElement<R>,
+    Surface=WaylandSurfaceRenderElement<R>,
     Scene=SceneElement,
     // this is needed to make the macro work with a lifetime specifier in the where clauses
     PhantomElement=PhantomElement<'a>,

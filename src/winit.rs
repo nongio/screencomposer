@@ -19,8 +19,8 @@ use smithay::{
         egl::{context::GlAttributes, EGLDevice},
         renderer::{
             damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
-            element::AsRenderElements,
-            utils::{import_surface, RendererSurfaceState, RendererSurfaceStateUserData},
+            element::Kind,
+            utils::{import_surface, RendererSurfaceState},
             ImportDma, ImportMemWl,
         },
         winit::{self, WinitEvent, WinitGraphicsBackend},
@@ -39,7 +39,8 @@ use smithay::{
             window::WindowAttributes,
         },
     },
-    utils::{IsAlive, Transform},
+    utils::{IsAlive, Scale, Transform},
+    wayland::presentation::Refresh,
     wayland::{
         compositor::{self, with_states},
         dmabuf::{
@@ -52,11 +53,10 @@ use tracing::{error, info, warn};
 
 use crate::{
     config::{Config, DisplayDescriptor, DisplayKind, DisplayResolution, WINIT_DISPLAY_ID},
-    drawing::*,
     render::*,
     render_elements::workspace_render_elements::WorkspaceRenderElements,
     shell::WindowElement,
-    skia_renderer::{SkiaRenderer, SkiaTexture, SkiaTextureImage},
+    skia_renderer::{SkiaRenderer, SkiaTextureImage},
     state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
 };
 
@@ -381,8 +381,6 @@ pub fn run_winit() {
 
     info!("Initialization completed, starting the main loop.");
 
-    let mut pointer_element = PointerElement::<SkiaTexture>::default();
-
     // rendering / events loop
     while state.running.load(Ordering::SeqCst) {
         #[cfg(feature = "profile-with-puffin")]
@@ -439,22 +437,20 @@ pub fn run_winit() {
 
             let mut cursor_guard = state.cursor_status.lock().unwrap();
 
-            // draw the cursor as relevant
-            // reset the cursor if the surface is no longer alive
-            let mut reset = false;
+            // Check if cursor surface is alive, reset if not
             if let CursorImageStatus::Surface(ref surface) = *cursor_guard {
-                reset = !surface.alive();
+                if !surface.alive() {
+                    *cursor_guard = CursorImageStatus::default_named();
+                    state
+                        .cursor_manager
+                        .set_cursor_image(CursorImageStatus::default_named());
+                }
             }
-            if reset {
-                *cursor_guard = CursorImageStatus::default_named();
-            }
-            let cursor_visible = !matches!(*cursor_guard, CursorImageStatus::Surface(_));
 
+            // Set window cursor for named cursors (for window manager integration)
             if let CursorImageStatus::Named(cursor) = *cursor_guard {
                 backend.window().set_cursor(cursor);
             }
-
-            pointer_element.set_status(cursor_guard.clone());
 
             #[cfg(feature = "fps_ticker")]
             let fps = state.backend_data.fps.avg().round() as u32;
@@ -468,69 +464,11 @@ pub fn run_winit() {
             let damage_tracker = &mut state.backend_data.damage_tracker;
 
             let output_scale = output.current_scale().fractional_scale();
-            let cursor_config_size = Config::with(|c| c.cursor_size);
-            // let cursor_config_physical_size = cursor_config_size as f64 * output_scale;
-            let (_cursor_phy_size, cursor_hotspot) = match *cursor_guard {
-                CursorImageStatus::Surface(ref surface) => {
-                    compositor::with_states(surface, |states| {
-                        let data = states.data_map.get::<RendererSurfaceStateUserData>();
-                        let (size, cursor_scale) = data
-                            .map(|data| {
-                                let data = data.lock().unwrap();
-                                if let Some(view) = data.view().as_ref() {
-                                    let surface_scale = data.buffer_scale() as f64;
-                                    // println!("surface_scale: {}", surface_scale);
-                                    let src_view = view.src.to_physical(surface_scale);
-                                    (src_view.size, surface_scale)
-                                } else {
-                                    (
-                                        (cursor_config_size as f64, cursor_config_size as f64)
-                                            .into(),
-                                        1.0,
-                                    )
-                                }
-                            })
-                            .unwrap_or_else(|| {
-                                (
-                                    (
-                                        cursor_config_size as f64 * output_scale,
-                                        cursor_config_size as f64 * output_scale,
-                                    )
-                                        .into(),
-                                    1.0,
-                                )
-                            });
-                        (
-                            size,
-                            states
-                                .data_map
-                                .get::<Mutex<CursorImageAttributes>>()
-                                .unwrap()
-                                .lock()
-                                .unwrap()
-                                .hotspot
-                                .to_f64()
-                                .to_physical(cursor_scale),
-                        )
-                    })
-                }
-                _ => (
-                    (
-                        cursor_config_size as f64 * output_scale,
-                        cursor_config_size as f64 * output_scale,
-                    )
-                        .into(),
-                    (0.0, 0.0).into(),
-                ),
-            };
-
-            let cursor_rescale = 1.0; //cursor_config_physical_size / cursor_phy_size.w;
-
+            let scale = Scale::from(output_scale);
             let cursor_pos = state.pointer.current_location();
-            let cursor_pos_scaled =
-                (cursor_pos.to_physical(output_scale) - cursor_hotspot).to_i32_round();
 
-            // println!("cursor phy size: {:?}, config_phy {:?} should_scale: {}", cursor_phy_size, cursor_config_physical_size, cursor_rescale);
+            // Determine if we should render cursor ourselves (for client surfaces)
+            let cursor_visible = !matches!(*cursor_guard, CursorImageStatus::Surface(_));
             let pointer_uses_surface = !cursor_visible;
             let should_draw = scene_has_damage
                 || needs_redraw_soon
@@ -573,13 +511,39 @@ pub fn run_winit() {
 
                     let mut elements = Vec::<WorkspaceRenderElements<_>>::new();
 
-                    // Collect render elements
-                    elements.extend(pointer_element.render_elements(
-                        renderer,
-                        cursor_pos_scaled,
-                        (cursor_rescale).into(),
-                        1.0,
-                    ));
+                    // Render cursor for client surfaces (Named cursors handled by window manager)
+                    if matches!(*cursor_guard, CursorImageStatus::Surface(_)) {
+                        let cursor_elements = match &*cursor_guard {
+                            CursorImageStatus::Surface(ref surface) => {
+                                let hotspot = compositor::with_states(surface, |states| {
+                                    states
+                                        .data_map
+                                        .get::<Mutex<CursorImageAttributes>>()
+                                        .unwrap()
+                                        .lock()
+                                        .unwrap()
+                                        .hotspot
+                                });
+                                
+                                let pointer_pos = (cursor_pos - hotspot.to_f64()).to_physical_precise_round(scale);
+                                
+                                use smithay::backend::renderer::element::surface::render_elements_from_surface_tree;
+                                let elements: Vec<WorkspaceRenderElements<_>> = 
+                                    render_elements_from_surface_tree(
+                                        renderer,
+                                        surface,
+                                        pointer_pos,
+                                        scale,
+                                        1.0,
+                                        Kind::Unspecified, // Don't use Cursor for winit (no HW plane)
+                                    );
+                                elements
+                            }
+                            _ => vec![],
+                        };
+                        elements.extend(cursor_elements);
+                    }
+
                     #[cfg(feature = "fps_ticker")]
                     elements.push(WorkspaceRenderElements::Fps(fps_element.clone()));
 
@@ -612,7 +576,7 @@ pub fn run_winit() {
                     Ok(render_output_result) => {
                         let has_rendered = render_output_result.damage.is_some();
                         let mut frame_submitted = false;
-                        if let Some(ref damage) = render_output_result.damage {
+                        if let Some(damage) = render_output_result.damage {
                             // Record damage metrics
                             let mode = output.current_mode().unwrap();
                             let output_size = (mode.size.w, mode.size.h);

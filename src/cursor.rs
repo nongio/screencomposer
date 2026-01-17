@@ -1,126 +1,290 @@
-use std::{collections::HashMap, io::Read, time::Duration};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::env;
+use std::fs::File;
+use std::io::Read;
+use std::rc::Rc;
 
+use anyhow::{anyhow, Context};
+use smithay::backend::allocator::Fourcc;
+use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
+use smithay::input::pointer::{CursorIcon, CursorImageStatus, CursorImageSurfaceData};
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::utils::{IsAlive, Logical, Physical, Point, Transform};
+use smithay::wayland::compositor::with_states;
 use tracing::warn;
-use xcursor::{
-    parser::{parse_xcursor, Image},
-    CursorTheme,
-};
-
-use crate::config::Config;
+use xcursor::parser::{parse_xcursor, Image};
+use xcursor::CursorTheme;
 
 static FALLBACK_CURSOR_DATA: &[u8] = include_bytes!("../resources/cursor.rgba");
 
-pub struct Cursor {
-    pub size: u32,
-    icons: HashMap<String, Vec<Image>>,
-    current: String,
-    theme: String,
+type XCursorCache = HashMap<(CursorIcon, i32), Option<Rc<XCursor>>>;
+
+pub struct CursorManager {
+    theme: CursorTheme,
+    size: u8,
+    current_cursor: CursorImageStatus,
+    named_cursor_cache: RefCell<XCursorCache>,
 }
 
-impl Cursor {
-    pub fn load() -> Cursor {
-        let cursor_theme_name = Config::with(|config| config.cursor_theme.clone());
-        let size = Config::with(|config| config.cursor_size);
+impl CursorManager {
+    pub fn new(theme: &str, size: u8) -> Self {
+        Self::ensure_env(theme, size);
 
-        let theme = CursorTheme::load(&cursor_theme_name);
-        let default_cursor = load_icon(&theme, "default")
-            .map_err(|err| warn!("Unable to load xcursor: {}, using fallback cursor", err))
-            .unwrap_or_else(|_| {
-                vec![Image {
-                    size: 32,
-                    width: 64,
-                    height: 64,
-                    xhot: 1,
-                    yhot: 1,
-                    delay: 1,
-                    pixels_rgba: Vec::from(FALLBACK_CURSOR_DATA),
-                    pixels_argb: vec![], //unused
-                }]
-            });
-        let mut icons = HashMap::new();
-        icons.insert("default".to_string(), default_cursor);
+        let theme = CursorTheme::load(theme);
 
-        Cursor {
+        Self {
+            theme,
             size,
-            icons,
-            theme: cursor_theme_name,
-            current: "default".to_string(),
+            current_cursor: CursorImageStatus::default_named(),
+            named_cursor_cache: Default::default(),
         }
     }
-    pub fn load_icon(&mut self, name: &str) {
-        self.current = name.to_string();
-        if self.icons.contains_key(name) {
-            return;
+
+    pub fn reload(&mut self, theme: &str, size: u8) {
+        Self::ensure_env(theme, size);
+        self.theme = CursorTheme::load(theme);
+        self.size = size;
+        self.named_cursor_cache.get_mut().clear();
+    }
+
+    pub fn check_cursor_image_surface_alive(&mut self) {
+        if let CursorImageStatus::Surface(surface) = &self.current_cursor {
+            if !surface.alive() {
+                self.current_cursor = CursorImageStatus::default_named();
+            }
+        }
+    }
+
+    pub fn get_render_cursor(&self, scale: i32) -> RenderCursor {
+        match self.current_cursor.clone() {
+            CursorImageStatus::Hidden => RenderCursor::Hidden,
+            CursorImageStatus::Surface(surface) => {
+                let hotspot = with_states(&surface, |states| {
+                    states
+                        .data_map
+                        .get::<CursorImageSurfaceData>()
+                        .unwrap()
+                        .lock()
+                        .unwrap()
+                        .hotspot
+                });
+
+                RenderCursor::Surface { hotspot, surface }
+            }
+            CursorImageStatus::Named(icon) => self.get_render_cursor_named(icon, scale),
+        }
+    }
+
+    fn get_render_cursor_named(&self, icon: CursorIcon, scale: i32) -> RenderCursor {
+        self.get_cursor_with_name(icon, scale)
+            .map(|cursor| RenderCursor::Named {
+                icon,
+                scale,
+                cursor,
+            })
+            .unwrap_or_else(|| RenderCursor::Named {
+                icon: Default::default(),
+                scale,
+                cursor: self.get_default_cursor(scale),
+            })
+    }
+
+    pub fn is_current_cursor_animated(&self, scale: i32) -> bool {
+        match &self.current_cursor {
+            CursorImageStatus::Hidden => false,
+            CursorImageStatus::Surface(_) => false,
+            CursorImageStatus::Named(icon) => self
+                .get_cursor_with_name(*icon, scale)
+                .unwrap_or_else(|| self.get_default_cursor(scale))
+                .is_animated_cursor(),
+        }
+    }
+
+    pub fn get_cursor_with_name(&self, icon: CursorIcon, scale: i32) -> Option<Rc<XCursor>> {
+        self.named_cursor_cache
+            .borrow_mut()
+            .entry((icon, scale))
+            .or_insert_with_key(|(icon, scale)| {
+                let size = self.size as i32 * scale;
+                let mut cursor = Self::load_xcursor(&self.theme, icon.name(), size);
+
+                if cursor.is_err() {
+                    for name in icon.alt_names() {
+                        cursor = Self::load_xcursor(&self.theme, name, size);
+                        if cursor.is_ok() {
+                            break;
+                        }
+                    }
+                }
+
+                if let Err(err) = &cursor {
+                    warn!("error loading xcursor {}@{size}: {err:?}", icon.name());
+                }
+
+                if *icon == CursorIcon::Default && cursor.is_err() {
+                    cursor = Ok(Self::fallback_cursor());
+                }
+
+                cursor.ok().map(Rc::new)
+            })
+            .clone()
+    }
+
+    pub fn get_default_cursor(&self, scale: i32) -> Rc<XCursor> {
+        self.get_cursor_with_name(CursorIcon::Default, scale)
+            .unwrap()
+    }
+
+    pub fn cursor_image(&self) -> &CursorImageStatus {
+        &self.current_cursor
+    }
+
+    pub fn set_cursor_image(&mut self, cursor: CursorImageStatus) {
+        self.current_cursor = cursor;
+    }
+
+    fn load_xcursor(theme: &CursorTheme, name: &str, size: i32) -> anyhow::Result<XCursor> {
+        let path = theme
+            .load_icon(name)
+            .ok_or_else(|| anyhow!("no default icon"))?;
+
+        let mut file = File::open(path).context("error opening cursor icon file")?;
+        let mut buf = vec![];
+        file.read_to_end(&mut buf)
+            .context("error reading cursor icon file")?;
+
+        let mut images = parse_xcursor(&buf).context("error parsing cursor icon file")?;
+
+        let (width, height) = images
+            .iter()
+            .min_by_key(|image| (size - image.size as i32).abs())
+            .map(|image| (image.width, image.height))
+            .unwrap();
+
+        images.retain(move |image| image.width == width && image.height == height);
+
+        let animation_duration = images.iter().fold(0, |acc, image| acc + image.delay);
+
+        Ok(XCursor {
+            images,
+            animation_duration,
+        })
+    }
+
+    fn ensure_env(theme: &str, size: u8) {
+        env::set_var("XCURSOR_THEME", theme);
+        env::set_var("XCURSOR_SIZE", size.to_string());
+    }
+
+    fn fallback_cursor() -> XCursor {
+        let images = vec![Image {
+            size: 32,
+            width: 64,
+            height: 64,
+            xhot: 1,
+            yhot: 1,
+            delay: 0,
+            pixels_rgba: Vec::from(FALLBACK_CURSOR_DATA),
+            pixels_argb: vec![],
+        }];
+
+        XCursor {
+            images,
+            animation_duration: 0,
+        }
+    }
+}
+
+pub enum RenderCursor {
+    Hidden,
+    Surface {
+        hotspot: Point<i32, Logical>,
+        surface: WlSurface,
+    },
+    Named {
+        icon: CursorIcon,
+        scale: i32,
+        cursor: Rc<XCursor>,
+    },
+}
+
+type TextureCache = HashMap<(CursorIcon, i32), Vec<MemoryRenderBuffer>>;
+
+#[derive(Default)]
+pub struct CursorTextureCache {
+    cache: RefCell<TextureCache>,
+}
+
+impl CursorTextureCache {
+    pub fn clear(&mut self) {
+        self.cache.get_mut().clear();
+    }
+
+    pub fn get(
+        &self,
+        icon: CursorIcon,
+        scale: i32,
+        cursor: &XCursor,
+        idx: usize,
+    ) -> MemoryRenderBuffer {
+        self.cache
+            .borrow_mut()
+            .entry((icon, scale))
+            .or_insert_with(|| {
+                cursor
+                    .frames()
+                    .iter()
+                    .map(|frame| {
+                        MemoryRenderBuffer::from_slice(
+                            &frame.pixels_rgba,
+                            Fourcc::Argb8888,
+                            (frame.width as i32, frame.height as i32),
+                            scale,
+                            Transform::Normal,
+                            None,
+                        )
+                    })
+                    .collect()
+            })[idx]
+            .clone()
+    }
+}
+
+pub struct XCursor {
+    images: Vec<Image>,
+    animation_duration: u32,
+}
+
+impl XCursor {
+    pub fn frame(&self, mut millis: u32) -> (usize, &Image) {
+        if self.animation_duration == 0 {
+            return (0, &self.images[0]);
         }
 
-        let theme = CursorTheme::load(&self.theme);
-        let cursor = load_icon(&theme, name)
-            .map_err(|err| warn!("Unable to load xcursor: {}, using fallback cursor", err))
-            .unwrap_or_else(|_| {
-                vec![Image {
-                    size: 32,
-                    width: 64,
-                    height: 64,
-                    xhot: 1,
-                    yhot: 1,
-                    delay: 1,
-                    pixels_rgba: Vec::from(FALLBACK_CURSOR_DATA),
-                    pixels_argb: vec![], //unused
-                }]
-            });
+        millis %= self.animation_duration;
 
-        self.icons.insert(name.to_string(), cursor);
-    }
-    pub fn get_image(&self, scale: f32, time: Duration) -> Image {
-        let size = (self.size as f32 * scale).round() as u32;
-        frame(
-            time.as_millis() as u32,
-            size,
-            self.icons.get(&self.current).unwrap(),
-        )
-    }
-}
-
-fn nearest_images(size: u32, images: &[Image]) -> impl Iterator<Item = &Image> {
-    // Follow the nominal size of the cursor to choose the nearest
-    let nearest_image = images
-        .iter()
-        .min_by_key(|image| (size as i32 - image.size as i32).abs())
-        .unwrap();
-
-    images.iter().filter(move |image| {
-        image.width == nearest_image.width && image.height == nearest_image.height
-    })
-}
-
-fn frame(mut millis: u32, size: u32, images: &[Image]) -> Image {
-    let total = nearest_images(size, images).fold(0, |acc, image| acc + image.delay);
-    millis %= total;
-
-    for img in nearest_images(size, images) {
-        if millis < img.delay {
-            return img.clone();
+        let mut res = 0;
+        for (i, img) in self.images.iter().enumerate() {
+            if millis < img.delay {
+                res = i;
+                break;
+            }
+            millis -= img.delay;
         }
-        millis -= img.delay;
+
+        (res, &self.images[res])
     }
 
-    unreachable!()
-}
+    pub fn frames(&self) -> &[Image] {
+        &self.images
+    }
 
-#[derive(thiserror::Error, Debug)]
-enum Error {
-    #[error("Theme has no default cursor")]
-    NoDefaultCursor,
-    #[error("Error opening xcursor file: {0}")]
-    File(#[from] std::io::Error),
-    #[error("Failed to parse XCursor file")]
-    Parse,
-}
+    pub fn is_animated_cursor(&self) -> bool {
+        self.images.len() > 1
+    }
 
-fn load_icon(theme: &CursorTheme, icon_name: &str) -> Result<Vec<Image>, Error> {
-    let icon_path = theme.load_icon(icon_name).ok_or(Error::NoDefaultCursor)?;
-    let mut cursor_file = std::fs::File::open(icon_path)?;
-    let mut cursor_data = Vec::new();
-    cursor_file.read_to_end(&mut cursor_data)?;
-    parse_xcursor(&cursor_data).ok_or(Error::Parse)
+    pub fn hotspot(image: &Image) -> Point<i32, Physical> {
+        (image.xhot as i32, image.yhot as i32).into()
+    }
 }
