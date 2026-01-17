@@ -951,7 +951,8 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 let warm_cache = self.view_warm_cache.remove(&popup_id);
 
                 // Send popup to the overlay layer with warm cache and register its surface layers
-                let popup_layers = self.workspaces.popup_overlay.update_popup(
+                #[allow(clippy::mutable_key_type)]
+            let popup_layers = self.workspaces.popup_overlay.update_popup(
                     &popup_id,
                     &id,
                     popup_position,
@@ -1271,7 +1272,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 let sub_id = sub_surface.id();
                 if let Some(layer) = self.surface_layers.get(&sub_id) {
                     let key = format!("surface_{:?}", sub_id);
-                    view.viewlayer_node_map_insert(key, layer.id.into());
+                    view.viewlayer_node_map_insert(key, layer.id);
                     tracing::debug!("Injected layer into view cache for {:?}", sub_id);
                 }
             },
