@@ -63,5 +63,5 @@ define_colors!(COLORS, {
     materials_controls_under_window_background => "#F6F6F6D6",
     materials_controls_fullscreen => "#28282880",
     materials_controls_hud => "#28282880",
-    shadow_color => "#00000066",
+    shadow_color => "#1b1b1b66",
 });

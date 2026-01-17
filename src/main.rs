@@ -35,7 +35,7 @@ async fn main() {
 
     #[cfg(feature = "profile-with-puffin")]
     let _server =
-        puffin_http::Server::new(&format!("0.0.0.0:{}", puffin_http::DEFAULT_PORT)).unwrap();
+        puffin_http::Server::new(&format!("0.0.0.0:{}", puffin_http::DEFAULT_PORT));
     #[cfg(feature = "profile-with-puffin")]
     profiling::puffin::set_scopes_on(true);
 
