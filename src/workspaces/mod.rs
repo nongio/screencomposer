@@ -1381,23 +1381,71 @@ impl Workspaces {
         let output_geometry = output
             .and_then(|o| {
                 let geo = self.output_geometry(&o)?;
+                tracing::info!("new_window_placement: output geometry = {:?}", geo);
+                
                 let map = layer_map_for_output(&o);
                 let zone = map.non_exclusive_zone();
-                Some(Rectangle::from_loc_and_size(geo.loc + zone.loc, zone.size))
+                tracing::info!("new_window_placement: non_exclusive_zone = {:?}", zone);
+                
+                let mut adjusted = Rectangle::from_loc_and_size(geo.loc + zone.loc, zone.size);
+                tracing::info!("new_window_placement: adjusted geometry (geo.loc + zone.loc, zone.size) = {:?}", adjusted);
+                
+                // Account for the dock geometry (internal compositor UI, not layer-shell)
+                let dock_geom = self.get_dock_geometry();
+                tracing::info!("new_window_placement: dock geometry = {:?}", dock_geom);
+                
+                if dock_geom.size.h > 0 {
+                    let dock_top = dock_geom.loc.y;
+                    let available_bottom = adjusted.loc.y + adjusted.size.h;
+                    
+                    // If dock is in the usable area, reduce height to stop above dock
+                    if dock_top < available_bottom {
+                        adjusted.size.h = dock_top - adjusted.loc.y;
+                        tracing::info!("new_window_placement: adjusted for dock, new height = {}", adjusted.size.h);
+                    }
+                }
+                
+                Some(adjusted)
             })
             .unwrap_or_else(|| Rectangle::from_loc_and_size((0, 0), (800, 800)));
 
         let num_open_windows = self.spaces_elements().count();
         let window_index = num_open_windows + 1; // Index of the new window
 
-        let max_x = output_geometry.loc.x + output_geometry.size.w;
-        let max_y = output_geometry.loc.y + output_geometry.size.h;
+        tracing::info!("new_window_placement: window_index = {}, num_open_windows = {}", window_index, num_open_windows);
 
-        // Calculate the position along the diagonal
-        const MAX_WINDOW_COUNT: f32 = 40.0;
-        let factor = window_index as f32 / MAX_WINDOW_COUNT;
-        let x = (output_geometry.loc.x as f32 + factor * max_x as f32) as i32 + 100;
-        let y = (output_geometry.loc.y as f32 + factor * max_y as f32) as i32 + 100;
+        // Default window size assumption (will be adjusted by client during configure)
+        const DEFAULT_WINDOW_WIDTH: i32 = 800;
+        const DEFAULT_WINDOW_HEIGHT: i32 = 600;
+        const CASCADE_OFFSET: i32 = 40; // Offset for each new window in cascade
+
+        // Calculate available space within the non-exclusive zone
+        let available_width = output_geometry.size.w;
+        let available_height = output_geometry.size.h;
+
+        tracing::info!("new_window_placement: available_width = {}, available_height = {}", available_width, available_height);
+
+        // Calculate cascade position with wrapping to stay within bounds
+        let cascade_x = (window_index as i32 * CASCADE_OFFSET) % (available_width - DEFAULT_WINDOW_WIDTH).max(CASCADE_OFFSET);
+        let cascade_y = (window_index as i32 * CASCADE_OFFSET) % (available_height - DEFAULT_WINDOW_HEIGHT).max(CASCADE_OFFSET);
+
+        tracing::info!("new_window_placement: cascade_x = {}, cascade_y = {}", cascade_x, cascade_y);
+
+        // Calculate final position, ensuring window fits within available area
+        let mut x = output_geometry.loc.x + cascade_x;
+        let mut y = output_geometry.loc.y + cascade_y;
+
+        tracing::info!("new_window_placement: initial x = {}, y = {}", x, y);
+
+        // Clamp position to ensure window doesn't exceed boundaries
+        x = x.min(output_geometry.loc.x + available_width - DEFAULT_WINDOW_WIDTH.min(available_width));
+        y = y.min(output_geometry.loc.y + available_height - DEFAULT_WINDOW_HEIGHT.min(available_height));
+
+        // Ensure position is not before the output start
+        x = x.max(output_geometry.loc.x);
+        y = y.max(output_geometry.loc.y);
+
+        tracing::info!("new_window_placement: final position = ({}, {})", x, y);
 
         (output_geometry, (x, y).into())
     }
