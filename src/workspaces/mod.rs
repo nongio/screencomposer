@@ -208,7 +208,7 @@ impl Workspaces {
         });
         expose_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
         expose_layer.set_pointer_events(false);
-        expose_layer.set_hidden(false);
+        expose_layer.set_hidden(true);
         expose_layer.set_picture_cached(false);
         expose_layer.set_image_cached(false);
 
@@ -809,6 +809,7 @@ impl Workspaces {
         let delta = delta.clamp(0.0, 1.0);
         let is_gesture_ongoing = delta > 0.0 && delta < 1.0 && !end_gesture;
         let is_starting_animation = transition.is_some();
+        let show_expose = delta > 0.0 || transition.is_some();
 
         // Hide popup overlay when entering expose mode
         self.popup_overlay.set_hidden(is_gesture_ongoing);
@@ -965,10 +966,12 @@ impl Workspaces {
 
         let window_selector_overlay_ref = window_selector_overlay.clone();
         let expose_layer = self.expose_layer.clone();
+        let workspace_selector_view_layer = self.workspace_selector_view.layer.clone();
         let layer_shell_overlay_ref = self.layer_shell_overlay.clone();
         let show_all_ref = self.show_all.clone();
 
-        expose_layer.set_hidden(false);
+        expose_layer.set_hidden(!show_expose);
+        workspace_selector_view_layer.set_hidden(!show_expose);
 
         tracing::debug!(
             workspace = workspace_index,
@@ -990,7 +993,8 @@ impl Workspaces {
                 move |_: &Layer, _: f32| {
                     let opacity = if show_all { 1.0 } else { 0.0 };
                     window_selector_overlay_ref.set_opacity(opacity, None);
-
+                    expose_layer.set_hidden(!show_all);
+                    workspace_selector_view_layer.set_hidden(!show_all);
                     // Restore layer shell overlay when exiting expose mode
                     layer_shell_overlay_ref.set_opacity(if show_all { 0.0 } else { 1.0 }, None);
 
