@@ -513,6 +513,6 @@ pub fn fixup_positions(workspaces: &mut Workspaces, pointer_location: Point<f64,
     // test pluggin / unplugging monitors
     for window in orphaned_windows.into_iter().as_ref() {
         let (_bounds, location) = workspaces.new_window_placement_at(pointer_location);
-        workspaces.map_window(window, location, false);
+        workspaces.map_window(window, location, false, None);
     }
 }

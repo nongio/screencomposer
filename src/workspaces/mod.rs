@@ -1410,6 +1410,7 @@ impl Workspaces {
         window_element: &WindowElement,
         location: impl Into<smithay::utils::Point<i32, smithay::utils::Logical>>,
         activate: bool,
+        transition: Option<Transition>
     ) {
         self.space_mut()
             .map_element(window_element.clone(), location, activate);
@@ -1429,7 +1430,7 @@ impl Workspaces {
 
             let workspace_view = self.get_current_workspace();
 
-            workspace_view.map_window(window_element, location);
+            workspace_view.map_window(window_element, location, transition);
             let _view = self.get_or_add_window_view(window_element);
         }
         self.refresh_space();
@@ -1644,7 +1645,7 @@ impl Workspaces {
             let model = self.model.read().unwrap();
             if let Some(workspace) = model.workspaces.get(workspace_index) {
                 if let Some(window) = self.windows_map.get(&id) {
-                    workspace.map_window(window, location);
+                    workspace.map_window(window, location, None);
                 }
             }
         }
@@ -2529,7 +2530,7 @@ impl UnminimizeContext {
             view.mirror_layer.set_hidden(false);
         }
 
-        workspace.map_window(&window, (pos_logical.0, pos_logical.1).into());
+        workspace.map_window(&window, (pos_logical.0, pos_logical.1).into(), None);
 
         crate::utils::notify_observers(&observers, &event);
     }

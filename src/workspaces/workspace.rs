@@ -4,7 +4,7 @@ use core::fmt;
 
 use lay_rs::{
     engine::Engine,
-    prelude::{taffy, Layer},
+    prelude::{Layer, Transition, taffy},
     types::Size,
 };
 use smithay::reexports::wayland_server::backend::ObjectId;
@@ -154,6 +154,7 @@ impl WorkspaceView {
         &self,
         window_element: &WindowElement,
         location: smithay::utils::Point<i32, smithay::utils::Logical>,
+        transition: Option<Transition>,
     ) {
         let mut window_list = self.windows_list.write().unwrap();
         let wid = window_element.id();
@@ -188,7 +189,7 @@ impl WorkspaceView {
                 x: location.x as f32,
                 y: location.y as f32,
             },
-            None,
+            transition,
         );
 
         if let Some(l) = self

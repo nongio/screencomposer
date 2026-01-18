@@ -63,7 +63,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
 
         state
             .workspaces
-            .map_window(&self.window, new_location.to_i32_round(), true);
+            .map_window(&self.window, new_location.to_i32_round(), true, None);
 
         if let Some(view) = state.workspaces.get_window_view(&self.window.id()) {
             let location = new_location.to_physical(scale);
@@ -250,7 +250,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
         data.workspaces
-            .map_window(&self.window, new_location.to_i32_round(), true);
+            .map_window(&self.window, new_location.to_i32_round(), true, None);
     }
 
     fn frame(
@@ -460,7 +460,7 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
                             + (self.initial_window_size.h - geometry.size.h);
                     }
 
-                    data.workspaces.map_window(&self.window, location, true);
+                    data.workspaces.map_window(&self.window, location, true, None);
                 }
             }
             #[cfg(feature = "xwayland")]
@@ -855,7 +855,7 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
                             + (self.initial_window_size.h - self.last_window_size.h);
                     }
 
-                    data.workspaces.map_window(&self.window, location, true);
+                    data.workspaces.map_window(&self.window, location, true, None);
                 }
             }
             #[cfg(feature = "xwayland")]
