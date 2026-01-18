@@ -29,6 +29,7 @@ use crate::{
     focus::KeyboardFocusTarget,
     shell::{TouchResizeSurfaceGrab, layer},
     state::{Backend, ScreenComposer},
+    workspaces::ApplicationsInfo,
 };
 
 use super::{
@@ -126,6 +127,8 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 let fullscreen_workspace = window.get_fullscreen_workspace();
                 if let Some(workspace) = self.workspaces.get_workspace_at(fullscreen_workspace) {
                     workspace.set_fullscreen_mode(false);
+                    workspace.set_fullscreen_animating(false);
+                    workspace.set_name(None);
                 }
                 if self.workspaces.get_current_workspace_index() == fullscreen_workspace {
                     let prev_workspace = (fullscreen_workspace as i32 - 1).min(0) as usize;
@@ -471,6 +474,26 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
             let (next_workspace_index, next_workspace) = self.workspaces.get_next_free_workspace();
             next_workspace.set_fullscreen_mode(true);
+            next_workspace.set_fullscreen_animating(true);
+            
+            // Fetch app info asynchronously to get the proper display name
+            let app_id = window.display_app_id(&self.display_handle);
+            if !app_id.is_empty() {
+                let workspace_clone = next_workspace.clone();
+                tokio::spawn(async move {
+                    if let Some(app_info) = ApplicationsInfo::get_app_info_by_id(&app_id).await {
+                        if let Some(name) = app_info.desktop_name() {
+                            workspace_clone.set_name(Some(name));
+                        } else {
+                            // Fallback to app_id if no desktop name
+                            workspace_clone.set_name(Some(app_id));
+                        }
+                    } else {
+                        // Fallback to app_id if app info not found
+                        workspace_clone.set_name(Some(app_id));
+                    }
+                });
+            }
 
             window.set_fullscreen(true, next_workspace_index);
 
@@ -492,6 +515,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 let surface_clone = surface.clone();
                 let wl_output_ref = wl_output.clone();
                 let next_workspace_layer = next_workspace.windows_layer.clone();
+                let next_workspace_clone = next_workspace.clone();
 
                 // Animate size during fullscreen transition
                 let current_element_geometry = self.workspaces.element_geometry(&window).unwrap();
@@ -533,6 +557,9 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                             // The protocol demands us to always reply with a configure,
                             // regardless of we fulfilled the request or not
                             surface_clone.send_configure();
+                            
+                            // Clear the fullscreen animating flag now that the animation is complete
+                            next_workspace_clone.set_fullscreen_animating(false);
                         },
                         true,
                     );
@@ -581,6 +608,8 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
                     let workspace = self.workspaces.get_current_workspace();
                     workspace.set_fullscreen_mode(false);
+                    workspace.set_fullscreen_animating(false);
+                    workspace.set_name(None);
 
                     // Fade in layer_shell_overlay when exiting fullscreen
                     self.workspaces.set_fullscreen_overlay_visibility(false);
@@ -707,8 +736,8 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             let animation = self.layers_engine.add_animation_from_transition(&transition, false);
 
             // Use minimum size for windows that open already maximized (size 0,0)
-            let current_width = current_element_geometry.size.w.max(300) as f32;
-            let current_height = current_element_geometry.size.h.max(200) as f32;
+            let current_width = current_element_geometry.size.w.max(600) as f32;
+            let current_height = current_element_geometry.size.h.max(400) as f32;
 
             let new_width = new_geometry.size.w as f32;
             let new_height = new_geometry.size.h as f32;

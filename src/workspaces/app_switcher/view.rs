@@ -162,7 +162,7 @@ impl AppSwitcherView {
             .store(false, std::sync::atomic::Ordering::Relaxed);
 
         let tr = self.wrap_layer
-            .set_opacity(0.0, Some(Transition::ease_in_quad(0.1)));
+            .set_opacity(0.0, Some(Transition::ease_in_quad(0.01)));
         tr.on_finish(|l: &lay_rs::prelude::Layer,p: f32| {
             l.set_hidden(true);
         }, true);

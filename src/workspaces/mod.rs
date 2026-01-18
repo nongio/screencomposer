@@ -42,6 +42,7 @@ pub use window_selector::{WindowSelectorView, WindowSelectorWindow};
 pub use window_view::{WindowView, WindowViewBaseModel, WindowViewSurface};
 
 pub use app_switcher::AppSwitcherView;
+pub use apps_info::ApplicationsInfo;
 pub use dnd_view::DndView;
 pub use dock::DockView;
 pub use popup_overlay::PopupOverlayView;
@@ -381,10 +382,17 @@ impl Workspaces {
     /// Returns true only when:
     /// - The current workspace is in fullscreen mode
     /// - The workspace is not animating (not scrolling between workspaces)
+    /// - The fullscreen window is not animating
     /// - Not in expose/show-all mode
+    /// - App switcher is not visible
     pub fn is_fullscreen_and_stable(&self) -> bool {
         // Check if expose mode is active
         if self.get_show_all() {
+            return false;
+        }
+
+        // Check if app switcher is visible
+        if self.app_switcher.alive() {
             return false;
         }
 
@@ -395,7 +403,16 @@ impl Workspaces {
 
         // Get current workspace and check if it's in fullscreen mode
         let current_workspace = self.get_current_workspace();
-        current_workspace.get_fullscreen_mode()
+        if !current_workspace.get_fullscreen_mode() {
+            return false;
+        }
+
+        // Check if the fullscreen window is still animating
+        if current_workspace.get_fullscreen_animating() {
+            return false;
+        }
+
+        true
     }
 
     /// Get the fullscreen window from the current workspace, if any.
@@ -2091,6 +2108,8 @@ impl Workspaces {
 
                     if let Some(ws) = self.get_workspace_at(workspace_model.current_workspace) {
                         ws.set_fullscreen_mode(false);
+                        ws.set_fullscreen_animating(false);
+                        ws.set_name(None);
                     }
                 }
                 self.move_window_to_workspace(e, workspace_model.current_workspace, location);

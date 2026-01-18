@@ -368,7 +368,7 @@ fn render_workspace_selector_view(
                     ))
                     // .background_color(theme_colors().accents_purple)
                     .content(draw_text_content(
-                        format!("Workspace {}", i + 1),
+                        w.name.clone(),
                         theme::text_styles::title_3_regular(),
                         lay_rs::skia::textlayout::TextAlign::Center,
                     ))
@@ -456,7 +456,7 @@ impl Observer<WorkspacesModel> for WorkspaceSelectorView {
             .iter()
             .enumerate()
             .map(|(i, w)| WorkspaceViewState {
-                name: format!("Bench {}", i),
+                name: w.get_name().unwrap_or_else(|| format!("Workspace {}", i + 1)),
                 index: w.index,
                 workspace_node: Some(w.workspace_layer.id()),
                 workspace_width: model.width as f32,

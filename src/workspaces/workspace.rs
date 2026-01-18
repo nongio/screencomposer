@@ -28,6 +28,8 @@ pub struct WorkspaceView {
     pub windows_layer: Layer,
 
     fullscreen_mode: Arc<AtomicBool>,
+    is_fullscreen_animating: Arc<AtomicBool>,
+    name: Arc<RwLock<Option<String>>>,
     window_base_layers: Arc<RwLock<HashMap<ObjectId, Layer>>>,
 }
 
@@ -135,6 +137,8 @@ impl WorkspaceView {
             windows_layer,
             workspace_layer,
             fullscreen_mode: Arc::new(AtomicBool::new(false)),
+            is_fullscreen_animating: Arc::new(AtomicBool::new(false)),
+            name: Arc::new(RwLock::new(None)),
             window_base_layers: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -241,6 +245,24 @@ impl WorkspaceView {
     pub fn get_fullscreen_mode(&self) -> bool {
         self.fullscreen_mode
             .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn set_fullscreen_animating(&self, animating: bool) {
+        self.is_fullscreen_animating
+            .store(animating, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn get_fullscreen_animating(&self) -> bool {
+        self.is_fullscreen_animating
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn set_name(&self, name: Option<String>) {
+        *self.name.write().unwrap() = name;
+    }
+
+    pub fn get_name(&self) -> Option<String> {
+        self.name.read().unwrap().clone()
     }
 }
 
