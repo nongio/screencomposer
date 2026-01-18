@@ -83,6 +83,47 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
         tracing::info!("SC::new_toplevel at({}, {})", location.x, location.y);
 
+        // If the current workspace is in fullscreen mode, decide where to map the new window
+        let current_workspace = self.workspaces.get_current_workspace();
+        let current_index = self.workspaces.get_current_workspace_index();
+        
+        if current_workspace.get_fullscreen_mode() {
+            // Check if the new window belongs to the same app as the fullscreen window
+            if let Some(fullscreen_window) = self.workspaces.get_fullscreen_window() {
+                let new_app_id = window_element.display_app_id(&self.display_handle);
+                let fullscreen_app_id = fullscreen_window.display_app_id(&self.display_handle);
+                
+                if !new_app_id.is_empty() && new_app_id == fullscreen_app_id {
+                    // Same app: keep in the fullscreen workspace (e.g., dialogs)
+                    tracing::info!(
+                        "New window from same fullscreen app '{}': keeping in workspace {}",
+                        new_app_id,
+                        current_index
+                    );
+                } else {
+                    // Different app: redirect to previous workspace
+                    if current_index > 0 {
+                        let prev_workspace = current_index - 1;
+                        tracing::info!(
+                            "New window from different app in fullscreen workspace: redirecting from workspace {} to workspace {}",
+                            current_index,
+                            prev_workspace
+                        );
+                        self.workspaces.set_current_workspace_index(prev_workspace, None);
+                    } else {
+                        tracing::warn!(
+                            "Fullscreen workspace 0 detected, cannot redirect to previous workspace"
+                        );
+                    }
+                }
+            }
+        } else {
+            tracing::debug!(
+                "Normal workspace: mapping new window to current workspace {}",
+                current_index
+            );
+        }
+
         self.workspaces.map_window(&window_element, location, true, None);
 
         // Register with foreign toplevel protocols (both ext and wlr)

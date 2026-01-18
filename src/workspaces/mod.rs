@@ -385,6 +385,7 @@ impl Workspaces {
     /// - The fullscreen window is not animating
     /// - Not in expose/show-all mode
     /// - App switcher is not visible
+    /// - The workspace has exactly one window (the fullscreen window only)
     pub fn is_fullscreen_and_stable(&self) -> bool {
         // Check if expose mode is active
         if self.get_show_all() {
@@ -409,6 +410,14 @@ impl Workspaces {
 
         // Check if the fullscreen window is still animating
         if current_workspace.get_fullscreen_animating() {
+            return false;
+        }
+
+        // Check that the workspace has exactly one window (only the fullscreen window)
+        // If there are additional windows (e.g., dialogs), disable direct scanout
+        let current_index = self.get_current_workspace_index();
+        let window_count = self.spaces[current_index].elements().count();
+        if window_count != 1 {
             return false;
         }
 
