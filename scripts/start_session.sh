@@ -70,8 +70,6 @@ if [ "$DEBUG_MODE" = true ]; then
     log_info "Debug mode enabled - using RUST_LOG=debug"
 fi
 
-portal_setup
-
 pipewire_setup
 
 wifi_autoconnect
@@ -91,7 +89,54 @@ if [ "$EUID" -ne 0 ] && [ -z "$LIBSEAT_BACKEND" ]; then
     log_warn "Running DRM backend without root - you may need libseat or run with sudo"
 fi
 
-RUST_LOG=$LOG_LEVEL target/release/screen-composer --tty-udev 2>&1 | tee "$COMPOSITOR_LOG"
+# Start compositor in background first
+RUST_LOG=$LOG_LEVEL target/release/screen-composer --tty-udev > "$COMPOSITOR_LOG" 2>&1 &
+COMPOSITOR_PID=$!
+log_info "Compositor started in background (PID: $COMPOSITOR_PID)"
+
+# Wait for compositor to create Wayland socket and D-Bus service
+log_info "Waiting for compositor to initialize..."
+WAIT_COUNT=0
+while [ $WAIT_COUNT -lt 30 ]; do
+    # Check if compositor process is still running
+    if ! kill -0 $COMPOSITOR_PID 2>/dev/null; then
+        log_error "Compositor process died during startup!"
+        cat "$COMPOSITOR_LOG"
+        exit 1
+    fi
+    
+    # Check if D-Bus service is available
+    if busctl --user list 2>/dev/null | grep -q "org.screencomposer.ScreenCast"; then
+        log_info "Compositor D-Bus service is ready"
+        break
+    fi
+    
+    sleep 0.5
+    WAIT_COUNT=$((WAIT_COUNT + 1))
+done
+
+if [ $WAIT_COUNT -eq 30 ]; then
+    log_error "Timeout waiting for compositor to start"
+    log_info "Last 20 lines of compositor log:"
+    tail -20 "$COMPOSITOR_LOG"
+    kill $COMPOSITOR_PID 2>/dev/null || true
+    exit 1
+fi
+
+# Now start portal after compositor is ready
+portal_setup
+
+# Bring compositor to foreground and tail its log
+log_info "Compositor initialized successfully, following log..."
+tail -f "$COMPOSITOR_LOG" &
+TAIL_PID=$!
+
+# Wait for compositor process
+wait $COMPOSITOR_PID
+COMPOSITOR_EXIT=$?
+
+# Stop tail when compositor exits
+kill $TAIL_PID 2>/dev/null || true
 
 # RUST_LOG=info cargo run --release -- --tty-udev 2>&1 | tee "$COMPOSITOR_LOG"    ;;
 # esac
@@ -110,6 +155,8 @@ if [ -n "$DBUS_SESSION_BUS_PID" ]; then
 fi
 
 # Cleanup on exit
-log_info "Compositor exited, cleaning up..."
+log_info "Compositor exited with code $COMPOSITOR_EXIT, cleaning up..."
 kill $PORTAL_PID 2>/dev/null || true
 log_info "Session ended"
+
+exit $COMPOSITOR_EXIT
