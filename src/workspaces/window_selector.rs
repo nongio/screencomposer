@@ -915,11 +915,6 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                             .set_drop_hover(None);
 
                         if let Some(target_workspace) = drop_target {
-                            tracing::trace!(
-                                "Expose drop: moving window {:?} to workspace {}",
-                                drag_state.window_id,
-                                target_workspace
-                            );
                             let target_pos = screencomposer
                                 .workspaces
                                 .workspace_position_by_view_index(target_workspace);
@@ -960,8 +955,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                                     target_pos,
                                     position,
                                 );
-
-                                // Refresh expose view - this will rebuild the layout with updated state
+                                // Refresh expose view
                                 screencomposer.workspaces.expose_set_visible(true);
                             } else {
                                 tracing::warn!(

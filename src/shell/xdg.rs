@@ -498,6 +498,21 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 .unwrap()
                 .clone();
 
+            // Ignore the request if the window is already fullscreen or animating towards fullscreen
+            if window.is_fullscreen() {
+                return;
+            }
+
+            // Also ignore if any workspace is currently animating towards fullscreen
+            // This prevents multiple workspaces from being created when F11 is held down
+            let mut i = 0;
+            while let Some(ws) = self.workspaces.get_workspace_at(i) {
+                if ws.get_fullscreen_animating() {
+                    return;
+                }
+                i += 1;
+            }
+
             let id = window.id();
 
             if let Some(mut view) = self.workspaces.get_window_view(&id) {

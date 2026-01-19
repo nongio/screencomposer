@@ -837,6 +837,10 @@ impl Workspaces {
         let is_starting_animation = transition.is_some();
         let show_expose = delta > 0.0 || transition.is_some();
 
+        // Check if this is the current workspace early, so we can use it for window animations
+        let current_workspace_index = self.get_current_workspace_index();
+        let is_current_workspace = workspace_index == current_workspace_index;
+
         // Hide popup overlay when entering expose mode
         self.popup_overlay.set_hidden(is_gesture_ongoing);
         let scale = Config::with(|c| c.screen_scale);
@@ -929,7 +933,8 @@ impl Workspaces {
                                 let y = window_y.interpolate(&to_y, delta_clamped);
 
                                 if let Some(layer) = window_selector.layer_for_window(window_id) {
-                                    if transition.is_some() {
+                                    // Only animate if this is the current workspace AND a transition is provided
+                                    if transition.is_some() && is_current_workspace {
                                         let translation =
                                             layer.change_position(lay_rs::types::Point { x, y });
                                         let scale_change =
@@ -940,6 +945,7 @@ impl Workspaces {
                                         changes.push(translation);
                                         changes.push(scale_change);
                                     } else {
+                                        // Non-current workspaces: instant update without animation
                                         layer.set_position(lay_rs::types::Point { x, y }, None);
                                         layer.set_scale(
                                             lay_rs::types::Point { x: scale, y: scale },
@@ -960,11 +966,6 @@ impl Workspaces {
         if let Some(anim_ref) = animation {
             let _transactions = self.layers_engine.schedule_changes(&changes, anim_ref);
         };
-
-        // Only animate dock and workspace selector for the current workspace
-        // (they are global UI elements, not per-workspace)
-        let current_workspace_index = self.get_current_workspace_index();
-        let is_current_workspace = workspace_index == current_workspace_index;
 
         // Animate workspace selector and dock (only affects UI when is_current_workspace)
         let delta = delta.max(0.0);
@@ -2057,8 +2058,10 @@ impl Workspaces {
 
         if n < self.spaces.len() {
             if let Some(ws) = self.get_workspace_at(n) {
-                if ws.get_fullscreen_mode() {
-                    // Do not remove a fullscreen workspace
+                // Allow removal of fullscreen workspaces only if they have no windows (dangling state)
+                let window_count = self.spaces[n].elements().count();
+                if ws.get_fullscreen_mode() && window_count > 0 {
+                    // Do not remove a fullscreen workspace that still has windows
                     return;
                 }
             }

@@ -37,6 +37,7 @@ pub struct WorkspaceViewState {
     workspace_width: f32,
     workspace_height: f32,
     fullscreen: bool,
+    window_count: usize,
 }
 
 impl Hash for WorkspaceViewState {
@@ -47,6 +48,7 @@ impl Hash for WorkspaceViewState {
         self.workspace_width.to_bits().hash(state);
         self.workspace_height.to_bits().hash(state);
         self.fullscreen.hash(state);
+        self.window_count.hash(state);
     }
 }
 
@@ -315,8 +317,8 @@ fn render_workspace_selector_view(
                             .build()
                             .unwrap(),
                         ),
-                        // Only show remove button if not current workspace and not fullscreen
-                        (!current && !w.fullscreen).then(|| -> LayerTree {
+                        // Only show remove button if not current workspace and not a non-empty fullscreen workspace
+                        (!current && !(w.fullscreen && w.window_count > 0)).then(|| -> LayerTree {
                             LayerTreeBuilder::with_key(format!(
                                 "workspace_selector_desktop_remove_{}",
                                 w.index
@@ -464,6 +466,7 @@ impl Observer<WorkspacesModel> for WorkspaceSelectorView {
                 workspace_width: model.width as f32,
                 workspace_height: model.height as f32,
                 fullscreen: w.get_fullscreen_mode(),
+                window_count: w.windows_list.read().unwrap().len(),
             })
             .collect();
         state.current = model.current_workspace;
