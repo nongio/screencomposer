@@ -380,7 +380,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             
             // Export WAYLAND_DISPLAY to systemd user session for portal services
             if let Err(e) = std::process::Command::new("systemctl")
-                .args(&["--user", "set-environment", &format!("WAYLAND_DISPLAY={}", socket_name)])
+                .args(["--user", "set-environment", &format!("WAYLAND_DISPLAY={}", socket_name)])
                 .output()
             {
                 warn!(error = ?e, "Failed to export WAYLAND_DISPLAY to systemd");

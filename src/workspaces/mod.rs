@@ -966,126 +966,88 @@ impl Workspaces {
         let current_workspace_index = self.get_current_workspace_index();
         let is_current_workspace = workspace_index == current_workspace_index;
 
-        if !is_current_workspace {
-            tracing::trace!(
-                workspace = workspace_index,
-                current_workspace = current_workspace_index,
-                "Skipping dock/workspace selector animation (not current workspace)"
-            );
-            return;
-        }
 
-        // Animate workspace selector and dock
+        // Animate workspace selector and dock (only affects UI when is_current_workspace)
         let delta = delta.max(0.0);
 
-        // Workspace selector
-        let workspace_selector_y = (-400.0).interpolate(&0.0, delta);
-        let workspace_selector_y = workspace_selector_y.clamp(-400.0, 0.0);
-        let workspace_opacity = 0.0.interpolate(&1.0, delta);
-        let workspace_opacity = workspace_opacity.clamp(0.0, 1.0);
+        if is_current_workspace {
+            // Workspace selector
+            let workspace_selector_y = (-400.0).interpolate(&0.0, delta);
+            let workspace_selector_y = workspace_selector_y.clamp(-400.0, 0.0);
+            let workspace_opacity = 0.0.interpolate(&1.0, delta);
+            let workspace_opacity = workspace_opacity.clamp(0.0, 1.0);
 
-        // Layer shell overlay fades out when entering expose (inverse of workspace opacity)
-        let layer_shell_overlay_opacity = 1.0.interpolate(&0.0, delta);
-        let layer_shell_overlay_opacity = layer_shell_overlay_opacity.clamp(0.0, 1.0);
+            // Layer shell overlay fades out when entering expose (inverse of workspace opacity)
+            let layer_shell_overlay_opacity = 1.0.interpolate(&0.0, delta);
+            let layer_shell_overlay_opacity = layer_shell_overlay_opacity.clamp(0.0, 1.0);
 
-        // Set overlay opacity to match the workspace selector opacity (fade in as we enter expose)
+            // Set overlay opacity to match the workspace selector opacity (fade in as we enter expose)
 
-        let window_selector_overlay_ref = window_selector_overlay.clone();
-        let expose_layer = self.expose_layer.clone();
-        let workspace_selector_view_layer = self.workspace_selector_view.layer.clone();
-        let layer_shell_overlay_ref = self.layer_shell_overlay.clone();
-        let show_all_ref = self.show_all.clone();
+            let window_selector_overlay_ref = window_selector_overlay.clone();
+            let expose_layer = self.expose_layer.clone();
+            let workspace_selector_view_layer = self.workspace_selector_view.layer.clone();
+            let layer_shell_overlay_ref = self.layer_shell_overlay.clone();
+            let show_all_ref = self.show_all.clone();
 
-        expose_layer.set_hidden(!show_expose);
-        workspace_selector_view_layer.set_hidden(!show_expose);
+            expose_layer.set_hidden(!show_expose);
+            workspace_selector_view_layer.set_hidden(!show_expose);
 
-        tracing::debug!(
-            workspace = workspace_index,
-            has_transition = transition.is_some(),
-            workspace_selector_y = workspace_selector_y,
-            "Setting workspace selector position (GLOBAL UI element)"
-        );
 
-        let transaction = self.workspace_selector_view.layer.set_position(
-            lay_rs::types::Point {
-                x: 0.0,
-                y: workspace_selector_y,
-            },
-            transition,
-        );
-        if transition.is_some() {
-            window_selector_overlay_ref.set_position((0.0, 0.0), None);
-            transaction.on_finish(
-                move |_: &Layer, _: f32| {
-                    let opacity = if show_all { 1.0 } else { 0.0 };
-                    window_selector_overlay_ref.set_opacity(opacity, None);
-                    expose_layer.set_hidden(!show_all);
-                    workspace_selector_view_layer.set_hidden(!show_all);
-                    // Restore layer shell overlay when exiting expose mode
-                    layer_shell_overlay_ref.set_opacity(if show_all { 0.0 } else { 1.0 }, None);
-
-                    show_all_ref.store(show_all, std::sync::atomic::Ordering::Relaxed);
+            let transaction = self.workspace_selector_view.layer.set_position(
+                lay_rs::types::Point {
+                    x: 0.0,
+                    y: workspace_selector_y,
                 },
-                true,
+                transition,
             );
+            if transition.is_some() {
+                window_selector_overlay_ref.set_position((0.0, 0.0), None);
+                transaction.on_finish(
+                    move |_: &Layer, _: f32| {
+                        let opacity = if show_all { 1.0 } else { 0.0 };
+                        window_selector_overlay_ref.set_opacity(opacity, None);
+                        expose_layer.set_hidden(!show_all);
+                        workspace_selector_view_layer.set_hidden(!show_all);
+                        // Restore layer shell overlay when exiting expose mode
+                        layer_shell_overlay_ref.set_opacity(if show_all { 0.0 } else { 1.0 }, None);
+
+                        show_all_ref.store(show_all, std::sync::atomic::Ordering::Relaxed);
+                    },
+                    true,
+                );
+            }
+            self.workspace_selector_view
+                .layer
+                .set_opacity(workspace_opacity, transition);
+
+            // Animate layer shell overlay opacity (fade out when entering expose)
+            self.layer_shell_overlay
+                .set_opacity(layer_shell_overlay_opacity, transition);
         }
-        self.workspace_selector_view
-            .layer
-            .set_opacity(workspace_opacity, transition);
-
-        // Animate layer shell overlay opacity (fade out when entering expose)
-        self.layer_shell_overlay
-            .set_opacity(layer_shell_overlay_opacity, transition);
-
         // Animate dock position
         if let Some(current_workspace) = current_workspace {
+            if !is_current_workspace {
+                return;
+            }
             let mut start_position = 0.0;
             let mut end_position = 250.0;
+            // Only keep dock hidden in fullscreen mode when NOT in expose mode
+            // During expose mode, we want the dock to animate normally
             if current_workspace.get_fullscreen_mode() {
                 start_position = 250.0;
                 end_position = 250.0;
             }
             let dock_y = start_position.interpolate(&end_position, delta);
             let dock_y = dock_y.clamp(0.0, 250.0);
-
-            tracing::debug!(
-                workspace = workspace_index,
-                has_transition = transition.is_some(),
-                dock_y = dock_y,
-                "Setting dock position (GLOBAL UI element)"
-            );
-
             let tr = self.dock.view_layer.set_position((0.0, dock_y), transition);
 
             if let Some(anim_ref) = animation {
                 self.layers_engine.start_animation(anim_ref, 0.0);
             }
             if end_gesture {
-                // let mut bin = self.expose_bin.write().unwrap();
-                // *bin = HashMap::new();
-                let dock_ref = self.dock.clone();
-                let show_all_ref = self.show_all.clone();
-                let show_all_gesture_ref = self.show_all_gesture.clone();
-                let is_animating_ref = self.is_animating.clone();
                 tr.on_finish(
                     move |_: &Layer, _: f32| {
-                        // Check current state, not captured state
-                        let current_show_all =
-                            show_all_ref.load(std::sync::atomic::Ordering::Relaxed);
-                        let gesture_value =
-                            show_all_gesture_ref.load(std::sync::atomic::Ordering::Relaxed);
-                        let is_anim = is_animating_ref.load(std::sync::atomic::Ordering::Relaxed);
-                        let is_transitioning =
-                            is_anim || (gesture_value > 0 && gesture_value < 1000);
-
-                        // Only update dock if we're not in the middle of a transition
-                        if !is_transitioning {
-                            if current_show_all || current_workspace.get_fullscreen_mode() {
-                                dock_ref.hide(None);
-                            } else {
-                                dock_ref.show(None);
-                            }
-                        }
+                        // Animation finished
                     },
                     true,
                 );
@@ -1103,26 +1065,6 @@ impl Workspaces {
         self.layer_shell_overlay
             .set_opacity(target_opacity, transition);
     }
-
-    // Recalculates the layout for a single workspace without animation
-    // Used when windows are added/removed/moved between workspaces
-    // pub fn expose_recalculate_workspace(&self, workspace_index: usize) {
-    //     // Only recalculate if we're in expose mode
-    //     if !self.get_show_all() {
-    //         return;
-    //     }
-
-    //     let delta = self.show_all_gesture.load(std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
-    //     let transition = Some(Transition {
-    //         delay: 0.0,
-    //         timing: TimingFunction::Spring(Spring::with_duration_and_bounce(0.3, 0.1)),
-    //     });
-
-    //     // Force relayout and animate
-    //     if self.expose_show_all_layout(workspace_index) && self.get_show_all(){
-    //         self.expose_show_all_end(workspace_index, delta, true, transition);
-    //     }
-    // }
 
     /// Set the mode to show desktop mode using a delta for gestures
     pub fn expose_show_desktop(&self, delta: f32, end_gesture: bool) {
@@ -1205,9 +1147,6 @@ impl Workspaces {
                 timing: TimingFunction::Spring(Spring::with_duration_and_bounce(0.3, 0.1)),
             };
             self.expose_show_all_end(workspace_index, 1.0, true, Some(transition));
-        } else if relayout {
-            // When not in expose mode, update layout instantly without animation
-            self.expose_show_all_end(workspace_index, 0.0, false, None);
         }
     }
     /// Close all the windows of an app by its id
@@ -2130,7 +2069,6 @@ impl Workspaces {
             }
         }
         self.update_workspaces_layout();
-        self.scroll_to_workspace_index(workspace_model.current_workspace, None);
         self.notify_observers(&workspace_model);
     }
 
@@ -2203,13 +2141,10 @@ impl Workspaces {
         if let Some(workspace) = self.get_workspace_at(i) {
             // Control dock visibility based on workspace fullscreen state
             // Only skip dock control when actively IN expose mode (show_all)
-            println!(
-                "scroll_to_workspace_index: {}, fullscreen: {} show_all: {} expose_transitioning: {}",
-                i,
-                workspace.get_fullscreen_mode(),
-                self.get_show_all(),
-                self.is_expose_transitioning()
-            );
+            
+            // Don't use hide/show during:
+            // - expose mode or expose transitions (let expose system control position)
+            // - fullscreen animations (let fullscreen transition complete smoothly)
             if !self.get_show_all() {
                 if workspace.get_fullscreen_mode() {
                     self.dock.hide(Some(transition));

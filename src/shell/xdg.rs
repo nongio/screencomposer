@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use lay_rs::{prelude::{Interpolate, Layer, Transition, taffy}, skia::Rect, types::Color};
+use lay_rs::prelude::{Interpolate, Layer, Transition, taffy};
 use smithay::{
     desktop::{
         PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, Window, WindowSurface, WindowSurfaceType, find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output
@@ -27,7 +27,7 @@ use tracing::warn;
 
 use crate::{
     focus::KeyboardFocusTarget,
-    shell::{TouchResizeSurfaceGrab, layer},
+    shell::TouchResizeSurfaceGrab,
     state::{Backend, ScreenComposer},
     workspaces::ApplicationsInfo,
 };
@@ -517,6 +517,9 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             next_workspace.set_fullscreen_mode(true);
             next_workspace.set_fullscreen_animating(true);
             
+            // Exit expose mode when entering fullscreen
+            self.workspaces.expose_set_visible(false);
+            
             // Fetch app info asynchronously to get the proper display name
             let app_id = window.display_app_id(&self.display_handle);
             if !app_id.is_empty() {
@@ -647,13 +650,20 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 if let Some(next_workspace) = self.workspaces.get_workspace_at(we.get_workspace()) {
                     let transition = Transition::ease_in_out_quad(1.4);
 
+                    // Get the fullscreen workspace index before switching away from it
+                    let fullscreen_workspace_index = self.workspaces.get_current_workspace_index();
                     let workspace = self.workspaces.get_current_workspace();
                     workspace.set_fullscreen_mode(false);
                     workspace.set_fullscreen_animating(false);
-                    workspace.set_name(None);
+
+                    // Exit expose mode when exiting fullscreen
+                    self.workspaces.expose_set_visible(false);
 
                     // Fade in layer_shell_overlay when exiting fullscreen
                     self.workspaces.set_fullscreen_overlay_visibility(false);
+                    
+                    // Show dock with animation at the start of unfullscreen transition
+                    self.workspaces.dock.show(Some(transition));
 
                     self.workspaces.move_window_to_workspace(
                         &we,
@@ -662,6 +672,9 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     );
                     self.workspaces
                         .set_current_workspace_index(we.get_workspace(), Some(transition));
+                    
+                    // Delete the temporary fullscreen workspace
+                    self.workspaces.remove_workspace_at(fullscreen_workspace_index);
 
                     // Animate size during unfullscreen transition
                     let current_element_geometry = self.workspaces.element_geometry(&we).unwrap();
