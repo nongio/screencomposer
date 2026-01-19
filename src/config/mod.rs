@@ -26,7 +26,8 @@ pub struct Config {
     pub cursor_theme: String,
     pub icon_theme: Option<String>,
     pub cursor_size: u32,
-    pub natural_scroll: bool,
+    #[serde(default)]
+    pub input: InputConfig,
     #[serde(default)]
     pub dock: DockConfig,    #[serde(default)]
     pub layer_shell: LayerShellConfig,    pub terminal_bin: String,
@@ -65,7 +66,7 @@ impl Default for Config {
             cursor_theme: "Notwaita-Black".to_string(),
             icon_theme: None,
             cursor_size: 24,
-            natural_scroll: true,
+            input: InputConfig::default(),
             dock: DockConfig::default(),
             layer_shell: LayerShellConfig::default(),
             terminal_bin: "kitty".to_string(),
@@ -370,6 +371,97 @@ fn default_genie_scale() -> f64 {
 
 fn default_genie_span() -> f64 {
     10.0
+}
+
+/// Input device configuration
+///
+/// Note: These settings map directly to libinput configuration options.
+/// Names reflect libinput's terminology for compatibility and documentation purposes.
+///
+/// TODO: Consider providing more user-friendly option names/descriptions while
+/// maintaining backward compatibility with libinput terminology.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InputConfig {
+    #[serde(default = "default_tap_enabled")]
+    pub tap_enabled: bool,
+    #[serde(default = "default_tap_drag_enabled")]
+    pub tap_drag_enabled: bool,
+    #[serde(default = "default_tap_drag_lock_enabled")]
+    pub tap_drag_lock_enabled: bool,
+    #[serde(default = "default_touchpad_click_method")]
+    pub touchpad_click_method: TouchpadClickMethod,
+    #[serde(default = "default_touchpad_dwt_enabled")]
+    pub touchpad_dwt_enabled: bool,
+    #[serde(default = "default_touchpad_natural_scroll_enabled")]
+    pub touchpad_natural_scroll_enabled: bool,
+    #[serde(default = "default_touchpad_left_handed")]
+    pub touchpad_left_handed: bool,
+    #[serde(default = "default_touchpad_middle_emulation_enabled")]
+    pub touchpad_middle_emulation_enabled: bool,
+}
+
+/// Touchpad click method configuration
+///
+/// Maps to libinput's LIBINPUT_CONFIG_CLICK_METHOD_* enum values.
+/// See: https://wayland.freedesktop.org/libinput/doc/latest/clickpad_softbuttons.html
+///
+/// TODO: Consider more intuitive naming like "finger_count" vs "button_areas"
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TouchpadClickMethod {
+    /// Click behavior depends on number of fingers (1=left, 2=right, 3=middle)
+    /// Corresponds to LIBINPUT_CONFIG_CLICK_METHOD_CLICKFINGER
+    Clickfinger,
+    /// Traditional button areas (top-right corner = right click)
+    /// Corresponds to LIBINPUT_CONFIG_CLICK_METHOD_BUTTON_AREAS
+    ButtonAreas,
+}
+
+impl Default for InputConfig {
+    fn default() -> Self {
+        Self {
+            tap_enabled: default_tap_enabled(),
+            tap_drag_enabled: default_tap_drag_enabled(),
+            tap_drag_lock_enabled: default_tap_drag_lock_enabled(),
+            touchpad_click_method: default_touchpad_click_method(),
+            touchpad_dwt_enabled: default_touchpad_dwt_enabled(),
+            touchpad_natural_scroll_enabled: default_touchpad_natural_scroll_enabled(),
+            touchpad_left_handed: default_touchpad_left_handed(),
+            touchpad_middle_emulation_enabled: default_touchpad_middle_emulation_enabled(),
+        }
+    }
+}
+
+fn default_tap_enabled() -> bool {
+    true
+}
+
+fn default_tap_drag_enabled() -> bool {
+    true
+}
+
+fn default_tap_drag_lock_enabled() -> bool {
+    false
+}
+
+fn default_touchpad_click_method() -> TouchpadClickMethod {
+    TouchpadClickMethod::Clickfinger
+}
+
+fn default_touchpad_dwt_enabled() -> bool {
+    true
+}
+
+fn default_touchpad_natural_scroll_enabled() -> bool {
+    true
+}
+
+fn default_touchpad_left_handed() -> bool {
+    false
+}
+
+fn default_touchpad_middle_emulation_enabled() -> bool {
+    false
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

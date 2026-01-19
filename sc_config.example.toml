@@ -23,7 +23,25 @@ background_image = "./resources/background.jpg"
 # Inputs
 keyboard_repeat_delay = 300
 keyboard_repeat_rate = 30
-natural_scroll = true
+
+[input]
+# Touchpad tap-to-click (1-finger = left click, 2-finger = right click, 3-finger = middle click)
+tap_enabled = true
+# Tap-and-drag (tap, hold, and drag)
+tap_drag_enabled = true
+# Tap drag lock (lift finger during drag without releasing)
+tap_drag_lock_enabled = false
+# Click method: "clickfinger" = 1-finger click=left, 2-finger=right, 3-finger=middle
+#               "buttonareas" = traditional (top-right corner = right click)
+touchpad_click_method = "clickfinger"
+# Disable touchpad while typing
+touchpad_dwt_enabled = true
+# Natural (reverse) scrolling on touchpad
+touchpad_natural_scroll_enabled = true
+# Left-handed mode (swap left/right buttons)
+touchpad_left_handed = false
+# Middle mouse button emulation (left+right click simultaneously)
+touchpad_middle_emulation_enabled = false
 
 # Layer shell (panels, bars, overlays)
 [layer_shell]
