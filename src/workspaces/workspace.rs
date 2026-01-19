@@ -4,7 +4,7 @@ use core::fmt;
 
 use lay_rs::{
     engine::Engine,
-    prelude::{Layer, Transition, taffy},
+    prelude::{taffy, Layer, Transition},
     types::Size,
 };
 use smithay::reexports::wayland_server::backend::ObjectId;

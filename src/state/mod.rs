@@ -377,17 +377,24 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 })
                 .expect("Failed to init wayland socket source");
             info!(name = socket_name, "Listening on wayland socket");
-            
+
             // Export WAYLAND_DISPLAY to systemd user session for portal services
             if let Err(e) = std::process::Command::new("systemctl")
-                .args(["--user", "set-environment", &format!("WAYLAND_DISPLAY={}", socket_name)])
+                .args([
+                    "--user",
+                    "set-environment",
+                    &format!("WAYLAND_DISPLAY={}", socket_name),
+                ])
                 .output()
             {
                 warn!(error = ?e, "Failed to export WAYLAND_DISPLAY to systemd");
             } else {
-                info!(name = socket_name, "Exported WAYLAND_DISPLAY to systemd user session");
+                info!(
+                    name = socket_name,
+                    "Exported WAYLAND_DISPLAY to systemd user session"
+                );
             }
-            
+
             Some(socket_name)
         } else {
             None
@@ -951,6 +958,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 let warm_cache = self.view_warm_cache.remove(&popup_id);
 
                 // Send popup to the overlay layer with warm cache and register its surface layers
+                #[allow(clippy::mutable_key_type)]
                 let popup_layers = self.workspaces.popup_overlay.update_popup(
                     &popup_id,
                     &id,

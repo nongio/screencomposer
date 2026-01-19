@@ -456,7 +456,9 @@ impl Observer<WorkspacesModel> for WorkspaceSelectorView {
             .iter()
             .enumerate()
             .map(|(i, w)| WorkspaceViewState {
-                name: w.get_name().unwrap_or_else(|| format!("Workspace {}", i + 1)),
+                name: w
+                    .get_name()
+                    .unwrap_or_else(|| format!("Workspace {}", i + 1)),
                 index: w.index,
                 workspace_node: Some(w.workspace_layer.id()),
                 workspace_width: model.width as f32,

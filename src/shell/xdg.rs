@@ -1,16 +1,19 @@
 use std::cell::RefCell;
 
-use lay_rs::prelude::{Interpolate, Layer, Transition, taffy};
+use lay_rs::prelude::{taffy, Interpolate, Layer, Transition};
 use smithay::{
     desktop::{
-        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, Window, WindowSurface, WindowSurfaceType, find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output
+        find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
+        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, Window, WindowSurface,
+        WindowSurfaceType,
     },
-    input::{Seat, pointer::Focus},
+    input::{pointer::Focus, Seat},
     output::Output,
     reexports::{
         wayland_protocols::xdg::{decoration as xdg_decoration, shell::server::xdg_toplevel},
         wayland_server::{
-            Resource, protocol::{wl_output, wl_seat, wl_surface::WlSurface}
+            protocol::{wl_output, wl_seat, wl_surface::WlSurface},
+            Resource,
         },
     },
     utils::{Rectangle, Serial},
@@ -86,13 +89,13 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         // If the current workspace is in fullscreen mode, decide where to map the new window
         let current_workspace = self.workspaces.get_current_workspace();
         let current_index = self.workspaces.get_current_workspace_index();
-        
+
         if current_workspace.get_fullscreen_mode() {
             // Check if the new window belongs to the same app as the fullscreen window
             if let Some(fullscreen_window) = self.workspaces.get_fullscreen_window() {
                 let new_app_id = window_element.display_app_id(&self.display_handle);
                 let fullscreen_app_id = fullscreen_window.display_app_id(&self.display_handle);
-                
+
                 if !new_app_id.is_empty() && new_app_id == fullscreen_app_id {
                     // Same app: keep in the fullscreen workspace (e.g., dialogs)
                     tracing::info!(
@@ -109,7 +112,8 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                             current_index,
                             prev_workspace
                         );
-                        self.workspaces.set_current_workspace_index(prev_workspace, None);
+                        self.workspaces
+                            .set_current_workspace_index(prev_workspace, None);
                     } else {
                         tracing::warn!(
                             "Fullscreen workspace 0 detected, cannot redirect to previous workspace"
@@ -124,7 +128,8 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             );
         }
 
-        self.workspaces.map_window(&window_element, location, true, None);
+        self.workspaces
+            .map_window(&window_element, location, true, None);
 
         // Register with foreign toplevel protocols (both ext and wlr)
         let surface_id = surface.wl_surface().id();
@@ -516,10 +521,10 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             let (next_workspace_index, next_workspace) = self.workspaces.get_next_free_workspace();
             next_workspace.set_fullscreen_mode(true);
             next_workspace.set_fullscreen_animating(true);
-            
+
             // Exit expose mode when entering fullscreen
             self.workspaces.expose_set_visible(false);
-            
+
             // Fetch app info asynchronously to get the proper display name
             let app_id = window.display_app_id(&self.display_handle);
             if !app_id.is_empty() {
@@ -563,23 +568,29 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
                 // Animate size during fullscreen transition
                 let current_element_geometry = self.workspaces.element_geometry(&window).unwrap();
-                let animation = self.layers_engine.add_animation_from_transition(&transition, false);
-                
+                let animation = self
+                    .layers_engine
+                    .add_animation_from_transition(&transition, false);
+
                 let current_width = current_element_geometry.size.w as f32;
                 let current_height = current_element_geometry.size.h as f32;
                 let target_width = geometry.size.w as f32;
                 let target_height = geometry.size.h as f32;
-                
+
                 let s = surface.clone();
-                self.layers_engine.on_animation_update(animation, move |p: f32| {
-                    let width = current_width.interpolate(&target_width, p) as i32;
-                    let height = current_height.interpolate(&target_height, p) as i32;
-                    let size = Rectangle::from_loc_and_size((0, 0), (width, height));
-                    s.with_pending_state(|state| {
-                        state.size = Some(size.size);
-                    });
-                    s.send_configure();
-                }, false);
+                self.layers_engine.on_animation_update(
+                    animation,
+                    move |p: f32| {
+                        let width = current_width.interpolate(&target_width, p) as i32;
+                        let height = current_height.interpolate(&target_height, p) as i32;
+                        let size = Rectangle::from_loc_and_size((0, 0), (width, height));
+                        s.with_pending_state(|state| {
+                            state.size = Some(size.size);
+                        });
+                        s.send_configure();
+                    },
+                    false,
+                );
                 self.layers_engine.start_animation(animation, 0.0);
 
                 self.workspaces
@@ -601,7 +612,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                             // The protocol demands us to always reply with a configure,
                             // regardless of we fulfilled the request or not
                             surface_clone.send_configure();
-                            
+
                             // Clear the fullscreen animating flag now that the animation is complete
                             next_workspace_clone.set_fullscreen_animating(false);
                         },
@@ -661,7 +672,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
                     // Fade in layer_shell_overlay when exiting fullscreen
                     self.workspaces.set_fullscreen_overlay_visibility(false);
-                    
+
                     // Show dock with animation at the start of unfullscreen transition
                     self.workspaces.dock.show(Some(transition));
 
@@ -672,29 +683,36 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     );
                     self.workspaces
                         .set_current_workspace_index(we.get_workspace(), Some(transition));
-                    
+
                     // Delete the temporary fullscreen workspace
-                    self.workspaces.remove_workspace_at(fullscreen_workspace_index);
+                    self.workspaces
+                        .remove_workspace_at(fullscreen_workspace_index);
 
                     // Animate size during unfullscreen transition
                     let current_element_geometry = self.workspaces.element_geometry(&we).unwrap();
-                    let animation = self.layers_engine.add_animation_from_transition(&transition, false);
-                    
+                    let animation = self
+                        .layers_engine
+                        .add_animation_from_transition(&transition, false);
+
                     let current_width = current_element_geometry.size.w as f32;
                     let current_height = current_element_geometry.size.h as f32;
                     let target_width = view.unmaximised_rect.size.w as f32;
                     let target_height = view.unmaximised_rect.size.h as f32;
-                    
+
                     let s = surface.clone();
-                    self.layers_engine.on_animation_update(animation, move |p: f32| {
-                        let width = current_width.interpolate(&target_width, p) as i32;
-                        let height = current_height.interpolate(&target_height, p) as i32;
-                        let size = Rectangle::from_loc_and_size((0, 0), (width, height));
-                        s.with_pending_state(|state| {
-                            state.size = Some(size.size);
-                        });
-                        s.send_configure();
-                    }, false);
+                    self.layers_engine.on_animation_update(
+                        animation,
+                        move |p: f32| {
+                            let width = current_width.interpolate(&target_width, p) as i32;
+                            let height = current_height.interpolate(&target_height, p) as i32;
+                            let size = Rectangle::from_loc_and_size((0, 0), (width, height));
+                            s.with_pending_state(|state| {
+                                state.size = Some(size.size);
+                            });
+                            s.send_configure();
+                        },
+                        false,
+                    );
                     self.layers_engine.start_animation(animation, 0.0);
 
                     let surface_clone = surface.clone();
@@ -787,7 +805,9 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             let new_geometry = usable_zone;
 
             let transition = Transition::ease_out(0.3);
-            let animation = self.layers_engine.add_animation_from_transition(&transition, false);
+            let animation = self
+                .layers_engine
+                .add_animation_from_transition(&transition, false);
 
             // Use minimum size for windows that open already maximized (size 0,0)
             let current_width = current_element_geometry.size.w.max(600) as f32;
@@ -795,23 +815,28 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
             let new_width = new_geometry.size.w as f32;
             let new_height = new_geometry.size.h as f32;
-            
+
             let s = surface.clone();
-            self.layers_engine.on_animation_update(animation, move|p:f32| {
-                let width = current_width.interpolate(&new_width, p) as i32;
-                let height = current_height.interpolate(&new_height, p) as i32;
-                let size  = Rectangle::from_loc_and_size((0,0), (width, height));
-                s.with_pending_state(|state| {
-                    if (p - 1.0).abs() < f32::EPSILON {
-                        state.states.set(xdg_toplevel::State::Maximized);
-                    }
-                    state.size = Some(size.size);
-                });
-                s.send_configure();
-            }, false);
+            self.layers_engine.on_animation_update(
+                animation,
+                move |p: f32| {
+                    let width = current_width.interpolate(&new_width, p) as i32;
+                    let height = current_height.interpolate(&new_height, p) as i32;
+                    let size = Rectangle::from_loc_and_size((0, 0), (width, height));
+                    s.with_pending_state(|state| {
+                        if (p - 1.0).abs() < f32::EPSILON {
+                            state.states.set(xdg_toplevel::State::Maximized);
+                        }
+                        state.size = Some(size.size);
+                    });
+                    s.send_configure();
+                },
+                false,
+            );
             self.layers_engine.start_animation(animation, 0.0);
 
-            self.workspaces.map_window(&window, new_geometry.loc, true, Some(transition));
+            self.workspaces
+                .map_window(&window, new_geometry.loc, true, Some(transition));
         }
     }
 
@@ -830,27 +855,33 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             let current_element_geometry = self.workspaces.element_geometry(&window).unwrap();
 
             let transition = Transition::ease_out(0.3);
-            let animation = self.layers_engine.add_animation_from_transition(&transition, false);
+            let animation = self
+                .layers_engine
+                .add_animation_from_transition(&transition, false);
 
             let current_width = current_element_geometry.size.w as f32;
             let current_height = current_element_geometry.size.h as f32;
 
             let new_width = view.unmaximised_rect.size.w as f32;
             let new_height = view.unmaximised_rect.size.h as f32;
-            
+
             let s = surface.clone();
-            self.layers_engine.on_animation_update(animation, move|p:f32| {
-                let width = current_width.interpolate(&new_width, p) as i32;
-                let height = current_height.interpolate(&new_height, p) as i32;
-                let size  = Rectangle::from_loc_and_size((0,0), (width, height));
-                s.with_pending_state(|state| {
-                    if (p - 1.0).abs() < f32::EPSILON {
-                        state.states.unset(xdg_toplevel::State::Maximized);
-                    }
-                    state.size = Some(size.size);
-                });
-                s.send_configure();
-            }, false);
+            self.layers_engine.on_animation_update(
+                animation,
+                move |p: f32| {
+                    let width = current_width.interpolate(&new_width, p) as i32;
+                    let height = current_height.interpolate(&new_height, p) as i32;
+                    let size = Rectangle::from_loc_and_size((0, 0), (width, height));
+                    s.with_pending_state(|state| {
+                        if (p - 1.0).abs() < f32::EPSILON {
+                            state.states.unset(xdg_toplevel::State::Maximized);
+                        }
+                        state.size = Some(size.size);
+                    });
+                    s.send_configure();
+                },
+                false,
+            );
             self.layers_engine.start_animation(animation, 0.0);
 
             self.workspaces

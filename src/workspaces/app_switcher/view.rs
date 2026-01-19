@@ -161,11 +161,15 @@ impl AppSwitcherView {
         self.active
             .store(false, std::sync::atomic::Ordering::Relaxed);
 
-        let tr = self.wrap_layer
+        let tr = self
+            .wrap_layer
             .set_opacity(0.0, Some(Transition::ease_in_quad(0.01)));
-        tr.on_finish(|l: &lay_rs::prelude::Layer,p: f32| {
-            l.set_hidden(true);
-        }, true);
+        tr.on_finish(
+            |l: &lay_rs::prelude::Layer, _p: f32| {
+                l.set_hidden(true);
+            },
+            true,
+        );
         tr
     }
 

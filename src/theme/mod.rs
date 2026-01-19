@@ -41,7 +41,8 @@ macro_rules! define_text_styles {
         use crate::theme::text_style_with_size_and_weight;
 
         paste::paste! {
-        $(pub fn [<$name>]() -> TextStyle {text_style_with_size_and_weight($size, $weight)})*
+        $(#[allow(dead_code)]
+        pub fn [<$name>]() -> TextStyle {text_style_with_size_and_weight($size, $weight)})*
         }
     };
 }

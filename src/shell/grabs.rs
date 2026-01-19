@@ -460,7 +460,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
                             + (self.initial_window_size.h - geometry.size.h);
                     }
 
-                    data.workspaces.map_window(&self.window, location, true, None);
+                    data.workspaces
+                        .map_window(&self.window, location, true, None);
                 }
             }
             #[cfg(feature = "xwayland")]
@@ -855,7 +856,8 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
                             + (self.initial_window_size.h - self.last_window_size.h);
                     }
 
-                    data.workspaces.map_window(&self.window, location, true, None);
+                    data.workspaces
+                        .map_window(&self.window, location, true, None);
                 }
             }
             #[cfg(feature = "xwayland")]

@@ -3,6 +3,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
+use rand::Rng;
 use smithay::reexports::wayland_server::backend::ObjectId;
 
 use crate::shell::WindowElement;
@@ -123,27 +124,14 @@ pub fn natural_layout(
     let mut direction = 0;
     let mut directions = vec![];
     let mut rects = vec![];
+    let mut rng = rand::thread_rng();
     
-    // Collect windows first to count them
-    let windows_vec: Vec<_> = windows.into_iter().collect();
-    let window_count = windows_vec.len();
-    
-    // Calculate optimal grid dimensions
-    let cols = (window_count as f32).sqrt().ceil() as usize;
-    let rows = (window_count as f32 / cols as f32).ceil() as usize;
-    
-    // Calculate cell size for initial grid placement
-    let cell_width = area_rect.width / cols as f32;
-    let cell_height = area_rect.height / rows as f32;
-    
-    for (index, (window_id, rect)) in windows_vec.into_iter().enumerate() {
-        // Use grid-based initial position instead of actual window position
-        let row = index / cols;
-        let col = index % cols;
-        let initial_x = area_rect.x + col as f32 * cell_width + cell_width * 0.5 - rect.width * 0.5;
-        let initial_y = area_rect.y + row as f32 * cell_height + cell_height * 0.5 - rect.height * 0.5;
+    for (window_id, rect) in windows {
+        // Add tiny random jitter to break symmetry when windows are at identical positions
+        let jitter_x = rng.gen_range(-2.0..2.0);
+        let jitter_y = rng.gen_range(-2.0..2.0);
         
-        let layout_rect = LayoutRect::new(initial_x, initial_y, rect.width, rect.height);
+        let layout_rect = LayoutRect::new(rect.x + jitter_x, rect.y + jitter_y, rect.width, rect.height);
         bounds = bounds.union(&layout_rect);
 
         rects.push((window_id, layout_rect));

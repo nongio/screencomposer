@@ -966,7 +966,6 @@ impl Workspaces {
         let current_workspace_index = self.get_current_workspace_index();
         let is_current_workspace = workspace_index == current_workspace_index;
 
-
         // Animate workspace selector and dock (only affects UI when is_current_workspace)
         let delta = delta.max(0.0);
 
@@ -991,7 +990,6 @@ impl Workspaces {
 
             expose_layer.set_hidden(!show_expose);
             workspace_selector_view_layer.set_hidden(!show_expose);
-
 
             let transaction = self.workspace_selector_view.layer.set_position(
                 lay_rs::types::Point {
@@ -1377,7 +1375,11 @@ impl Workspaces {
         let num_open_windows = self.spaces_elements().count();
         let window_index = num_open_windows + 1; // Index of the new window
 
-        tracing::info!("new_window_placement: window_index = {}, num_open_windows = {}", window_index, num_open_windows);
+        tracing::info!(
+            "new_window_placement: window_index = {}, num_open_windows = {}",
+            window_index,
+            num_open_windows
+        );
 
         // Default window size assumption (will be adjusted by client during configure)
         const DEFAULT_WINDOW_WIDTH: i32 = 800;
@@ -1388,13 +1390,23 @@ impl Workspaces {
         let available_width = output_geometry.size.w;
         let available_height = output_geometry.size.h;
 
-        tracing::info!("new_window_placement: available_width = {}, available_height = {}", available_width, available_height);
+        tracing::info!(
+            "new_window_placement: available_width = {}, available_height = {}",
+            available_width,
+            available_height
+        );
 
         // Calculate cascade position with wrapping to stay within bounds
-        let cascade_x = (window_index as i32 * CASCADE_OFFSET) % (available_width - DEFAULT_WINDOW_WIDTH).max(CASCADE_OFFSET);
-        let cascade_y = (window_index as i32 * CASCADE_OFFSET) % (available_height - DEFAULT_WINDOW_HEIGHT).max(CASCADE_OFFSET);
+        let cascade_x = (window_index as i32 * CASCADE_OFFSET)
+            % (available_width - DEFAULT_WINDOW_WIDTH).max(CASCADE_OFFSET);
+        let cascade_y = (window_index as i32 * CASCADE_OFFSET)
+            % (available_height - DEFAULT_WINDOW_HEIGHT).max(CASCADE_OFFSET);
 
-        tracing::info!("new_window_placement: cascade_x = {}, cascade_y = {}", cascade_x, cascade_y);
+        tracing::info!(
+            "new_window_placement: cascade_x = {}, cascade_y = {}",
+            cascade_x,
+            cascade_y
+        );
 
         // Calculate final position, ensuring window fits within available area
         let mut x = output_geometry.loc.x + cascade_x;
@@ -1403,8 +1415,12 @@ impl Workspaces {
         tracing::info!("new_window_placement: initial x = {}, y = {}", x, y);
 
         // Clamp position to ensure window doesn't exceed boundaries
-        x = x.min(output_geometry.loc.x + available_width - DEFAULT_WINDOW_WIDTH.min(available_width));
-        y = y.min(output_geometry.loc.y + available_height - DEFAULT_WINDOW_HEIGHT.min(available_height));
+        x = x.min(
+            output_geometry.loc.x + available_width - DEFAULT_WINDOW_WIDTH.min(available_width),
+        );
+        y = y.min(
+            output_geometry.loc.y + available_height - DEFAULT_WINDOW_HEIGHT.min(available_height),
+        );
 
         // Ensure position is not before the output start
         x = x.max(output_geometry.loc.x);
@@ -1423,7 +1439,7 @@ impl Workspaces {
         window_element: &WindowElement,
         location: impl Into<smithay::utils::Point<i32, smithay::utils::Logical>>,
         activate: bool,
-        transition: Option<Transition>
+        transition: Option<Transition>,
     ) {
         self.space_mut()
             .map_element(window_element.clone(), location, activate);
@@ -2141,7 +2157,7 @@ impl Workspaces {
         if let Some(workspace) = self.get_workspace_at(i) {
             // Control dock visibility based on workspace fullscreen state
             // Only skip dock control when actively IN expose mode (show_all)
-            
+
             // Don't use hide/show during:
             // - expose mode or expose transitions (let expose system control position)
             // - fullscreen animations (let fullscreen transition complete smoothly)

@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use lay_rs::{
-    prelude::{Layer, LayerTree, LayerTreeBuilder, View, taffy},
+    prelude::{taffy, Layer, LayerTree, LayerTreeBuilder, View},
     types::{Point, Size},
 };
 use smithay::{reexports::wayland_server::backend::ObjectId, utils::Transform};
