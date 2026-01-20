@@ -12,6 +12,7 @@ gl-rs = { package = "gl", version = "0.14.0" }
 wayland-server = "0.31"
 wayland-scanner = "0.31"
 wayland-backend = "0.3"
+wayland-protocols-wlr = { version = "0.3", features = ["server"] }
 image = { version = "0.24.5", optional = true }
 xcursor = { version = "0.3.3", optional = true }
 xkbcommon = "0.6.0"
@@ -44,7 +45,7 @@ memmap2 = "0.9"
 [dependencies.lay-rs]
 # path = "../layers"
 git = "https://github.com/nongio/layers"
-tag = "v1.0.0"
+tag = "v1.2.0"
 features = ["export-taffy"]
 
 [dependencies.smithay-drm-extras]
