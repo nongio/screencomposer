@@ -478,6 +478,9 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         #[cfg(feature = "debugger")]
         layers_engine.start_debugger();
 
+        // Get backend name before moving backend_data
+        let backend_name = backend_data.backend_name();
+
         let mut composer = ScreenComposer {
             backend_data,
             display_handle: dh,
@@ -551,6 +554,9 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             sc_transactions: HashMap::new(),
             surface_layers: HashMap::new(),
             view_warm_cache: HashMap::new(),
+
+            // render metrics
+            render_metrics: Arc::new(crate::render_metrics::RenderMetrics::new(backend_name)),
         };
 
         composer.rebuild_keycode_remap();
@@ -1464,6 +1470,7 @@ pub trait Backend {
     const HAS_RELATIVE_MOTION: bool = false;
     const HAS_GESTURES: bool = false;
     fn seat_name(&self) -> String;
+    fn backend_name(&self) -> &'static str;
     fn reset_buffers(&mut self, output: &Output);
     fn early_import(&mut self, surface: &WlSurface);
     fn texture_for_surface(&self, surface: &RendererSurfaceState) -> Option<SkiaTextureImage>;

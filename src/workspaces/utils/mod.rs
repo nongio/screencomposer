@@ -30,6 +30,39 @@ impl FontCache {
         font.set_edging(lay_rs::skia::font::Edging::SubpixelAntiAlias);
         Some(font)
     }
+
+    /// Create a Font with fallback to system default if family not found
+    pub fn make_font_with_fallback(
+        &self,
+        family: impl AsRef<str>,
+        style: lay_rs::skia::FontStyle,
+        size: f32,
+    ) -> lay_rs::skia::Font {
+        if let Some(font) = self.make_font(&family, style, size) {
+            return font;
+        }
+
+        // Try common fallback fonts
+        for fallback in ["sans-serif", "DejaVu Sans", "Liberation Sans", "Arial"] {
+            if let Some(font) = self.make_font(fallback, style, size) {
+                tracing::warn!(
+                    "Font '{}' not found, using fallback: '{}'",
+                    family.as_ref(),
+                    fallback
+                );
+                return font;
+            }
+        }
+        
+        // Last resort: use default typeface from font manager
+        tracing::error!("Font '{}' and all fallbacks failed, using default", family.as_ref());
+        let typeface = self.font_mgr.legacy_make_typeface(None, style)
+            .expect("Failed to create default typeface");
+        let mut font = lay_rs::skia::Font::from_typeface(typeface, size);
+        font.set_subpixel(true);
+        font.set_edging(lay_rs::skia::font::Edging::SubpixelAntiAlias);
+        font
+    }
 }
 
 thread_local! {

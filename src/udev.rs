@@ -2,7 +2,7 @@ use std::{
     collections::hash_map::HashMap,
     io,
     path::Path,
-    sync::{atomic::Ordering, Mutex},
+    sync::{atomic::Ordering, Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -195,6 +195,10 @@ impl Backend for UdevData {
 
     fn seat_name(&self) -> String {
         self.session.seat()
+    }
+
+    fn backend_name(&self) -> &'static str {
+        "udev"
     }
 
     fn reset_buffers(&mut self, output: &Output) {
@@ -593,6 +597,8 @@ pub fn run_udev() {
             state.running.store(false, Ordering::SeqCst);
         } else {
             display_handle.flush_clients().unwrap();
+            // Log rendering metrics periodically
+            state.render_metrics.maybe_log_stats(false);
         }
     }
 }
@@ -871,6 +877,8 @@ struct SurfaceData {
     /// Track whether we were in direct scanout mode on the previous frame
     /// Used to reset buffers when transitioning between modes
     was_direct_scanout: bool,
+    /// Rendering metrics
+    render_metrics: Option<Arc<crate::render_metrics::RenderMetrics>>,
 }
 
 impl Drop for SurfaceData {
@@ -1336,6 +1344,7 @@ impl ScreenComposer<UdevData> {
                 dmabuf_feedback,
                 last_pointer_element_count: 0,
                 was_direct_scanout: false,
+                render_metrics: Some(self.render_metrics.clone()),
             };
 
             device.surfaces.insert(crtc, surface);
@@ -1991,6 +2000,12 @@ fn render_surface<'a, 'b>(
     scene_has_damage: bool,
     fullscreen_window: Option<&WindowElement>,
 ) -> Result<RenderOutcome, SwapBuffersError> {
+    // Start frame timing
+    let _frame_timer = surface
+        .render_metrics
+        .as_ref()
+        .map(|m: &Arc<_>| m.start_frame());
+
     let output_geometry = Rectangle::from_loc_and_size((0, 0), output.current_mode().unwrap().size);
     let scale = Scale::from(output.current_scale().fractional_scale());
 
@@ -2214,6 +2229,25 @@ fn render_surface<'a, 'b>(
         clear_color,
     )?;
 
+    // Record damage metrics if available
+    if let Some(ref metrics) = surface.render_metrics {
+        let mode = output.current_mode().unwrap();
+        let output_size = (mode.size.w, mode.size.h);
+
+        if let Some(ref damage_rects) = damage {
+            // Have actual damage information
+            metrics.as_ref().record_damage(output_size, damage_rects);
+        } else if rendered {
+            // No damage info available (DRM compositor mode), but frame was rendered
+            // Record full frame as damage as approximation
+            let full_screen = vec![Rectangle::from_loc_and_size(
+                (0, 0),
+                (mode.size.w, mode.size.h),
+            )];
+            metrics.as_ref().record_damage(output_size, &full_screen);
+        }
+    }
+
     let damage_for_return = damage.map(|d| d.to_vec());
 
     // In direct scanout mode, only send frame callbacks to the fullscreen window
@@ -2261,4 +2295,141 @@ fn initial_render(
     surface.compositor.reset_buffers();
 
     Ok(())
+}
+
+pub fn probe_displays() {
+    #[allow(clippy::disallowed_macros)]
+    {
+        println!("Probing available displays and resolutions...\n");
+    }
+
+    let (mut session, _notifier) = match LibSeatSession::new() {
+        Ok(ret) => ret,
+        Err(err) => {
+            error!("Could not initialize a session: {}", err);
+            #[allow(clippy::disallowed_macros)]
+            {
+                eprintln!("Error: Could not initialize session - {}", err);
+                eprintln!(
+                    "Note: This command may require root privileges or proper seat permissions."
+                );
+            }
+            return;
+        }
+    };
+
+    let udev_backend = match UdevBackend::new(&session.seat()) {
+        Ok(ret) => ret,
+        Err(err) => {
+            error!("Failed to initialize udev backend: {:?}", err);
+            #[allow(clippy::disallowed_macros)]
+            {
+                eprintln!("Error: Failed to initialize udev backend - {:?}", err);
+            }
+            return;
+        }
+    };
+
+    let mut found_displays = false;
+
+    for (device_id, path) in udev_backend.device_list() {
+        let node = match DrmNode::from_dev_id(device_id) {
+            Ok(node) => node,
+            Err(err) => {
+                warn!("Failed to get DRM node for device {}: {}", device_id, err);
+                continue;
+            }
+        };
+
+        #[allow(clippy::disallowed_macros)]
+        {
+            println!("Device: {} ({:?})", node, path);
+        }
+
+        let fd = match session.open(
+            path,
+            OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK,
+        ) {
+            Ok(fd) => fd,
+            Err(err) => {
+                warn!("Failed to open device {}: {}", path.display(), err);
+                continue;
+            }
+        };
+
+        let fd = DrmDeviceFd::new(DeviceFd::from(fd));
+        let drm = match DrmDevice::new(fd.clone(), true) {
+            Ok((drm, _)) => drm,
+            Err(err) => {
+                warn!("Failed to initialize DRM device: {}", err);
+                continue;
+            }
+        };
+
+        let mut scanner: DrmScanner = DrmScanner::new();
+        let scan_result = match scanner.scan_connectors(&drm) {
+            Ok(result) => result,
+            Err(err) => {
+                warn!("Failed to scan connectors: {}", err);
+                continue;
+            }
+        };
+
+        for event in scan_result {
+            if let DrmScanEvent::Connected {
+                connector,
+                crtc: Some(_crtc),
+            } = event
+            {
+                found_displays = true;
+                let output_name = format!(
+                    "{}-{}",
+                    connector.interface().as_str(),
+                    connector.interface_id()
+                );
+
+                #[allow(clippy::disallowed_macros)]
+                {
+                    println!("\n  Connector: {}", output_name);
+                    println!("  Interface: {:?}", connector.interface());
+
+                    if let Some((w, h)) = connector.size() {
+                        println!("  Physical size: {}mm x {}mm", w, h);
+                    }
+
+                    println!("  Available resolutions:");
+                }
+
+                for (idx, mode) in connector.modes().iter().enumerate() {
+                    let size = mode.size();
+                    let is_preferred = mode.mode_type().contains(ModeTypeFlags::PREFERRED);
+                    let preferred_marker = if is_preferred { " [PREFERRED]" } else { "" };
+
+                    #[allow(clippy::disallowed_macros)]
+                    {
+                        println!(
+                            "    {}: {}x{} @ {}Hz{}",
+                            idx,
+                            size.0,
+                            size.1,
+                            mode.vrefresh(),
+                            preferred_marker
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    if !found_displays {
+        #[allow(clippy::disallowed_macros)]
+        {
+            println!("No connected displays found.");
+        }
+    } else {
+        #[allow(clippy::disallowed_macros)]
+        {
+            println!();
+        }
+    }
 }

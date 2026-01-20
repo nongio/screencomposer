@@ -117,6 +117,9 @@ impl Backend for X11Data {
     fn seat_name(&self) -> String {
         "x11".to_owned()
     }
+    fn backend_name(&self) -> &'static str {
+        "x11"
+    }
     fn reset_buffers(&mut self, _output: &Output) {
         self.surface.reset_buffers();
     }
