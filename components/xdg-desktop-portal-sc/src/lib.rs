@@ -5,3 +5,4 @@
 
 pub mod portal;
 pub mod screencomposer_client;
+pub mod watchdog;
