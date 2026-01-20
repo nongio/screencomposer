@@ -147,6 +147,9 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
             // Check if this is a layer shell surface first
             if self.layer_surfaces.contains_key(&surface_id) {
                 self.update_layer_surface(&surface_id);
+                
+                // Don't recalculate here - it causes deadlock since layer_map is borrowed
+                // Recalculation will happen during arrange in ensure_initial_configure
             } else {
                 // Find the root surface for this commit
                 // 1. Check popup cache first (O(1))
@@ -308,6 +311,9 @@ impl<BackendData: Backend> WlrLayerShellHandler for ScreenComposer<BackendData> 
             wlr_layer,
             layer_surface.namespace()
         );
+        
+        // Arrange the layer map which will handle the exclusive zone
+        map.arrange();
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
@@ -315,12 +321,15 @@ impl<BackendData: Backend> WlrLayerShellHandler for ScreenComposer<BackendData> 
 
         // Remove from our compositor map and clean up lay_rs layer
         if let Some(layer_shell_surface) = self.layer_surfaces.remove(&surface_id) {
+            let output = layer_shell_surface.output().clone();
             self.workspaces
                 .remove_layer_shell_layer(&layer_shell_surface.layer);
             tracing::info!(
                 "Layer surface destroyed: namespace={}",
                 layer_shell_surface.namespace()
             );
+            // Recalculate exclusive zones after removal
+            self.recalculate_exclusive_zones(&output);
         }
 
         // Also unmap from Smithay's layer map
@@ -425,11 +434,14 @@ fn ensure_initial_configure<Backend: crate::state::Backend>(
         return;
     };
 
-    if let Some(output) = state.workspaces.outputs().find(|o| {
+    // Find the output for this layer surface (clone to avoid borrow issues)
+    let output = state.workspaces.outputs().find(|o| {
         let map = layer_map_for_output(o);
         map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
             .is_some()
-    }) {
+    }).cloned();
+    
+    if let Some(output) = output {
         let initial_configure_sent = with_states(surface, |states| {
             states
                 .data_map
@@ -440,11 +452,12 @@ fn ensure_initial_configure<Backend: crate::state::Backend>(
                 .initial_configure_sent
         });
 
-        let mut map = layer_map_for_output(output);
+        let mut map = layer_map_for_output(&output);
 
         // arrange the layers before sending the initial configure
         // to respect any size the client may have sent
         map.arrange();
+        
         // send the initial configure if relevant
         if !initial_configure_sent {
             let layer = map

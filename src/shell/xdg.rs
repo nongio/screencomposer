@@ -16,7 +16,7 @@ use smithay::{
             Resource,
         },
     },
-    utils::{Logical, Serial},
+    utils::Serial,
     wayland::{
         compositor::with_states,
         seat::WaylandFocus,
@@ -625,22 +625,40 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 // The window hasn't been mapped yet, use the primary output instead
                 .or_else(|| self.workspaces.outputs().next())
                 // Assumes that at least one output exists
-                .expect("No outputs found");
-            let output_geom = self.workspaces.output_geometry(output).unwrap();
-            let top_bar_geom: smithay::utils::Rectangle<i32, Logical> =
-                smithay::utils::Rectangle::from_loc_and_size((0, 0), (output_geom.size.w, 30));
+                .expect("No outputs found")
+                .clone(); // Clone to avoid borrow conflicts
+            
+            let output_geom = self.workspaces.output_geometry(&output).unwrap();
+            
+            // Recalculate exclusive zones for this output before using them
+            // This ensures we have fresh data even if layer surfaces changed
+            self.recalculate_exclusive_zones(&output);
+            
+            // Get tracked exclusive zones for this output (from layer shell surfaces)
+            let output_name = output.name();
+            let zones = self.exclusive_zones
+                .get(&output_name)
+                .cloned()
+                .unwrap_or_default();
+            
+            // Calculate usable area from tracked exclusive zones
+            let mut usable_zone = zones.apply_to_output(output_geom);
             
             // Get the actual dock geometry (position and size)
             let dock_geom = self.workspaces.get_dock_geometry();
             
-            // Calculate available space: from below top bar to above dock
-            let available_y = top_bar_geom.size.h;
-            let available_height = dock_geom.loc.y - top_bar_geom.size.h;
+            // Dock reduces available height from the bottom
+            if dock_geom.size.h > 0 {
+                let dock_top = dock_geom.loc.y;
+                let available_bottom = usable_zone.loc.y + usable_zone.size.h;
+                
+                // If dock is in the usable area, reduce height to stop above dock
+                if dock_top < available_bottom {
+                    usable_zone.size.h = dock_top - usable_zone.loc.y;
+                }
+            }
             
-            let new_geometry = smithay::utils::Rectangle::from_loc_and_size(
-                (0, available_y),
-                (output_geom.size.w, available_height),
-            );
+            let new_geometry = usable_zone;
             surface.with_pending_state(|state| {
                 state.states.set(xdg_toplevel::State::Maximized);
                 state.size = Some(new_geometry.size);

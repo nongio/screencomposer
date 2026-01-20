@@ -125,6 +125,34 @@ impl ClientData for ClientState {
     fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
 }
 
+/// Tracks reserved space on each edge of an output from layer shell exclusive zones
+#[derive(Debug, Clone, Default)]
+pub struct ExclusiveZones {
+    pub top: i32,
+    pub bottom: i32,
+    pub left: i32,
+    pub right: i32,
+}
+
+impl ExclusiveZones {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    
+    /// Get the usable area after applying exclusive zones
+    pub fn apply_to_output(&self, output_geometry: utils::Rectangle<i32, utils::Logical>) -> utils::Rectangle<i32, utils::Logical> {
+        let loc_x = output_geometry.loc.x + self.left;
+        let loc_y = output_geometry.loc.y + self.top;
+        let width = output_geometry.size.w - self.left - self.right;
+        let height = output_geometry.size.h - self.top - self.bottom;
+        
+        utils::Rectangle::from_loc_and_size(
+            (loc_x, loc_y),
+            (width, height)
+        )
+    }
+}
+
 pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub backend_data: BackendData,
     pub socket_name: Option<String>,
@@ -141,6 +169,8 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub popup_root_cache: HashMap<ObjectId, ObjectId>,
     /// Compositor-owned layer shell surfaces, keyed by surface ObjectId
     pub layer_surfaces: HashMap<ObjectId, LayerShellSurface>,
+    /// Tracked exclusive zones per output (reserved space on each edge)
+    pub exclusive_zones: HashMap<String, ExclusiveZones>,
     pub workspaces: Workspaces,
 
     // smithay state
@@ -456,6 +486,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             popups: PopupManager::default(),
             popup_root_cache: HashMap::new(),
             layer_surfaces: HashMap::new(),
+            exclusive_zones: HashMap::new(),
             compositor_state,
             data_device_state,
             layer_shell_state,
@@ -521,6 +552,74 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         composer.rebuild_modifier_masks();
 
         composer
+    }
+
+    /// Recalculate exclusive zones for an output from its layer shell surfaces
+    pub fn recalculate_exclusive_zones(&mut self, output: &Output) {
+        use smithay::desktop::layer_map_for_output;
+        use smithay::wayland::shell::wlr_layer::{Anchor, ExclusiveZone};
+        
+        let output_name = output.name();
+        let layer_map = layer_map_for_output(output);
+        
+        let mut zones = ExclusiveZones::new();
+        let layer_config = Config::with(|c| c.layer_shell.clone());
+        let scale = Config::with(|c| c.screen_scale);
+        
+        // Calculate scaled max limits
+        let max_top = (layer_config.max_top as f64 * scale) as i32;
+        let max_bottom = (layer_config.max_bottom as f64 * scale) as i32;
+        let max_left = (layer_config.max_left as f64 * scale) as i32;
+        let max_right = (layer_config.max_right as f64 * scale) as i32;
+        
+        for layer_surface in layer_map.layers() {
+            let anchor = smithay::wayland::compositor::with_states(
+                layer_surface.wl_surface(),
+                |states| {
+                    states
+                        .cached_state
+                        .get::<smithay::wayland::shell::wlr_layer::LayerSurfaceCachedState>()
+                        .current()
+                        .anchor
+                },
+            );
+            
+            let exclusive_zone = smithay::wayland::compositor::with_states(
+                layer_surface.wl_surface(),
+                |states| {
+                    states
+                        .cached_state
+                        .get::<smithay::wayland::shell::wlr_layer::LayerSurfaceCachedState>()
+                        .current()
+                        .exclusive_zone
+                },
+            );
+            
+            match exclusive_zone {
+                ExclusiveZone::Exclusive(size) if size > 0 => {
+                    let size = size as i32;
+                    // Apply to appropriate edge based on anchor
+                    if anchor.contains(Anchor::TOP) && !anchor.contains(Anchor::BOTTOM) {
+                        let clamped = if max_top > 0 { size.min(max_top) } else { size };
+                        zones.top += clamped;
+                    } else if anchor.contains(Anchor::BOTTOM) && !anchor.contains(Anchor::TOP) {
+                        let clamped = if max_bottom > 0 { size.min(max_bottom) } else { size };
+                        zones.bottom += clamped;
+                    }
+                    
+                    if anchor.contains(Anchor::LEFT) && !anchor.contains(Anchor::RIGHT) {
+                        let clamped = if max_left > 0 { size.min(max_left) } else { size };
+                        zones.left += clamped;
+                    } else if anchor.contains(Anchor::RIGHT) && !anchor.contains(Anchor::LEFT) {
+                        let clamped = if max_right > 0 { size.min(max_right) } else { size };
+                        zones.right += clamped;
+                    }
+                }
+                _ => {}
+            }
+        }
+        
+        self.exclusive_zones.insert(output_name.clone(), zones);
     }
 
     pub fn schedule_event_loop_dispatch(&self) {
