@@ -123,8 +123,8 @@ impl ApplicationsInfo {
 
     async fn get_desktop_entry(app_id: &str) -> Option<DesktopEntry> {
         // Normalize the app_id - remove .desktop suffix if present
-        let normalized_id = if app_id.ends_with(".desktop") {
-            &app_id[..app_id.len() - 8]
+        let normalized_id = if let Some(stripped) = app_id.strip_suffix(".desktop") {
+            stripped
         } else {
             app_id
         };

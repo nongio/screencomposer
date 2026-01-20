@@ -1028,7 +1028,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
                 
                 // Add to warm cache for View
                 let mut deque = VecDeque::new();
-                deque.push_back(layer.id.into());
+                deque.push_back(layer.id);
                 cache.insert(key, deque);
                 
                 tracing::debug!("Pre-populated surface_layer for {:?}", sub_id);

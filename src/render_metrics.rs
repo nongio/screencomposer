@@ -142,7 +142,7 @@ pub struct FrameTimer<'a> {
     metrics: &'a RenderMetrics,
 }
 
-impl<'a> Drop for FrameTimer<'a> {
+impl Drop for FrameTimer<'_> {
     fn drop(&mut self) {
         let duration = self.start.elapsed();
         self.metrics.record_frame_time(duration);

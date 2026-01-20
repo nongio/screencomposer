@@ -5,7 +5,6 @@ use std::{
 };
 
 use crate::{
-    drawing::*,
     render::*,
     render_elements::workspace_render_elements::WorkspaceRenderElements,
     shell::WindowElement,
@@ -23,9 +22,7 @@ use smithay::{
             vulkan::{ImageUsageFlags, VulkanAllocator},
         },
         egl::{EGLContext, EGLDisplay},
-        renderer::{
-            damage::OutputDamageTracker, element::AsRenderElements, Bind, ImportDma, ImportMemWl,
-        },
+        renderer::{damage::OutputDamageTracker, Bind, ImportDma, ImportMemWl},
         vulkan::{version::Version, Instance, PhysicalDevice},
         x11::{WindowBuilder, X11Backend, X11Event, X11Surface},
     },
@@ -39,7 +36,7 @@ use smithay::{
         wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
         wayland_server::{protocol::wl_surface, Display},
     },
-    utils::{DeviceFd, IsAlive, Logical, Rectangle, Scale},
+    utils::{DeviceFd, IsAlive, Logical, Physical, Point, Rectangle, Scale},
     wayland::presentation::Refresh,
     wayland::{
         compositor,
@@ -349,7 +346,7 @@ pub fn run_x11() {
 
     info!("Initialization completed, starting the main loop.");
 
-    let mut pointer_element = PointerElement::default();
+    // Removed unused PointerElement - cursor now rendered directly using CursorManager
 
     while state.running.load(Ordering::SeqCst) {
         if state.backend_data.render {
@@ -382,7 +379,7 @@ pub fn run_x11() {
             }
 
             let mut cursor_guard = cursor_status.lock().unwrap();
-            let mut elements: Vec<WorkspaceRenderElements<'_, SkiaRenderer>> = Vec::new();
+            let elements: Vec<WorkspaceRenderElements<'_, SkiaRenderer>> = Vec::new();
 
             // draw the cursor as relevant
             // reset the cursor if the surface is no longer alive
@@ -410,15 +407,11 @@ pub fn run_x11() {
                 (0, 0).into()
             };
             let cursor_pos = state.pointer.current_location() - cursor_hotspot.to_f64();
-            let cursor_pos_scaled = cursor_pos.to_physical(scale).to_i32_round();
+            let _cursor_pos_scaled: Point<i32, Physical> =
+                cursor_pos.to_physical(scale).to_i32_round();
 
-            pointer_element.set_status(cursor_guard.clone());
-            elements.extend(pointer_element.render_elements(
-                &mut backend_data.renderer,
-                cursor_pos_scaled,
-                scale,
-                1.0,
-            ));
+            // Cursor rendering removed - to be implemented similar to winit/udev using CursorManager
+            // elements.extend(pointer_element.render_elements(...));
 
             // draw the dnd icon if any
             // if let Some(surface) = state.dnd_icon.as_ref() {

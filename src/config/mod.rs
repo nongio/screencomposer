@@ -139,11 +139,12 @@ impl Config {
 
         config.rebuild_shortcut_bindings();
         config.rebuild_remap_tables();
-        let scaled_cursor_size = (config.cursor_size as f64) as u32;
-        std::env::set_var("XCURSOR_SIZE", (scaled_cursor_size).to_string());
-        std::env::set_var("XCURSOR_THEME", config.cursor_theme.clone());
-        // std::env::set_var("GDK_DPI_SCALE", (config.screen_scale).to_string());
-        print!("Config initialized: {:#?}", config.theme_scheme);
+
+        // Environment variables for Wayland session
+        std::env::set_var("XDG_SESSION_TYPE", "wayland");
+        std::env::set_var("XDG_CURRENT_DESKTOP", "screencomposer");
+
+        tracing::info!("Config initialized: {:#?}", config.theme_scheme);
         config
     }
 

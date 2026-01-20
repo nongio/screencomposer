@@ -270,6 +270,7 @@ pub fn view_render_elements(
         .unwrap();
 
     // Extract layers by key and map to surface IDs
+    #[allow(clippy::mutable_key_type)]
     let mut surface_layers = HashMap::new();
     for wvs in render_elements.iter() {
         if wvs.phy_dst_w > 0.0 && wvs.phy_dst_h > 0.0 {
