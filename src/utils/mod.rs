@@ -83,8 +83,7 @@ pub fn named_icon(icon_name: &str) -> Option<lay_rs::skia::Image> {
         return Some(icon.clone());
     }
     // not found
-    let icon_path = xdgkit::icon_finder::find_icon(icon_name.to_string(), 512, 1)
-        .map(|icon| icon.to_str().unwrap().to_string());
+    let icon_path = find_icon_with_theme(icon_name, 512, 1);
     let icon = icon_path
         .as_ref()
         .and_then(|icon_path| image_from_path(icon_path, (512, 512)));
@@ -92,6 +91,44 @@ pub fn named_icon(icon_name: &str) -> Option<lay_rs::skia::Image> {
         ic.insert(icon_name.to_string(), i.clone());
     }
     icon
+}
+
+/// Find an icon using the configured theme or auto-detection
+pub fn find_icon_with_theme(icon_name: &str, size: i32, scale: i32) -> Option<String> {
+    Config::with(|config| {
+        if let Some(theme_name) = &config.icon_theme {
+            // Use specified theme
+            let dir_list_vector = xdgkit::icon_finder::generate_dir_list();
+            
+            // Try to find the theme by name
+            let theme_dir = dir_list_vector
+                .iter()
+                .find(|dir| &dir.theme == theme_name)
+                .cloned();
+            
+            if let Some(theme_dir) = theme_dir {
+                // Load the IconTheme from the found directory
+                let theme = xdgkit::icon_theme::IconTheme::from_pathbuff(theme_dir.index());
+                
+                xdgkit::icon_finder::multiple_find_icon(
+                    icon_name.to_string(),
+                    size,
+                    scale,
+                    dir_list_vector,
+                    theme,
+                )
+                .map(|p| p.to_str().unwrap().to_string())
+            } else {
+                tracing::warn!("Icon theme '{}' not found, falling back to auto-detection", theme_name);
+                xdgkit::icon_finder::find_icon(icon_name.to_string(), size, scale)
+                    .map(|p| p.to_str().unwrap().to_string())
+            }
+        } else {
+            // Use auto-detection (None or omitted)
+            xdgkit::icon_finder::find_icon(icon_name.to_string(), size, scale)
+                .map(|p| p.to_str().unwrap().to_string())
+        }
+    })
 }
 pub fn draw_named_icon(icon_name: &str) -> Option<ContentDrawFunction> {
     let icon = named_icon(icon_name);
