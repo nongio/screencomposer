@@ -1299,14 +1299,20 @@ impl ScreenComposer<UdevData> {
                 drm_mode.vrefresh()
             );
             let mut wl_mode = WlMode::from(drm_mode);
-            // Use config refresh rate or fallback to 60Hz
+            // Use config refresh rate, or use DRM mode's refresh rate, or fallback to 60Hz
             if let Some(ref profile) = config_profile {
                 if let Some(refresh_hz) = profile.refresh_hz {
                     wl_mode.refresh = (refresh_hz * 1000.0) as i32;
                 }
             }
+            // If still zero after config check, use DRM mode's refresh or 60Hz fallback
             if wl_mode.refresh == 0 {
-                wl_mode.refresh = 60 * 1000;
+                let drm_refresh_mhz = drm_mode.vrefresh() as i32 * 1000;
+                wl_mode.refresh = if drm_refresh_mhz > 0 {
+                    drm_refresh_mhz
+                } else {
+                    60 * 1000
+                };
             }
             let surface = match device
                 .drm

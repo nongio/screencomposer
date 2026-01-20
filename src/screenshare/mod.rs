@@ -285,10 +285,14 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
             };
 
             // Create PipeWire stream
+            // TODO: Make screenshare FPS cap configurable (e.g., config.screenshare.max_fps)
+            // Chrome/WebRTC don't support >60fps, so we cap here for compatibility
+            let framerate_num = (refresh_rate / 1000).min(60); // Cap at 60fps for compatibility
+
             let config = StreamConfig {
                 width,
                 height,
-                framerate_num: refresh_rate / 1000, // Convert mHz to Hz
+                framerate_num,
                 framerate_denom: 1,
                 gbm_device,
                 capabilities,

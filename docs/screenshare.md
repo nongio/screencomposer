@@ -341,6 +341,32 @@ Expected performance: 60 FPS at full resolution (e.g., 2880x1920).
 - **Window capture**: Capture individual windows instead of full outputs
 - **Cursor metadata**: Separate cursor position/image stream
 - **Multiple buffer modes**: Experiment with multi-buffering for specific use cases
+- **Configurable framerate cap**: Allow per-client or global FPS limit configuration
+
+## Known Issues and Fixes
+
+### Framerate Compatibility (January 2026)
+
+**Issue**: When the compositor runs on high-refresh-rate displays (e.g., 120Hz), screensharing 
+would fail with Chrome/WebRTC clients showing "no more input formats" error.
+
+**Root Cause**: Commit 5ea901 changed the code to use the actual display refresh rate instead 
+of hardcoding 60Hz. Chrome and most WebRTC implementations don't support PipeWire streams 
+above 60fps, causing format negotiation to fail.
+
+**Fix**: The screenshare framerate is now capped at 60fps regardless of the display's actual 
+refresh rate:
+
+```rust
+let framerate_num = (refresh_rate / 1000).min(60); // Cap at 60fps for compatibility
+```
+
+This maintains compatibility with Chrome, Firefox, OBS, and other screenshare clients while 
+still allowing the display to run at higher refresh rates (120Hz, 144Hz, etc.) for normal 
+compositor operation.
+
+**Future**: The FPS cap should be made configurable (e.g., `config.screenshare.max_fps`) to 
+allow power users to experiment with higher framerates for specific clients that support them.
 
 ## Implementation Details
 
