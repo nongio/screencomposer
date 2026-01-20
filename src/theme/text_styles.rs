@@ -1,5 +1,3 @@
-#![allow(warnings)]
-
 define_text_styles!({
     large_title_regular => (Weight::NORMAL, 26.0),
     large_title_emphasized => (Weight::BOLD, 26.0),
@@ -7,7 +5,7 @@ define_text_styles!({
     title_1_emphasized => (Weight::BOLD, 22.0),
     title_2_regular => (Weight::NORMAL, 17.0),
     title_2_emphasized => (Weight::BOLD, 17.0),
-    title_3_regular => (Weight::NORMAL, 15.0),
+    title_3_regular => (Weight::NORMAL, 17.0),
     title_3_emphasized => (Weight::SEMI_BOLD, 15.0),
     headline_regular => (Weight::BOLD, 13.0),
     headline_emphasized => (Weight::EXTRA_BOLD, 13.0),

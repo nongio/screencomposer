@@ -11,7 +11,7 @@ pub struct SkiaContext {
 
 impl SkiaContext {
     /// Initialize a new SkiaContext from a Wayland display and surface
-    /// 
+    ///
     /// This creates the EGL display, context, and Skia DirectContext that will be shared
     /// across all surfaces. The initial surface is used to set up the context but can be
     /// used for rendering afterwards.
@@ -27,23 +27,30 @@ impl SkiaContext {
                 .map_err(|e| format!("Failed to load EGL: {}", e))?;
 
             // Get EGL display from Wayland display
-            let display = egl.get_display(wl_display_ptr as khronos_egl::NativeDisplayType)
+            let display = egl
+                .get_display(wl_display_ptr as khronos_egl::NativeDisplayType)
                 .ok_or("Failed to get EGL display")?;
-            
+
             egl.initialize(display)
                 .map_err(|e| format!("Failed to initialize EGL: {}", e))?;
 
             // Choose config
             let config_attribs = [
-                khronos_egl::RED_SIZE, 8,
-                khronos_egl::GREEN_SIZE, 8,
-                khronos_egl::BLUE_SIZE, 8,
-                khronos_egl::ALPHA_SIZE, 8,
-                khronos_egl::RENDERABLE_TYPE, khronos_egl::OPENGL_ES2_BIT,
+                khronos_egl::RED_SIZE,
+                8,
+                khronos_egl::GREEN_SIZE,
+                8,
+                khronos_egl::BLUE_SIZE,
+                8,
+                khronos_egl::ALPHA_SIZE,
+                8,
+                khronos_egl::RENDERABLE_TYPE,
+                khronos_egl::OPENGL_ES2_BIT,
                 khronos_egl::NONE,
             ];
 
-            let config = egl.choose_first_config(display, &config_attribs)
+            let config = egl
+                .choose_first_config(display, &config_attribs)
                 .map_err(|e| format!("Failed to choose config: {}", e))?
                 .ok_or("No suitable EGL config found")?;
 
@@ -52,39 +59,39 @@ impl SkiaContext {
                 .map_err(|e| format!("Failed to bind API: {}", e))?;
 
             // Create context
-            let context_attribs = [
-                khronos_egl::CONTEXT_CLIENT_VERSION, 2,
-                khronos_egl::NONE,
-            ];
+            let context_attribs = [khronos_egl::CONTEXT_CLIENT_VERSION, 2, khronos_egl::NONE];
 
-            let context = egl.create_context(display, config, None, &context_attribs)
+            let context = egl
+                .create_context(display, config, None, &context_attribs)
                 .map_err(|e| format!("Failed to create context: {}", e))?;
 
             // Create WlEglSurface for initial surface
-            let wl_egl_surface = wayland_egl::WlEglSurface::new(initial_surface.id(), width, height)
-                .map_err(|e| format!("Failed to create WlEglSurface: {:?}", e))?;
+            let wl_egl_surface =
+                wayland_egl::WlEglSurface::new(initial_surface.id(), width, height)
+                    .map_err(|e| format!("Failed to create WlEglSurface: {:?}", e))?;
 
             // Create EGL surface
-            let egl_surface = egl.create_window_surface(
-                display,
-                config,
-                wl_egl_surface.ptr() as khronos_egl::NativeWindowType,
-                None,
-            ).map_err(|e| format!("Failed to create EGL surface: {}", e))?;
+            let egl_surface = egl
+                .create_window_surface(
+                    display,
+                    config,
+                    wl_egl_surface.ptr() as khronos_egl::NativeWindowType,
+                    None,
+                )
+                .map_err(|e| format!("Failed to create EGL surface: {}", e))?;
 
             // Make context current
             egl.make_current(display, Some(egl_surface), Some(egl_surface), Some(context))
                 .map_err(|e| format!("Failed to make context current: {}", e))?;
 
             // Load GL functions
-            gl::load_with(|name| {
-                egl.get_proc_address(name).unwrap() as *const _
-            });
+            gl::load_with(|name| egl.get_proc_address(name).unwrap() as *const _);
 
             // Create Skia interface
             let interface = skia_safe::gpu::gl::Interface::new_load_with(|name| {
                 egl.get_proc_address(name).unwrap() as *const _
-            }).ok_or("Failed to create Skia GL interface")?;
+            })
+            .ok_or("Failed to create Skia GL interface")?;
 
             // Create Skia DirectContext
             let skia_context = skia_safe::gpu::direct_contexts::make_gl(interface, None)

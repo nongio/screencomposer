@@ -1447,7 +1447,8 @@ impl ScreenComposer<UdevData> {
                             velocity_samples: vec![-delta.y],
                         };
                         // Apply the current frame's delta (not accumulated)
-                        let expose_delta = (-delta.y / crate::state::EXPOSE_DELTA_MULTIPLIER) as f32;
+                        let expose_delta =
+                            (-delta.y / crate::state::EXPOSE_DELTA_MULTIPLIER) as f32;
                         self.workspaces.expose_update(expose_delta);
                     }
                     crate::state::SwipeDirection::Undetermined => {}

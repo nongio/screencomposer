@@ -5,11 +5,8 @@ use smithay::reexports::wayland_server::{
 use crate::{state::Backend, ScreenComposer};
 use lay_rs::prelude::Transition;
 
-
 use super::protocol::{
-    gen::{
-        sc_layer_shell_v1::{self, ScLayerShellV1},
-    },
+    gen::sc_layer_shell_v1::{self, ScLayerShellV1},
     ScLayer, ScLayerShellHandler,
 };
 

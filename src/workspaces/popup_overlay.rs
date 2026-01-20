@@ -112,8 +112,9 @@ impl PopupOverlayView {
         position: Point,
         surfaces: Vec<WindowViewSurface>,
         warm_cache: Option<HashMap<String, std::collections::VecDeque<lay_rs::prelude::NodeRef>>>,
-    ) -> HashMap<ObjectId, Layer>{
-        let popup = self.get_or_create_popup_layer(popup_id.clone(), root_window_id.clone(), warm_cache);
+    ) -> HashMap<ObjectId, Layer> {
+        let popup =
+            self.get_or_create_popup_layer(popup_id.clone(), root_window_id.clone(), warm_cache);
         popup.layer.set_position(position, None);
 
         popup.view_content.update_state(&surfaces);

@@ -304,6 +304,142 @@ impl Backend for UdevData {
     }
 }
 
+fn configure_libinput_devices(libinput: &mut Libinput, config: &Config) {
+    use smithay::reexports::input::{
+        event::{DeviceEvent, EventTrait},
+        Event,
+    };
+
+    // Process initial devices
+    libinput.dispatch().ok();
+
+    for event in libinput.by_ref() {
+        if let Event::Device(DeviceEvent::Added(added_event)) = event {
+            let mut device = added_event.device();
+            apply_device_config(&mut device, config);
+        }
+    }
+}
+
+fn apply_device_config(device: &mut smithay::reexports::input::Device, config: &Config) {
+    // Only configure pointer devices (touchpads)
+    if !device.has_capability(smithay::reexports::input::DeviceCapability::Pointer) {
+        return;
+    }
+
+    // Check if it's a touchpad
+    if device.config_tap_finger_count() > 0 {
+        // Configure tap-to-click
+        if device
+            .config_tap_set_enabled(config.input.tap_enabled)
+            .is_ok()
+        {
+            debug!(
+                device = device.name(),
+                enabled = config.input.tap_enabled,
+                "Set tap-to-click"
+            );
+        }
+
+        // Configure tap-and-drag
+        if device
+            .config_tap_set_drag_enabled(config.input.tap_drag_enabled)
+            .is_ok()
+        {
+            debug!(
+                device = device.name(),
+                enabled = config.input.tap_drag_enabled,
+                "Set tap-and-drag"
+            );
+        }
+
+        // Configure tap drag lock
+        if device
+            .config_tap_set_drag_lock_enabled(config.input.tap_drag_lock_enabled)
+            .is_ok()
+        {
+            debug!(
+                device = device.name(),
+                enabled = config.input.tap_drag_lock_enabled,
+                "Set tap drag lock"
+            );
+        }
+
+        // Configure click method
+        use crate::config::TouchpadClickMethod;
+        use smithay::reexports::input::ClickMethod;
+
+        let click_method = match config.input.touchpad_click_method {
+            TouchpadClickMethod::Clickfinger => ClickMethod::Clickfinger,
+            TouchpadClickMethod::ButtonAreas => ClickMethod::ButtonAreas,
+        };
+
+        if device.config_click_set_method(click_method).is_ok() {
+            debug!(
+                device = device.name(),
+                method = ?config.input.touchpad_click_method,
+                "Set click method"
+            );
+        }
+
+        // Configure disable-while-typing
+        if device
+            .config_dwt_set_enabled(config.input.touchpad_dwt_enabled)
+            .is_ok()
+        {
+            debug!(
+                device = device.name(),
+                enabled = config.input.touchpad_dwt_enabled,
+                "Set disable-while-typing"
+            );
+        }
+
+        // Configure natural scrolling for touchpad
+        if device
+            .config_scroll_set_natural_scroll_enabled(config.input.touchpad_natural_scroll_enabled)
+            .is_ok()
+        {
+            debug!(
+                device = device.name(),
+                enabled = config.input.touchpad_natural_scroll_enabled,
+                "Set natural scroll"
+            );
+        }
+
+        // Configure left-handed mode
+        if device
+            .config_left_handed_set(config.input.touchpad_left_handed)
+            .is_ok()
+        {
+            debug!(
+                device = device.name(),
+                enabled = config.input.touchpad_left_handed,
+                "Set left-handed mode"
+            );
+        }
+
+        // Configure middle button emulation
+        if device
+            .config_middle_emulation_set_enabled(config.input.touchpad_middle_emulation_enabled)
+            .is_ok()
+        {
+            debug!(
+                device = device.name(),
+                enabled = config.input.touchpad_middle_emulation_enabled,
+                "Set middle button emulation"
+            );
+        }
+
+        info!(
+            device = device.name(),
+            "Configured touchpad with tap={}, drag={}, natural_scroll={}",
+            config.input.tap_enabled,
+            config.input.tap_drag_enabled,
+            config.input.touchpad_natural_scroll_enabled
+        );
+    }
+}
+
 pub fn run_udev() {
     let mut event_loop = EventLoop::try_new().unwrap();
     let display = Display::new().unwrap();
@@ -378,6 +514,12 @@ pub fn run_udev() {
         state.backend_data.session.clone().into(),
     );
     libinput_context.udev_assign_seat(&state.seat_name).unwrap();
+
+    // Configure input devices based on config
+    Config::with(|config| {
+        configure_libinput_devices(&mut libinput_context, config);
+    });
+
     let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
 
     /*
@@ -1157,14 +1299,20 @@ impl ScreenComposer<UdevData> {
                 drm_mode.vrefresh()
             );
             let mut wl_mode = WlMode::from(drm_mode);
-            // Use config refresh rate or fallback to 60Hz
+            // Use config refresh rate, or use DRM mode's refresh rate, or fallback to 60Hz
             if let Some(ref profile) = config_profile {
                 if let Some(refresh_hz) = profile.refresh_hz {
                     wl_mode.refresh = (refresh_hz * 1000.0) as i32;
                 }
             }
+            // If still zero after config check, use DRM mode's refresh or 60Hz fallback
             if wl_mode.refresh == 0 {
-                wl_mode.refresh = 60 * 1000;
+                let drm_refresh_mhz = drm_mode.vrefresh() as i32 * 1000;
+                wl_mode.refresh = if drm_refresh_mhz > 0 {
+                    drm_refresh_mhz
+                } else {
+                    60 * 1000
+                };
             }
             let surface = match device
                 .drm

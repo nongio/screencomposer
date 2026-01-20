@@ -1,5 +1,5 @@
-use wayland_client::{protocol::wl_surface};
 use skia_safe::Canvas;
+use wayland_client::protocol::wl_surface;
 
 /// Individual renderable surface with its own EGL surface
 /// Can be used for main windows, subsurfaces, or any other surface type
@@ -48,37 +48,38 @@ impl SkiaSurface {
         unsafe {
             // Load EGL - this is cached internally after first load, so cheap
             let egl = khronos_egl::DynamicInstance::<khronos_egl::EGL1_4>::load_required().unwrap();
-            
+
             // Make this surface's EGL surface current
             egl.make_current(
                 ctx.egl_display(),
                 Some(self.egl_surface),
                 Some(self.egl_surface),
                 Some(ctx.egl_context()),
-            ).ok();
-            
+            )
+            .ok();
+
             // Create or reuse cached Skia surface
             if self.cached_surface.is_none() {
                 // Query framebuffer info
                 let mut fboid: gl::types::GLint = 0;
                 gl::GetIntegerv(gl::FRAMEBUFFER_BINDING, &mut fboid);
-                
+
                 let stencil = 8;
-                
+
                 // Create Skia backend render target
                 let fb_info = skia_safe::gpu::gl::FramebufferInfo {
                     fboid: fboid as u32,
                     format: skia_safe::gpu::gl::Format::RGBA8.into(),
                     protected: skia_safe::gpu::Protected::No,
                 };
-                
+
                 let backend_render_target = skia_safe::gpu::backend_render_targets::make_gl(
                     (self.width, self.height),
                     0,
                     stencil as usize,
                     fb_info,
                 );
-                
+
                 self.cached_surface = skia_safe::gpu::surfaces::wrap_backend_render_target(
                     ctx.skia_context(),
                     &backend_render_target,
@@ -88,24 +89,24 @@ impl SkiaSurface {
                     None,
                 );
             }
-            
+
             if let Some(ref mut skia_surface) = self.cached_surface {
                 let canvas = skia_surface.canvas();
-                
+
                 // Scale canvas by 2x for HiDPI rendering (buffers are 2x size)
                 canvas.save();
                 canvas.scale((2.0, 2.0));
-                
+
                 // Call user's drawing function
                 draw_fn(canvas);
-                
+
                 // Restore canvas state to prevent scale accumulation
                 canvas.restore();
             }
-            
+
             // Flush to GPU
             ctx.skia_context().flush_and_submit();
-            
+
             // Swap buffers
             egl.swap_buffers(ctx.egl_display(), self.egl_surface).ok();
         }
@@ -115,7 +116,6 @@ impl SkiaSurface {
     pub fn commit(&self) {
         self.wl_surface.damage_buffer(0, 0, self.width, self.height);
         self.wl_surface.commit();
-
     }
 
     /// Get the underlying Wayland surface

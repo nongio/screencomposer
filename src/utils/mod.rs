@@ -99,17 +99,17 @@ pub fn find_icon_with_theme(icon_name: &str, size: i32, scale: i32) -> Option<St
         if let Some(theme_name) = &config.icon_theme {
             // Use specified theme
             let dir_list_vector = xdgkit::icon_finder::generate_dir_list();
-            
+
             // Try to find the theme by name
             let theme_dir = dir_list_vector
                 .iter()
                 .find(|dir| &dir.theme == theme_name)
                 .cloned();
-            
+
             if let Some(theme_dir) = theme_dir {
                 // Load the IconTheme from the found directory
                 let theme = xdgkit::icon_theme::IconTheme::from_pathbuff(theme_dir.index());
-                
+
                 xdgkit::icon_finder::multiple_find_icon(
                     icon_name.to_string(),
                     size,
@@ -119,7 +119,10 @@ pub fn find_icon_with_theme(icon_name: &str, size: i32, scale: i32) -> Option<St
                 )
                 .map(|p| p.to_str().unwrap().to_string())
             } else {
-                tracing::warn!("Icon theme '{}' not found, falling back to auto-detection", theme_name);
+                tracing::warn!(
+                    "Icon theme '{}' not found, falling back to auto-detection",
+                    theme_name
+                );
                 xdgkit::icon_finder::find_icon(icon_name.to_string(), size, scale)
                     .map(|p| p.to_str().unwrap().to_string())
             }

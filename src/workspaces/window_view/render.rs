@@ -50,7 +50,7 @@ pub fn view_window_shadow(
             30.0,
             false,
         ));
-        shadow_paint.set_color4f(lay_rs::skia::Color4f::new(0.0, 0.0, 0.0, 0.5), None);
+        shadow_paint.set_color4f(lay_rs::skia::Color4f::new(0.1, 0.1, 0.1, 0.35), None);
 
         canvas.draw_rrect(rrect, &shadow_paint);
         lay_rs::skia::Rect::from_xywh(0.0, 0.0, w, h)

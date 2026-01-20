@@ -4,7 +4,7 @@ use core::fmt;
 
 use lay_rs::{
     engine::Engine,
-    prelude::{taffy, Layer},
+    prelude::{taffy, Layer, Transition},
     types::Size,
 };
 use smithay::reexports::wayland_server::backend::ObjectId;
@@ -28,6 +28,8 @@ pub struct WorkspaceView {
     pub windows_layer: Layer,
 
     fullscreen_mode: Arc<AtomicBool>,
+    is_fullscreen_animating: Arc<AtomicBool>,
+    name: Arc<RwLock<Option<String>>>,
     window_base_layers: Arc<RwLock<HashMap<ObjectId, Layer>>>,
 }
 
@@ -135,6 +137,8 @@ impl WorkspaceView {
             windows_layer,
             workspace_layer,
             fullscreen_mode: Arc::new(AtomicBool::new(false)),
+            is_fullscreen_animating: Arc::new(AtomicBool::new(false)),
+            name: Arc::new(RwLock::new(None)),
             window_base_layers: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -154,6 +158,7 @@ impl WorkspaceView {
         &self,
         window_element: &WindowElement,
         location: smithay::utils::Point<i32, smithay::utils::Logical>,
+        transition: Option<Transition>,
     ) {
         let mut window_list = self.windows_list.write().unwrap();
         let wid = window_element.id();
@@ -188,7 +193,7 @@ impl WorkspaceView {
                 x: location.x as f32,
                 y: location.y as f32,
             },
-            None,
+            transition,
         );
 
         if let Some(l) = self
@@ -240,6 +245,24 @@ impl WorkspaceView {
     pub fn get_fullscreen_mode(&self) -> bool {
         self.fullscreen_mode
             .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn set_fullscreen_animating(&self, animating: bool) {
+        self.is_fullscreen_animating
+            .store(animating, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn get_fullscreen_animating(&self) -> bool {
+        self.is_fullscreen_animating
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn set_name(&self, name: Option<String>) {
+        *self.name.write().unwrap() = name;
+    }
+
+    pub fn get_name(&self) -> Option<String> {
+        self.name.read().unwrap().clone()
     }
 }
 

@@ -46,20 +46,24 @@ impl SimpleWindow {
 
         // Draw a simple centered text
         let paint = skia_safe::Paint::new(skia_safe::Color4f::new(0.2, 0.2, 0.2, 1.0), None);
-        
+
         let font_mgr = skia_safe::FontMgr::new();
         let typeface = font_mgr
             .match_family_style("sans-serif", skia_safe::FontStyle::normal())
-            .unwrap_or_else(|| font_mgr.legacy_make_typeface(None, skia_safe::FontStyle::normal()).unwrap());
-        
+            .unwrap_or_else(|| {
+                font_mgr
+                    .legacy_make_typeface(None, skia_safe::FontStyle::normal())
+                    .unwrap()
+            });
+
         let font = skia_safe::Font::from_typeface(typeface, 24.0);
-        
+
         let text = "Simple Window Component";
         let (_, bounds) = font.measure_str(text, Some(&paint));
-        
+
         let x = (self.width as f32 - bounds.width()) / 2.0;
         let y = (self.height as f32) / 2.0;
-        
+
         canvas.draw_str(text, (x, y), &font, &paint);
     }
 }

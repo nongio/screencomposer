@@ -53,10 +53,15 @@ impl FontCache {
                 return font;
             }
         }
-        
+
         // Last resort: use default typeface from font manager
-        tracing::error!("Font '{}' and all fallbacks failed, using default", family.as_ref());
-        let typeface = self.font_mgr.legacy_make_typeface(None, style)
+        tracing::error!(
+            "Font '{}' and all fallbacks failed, using default",
+            family.as_ref()
+        );
+        let typeface = self
+            .font_mgr
+            .legacy_make_typeface(None, style)
             .expect("Failed to create default typeface");
         let mut font = lay_rs::skia::Font::from_typeface(typeface, size);
         font.set_subpixel(true);

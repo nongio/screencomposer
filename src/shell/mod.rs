@@ -147,7 +147,7 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
             // Check if this is a layer shell surface first
             if self.layer_surfaces.contains_key(&surface_id) {
                 self.update_layer_surface(&surface_id);
-                
+
                 // Don't recalculate here - it causes deadlock since layer_map is borrowed
                 // Recalculation will happen during arrange in ensure_initial_configure
             } else {
@@ -186,7 +186,7 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
                 if let Some(window) = window {
                     window.on_commit();
                     self.update_window_view(&window);
-                    
+
                     // Update foreign toplevel list only if title or app_id actually changed
                     if let Some(handle) = root_id
                         .or(Some(surface_id))
@@ -194,13 +194,13 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
                     {
                         let title = window.xdg_title();
                         let app_id = window.xdg_app_id();
-                        
+
                         // Only send updates if the values have changed
                         // Note: send_title/send_app_id internally check if values changed
                         // but we still need to avoid sending unnecessary done events
                         let title_changed = handle.title() != title;
                         let app_id_changed = handle.app_id() != app_id;
-                        
+
                         if title_changed || app_id_changed {
                             if title_changed {
                                 handle.send_title(&title);
@@ -311,7 +311,7 @@ impl<BackendData: Backend> WlrLayerShellHandler for ScreenComposer<BackendData> 
             wlr_layer,
             layer_surface.namespace()
         );
-        
+
         // Arrange the layer map which will handle the exclusive zone
         map.arrange();
     }
@@ -435,12 +435,16 @@ fn ensure_initial_configure<Backend: crate::state::Backend>(
     };
 
     // Find the output for this layer surface (clone to avoid borrow issues)
-    let output = state.workspaces.outputs().find(|o| {
-        let map = layer_map_for_output(o);
-        map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
-            .is_some()
-    }).cloned();
-    
+    let output = state
+        .workspaces
+        .outputs()
+        .find(|o| {
+            let map = layer_map_for_output(o);
+            map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
+                .is_some()
+        })
+        .cloned();
+
     if let Some(output) = output {
         let initial_configure_sent = with_states(surface, |states| {
             states
@@ -457,7 +461,7 @@ fn ensure_initial_configure<Backend: crate::state::Backend>(
         // arrange the layers before sending the initial configure
         // to respect any size the client may have sent
         map.arrange();
-        
+
         // send the initial configure if relevant
         if !initial_configure_sent {
             let layer = map
@@ -513,6 +517,6 @@ pub fn fixup_positions(workspaces: &mut Workspaces, pointer_location: Point<f64,
     // test pluggin / unplugging monitors
     for window in orphaned_windows.into_iter().as_ref() {
         let (_bounds, location) = workspaces.new_window_placement_at(pointer_location);
-        workspaces.map_window(window, location, false);
+        workspaces.map_window(window, location, false, None);
     }
 }

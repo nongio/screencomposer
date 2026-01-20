@@ -4,7 +4,7 @@ authors = ["Riccardo Canalicchio <riccardo.canalicchio@gmail.com>"]
 version = "0.10.0"
 edition = "2021"
 license = "MIT"
-rust-version = "1.83.0"
+rust-version = "1.85.0"
 
 [dependencies]
 bitflags = "2.2.1"
@@ -50,19 +50,19 @@ tag = "v1.2.0"
 features = ["export-taffy"]
 
 [dependencies.smithay-drm-extras]
-path = "../smithay/smithay-drm-extras"
-#git = "https://github.com/Smithay/smithay"
+# path = "../smithay/smithay-drm-extras"
+git = "https://github.com/Smithay/smithay"
 # Updated to include fix for viewporter data race (PR #1623)
 # Fixes Chrome crashes when scrolling/fullscreen: https://github.com/smithay/smithay/issues/1622
-#rev = "5186cf7dec2472a91e3c248772954b1141dab7f2"
+rev = "5186cf7dec2472a91e3c248772954b1141dab7f2"
 optional = true
 
 [dependencies.smithay]
-path = "../smithay"
-#git = "https://github.com/Smithay/smithay"
+# path = "../smithay"
+git = "https://github.com/Smithay/smithay"
 # Updated to include fix for viewporter data race (PR #1623)
 # Fixes Chrome crashes when scrolling/fullscreen: https://github.com/smithay/smithay/issues/1622
-#rev= "5186cf7dec2472a91e3c248772954b1141dab7f2"
+rev= "5186cf7dec2472a91e3c248772954b1141dab7f2"
 default-features = false
 features = [
     "backend_winit",

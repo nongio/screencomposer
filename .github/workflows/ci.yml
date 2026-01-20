@@ -13,7 +13,7 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v3
       - name: Rust toolchain
-        uses: dtolnay/rust-toolchain@1.83.0
+        uses: dtolnay/rust-toolchain@1.85.0
         with:
           components: rustfmt
       - name: Cargo cache
@@ -27,12 +27,12 @@ jobs:
         run: cargo fmt --all -- --check
   
   clippy-check:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout sources
         uses: actions/checkout@v3
       - name: Rust toolchain
-        uses: dtolnay/rust-toolchain@1.83.0
+        uses: dtolnay/rust-toolchain@1.85.0
         with:
           components: clippy
       - name: Cargo registry cache
@@ -45,6 +45,6 @@ jobs:
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-registry-
       - name: System dependencies
-        run: sudo apt-get update; sudo apt-get install -y libdrm-dev libudev-dev libgbm-dev libxkbcommon-dev libegl1-mesa-dev libwayland-dev libinput-dev libdbus-1-dev libsystemd-dev libseat-dev
+        run: sudo apt-get update; sudo apt-get install -y libdrm-dev libudev-dev libgbm-dev libxkbcommon-dev libegl1-mesa-dev libwayland-dev libinput-dev libdbus-1-dev libsystemd-dev libseat-dev libpipewire-0.3-dev
       - name: Clippy ScreenComposer
         run: cargo clippy --features "default" -- -D warnings

@@ -81,9 +81,9 @@ impl MenuBar {
     pub fn add_item(&mut self, label: impl Into<String>, items: Vec<MenuItem>) -> &mut Self {
         let label_str = label.into();
         let item = MenuBarItem::new(label_str.clone(), items.clone());
-        
+
         let menu = Menu::new(items);
-        
+
         self.items.push(item);
         self.menus.insert(label_str, menu);
         self
@@ -228,7 +228,7 @@ impl MenuBar {
             if item.bounds.contains(Point::new(x, y)) {
                 let label = item.label.clone();
                 let x_pos = item.bounds.left;
-                
+
                 // If a menu is already open, switch to the hovered menu if different
                 if self.active_menu.is_some() {
                     let changed = !self.is_menu_open(&label);
@@ -237,7 +237,7 @@ impl MenuBar {
                     }
                     return Some((label, x_pos, changed));
                 }
-                
+
                 // Return the hovered item (but don't open it if no menu is active)
                 return Some((label, x_pos, false));
             }
@@ -255,7 +255,7 @@ impl MenuBar {
         let font_style = FontStyle::new(
             skia_safe::font_style::Weight::SEMI_BOLD,
             skia_safe::font_style::Width::NORMAL,
-            skia_safe::font_style::Slant::Upright
+            skia_safe::font_style::Slant::Upright,
         );
         let typeface = font_mgr
             .match_family_style("Inter", font_style)
@@ -266,18 +266,18 @@ impl MenuBar {
 
         // Render each item
         let mut x_offset = self.bar_padding;
-        
+
         for item in &mut self.items {
             let text_paint = Paint::new(Color4f::from(self.text_color), None);
-            
+
             // Measure text
             let (_, bounds) = font.measure_str(&item.label, Some(&text_paint));
             let text_width = bounds.width();
             let item_width = text_width + self.item_padding * 2.0;
-            
+
             // Update item bounds for hit testing
             item.bounds = Rect::new(x_offset, 0.0, x_offset + item_width, self.height);
-            
+
             // Draw background if active with rounded corners
             if item.is_open {
                 let mut active_paint = Paint::new(Color4f::from(self.active_color), None);
@@ -285,13 +285,13 @@ impl MenuBar {
                 let rrect = skia_safe::RRect::new_rect_xy(item.bounds, 4.0, 4.0); // 4px corner radius
                 canvas.draw_rrect(rrect, &active_paint);
             }
-            
+
             // Draw text centered in the item
             let text_x = x_offset + self.item_padding;
             let text_y = (self.height + self.font_size) / 2.0 - 2.0; // Rough vertical centering
-            
+
             canvas.draw_str(&item.label, (text_x, text_y), &font, &text_paint);
-            
+
             x_offset += item_width;
         }
     }
@@ -341,13 +341,13 @@ mod tests {
     fn test_toggle_menu() {
         let mut menu_bar = MenuBar::new();
         menu_bar.add_item("File", vec![]);
-        
+
         assert_eq!(menu_bar.active_menu, None);
-        
+
         menu_bar.toggle_menu("File");
         assert_eq!(menu_bar.active_menu, Some("File".to_string()));
         assert!(menu_bar.is_menu_open("File"));
-        
+
         menu_bar.toggle_menu("File");
         assert_eq!(menu_bar.active_menu, None);
         assert!(!menu_bar.is_menu_open("File"));
@@ -358,10 +358,10 @@ mod tests {
         let mut menu_bar = MenuBar::new();
         menu_bar.add_item("File", vec![]);
         menu_bar.add_item("Edit", vec![]);
-        
+
         menu_bar.toggle_menu("File");
         assert!(menu_bar.is_menu_open("File"));
-        
+
         menu_bar.close_all();
         assert!(!menu_bar.is_menu_open("File"));
         assert_eq!(menu_bar.active_menu, None);

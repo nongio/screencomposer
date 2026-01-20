@@ -42,6 +42,7 @@ pub use window_selector::{WindowSelectorView, WindowSelectorWindow};
 pub use window_view::{WindowView, WindowViewBaseModel, WindowViewSurface};
 
 pub use app_switcher::AppSwitcherView;
+pub use apps_info::ApplicationsInfo;
 pub use dnd_view::DndView;
 pub use dock::DockView;
 pub use popup_overlay::PopupOverlayView;
@@ -208,7 +209,7 @@ impl Workspaces {
         });
         expose_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
         expose_layer.set_pointer_events(false);
-        expose_layer.set_hidden(false);
+        expose_layer.set_hidden(true);
         expose_layer.set_picture_cached(false);
         expose_layer.set_image_cached(false);
 
@@ -381,10 +382,18 @@ impl Workspaces {
     /// Returns true only when:
     /// - The current workspace is in fullscreen mode
     /// - The workspace is not animating (not scrolling between workspaces)
+    /// - The fullscreen window is not animating
     /// - Not in expose/show-all mode
+    /// - App switcher is not visible
+    /// - The workspace has exactly one window (the fullscreen window only)
     pub fn is_fullscreen_and_stable(&self) -> bool {
         // Check if expose mode is active
         if self.get_show_all() {
+            return false;
+        }
+
+        // Check if app switcher is visible
+        if self.app_switcher.alive() {
             return false;
         }
 
@@ -395,7 +404,24 @@ impl Workspaces {
 
         // Get current workspace and check if it's in fullscreen mode
         let current_workspace = self.get_current_workspace();
-        current_workspace.get_fullscreen_mode()
+        if !current_workspace.get_fullscreen_mode() {
+            return false;
+        }
+
+        // Check if the fullscreen window is still animating
+        if current_workspace.get_fullscreen_animating() {
+            return false;
+        }
+
+        // Check that the workspace has exactly one window (only the fullscreen window)
+        // If there are additional windows (e.g., dialogs), disable direct scanout
+        let current_index = self.get_current_workspace_index();
+        let window_count = self.spaces[current_index].elements().count();
+        if window_count != 1 {
+            return false;
+        }
+
+        true
     }
 
     /// Get the fullscreen window from the current workspace, if any.
@@ -809,6 +835,11 @@ impl Workspaces {
         let delta = delta.clamp(0.0, 1.0);
         let is_gesture_ongoing = delta > 0.0 && delta < 1.0 && !end_gesture;
         let is_starting_animation = transition.is_some();
+        let show_expose = delta > 0.0 || transition.is_some();
+
+        // Check if this is the current workspace early, so we can use it for window animations
+        let current_workspace_index = self.get_current_workspace_index();
+        let is_current_workspace = workspace_index == current_workspace_index;
 
         // Hide popup overlay when entering expose mode
         self.popup_overlay.set_hidden(is_gesture_ongoing);
@@ -902,7 +933,8 @@ impl Workspaces {
                                 let y = window_y.interpolate(&to_y, delta_clamped);
 
                                 if let Some(layer) = window_selector.layer_for_window(window_id) {
-                                    if transition.is_some() {
+                                    // Only animate if this is the current workspace AND a transition is provided
+                                    if transition.is_some() && is_current_workspace {
                                         let translation =
                                             layer.change_position(lay_rs::types::Point { x, y });
                                         let scale_change =
@@ -913,6 +945,7 @@ impl Workspaces {
                                         changes.push(translation);
                                         changes.push(scale_change);
                                     } else {
+                                        // Non-current workspaces: instant update without animation
                                         layer.set_position(lay_rs::types::Point { x, y }, None);
                                         layer.set_scale(
                                             lay_rs::types::Point { x: scale, y: scale },
@@ -934,128 +967,86 @@ impl Workspaces {
             let _transactions = self.layers_engine.schedule_changes(&changes, anim_ref);
         };
 
-        // Only animate dock and workspace selector for the current workspace
-        // (they are global UI elements, not per-workspace)
-        let current_workspace_index = self.get_current_workspace_index();
-        let is_current_workspace = workspace_index == current_workspace_index;
-
-        if !is_current_workspace {
-            tracing::trace!(
-                workspace = workspace_index,
-                current_workspace = current_workspace_index,
-                "Skipping dock/workspace selector animation (not current workspace)"
-            );
-            return;
-        }
-
-        // Animate workspace selector and dock
+        // Animate workspace selector and dock (only affects UI when is_current_workspace)
         let delta = delta.max(0.0);
 
-        // Workspace selector
-        let workspace_selector_y = (-400.0).interpolate(&0.0, delta);
-        let workspace_selector_y = workspace_selector_y.clamp(-400.0, 0.0);
-        let workspace_opacity = 0.0.interpolate(&1.0, delta);
-        let workspace_opacity = workspace_opacity.clamp(0.0, 1.0);
+        if is_current_workspace {
+            // Workspace selector
+            let workspace_selector_y = (-400.0).interpolate(&0.0, delta);
+            let workspace_selector_y = workspace_selector_y.clamp(-400.0, 0.0);
+            let workspace_opacity = 0.0.interpolate(&1.0, delta);
+            let workspace_opacity = workspace_opacity.clamp(0.0, 1.0);
 
-        // Layer shell overlay fades out when entering expose (inverse of workspace opacity)
-        let layer_shell_overlay_opacity = 1.0.interpolate(&0.0, delta);
-        let layer_shell_overlay_opacity = layer_shell_overlay_opacity.clamp(0.0, 1.0);
+            // Layer shell overlay fades out when entering expose (inverse of workspace opacity)
+            let layer_shell_overlay_opacity = 1.0.interpolate(&0.0, delta);
+            let layer_shell_overlay_opacity = layer_shell_overlay_opacity.clamp(0.0, 1.0);
 
-        // Set overlay opacity to match the workspace selector opacity (fade in as we enter expose)
+            // Set overlay opacity to match the workspace selector opacity (fade in as we enter expose)
 
-        let window_selector_overlay_ref = window_selector_overlay.clone();
-        let expose_layer = self.expose_layer.clone();
-        let layer_shell_overlay_ref = self.layer_shell_overlay.clone();
-        let show_all_ref = self.show_all.clone();
+            let window_selector_overlay_ref = window_selector_overlay.clone();
+            let expose_layer = self.expose_layer.clone();
+            let workspace_selector_view_layer = self.workspace_selector_view.layer.clone();
+            let layer_shell_overlay_ref = self.layer_shell_overlay.clone();
+            let show_all_ref = self.show_all.clone();
 
-        expose_layer.set_hidden(false);
+            expose_layer.set_hidden(!show_expose);
+            workspace_selector_view_layer.set_hidden(!show_expose);
 
-        tracing::debug!(
-            workspace = workspace_index,
-            has_transition = transition.is_some(),
-            workspace_selector_y = workspace_selector_y,
-            "Setting workspace selector position (GLOBAL UI element)"
-        );
-
-        let transaction = self.workspace_selector_view.layer.set_position(
-            lay_rs::types::Point {
-                x: 0.0,
-                y: workspace_selector_y,
-            },
-            transition,
-        );
-        if transition.is_some() {
-            window_selector_overlay_ref.set_position((0.0, 0.0), None);
-            transaction.on_finish(
-                move |_: &Layer, _: f32| {
-                    let opacity = if show_all { 1.0 } else { 0.0 };
-                    window_selector_overlay_ref.set_opacity(opacity, None);
-
-                    // Restore layer shell overlay when exiting expose mode
-                    layer_shell_overlay_ref.set_opacity(if show_all { 0.0 } else { 1.0 }, None);
-
-                    show_all_ref.store(show_all, std::sync::atomic::Ordering::Relaxed);
+            let transaction = self.workspace_selector_view.layer.set_position(
+                lay_rs::types::Point {
+                    x: 0.0,
+                    y: workspace_selector_y,
                 },
-                true,
+                transition,
             );
+            if transition.is_some() {
+                window_selector_overlay_ref.set_position((0.0, 0.0), None);
+                transaction.on_finish(
+                    move |_: &Layer, _: f32| {
+                        let opacity = if show_all { 1.0 } else { 0.0 };
+                        window_selector_overlay_ref.set_opacity(opacity, None);
+                        expose_layer.set_hidden(!show_all);
+                        workspace_selector_view_layer.set_hidden(!show_all);
+                        // Restore layer shell overlay when exiting expose mode
+                        layer_shell_overlay_ref.set_opacity(if show_all { 0.0 } else { 1.0 }, None);
+
+                        show_all_ref.store(show_all, std::sync::atomic::Ordering::Relaxed);
+                    },
+                    true,
+                );
+            }
+            self.workspace_selector_view
+                .layer
+                .set_opacity(workspace_opacity, transition);
+
+            // Animate layer shell overlay opacity (fade out when entering expose)
+            self.layer_shell_overlay
+                .set_opacity(layer_shell_overlay_opacity, transition);
         }
-        self.workspace_selector_view
-            .layer
-            .set_opacity(workspace_opacity, transition);
-
-        // Animate layer shell overlay opacity (fade out when entering expose)
-        self.layer_shell_overlay
-            .set_opacity(layer_shell_overlay_opacity, transition);
-
         // Animate dock position
         if let Some(current_workspace) = current_workspace {
+            if !is_current_workspace {
+                return;
+            }
             let mut start_position = 0.0;
             let mut end_position = 250.0;
+            // Only keep dock hidden in fullscreen mode when NOT in expose mode
+            // During expose mode, we want the dock to animate normally
             if current_workspace.get_fullscreen_mode() {
                 start_position = 250.0;
                 end_position = 250.0;
             }
             let dock_y = start_position.interpolate(&end_position, delta);
             let dock_y = dock_y.clamp(0.0, 250.0);
-
-            tracing::debug!(
-                workspace = workspace_index,
-                has_transition = transition.is_some(),
-                dock_y = dock_y,
-                "Setting dock position (GLOBAL UI element)"
-            );
-
             let tr = self.dock.view_layer.set_position((0.0, dock_y), transition);
 
             if let Some(anim_ref) = animation {
                 self.layers_engine.start_animation(anim_ref, 0.0);
             }
             if end_gesture {
-                // let mut bin = self.expose_bin.write().unwrap();
-                // *bin = HashMap::new();
-                let dock_ref = self.dock.clone();
-                let show_all_ref = self.show_all.clone();
-                let show_all_gesture_ref = self.show_all_gesture.clone();
-                let is_animating_ref = self.is_animating.clone();
                 tr.on_finish(
                     move |_: &Layer, _: f32| {
-                        // Check current state, not captured state
-                        let current_show_all =
-                            show_all_ref.load(std::sync::atomic::Ordering::Relaxed);
-                        let gesture_value =
-                            show_all_gesture_ref.load(std::sync::atomic::Ordering::Relaxed);
-                        let is_anim = is_animating_ref.load(std::sync::atomic::Ordering::Relaxed);
-                        let is_transitioning =
-                            is_anim || (gesture_value > 0 && gesture_value < 1000);
-
-                        // Only update dock if we're not in the middle of a transition
-                        if !is_transitioning {
-                            if current_show_all || current_workspace.get_fullscreen_mode() {
-                                dock_ref.hide(None);
-                            } else {
-                                dock_ref.show(None);
-                            }
-                        }
+                        // Animation finished
                     },
                     true,
                 );
@@ -1073,26 +1064,6 @@ impl Workspaces {
         self.layer_shell_overlay
             .set_opacity(target_opacity, transition);
     }
-
-    // Recalculates the layout for a single workspace without animation
-    // Used when windows are added/removed/moved between workspaces
-    // pub fn expose_recalculate_workspace(&self, workspace_index: usize) {
-    //     // Only recalculate if we're in expose mode
-    //     if !self.get_show_all() {
-    //         return;
-    //     }
-
-    //     let delta = self.show_all_gesture.load(std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
-    //     let transition = Some(Transition {
-    //         delay: 0.0,
-    //         timing: TimingFunction::Spring(Spring::with_duration_and_bounce(0.3, 0.1)),
-    //     });
-
-    //     // Force relayout and animate
-    //     if self.expose_show_all_layout(workspace_index) && self.get_show_all(){
-    //         self.expose_show_all_end(workspace_index, delta, true, transition);
-    //     }
-    // }
 
     /// Set the mode to show desktop mode using a delta for gestures
     pub fn expose_show_desktop(&self, delta: f32, end_gesture: bool) {
@@ -1175,9 +1146,6 @@ impl Workspaces {
                 timing: TimingFunction::Spring(Spring::with_duration_and_bounce(0.3, 0.1)),
             };
             self.expose_show_all_end(workspace_index, 1.0, true, Some(transition));
-        } else if relayout {
-            // When not in expose mode, update layout instantly without animation
-            self.expose_show_all_end(workspace_index, 0.0, false, None);
         }
     }
     /// Close all the windows of an app by its id
@@ -1377,23 +1345,89 @@ impl Workspaces {
         let output_geometry = output
             .and_then(|o| {
                 let geo = self.output_geometry(&o)?;
+                tracing::info!("new_window_placement: output geometry = {:?}", geo);
+
                 let map = layer_map_for_output(&o);
                 let zone = map.non_exclusive_zone();
-                Some(Rectangle::from_loc_and_size(geo.loc + zone.loc, zone.size))
+                tracing::info!("new_window_placement: non_exclusive_zone = {:?}", zone);
+
+                let mut adjusted = Rectangle::from_loc_and_size(geo.loc + zone.loc, zone.size);
+                tracing::info!("new_window_placement: adjusted geometry (geo.loc + zone.loc, zone.size) = {:?}", adjusted);
+
+                // Account for the dock geometry (internal compositor UI, not layer-shell)
+                let dock_geom = self.get_dock_geometry();
+                tracing::info!("new_window_placement: dock geometry = {:?}", dock_geom);
+
+                if dock_geom.size.h > 0 {
+                    let dock_top = dock_geom.loc.y;
+                    let available_bottom = adjusted.loc.y + adjusted.size.h;
+
+                    // If dock is in the usable area, reduce height to stop above dock
+                    if dock_top < available_bottom {
+                        adjusted.size.h = dock_top - adjusted.loc.y;
+                        tracing::info!("new_window_placement: adjusted for dock, new height = {}", adjusted.size.h);
+                    }
+                }
+
+                Some(adjusted)
             })
             .unwrap_or_else(|| Rectangle::from_loc_and_size((0, 0), (800, 800)));
 
         let num_open_windows = self.spaces_elements().count();
         let window_index = num_open_windows + 1; // Index of the new window
 
-        let max_x = output_geometry.loc.x + output_geometry.size.w;
-        let max_y = output_geometry.loc.y + output_geometry.size.h;
+        tracing::info!(
+            "new_window_placement: window_index = {}, num_open_windows = {}",
+            window_index,
+            num_open_windows
+        );
 
-        // Calculate the position along the diagonal
-        const MAX_WINDOW_COUNT: f32 = 40.0;
-        let factor = window_index as f32 / MAX_WINDOW_COUNT;
-        let x = (output_geometry.loc.x as f32 + factor * max_x as f32) as i32 + 100;
-        let y = (output_geometry.loc.y as f32 + factor * max_y as f32) as i32 + 100;
+        // Default window size assumption (will be adjusted by client during configure)
+        const DEFAULT_WINDOW_WIDTH: i32 = 800;
+        const DEFAULT_WINDOW_HEIGHT: i32 = 600;
+        const CASCADE_OFFSET: i32 = 40; // Offset for each new window in cascade
+
+        // Calculate available space within the non-exclusive zone
+        let available_width = output_geometry.size.w;
+        let available_height = output_geometry.size.h;
+
+        tracing::info!(
+            "new_window_placement: available_width = {}, available_height = {}",
+            available_width,
+            available_height
+        );
+
+        // Calculate cascade position with wrapping to stay within bounds
+        let cascade_x = (window_index as i32 * CASCADE_OFFSET)
+            % (available_width - DEFAULT_WINDOW_WIDTH).max(CASCADE_OFFSET);
+        let cascade_y = (window_index as i32 * CASCADE_OFFSET)
+            % (available_height - DEFAULT_WINDOW_HEIGHT).max(CASCADE_OFFSET);
+
+        tracing::info!(
+            "new_window_placement: cascade_x = {}, cascade_y = {}",
+            cascade_x,
+            cascade_y
+        );
+
+        // Calculate final position, ensuring window fits within available area
+        let mut x = output_geometry.loc.x + cascade_x;
+        let mut y = output_geometry.loc.y + cascade_y;
+
+        tracing::info!("new_window_placement: initial x = {}, y = {}", x, y);
+
+        // Clamp position to ensure window doesn't exceed boundaries
+        x = x.min(
+            output_geometry.loc.x + available_width - DEFAULT_WINDOW_WIDTH.min(available_width),
+        );
+        y = y.min(
+            output_geometry.loc.y + available_height - DEFAULT_WINDOW_HEIGHT.min(available_height),
+        );
+
+        // Ensure position is not before the output start
+        x = x.max(output_geometry.loc.x);
+        y = y.max(output_geometry.loc.y);
+
+        tracing::info!("new_window_placement: final position = ({}, {})", x, y);
 
         (output_geometry, (x, y).into())
     }
@@ -1406,6 +1440,7 @@ impl Workspaces {
         window_element: &WindowElement,
         location: impl Into<smithay::utils::Point<i32, smithay::utils::Logical>>,
         activate: bool,
+        transition: Option<Transition>,
     ) {
         self.space_mut()
             .map_element(window_element.clone(), location, activate);
@@ -1425,7 +1460,7 @@ impl Workspaces {
 
             let workspace_view = self.get_current_workspace();
 
-            workspace_view.map_window(window_element, location);
+            workspace_view.map_window(window_element, location, transition);
             let _view = self.get_or_add_window_view(window_element);
         }
         self.refresh_space();
@@ -1466,7 +1501,7 @@ impl Workspaces {
         if let Some(index) = workspace_index {
             self.expose_update_if_needed_workspace(index);
         }
-        
+
         // Return the surface IDs so the compositor can clean up surface_layers and sc_layers
         removed_surface_ids
     }
@@ -1498,7 +1533,10 @@ impl Workspaces {
             let scale = Config::with(|c| c.screen_scale) as f32;
             Rectangle::from_loc_and_size(
                 ((bounds.x() / scale) as i32, (bounds.y() / scale) as i32 - 2),
-                ((bounds.width() / scale).ceil() as i32, (bounds.height() / scale).ceil() as i32),
+                (
+                    (bounds.width() / scale).ceil() as i32,
+                    (bounds.height() / scale).ceil() as i32,
+                ),
             )
         } else {
             Rectangle::from_loc_and_size((0, 0), (0, 0))
@@ -1582,7 +1620,7 @@ impl Workspaces {
         if let Some(view) = window_views.remove(object_id) {
             view.window_layer.remove();
         }
-        
+
         removed_surface_ids
     }
 
@@ -1640,7 +1678,7 @@ impl Workspaces {
             let model = self.model.read().unwrap();
             if let Some(workspace) = model.workspaces.get(workspace_index) {
                 if let Some(window) = self.windows_map.get(&id) {
-                    workspace.map_window(window, location);
+                    workspace.map_window(window, location, None);
                 }
             }
         }
@@ -1706,12 +1744,12 @@ impl Workspaces {
                 if window.is_fullscreen() {
                     return;
                 }
-                
+
                 // Get the currently top window before raising the new one
                 let previous_top = space.elements().last().map(|w| w.id());
-                
+
                 space.raise_element(window, activate);
-                
+
                 // When activating a window, manage popup visibility
                 if activate {
                     // Hide popups for the previous top window
@@ -1723,7 +1761,7 @@ impl Workspaces {
                     // Show popups for the newly activated window
                     self.popup_overlay.show_popups_for_window(window_id);
                 }
-                
+
                 let workspace = self.with_model(|m| m.workspaces[index].clone());
                 {
                     if let Some(view) = self.get_window_view(window_id) {
@@ -1855,12 +1893,12 @@ impl Workspaces {
         for (window_id, we) in windows.iter() {
             let raw_app_id = we.xdg_app_id();
             let display_app_id = we.display_app_id(&self.display_handle);
-            
+
             // Skip only if both raw and display app_id are empty
             if raw_app_id.is_empty() && display_app_id.is_empty() {
                 tracing::warn!("[update_workspace_model] Skipping window with no app_id");
                 continue;
-            }           
+            }
             if let Ok(mut model_mut) = self.model.write() {
                 // Use raw_app_id for window mapping if available, otherwise use display_app_id
                 let map_key = if !raw_app_id.is_empty() {
@@ -1868,7 +1906,7 @@ impl Workspaces {
                 } else {
                     display_app_id.clone()
                 };
-                
+
                 model_mut
                     .app_windows_map
                     .entry(map_key)
@@ -1877,10 +1915,14 @@ impl Workspaces {
 
                 // Use display_app_id for UI lists (shows actual programs)
                 if !model_mut.application_list.contains(&display_app_id) {
-                    model_mut.application_list.push_front(display_app_id.clone());
+                    model_mut
+                        .application_list
+                        .push_front(display_app_id.clone());
                 }
                 if app_set.insert(display_app_id.clone()) {
-                    model_mut.zindex_application_list.push(display_app_id.clone());
+                    model_mut
+                        .zindex_application_list
+                        .push(display_app_id.clone());
                 }
             }
         }
@@ -2023,8 +2065,10 @@ impl Workspaces {
 
         if n < self.spaces.len() {
             if let Some(ws) = self.get_workspace_at(n) {
-                if ws.get_fullscreen_mode() {
-                    // Do not remove a fullscreen workspace
+                // Allow removal of fullscreen workspaces only if they have no windows (dangling state)
+                let window_count = self.spaces[n].elements().count();
+                if ws.get_fullscreen_mode() && window_count > 0 {
+                    // Do not remove a fullscreen workspace that still has windows
                     return;
                 }
             }
@@ -2038,6 +2082,8 @@ impl Workspaces {
 
                     if let Some(ws) = self.get_workspace_at(workspace_model.current_workspace) {
                         ws.set_fullscreen_mode(false);
+                        ws.set_fullscreen_animating(false);
+                        ws.set_name(None);
                     }
                 }
                 self.move_window_to_workspace(e, workspace_model.current_workspace, location);
@@ -2049,7 +2095,6 @@ impl Workspaces {
             }
         }
         self.update_workspaces_layout();
-        self.scroll_to_workspace_index(workspace_model.current_workspace, None);
         self.notify_observers(&workspace_model);
     }
 
@@ -2122,13 +2167,10 @@ impl Workspaces {
         if let Some(workspace) = self.get_workspace_at(i) {
             // Control dock visibility based on workspace fullscreen state
             // Only skip dock control when actively IN expose mode (show_all)
-            println!(
-                "scroll_to_workspace_index: {}, fullscreen: {} show_all: {} expose_transitioning: {}",
-                i,
-                workspace.get_fullscreen_mode(),
-                self.get_show_all(),
-                self.is_expose_transitioning()
-            );
+
+            // Don't use hide/show during:
+            // - expose mode or expose transitions (let expose system control position)
+            // - fullscreen animations (let fullscreen transition complete smoothly)
             if !self.get_show_all() {
                 if workspace.get_fullscreen_mode() {
                     self.dock.hide(Some(transition));
@@ -2525,7 +2567,7 @@ impl UnminimizeContext {
             view.mirror_layer.set_hidden(false);
         }
 
-        workspace.map_window(&window, (pos_logical.0, pos_logical.1).into());
+        workspace.map_window(&window, (pos_logical.0, pos_logical.1).into(), None);
 
         crate::utils::notify_observers(&observers, &event);
     }

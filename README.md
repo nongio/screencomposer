@@ -30,6 +30,13 @@ Following a draft roadmap of features and improvements.
 
 ## Features / Roadmap
 
+### Core
+- [ ] login?
+- [ ] enable multiple screens (maybe virtual?)
+- [ ] fullscreen animation bug (try animated resize)
+- [x] listen to animations in LayersEngine
+- [ ] custom shape layers
+
 ### Basic window management
 - [x] move windows
 - [x] resize windows
@@ -44,6 +51,8 @@ Following a draft roadmap of features and improvements.
 - [x] background search for application metadata and icons (following xdg specs)
 - [x] close applications from application switcher
 - [x] cycle between same app windows
+- [x] Fullscreen app switcher
+- [ ] 
 
 ### Expose windows (hotkey: `alt + f` gesture on udev: `three fingers swipe up`)
 - [x] all windows (algorithm from gnome-shell/kde)

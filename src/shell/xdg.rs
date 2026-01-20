@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use lay_rs::prelude::{taffy, Layer, Transition};
+use lay_rs::prelude::{taffy, Interpolate, Layer, Transition};
 use smithay::{
     desktop::{
         find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
@@ -16,7 +16,7 @@ use smithay::{
             Resource,
         },
     },
-    utils::Serial,
+    utils::{Rectangle, Serial},
     wayland::{
         compositor::with_states,
         seat::WaylandFocus,
@@ -32,6 +32,7 @@ use crate::{
     focus::KeyboardFocusTarget,
     shell::TouchResizeSurfaceGrab,
     state::{Backend, ScreenComposer},
+    workspaces::ApplicationsInfo,
 };
 
 use super::{
@@ -85,14 +86,69 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
         tracing::info!("SC::new_toplevel at({}, {})", location.x, location.y);
 
-        self.workspaces.map_window(&window_element, location, true);
+        // If the current workspace is in fullscreen mode, decide where to map the new window
+        let current_workspace = self.workspaces.get_current_workspace();
+        let current_index = self.workspaces.get_current_workspace_index();
+
+        if current_workspace.get_fullscreen_mode() {
+            // Check if the new window belongs to the same app as the fullscreen window
+            if let Some(fullscreen_window) = self.workspaces.get_fullscreen_window() {
+                let new_app_id = window_element.display_app_id(&self.display_handle);
+                let fullscreen_app_id = fullscreen_window.display_app_id(&self.display_handle);
+
+                if !new_app_id.is_empty() && new_app_id == fullscreen_app_id {
+                    // Same app: keep in the fullscreen workspace (e.g., dialogs)
+                    tracing::info!(
+                        "New window from same fullscreen app '{}': keeping in workspace {}",
+                        new_app_id,
+                        current_index
+                    );
+                } else {
+                    // Different app: redirect to previous workspace
+                    if current_index > 0 {
+                        let prev_workspace = current_index - 1;
+                        tracing::info!(
+                            "New window from different app in fullscreen workspace: redirecting from workspace {} to workspace {}",
+                            current_index,
+                            prev_workspace
+                        );
+                        self.workspaces
+                            .set_current_workspace_index(prev_workspace, None);
+                    } else {
+                        tracing::warn!(
+                            "Fullscreen workspace 0 detected, cannot redirect to previous workspace"
+                        );
+                    }
+                }
+            }
+        } else {
+            tracing::debug!(
+                "Normal workspace: mapping new window to current workspace {}",
+                current_index
+            );
+        }
+
+        self.workspaces
+            .map_window(&window_element, location, true, None);
 
         // Register with foreign toplevel protocols (both ext and wlr)
         let surface_id = surface.wl_surface().id();
         let app_id = window_element.xdg_app_id();
         let title = window_element.xdg_title();
-        let handle = self.foreign_toplevel_list_state.new_toplevel::<Self>(&app_id, &title);
-        self.foreign_toplevels.insert(surface_id.clone(), handle);
+
+        let ext_handle = self
+            .foreign_toplevel_list_state
+            .new_toplevel::<Self>(&app_id, &title);
+        let wlr_handle = self.wlr_foreign_toplevel_state.new_toplevel::<Self>(
+            &self.display_handle,
+            &app_id,
+            &title,
+        );
+
+        let handles = crate::state::foreign_toplevel_shared::ForeignToplevelHandles::new(
+            ext_handle, wlr_handle,
+        );
+        self.foreign_toplevels.insert(surface_id.clone(), handles);
 
         // Pre-populate surface_layers for toplevel and all subsurfaces
         self.prepopulate_surface_layers(surface.wl_surface());
@@ -129,6 +185,8 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 let fullscreen_workspace = window.get_fullscreen_workspace();
                 if let Some(workspace) = self.workspaces.get_workspace_at(fullscreen_workspace) {
                     workspace.set_fullscreen_mode(false);
+                    workspace.set_fullscreen_animating(false);
+                    workspace.set_name(None);
                 }
                 if self.workspaces.get_current_workspace_index() == fullscreen_workspace {
                     let prev_workspace = (fullscreen_workspace as i32 - 1).min(0) as usize;
@@ -143,7 +201,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         if let Some(handle) = self.foreign_toplevels.remove(&id) {
             handle.send_closed();
         }
-        
+
         // Clean up surface_layers and sc_layers for removed popup surfaces
         for surface_id in removed_surface_ids {
             self.surface_layers.remove(&surface_id);
@@ -177,11 +235,11 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         // Cache the root surface mapping for fast lookup during commit/destroy
         if let Ok(root) = find_popup_root_surface(&popup_kind) {
             self.popup_root_cache.insert(popup_id.clone(), root.id());
-            
+
             // Pre-create layer for popup with matching key format
             let popup_layer = self.layers_engine.new_layer();
             popup_layer.set_key(format!("surface_{:?}", popup_id));
-            
+
             // Pre-populate for popup and subsurfaces
             self.prepopulate_surface_layers(popup_surface);
         }
@@ -201,7 +259,6 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         self.surface_layers.remove(&popup_id);
         // Also clean up any sc-layers attached to these surfaces
         self.sc_layers.remove(&popup_id);
-        
 
         if let Some(root_id) = self.popup_root_cache.remove(&popup_id) {
             if let Some(window) = self.workspaces.get_window_for_surface(&root_id).cloned() {
@@ -452,6 +509,21 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 .unwrap()
                 .clone();
 
+            // Ignore the request if the window is already fullscreen or animating towards fullscreen
+            if window.is_fullscreen() {
+                return;
+            }
+
+            // Also ignore if any workspace is currently animating towards fullscreen
+            // This prevents multiple workspaces from being created when F11 is held down
+            let mut i = 0;
+            while let Some(ws) = self.workspaces.get_workspace_at(i) {
+                if ws.get_fullscreen_animating() {
+                    return;
+                }
+                i += 1;
+            }
+
             let id = window.id();
 
             if let Some(mut view) = self.workspaces.get_window_view(&id) {
@@ -474,6 +546,29 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
             let (next_workspace_index, next_workspace) = self.workspaces.get_next_free_workspace();
             next_workspace.set_fullscreen_mode(true);
+            next_workspace.set_fullscreen_animating(true);
+
+            // Exit expose mode when entering fullscreen
+            self.workspaces.expose_set_visible(false);
+
+            // Fetch app info asynchronously to get the proper display name
+            let app_id = window.display_app_id(&self.display_handle);
+            if !app_id.is_empty() {
+                let workspace_clone = next_workspace.clone();
+                tokio::spawn(async move {
+                    if let Some(app_info) = ApplicationsInfo::get_app_info_by_id(&app_id).await {
+                        if let Some(name) = app_info.desktop_name() {
+                            workspace_clone.set_name(Some(name));
+                        } else {
+                            // Fallback to app_id if no desktop name
+                            workspace_clone.set_name(Some(app_id));
+                        }
+                    } else {
+                        // Fallback to app_id if app info not found
+                        workspace_clone.set_name(Some(app_id));
+                    }
+                });
+            }
 
             window.set_fullscreen(true, next_workspace_index);
 
@@ -492,9 +587,37 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 self.workspaces
                     .set_current_workspace_index(next_workspace_index, Some(transition));
 
-                let surface = surface.clone();
+                let surface_clone = surface.clone();
                 let wl_output_ref = wl_output.clone();
                 let next_workspace_layer = next_workspace.windows_layer.clone();
+                let next_workspace_clone = next_workspace.clone();
+
+                // Animate size during fullscreen transition
+                let current_element_geometry = self.workspaces.element_geometry(&window).unwrap();
+                let animation = self
+                    .layers_engine
+                    .add_animation_from_transition(&transition, false);
+
+                let current_width = current_element_geometry.size.w as f32;
+                let current_height = current_element_geometry.size.h as f32;
+                let target_width = geometry.size.w as f32;
+                let target_height = geometry.size.h as f32;
+
+                let s = surface.clone();
+                self.layers_engine.on_animation_update(
+                    animation,
+                    move |p: f32| {
+                        let width = current_width.interpolate(&target_width, p) as i32;
+                        let height = current_height.interpolate(&target_height, p) as i32;
+                        let size = Rectangle::from_loc_and_size((0, 0), (width, height));
+                        s.with_pending_state(|state| {
+                            state.size = Some(size.size);
+                        });
+                        s.send_configure();
+                    },
+                    false,
+                );
+                self.layers_engine.start_animation(animation, 0.0);
 
                 self.workspaces
                     .dnd_view
@@ -505,7 +628,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     .set_position(lay_rs::types::Point { x: 0.0, y: 0.0 }, Some(transition))
                     .on_finish(
                         move |l: &Layer, _| {
-                            surface.with_pending_state(|state| {
+                            surface_clone.with_pending_state(|state| {
                                 state.states.set(xdg_toplevel::State::Fullscreen);
                                 state.size = Some(geometry.size);
                                 state.fullscreen_output = wl_output_ref.clone();
@@ -514,7 +637,10 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                             next_workspace_layer.add_sublayer(l);
                             // The protocol demands us to always reply with a configure,
                             // regardless of we fulfilled the request or not
-                            surface.send_configure();
+                            surface_clone.send_configure();
+
+                            // Clear the fullscreen animating flag now that the animation is complete
+                            next_workspace_clone.set_fullscreen_animating(false);
                         },
                         true,
                     );
@@ -536,8 +662,6 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         if let Some(view) = self.workspaces.get_window_view(&id) {
             let output = surface.with_pending_state(|state| {
                 state.states.unset(xdg_toplevel::State::Fullscreen);
-                state.size =
-                    Some((view.unmaximised_rect.size.w, view.unmaximised_rect.size.h).into());
                 state.fullscreen_output.take()
             });
             if let Some(output) = output {
@@ -563,11 +687,20 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 if let Some(next_workspace) = self.workspaces.get_workspace_at(we.get_workspace()) {
                     let transition = Transition::ease_in_out_quad(1.4);
 
+                    // Get the fullscreen workspace index before switching away from it
+                    let fullscreen_workspace_index = self.workspaces.get_current_workspace_index();
                     let workspace = self.workspaces.get_current_workspace();
                     workspace.set_fullscreen_mode(false);
+                    workspace.set_fullscreen_animating(false);
+
+                    // Exit expose mode when exiting fullscreen
+                    self.workspaces.expose_set_visible(false);
 
                     // Fade in layer_shell_overlay when exiting fullscreen
                     self.workspaces.set_fullscreen_overlay_visibility(false);
+
+                    // Show dock with animation at the start of unfullscreen transition
+                    self.workspaces.dock.show(Some(transition));
 
                     self.workspaces.move_window_to_workspace(
                         &we,
@@ -577,6 +710,39 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                     self.workspaces
                         .set_current_workspace_index(we.get_workspace(), Some(transition));
 
+                    // Delete the temporary fullscreen workspace
+                    self.workspaces
+                        .remove_workspace_at(fullscreen_workspace_index);
+
+                    // Animate size during unfullscreen transition
+                    let current_element_geometry = self.workspaces.element_geometry(&we).unwrap();
+                    let animation = self
+                        .layers_engine
+                        .add_animation_from_transition(&transition, false);
+
+                    let current_width = current_element_geometry.size.w as f32;
+                    let current_height = current_element_geometry.size.h as f32;
+                    let target_width = view.unmaximised_rect.size.w as f32;
+                    let target_height = view.unmaximised_rect.size.h as f32;
+
+                    let s = surface.clone();
+                    self.layers_engine.on_animation_update(
+                        animation,
+                        move |p: f32| {
+                            let width = current_width.interpolate(&target_width, p) as i32;
+                            let height = current_height.interpolate(&target_height, p) as i32;
+                            let size = Rectangle::from_loc_and_size((0, 0), (width, height));
+                            s.with_pending_state(|state| {
+                                state.size = Some(size.size);
+                            });
+                            s.send_configure();
+                        },
+                        false,
+                    );
+                    self.layers_engine.start_animation(animation, 0.0);
+
+                    let surface_clone = surface.clone();
+                    let restored_size = view.unmaximised_rect.size;
                     let workspace_layer = next_workspace.windows_layer.clone();
 
                     self.workspaces
@@ -592,14 +758,19 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                             },
                             Some(transition),
                         )
-                        .then(move |l: &Layer, _| {
-                            workspace_layer.add_sublayer(l);
-                        });
+                        .on_finish(
+                            move |l: &Layer, _| {
+                                surface_clone.with_pending_state(|state| {
+                                    state.size = Some(restored_size);
+                                });
+                                workspace_layer.add_sublayer(l);
+                                surface_clone.send_configure();
+                            },
+                            true,
+                        );
                 }
             }
         }
-
-        surface.send_pending_configure();
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
@@ -627,49 +798,73 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 // Assumes that at least one output exists
                 .expect("No outputs found")
                 .clone(); // Clone to avoid borrow conflicts
-            
+
             let output_geom = self.workspaces.output_geometry(&output).unwrap();
-            
+
             // Recalculate exclusive zones for this output before using them
             // This ensures we have fresh data even if layer surfaces changed
             self.recalculate_exclusive_zones(&output);
-            
+
             // Get tracked exclusive zones for this output (from layer shell surfaces)
             let output_name = output.name();
-            let zones = self.exclusive_zones
+            let zones = self
+                .exclusive_zones
                 .get(&output_name)
                 .cloned()
                 .unwrap_or_default();
-            
+
             // Calculate usable area from tracked exclusive zones
             let mut usable_zone = zones.apply_to_output(output_geom);
-            
+
             // Get the actual dock geometry (position and size)
             let dock_geom = self.workspaces.get_dock_geometry();
-            
+
             // Dock reduces available height from the bottom
             if dock_geom.size.h > 0 {
                 let dock_top = dock_geom.loc.y;
                 let available_bottom = usable_zone.loc.y + usable_zone.size.h;
-                
+
                 // If dock is in the usable area, reduce height to stop above dock
                 if dock_top < available_bottom {
                     usable_zone.size.h = dock_top - usable_zone.loc.y;
                 }
             }
-            
             let new_geometry = usable_zone;
-            surface.with_pending_state(|state| {
-                state.states.set(xdg_toplevel::State::Maximized);
-                state.size = Some(new_geometry.size);
-            });
 
-            self.workspaces.map_window(&window, new_geometry.loc, true);
+            let transition = Transition::ease_out(0.3);
+            let animation = self
+                .layers_engine
+                .add_animation_from_transition(&transition, false);
+
+            // Use minimum size for windows that open already maximized (size 0,0)
+            let current_width = current_element_geometry.size.w.max(600) as f32;
+            let current_height = current_element_geometry.size.h.max(400) as f32;
+
+            let new_width = new_geometry.size.w as f32;
+            let new_height = new_geometry.size.h as f32;
+
+            let s = surface.clone();
+            self.layers_engine.on_animation_update(
+                animation,
+                move |p: f32| {
+                    let width = current_width.interpolate(&new_width, p) as i32;
+                    let height = current_height.interpolate(&new_height, p) as i32;
+                    let size = Rectangle::from_loc_and_size((0, 0), (width, height));
+                    s.with_pending_state(|state| {
+                        if (p - 1.0).abs() < f32::EPSILON {
+                            state.states.set(xdg_toplevel::State::Maximized);
+                        }
+                        state.size = Some(size.size);
+                    });
+                    s.send_configure();
+                },
+                false,
+            );
+            self.layers_engine.start_animation(animation, 0.0);
+
+            self.workspaces
+                .map_window(&window, new_geometry.loc, true, Some(transition));
         }
-
-        // The protocol demands us to always reply with a configure,
-        // regardless of we fulfilled the request or not
-        surface.send_configure();
     }
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
@@ -684,16 +879,44 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         let id = surface.wl_surface().id();
         let window = self.workspaces.get_window_for_surface(&id).unwrap().clone();
         if let Some(view) = self.workspaces.get_window_view(&id) {
-            surface.with_pending_state(|state| {
-                state.states.unset(xdg_toplevel::State::Maximized);
-                state.size =
-                    Some((view.unmaximised_rect.size.w, view.unmaximised_rect.size.h).into());
-            });
+            let current_element_geometry = self
+                .workspaces
+                .element_geometry(&window)
+                .unwrap_or(view.unmaximised_rect);
+
+            let transition = Transition::ease_out(0.3);
+            let animation = self
+                .layers_engine
+                .add_animation_from_transition(&transition, false);
+
+            let current_width = current_element_geometry.size.w as f32;
+            let current_height = current_element_geometry.size.h as f32;
+
+            let new_width = view.unmaximised_rect.size.w as f32;
+            let new_height = view.unmaximised_rect.size.h as f32;
+
+            let s = surface.clone();
+            self.layers_engine.on_animation_update(
+                animation,
+                move |p: f32| {
+                    let width = current_width.interpolate(&new_width, p) as i32;
+                    let height = current_height.interpolate(&new_height, p) as i32;
+                    let size = Rectangle::from_loc_and_size((0, 0), (width, height));
+                    s.with_pending_state(|state| {
+                        if (p - 1.0).abs() < f32::EPSILON {
+                            state.states.unset(xdg_toplevel::State::Maximized);
+                        }
+                        state.size = Some(size.size);
+                    });
+                    s.send_configure();
+                },
+                false,
+            );
+            self.layers_engine.start_animation(animation, 0.0);
 
             self.workspaces
-                .map_window(&window, view.unmaximised_rect.loc, true);
+                .map_window(&window, view.unmaximised_rect.loc, true, Some(transition));
         }
-        surface.send_pending_configure();
     }
 
     fn minimize_request(&mut self, surface: ToplevelSurface) {
@@ -1006,10 +1229,10 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         use smithay::wayland::compositor::with_surface_tree_downward;
         use smithay::wayland::compositor::TraversalAction;
         use std::collections::{HashMap, VecDeque};
-        
+
         let surface_id = surface.id();
         let mut cache: HashMap<String, VecDeque<lay_rs::prelude::NodeRef>> = HashMap::new();
-        
+
         // Walk the surface tree and create layers for each surface + subsurfaces
         with_surface_tree_downward(
             surface,
@@ -1017,25 +1240,25 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             |_, _, _| TraversalAction::DoChildren(()),
             |sub_surface, _, _| {
                 let sub_id = sub_surface.id();
-                
+
                 // Create a layer for this surface with matching key format
                 let layer = self.layers_engine.new_layer();
                 let key = format!("surface_{:?}", sub_id);
                 layer.set_key(&key);
-                
+
                 // Register in surface_layers for sc-layer attachment
                 self.surface_layers.insert(sub_id.clone(), layer.clone());
-                
+
                 // Add to warm cache for View
                 let mut deque = VecDeque::new();
                 deque.push_back(layer.id);
                 cache.insert(key, deque);
-                
+
                 tracing::debug!("Pre-populated surface_layer for {:?}", sub_id);
             },
             |_, _, _| true,
         );
-        
+
         // Store the warm cache indexed by main surface ID
         self.view_warm_cache.insert(surface_id, cache);
     }

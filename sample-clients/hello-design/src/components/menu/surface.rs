@@ -1,19 +1,20 @@
 use smithay_client_toolkit::{
     compositor::{CompositorState, SurfaceData},
     reexports::client::{
-        Connection, QueueHandle, protocol::{wl_pointer, wl_surface}
+        protocol::{wl_pointer, wl_surface},
+        Connection, QueueHandle,
     },
-    shell::{
-        xdg::{
-            XdgPositioner, XdgShell, XdgSurface, popup::{Popup, PopupConfigure, PopupData}, window::Window
-        }
+    shell::xdg::{
+        popup::{Popup, PopupConfigure, PopupData},
+        window::Window,
+        XdgPositioner, XdgShell, XdgSurface,
     },
 };
-use wayland_client::{Proxy, protocol::wl_keyboard};
-use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_popup};
 use std::collections::HashMap;
+use wayland_client::{protocol::wl_keyboard, Proxy};
+use wayland_protocols::xdg::shell::client::{xdg_popup, xdg_surface};
 
-use crate::{rendering::{SkiaContext, SkiaSurface}};
+use crate::rendering::{SkiaContext, SkiaSurface};
 
 use super::{
     data::{Anchor, Gravity, MenuItem, MenuItemId, MenuStyle, Position},
@@ -43,7 +44,7 @@ pub struct Menu {
 
     // Click handler
     on_click: Option<Box<dyn Fn(&MenuItemId)>>,
-    
+
     // sc_layer_shell for enhancing surfaces
     sc_layer_shell: Option<sc_layer_shell_v1::ScLayerShellV1>,
 }
@@ -92,17 +93,17 @@ impl Menu {
         display_ptr: *mut std::ffi::c_void,
     ) -> Result<(), MenuError>
     where
-        D: wayland_client::Dispatch<wl_surface::WlSurface, SurfaceData> + 
-           wayland_client::Dispatch<xdg_surface::XdgSurface, PopupData> +
-           wayland_client::Dispatch<xdg_popup::XdgPopup, PopupData> +
-           wayland_client::Dispatch<sc_layer_v1::ScLayerV1, ()> +
-           wayland_client::Dispatch<sc_layer_shell_v1::ScLayerShellV1, ()> +
-           'static,
+        D: wayland_client::Dispatch<wl_surface::WlSurface, SurfaceData>
+            + wayland_client::Dispatch<xdg_surface::XdgSurface, PopupData>
+            + wayland_client::Dispatch<xdg_popup::XdgPopup, PopupData>
+            + wayland_client::Dispatch<sc_layer_v1::ScLayerV1, ()>
+            + wayland_client::Dispatch<sc_layer_shell_v1::ScLayerShellV1, ()>
+            + 'static,
     {
         // Update style to reflect sc-layer availability
         self.style.sc_layer = sc_layer_shell.is_some();
         self.sc_layer_shell = sc_layer_shell.cloned();
-        
+
         // If root already exists (from previous show), we need to check if it needs recreation
         // or if we can reuse the Skia context
         if let Some(existing_root) = &mut self.root {
@@ -113,7 +114,7 @@ impl Menu {
                 existing_root.configured = false;
             }
         }
-        
+
         // Create root menu surface
         let width = self.style.calculate_menu_width(&self.items);
         let height = self.style.calculate_menu_height(&self.items);
@@ -121,13 +122,7 @@ impl Menu {
         let wl_surface = compositor.create_surface(qh);
 
         // Create positioner
-        let positioner = create_positioner(
-            xdg_shell,
-            qh,
-            &self.items,
-            &position,
-            &self.style,
-        )?;
+        let positioner = create_positioner(xdg_shell, qh, &self.items, &position, &self.style)?;
 
         let parent_xdg = parent_window.xdg_surface();
         // Create popup with parent XdgSurface
@@ -141,7 +136,9 @@ impl Menu {
         .map_err(|_| MenuError::SurfaceCreationFailed)?;
 
         // Get popup surface for XDG operations
-        popup.xdg_surface().set_window_geometry(0, 0, width as i32, height as i32);
+        popup
+            .xdg_surface()
+            .set_window_geometry(0, 0, width as i32, height as i32);
 
         // Use 2x buffer for HiDPI rendering
         let buffer_scale = 2;
@@ -153,7 +150,8 @@ impl Menu {
             &wl_surface,
             (width as i32) * buffer_scale,
             (height as i32) * buffer_scale,
-        ).map_err(|_| MenuError::SurfaceCreationFailed)?;
+        )
+        .map_err(|_| MenuError::SurfaceCreationFailed)?;
 
         let menu_surface = MenuSurface {
             wl_surface: wl_surface.clone(),
@@ -169,16 +167,17 @@ impl Menu {
             _sc_layer_shell: sc_layer_shell.cloned(),
             frame_callback_pending: false,
         };
-        
-        
+
         // Don't render yet - wait for configure event
         // Rendering will happen in the configure handler when configured = true
-        
+
         self.root = Some(menu_surface);
-        
+
         // Commit the surface to trigger configure event from compositor
         wl_surface.commit();
-        _conn.roundtrip().map_err(|_| MenuError::SurfaceCreationFailed)?;
+        _conn
+            .roundtrip()
+            .map_err(|_| MenuError::SurfaceCreationFailed)?;
         Ok(())
     }
 
@@ -186,7 +185,7 @@ impl Menu {
     pub fn hide(&mut self) {
         // Close all submenus first
         self.close_all_submenus();
-        
+
         // Destroy the root surface's popup and wl_surface (like we do for submenus)
         if let Some(root) = &mut self.root {
             if let Some(popup) = root.popup.take() {
@@ -196,7 +195,7 @@ impl Menu {
             }
             root.hovered_item = None;
         }
-        
+
         // Reset all interaction state
         self.hovered_item = None;
         self.pointer_x = 0.0;
@@ -233,20 +232,32 @@ impl Menu {
     }
 
     /// Handle pointer motion event
-    pub fn on_pointer_motion<D>(&mut self, surface: &wl_surface::WlSurface, x: f64, y: f64, qh: &QueueHandle<D>) 
-    where
-        D: wayland_client::Dispatch<wayland_client::protocol::wl_callback::WlCallback, wl_surface::WlSurface> + 'static,
+    pub fn on_pointer_motion<D>(
+        &mut self,
+        surface: &wl_surface::WlSurface,
+        x: f64,
+        y: f64,
+        qh: &QueueHandle<D>,
+    ) where
+        D: wayland_client::Dispatch<
+                wayland_client::protocol::wl_callback::WlCallback,
+                wl_surface::WlSurface,
+            > + 'static,
     {
         self.prev_pointer_x = self.pointer_x;
         self.prev_pointer_y = self.pointer_y;
         self.pointer_x = x;
         self.pointer_y = y;
-        
+
         // Check if this is the root surface
-        if self.root.as_ref().map_or(false, |r| &r.wl_surface == surface) {
+        if self
+            .root
+            .as_ref()
+            .map_or(false, |r| &r.wl_surface == surface)
+        {
             self.hovering_submenu = false;
             self.update_hover();
-            
+
             // Close level 2 submenus that don't match the hovered item
             if let Some(root) = &mut self.root {
                 let hovered_idx = root.hovered_item;
@@ -268,7 +279,13 @@ impl Menu {
             self.hovering_submenu = false;
             if let Some(root) = &mut self.root {
                 let mut active_path = Vec::new();
-                if root.handle_pointer_motion_recursive(surface, y, &self.style, &mut active_path, qh) {
+                if root.handle_pointer_motion_recursive(
+                    surface,
+                    y,
+                    &self.style,
+                    &mut active_path,
+                    qh,
+                ) {
                     self.hovering_submenu = true;
                     // Only close inactive submenus if we're not hovering a submenu item that's about to open
                     // The submenu opening logic will handle this
@@ -282,9 +299,14 @@ impl Menu {
     pub fn on_pointer_leave(&mut self, surface: &wl_surface::WlSurface) {
         // Only clear hover if leaving ALL menu surfaces (not just moving between them)
         // Check if the surface is the root or any submenu
-        let is_menu_surface = self.root.as_ref().map_or(false, |r| &r.wl_surface == surface)
-            || self.root.as_ref().map_or(false, |r| r.open_submenus.values().any(|s| &s.wl_surface == surface));
-        
+        let is_menu_surface = self
+            .root
+            .as_ref()
+            .map_or(false, |r| &r.wl_surface == surface)
+            || self.root.as_ref().map_or(false, |r| {
+                r.open_submenus.values().any(|s| &s.wl_surface == surface)
+            });
+
         if is_menu_surface && self.hovered_item.is_some() {
             // Don't clear immediately - the triangle logic will handle it
             // Only clear hover and redraw if needed
@@ -345,19 +367,32 @@ impl Menu {
     }
 
     /// Handle configure event for a specific popup
-    pub fn on_configure<D>(&mut self, popup: &Popup, configure: PopupConfigure, qh: &QueueHandle<D>, conn: &Connection)
-    where
-        D: wayland_client::Dispatch<sc_layer_v1::ScLayerV1, ()> +
-           wayland_client::Dispatch<sc_layer_shell_v1::ScLayerShellV1, ()> +
-           wayland_client::Dispatch<wayland_client::protocol::wl_callback::WlCallback, wl_surface::WlSurface> +
-           'static,
+    pub fn on_configure<D>(
+        &mut self,
+        popup: &Popup,
+        configure: PopupConfigure,
+        qh: &QueueHandle<D>,
+        conn: &Connection,
+    ) where
+        D: wayland_client::Dispatch<sc_layer_v1::ScLayerV1, ()>
+            + wayland_client::Dispatch<sc_layer_shell_v1::ScLayerShellV1, ()>
+            + wayland_client::Dispatch<
+                wayland_client::protocol::wl_callback::WlCallback,
+                wl_surface::WlSurface,
+            > + 'static,
     {
         let popup_surface = popup.wl_surface();
-        
+
         // Check if it's the root menu
-        
+
         if let Some(root) = &mut self.root {
-            if root.handle_configure_recursive(&popup_surface.id(), configure.serial, &self.style, 0, qh) {
+            if root.handle_configure_recursive(
+                &popup_surface.id(),
+                configure.serial,
+                &self.style,
+                0,
+                qh,
+            ) {
                 // Enhance with sc_layer protocol if available (only on first configure)
                 conn.roundtrip().ok(); // Ensure roundtrip before using sc_layer_shell
                 if let Some(sc_layer_shell) = self.sc_layer_shell.as_ref() {
@@ -412,40 +447,44 @@ impl Menu {
     /// Check if we should close submenus
     pub fn should_close_submenus(&self) -> bool {
         // Count configured submenus
-        let configured_count = self.root.as_ref()
-            .map_or(0, |r| r.open_submenus.values().filter(|s| s.configured).count());
-        
+        let configured_count = self.root.as_ref().map_or(0, |r| {
+            r.open_submenus.values().filter(|s| s.configured).count()
+        });
+
         // Never close if we have no configured submenus
         if configured_count == 0 {
             return false;
         }
-        
+
         // Never close if we're hovering over a submenu surface
         if self.hovering_submenu {
             return false;
         }
-        
+
         // Check triangle/safe zone - if mouse is moving toward any open submenu, don't close
         if self.is_moving_toward_submenus() {
             return false;
         }
-        
+
         match self.hovered_item {
             Some(idx) => {
                 // Don't close if hovering the parent item of a configured submenu
-                if self.root.as_ref()
+                if self
+                    .root
+                    .as_ref()
                     .and_then(|r| r.open_submenus.get(&idx))
-                    .map_or(false, |s| s.configured) {
+                    .map_or(false, |s| s.configured)
+                {
                     return false;
                 }
-                
+
                 // Don't close if hovering another submenu item (we'll switch submenus instead)
                 if let Some(item) = self.items.get(idx) {
                     if item.is_submenu() {
                         return false;
                     }
                 }
-                
+
                 // Close if hovering a regular action item
                 true
             }
@@ -457,29 +496,29 @@ impl Menu {
             }
         }
     }
-    
+
     /// Check if mouse is moving toward any open submenu (triangle/safe zone logic)
     fn is_moving_toward_submenus(&self) -> bool {
         // Get root menu width to calculate submenu absolute positions
         let root_width = self.style.calculate_menu_width(&self.items);
-        
+
         // Get the open submenus from root
         let open_submenus = match self.root.as_ref() {
             Some(root) => &root.open_submenus,
             None => return false,
         };
-        
+
         // Check each configured submenu
         for (item_idx, submenu) in open_submenus.iter() {
             // Skip unconfigured (closed) submenus
             if !submenu.configured {
                 continue;
             }
-            
+
             // Calculate submenu position (positioned to the right of root menu)
             let submenu_left = root_width;
             let submenu_right = root_width + self.style.calculate_menu_width(&submenu.items);
-            
+
             // Calculate Y position of this submenu (aligned with its parent item)
             let mut submenu_top = self.style.padding_vertical;
             for (idx, item) in self.items.iter().enumerate() {
@@ -493,7 +532,7 @@ impl Menu {
                 }
             }
             let submenu_bottom = submenu_top + self.style.calculate_menu_height(&submenu.items);
-            
+
             // Check if moving toward this submenu using triangle algorithm
             if self.is_moving_toward_rect(
                 submenu_left as f64,
@@ -504,24 +543,30 @@ impl Menu {
                 return true;
             }
         }
-        
+
         false
     }
-    
+
     /// Triangle/safe zone algorithm: check if mouse trajectory is toward a rectangle
     /// This creates a triangle from the current mouse position to the two corners
     /// of the rectangle edge closest to the mouse, and checks if the movement
     /// vector points within that triangle
-    fn is_moving_toward_rect(&self, rect_left: f64, rect_top: f64, rect_right: f64, rect_bottom: f64) -> bool {
+    fn is_moving_toward_rect(
+        &self,
+        rect_left: f64,
+        rect_top: f64,
+        rect_right: f64,
+        rect_bottom: f64,
+    ) -> bool {
         // Movement vector
         let dx = self.pointer_x - self.prev_pointer_x;
         let dy = self.pointer_y - self.prev_pointer_y;
-        
+
         // If mouse hasn't moved significantly, keep submenu open
         if dx.abs() < 0.1 && dy.abs() < 0.1 {
             return true;
         }
-        
+
         // Determine which edge of the rectangle is closest to the mouse
         // and use its two corners to form the triangle
         let (corner1_x, corner1_y, corner2_x, corner2_y) = if self.pointer_x < rect_left {
@@ -538,18 +583,18 @@ impl Menu {
                 (rect_left, rect_bottom, rect_right, rect_bottom)
             }
         };
-        
+
         // Vectors from current position to the two corners
         let to_corner1_x = corner1_x - self.pointer_x;
         let to_corner1_y = corner1_y - self.pointer_y;
         let to_corner2_x = corner2_x - self.pointer_x;
         let to_corner2_y = corner2_y - self.pointer_y;
-        
+
         // Use cross product to check if movement vector is between the two corner vectors
         // If the cross products have opposite signs, the movement is within the triangle
         let cross1 = dx * to_corner1_y - dy * to_corner1_x;
         let cross2 = dx * to_corner2_y - dy * to_corner2_x;
-        
+
         // Movement is toward rectangle if it's between the two corner vectors
         cross1 * cross2 <= 0.0
     }
@@ -586,10 +631,14 @@ impl Menu {
     /// Check if a surface belongs to this menu
     pub fn owns_surface(&self, surface: &wl_surface::WlSurface) -> bool {
         // Check root surface
-        if self.root.as_ref().map_or(false, |r| &r.wl_surface == surface) {
+        if self
+            .root
+            .as_ref()
+            .map_or(false, |r| &r.wl_surface == surface)
+        {
             return true;
         }
-        
+
         // Use recursive helper to check all submenu levels
         if let Some(root) = &self.root {
             for submenu in root.open_submenus.values() {
@@ -598,7 +647,7 @@ impl Menu {
                 }
             }
         }
-        
+
         false
     }
 
@@ -608,7 +657,7 @@ impl Menu {
         if let Some(root) = &mut self.root {
             root.close_all_submenus_recursive();
         }
-        
+
         // Reset submenu-related state
         self.hovering_submenu = false;
     }
@@ -626,52 +675,64 @@ impl Menu {
         display_ptr: *mut std::ffi::c_void,
     ) -> Result<(), MenuError>
     where
-        D: wayland_client::Dispatch<wl_surface::WlSurface, SurfaceData> + 
-           wayland_client::Dispatch<xdg_surface::XdgSurface, PopupData> +
-           wayland_client::Dispatch<xdg_popup::XdgPopup, PopupData> +
-           wayland_client::Dispatch<sc_layer_v1::ScLayerV1, ()> +
-           wayland_client::Dispatch<sc_layer_shell_v1::ScLayerShellV1, ()> +
-           'static,
+        D: wayland_client::Dispatch<wl_surface::WlSurface, SurfaceData>
+            + wayland_client::Dispatch<xdg_surface::XdgSurface, PopupData>
+            + wayland_client::Dispatch<xdg_popup::XdgPopup, PopupData>
+            + wayland_client::Dispatch<sc_layer_v1::ScLayerV1, ()>
+            + wayland_client::Dispatch<sc_layer_shell_v1::ScLayerShellV1, ()>
+            + 'static,
     {
         // Navigate to the parent menu using the path
         let mut current = self.root.as_ref().ok_or(MenuError::SurfaceCreationFailed)?;
-        
+
         for &idx in &parent_path {
-            current = current.open_submenus.get(&idx).ok_or(MenuError::SurfaceCreationFailed)?;
+            current = current
+                .open_submenus
+                .get(&idx)
+                .ok_or(MenuError::SurfaceCreationFailed)?;
         }
-        
+
         // Get the parent menu items and width
         let parent_items = current.items.clone();
         let parent_width = current.width;
-        let parent_popup = current.popup.as_ref().ok_or(MenuError::SurfaceCreationFailed)?;
-        
+        let parent_popup = current
+            .popup
+            .as_ref()
+            .ok_or(MenuError::SurfaceCreationFailed)?;
+
         // Get the submenu items
-        let (submenu_items, item_y_position) = if let Some(MenuItem::Submenu { items, .. }) = parent_items.get(item_index) {
-            // Calculate Y position of this item
-            let mut y = self.style.padding_vertical;
-            for (idx, item) in parent_items.iter().enumerate() {
-                if idx == item_index {
-                    break;
+        let (submenu_items, item_y_position) =
+            if let Some(MenuItem::Submenu { items, .. }) = parent_items.get(item_index) {
+                // Calculate Y position of this item
+                let mut y = self.style.padding_vertical;
+                for (idx, item) in parent_items.iter().enumerate() {
+                    if idx == item_index {
+                        break;
+                    }
+                    if item.is_separator() {
+                        y += self.style.separator_height;
+                    } else {
+                        y += self.style.item_height;
+                    }
                 }
-                if item.is_separator() {
-                    y += self.style.separator_height;
-                } else {
-                    y += self.style.item_height;
-                }
-            }
-            (items.clone(), y as i32)
-        } else {
-            return Ok(()); // Not a submenu
-        };
+                (items.clone(), y as i32)
+            } else {
+                return Ok(()); // Not a submenu
+            };
 
         // First, check if submenu already exists (peek without mut borrow)
         // Navigate to parent again for checking
         let mut check_current = self.root.as_ref().ok_or(MenuError::SurfaceCreationFailed)?;
         for &idx in &parent_path {
-            check_current = check_current.open_submenus.get(&idx).ok_or(MenuError::SurfaceCreationFailed)?;
+            check_current = check_current
+                .open_submenus
+                .get(&idx)
+                .ok_or(MenuError::SurfaceCreationFailed)?;
         }
-        
-        let already_exists = check_current.open_submenus.get(&item_index)
+
+        let already_exists = check_current
+            .open_submenus
+            .get(&item_index)
             .map(|s| (s.configured, s.popup.is_some()));
 
         // If exists with popup and is configured, nothing to do
@@ -690,7 +751,7 @@ impl Menu {
             // If we get here, submenu exists but popup was destroyed
             // Fall through to create a new popup
         }
-        
+
         // Create submenu surface
         let submenu_width = self.style.calculate_menu_width(&submenu_items) as i32;
         let submenu_height = self.style.calculate_menu_height(&submenu_items) as i32;
@@ -699,64 +760,70 @@ impl Menu {
         wl_surface.set_buffer_scale(2); // HiDPI support
 
         // Create positioner
-        let positioner = XdgPositioner::new(xdg_shell)
-            .map_err(|_| MenuError::SurfaceCreationFailed)?;
+        let positioner =
+            XdgPositioner::new(xdg_shell).map_err(|_| MenuError::SurfaceCreationFailed)?;
         positioner.set_size(submenu_width, submenu_height);
         positioner.set_anchor_rect(
             parent_width - 8, // Position at right edge of parent menu
             item_y_position,
             1,
-                self.style.item_height as i32,
-            );
-            
-            use wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity};
-            positioner.set_anchor(Anchor::TopRight);
-            positioner.set_gravity(Gravity::BottomRight);
+            self.style.item_height as i32,
+        );
 
-            // Use the parent popup we got earlier
-            let popup = Popup::from_surface(
-                Some(parent_popup.xdg_surface()),
-                &positioner,
-                qh,
-                wl_surface.clone(),
-                xdg_shell,
-            )
-            .map_err(|_| MenuError::SurfaceCreationFailed)?;
+        use wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor, Gravity};
+        positioner.set_anchor(Anchor::TopRight);
+        positioner.set_gravity(Gravity::BottomRight);
 
-            // Create Skia context and surface
-            let (skia_context, skia_surface) = SkiaContext::new(
-                display_ptr,
-                &wl_surface,
-                (submenu_width * 2) as i32,
-                (submenu_height * 2) as i32,
-            ).map_err(|_| MenuError::SurfaceCreationFailed)?;
+        // Use the parent popup we got earlier
+        let popup = Popup::from_surface(
+            Some(parent_popup.xdg_surface()),
+            &positioner,
+            qh,
+            wl_surface.clone(),
+            xdg_shell,
+        )
+        .map_err(|_| MenuError::SurfaceCreationFailed)?;
 
-            // Don't draw yet - wait for configure event first
-            let submenu_surface = MenuSurface {
-                wl_surface: wl_surface.clone(),
-                popup: Some(popup),
-                skia_context,
-                skia_surface,
-                items: submenu_items,
-                width: submenu_width,
-                hovered_item: None,
-                needs_redraw: true,
-                configured: false,
-                open_submenus: HashMap::new(),
-                _sc_layer_shell: sc_layer_shell.cloned(),
-                frame_callback_pending: false,
-            };
+        // Create Skia context and surface
+        let (skia_context, skia_surface) = SkiaContext::new(
+            display_ptr,
+            &wl_surface,
+            (submenu_width * 2) as i32,
+            (submenu_height * 2) as i32,
+        )
+        .map_err(|_| MenuError::SurfaceCreationFailed)?;
 
-            // Navigate to parent menu and insert the submenu BEFORE committing
-            // (this prevents race condition where events check before submenu is inserted)
-            let mut insert_current = self.root.as_mut().ok_or(MenuError::SurfaceCreationFailed)?;
-            for &idx in &parent_path {
-                insert_current = insert_current.open_submenus.get_mut(&idx).ok_or(MenuError::SurfaceCreationFailed)?;
-            }
-            insert_current.open_submenus.insert(item_index, submenu_surface);
+        // Don't draw yet - wait for configure event first
+        let submenu_surface = MenuSurface {
+            wl_surface: wl_surface.clone(),
+            popup: Some(popup),
+            skia_context,
+            skia_surface,
+            items: submenu_items,
+            width: submenu_width,
+            hovered_item: None,
+            needs_redraw: true,
+            configured: false,
+            open_submenus: HashMap::new(),
+            _sc_layer_shell: sc_layer_shell.cloned(),
+            frame_callback_pending: false,
+        };
 
-            // Commit to trigger configure (after insertion to avoid race condition)
-            wl_surface.commit();
+        // Navigate to parent menu and insert the submenu BEFORE committing
+        // (this prevents race condition where events check before submenu is inserted)
+        let mut insert_current = self.root.as_mut().ok_or(MenuError::SurfaceCreationFailed)?;
+        for &idx in &parent_path {
+            insert_current = insert_current
+                .open_submenus
+                .get_mut(&idx)
+                .ok_or(MenuError::SurfaceCreationFailed)?;
+        }
+        insert_current
+            .open_submenus
+            .insert(item_index, submenu_surface);
+
+        // Commit to trigger configure (after insertion to avoid race condition)
+        wl_surface.commit();
 
         Ok(())
     }
@@ -780,7 +847,12 @@ struct MenuSurface {
 
 impl MenuSurface {
     /// Recursively handle frame callback for this surface or any submenu
-    fn handle_frame_callback_recursive<D>(&mut self, surface: &wl_surface::WlSurface, style: &MenuStyle, _qh: &QueueHandle<D>) -> bool
+    fn handle_frame_callback_recursive<D>(
+        &mut self,
+        surface: &wl_surface::WlSurface,
+        style: &MenuStyle,
+        _qh: &QueueHandle<D>,
+    ) -> bool
     where
         D: 'static,
     {
@@ -788,20 +860,30 @@ impl MenuSurface {
             self.on_frame_callback(style);
             return true;
         }
-        
+
         for submenu in self.open_submenus.values_mut() {
             if submenu.handle_frame_callback_recursive(surface, style, _qh) {
                 return true;
             }
         }
-        
+
         false
     }
-    
+
     /// Recursively handle configure event for this surface or any of its submenus
-    fn handle_configure_recursive<D>(&mut self, popup_surface_id: &wayland_client::backend::ObjectId, serial: u32, style: &MenuStyle, depth: usize, qh: &QueueHandle<D>) -> bool 
+    fn handle_configure_recursive<D>(
+        &mut self,
+        popup_surface_id: &wayland_client::backend::ObjectId,
+        serial: u32,
+        style: &MenuStyle,
+        depth: usize,
+        qh: &QueueHandle<D>,
+    ) -> bool
     where
-        D: wayland_client::Dispatch<wayland_client::protocol::wl_callback::WlCallback, wl_surface::WlSurface> + 'static,
+        D: wayland_client::Dispatch<
+                wayland_client::protocol::wl_callback::WlCallback,
+                wl_surface::WlSurface,
+            > + 'static,
     {
         // Check if this is the surface we're looking for
         if let Some(popup) = self.popup.as_ref() {
@@ -809,26 +891,29 @@ impl MenuSurface {
                 if !self.configured {
                     self.configured = true;
                 }
-                
+
                 // Render immediately on first configure
                 self.render(style);
                 return true;
             }
         }
-        
+
         // Recursively check all submenus
         for (_idx, submenu) in self.open_submenus.iter_mut() {
             if submenu.handle_configure_recursive(popup_surface_id, serial, style, depth + 1, qh) {
                 return true;
             }
         }
-        
+
         false
     }
-    
+
     /// Recursively check if this surface or any submenu has a hovered submenu item that should be opened
     /// Returns (parent_index_in_THIS_menu, item_index_to_open)
-    fn check_should_open_submenu_recursive(&self, parent_path: &[usize]) -> Option<(Vec<usize>, usize)> {
+    fn check_should_open_submenu_recursive(
+        &self,
+        parent_path: &[usize],
+    ) -> Option<(Vec<usize>, usize)> {
         // Check if this surface has a hovered submenu item
         if let Some(item_idx) = self.hovered_item {
             if let Some(item) = self.items.get(item_idx) {
@@ -846,7 +931,7 @@ impl MenuSurface {
                 }
             }
         }
-        
+
         // Recursively check all configured submenus
         for (idx, submenu) in &self.open_submenus {
             if submenu.configured {
@@ -857,16 +942,16 @@ impl MenuSurface {
                 }
             }
         }
-        
+
         None
     }
-    
+
     /// Recursively close all submenus of this surface
     fn close_all_submenus_recursive(&mut self) {
         for (_, submenu) in self.open_submenus.iter_mut() {
             // First recursively close nested submenus
             submenu.close_all_submenus_recursive();
-            
+
             // Then close this submenu
             if let Some(popup) = submenu.popup.take() {
                 popup.xdg_popup().destroy();
@@ -876,12 +961,22 @@ impl MenuSurface {
             submenu.hovered_item = None;
         }
     }
-    
+
     /// Recursively handle pointer motion for this surface or any submenu
     /// Returns true if the surface was found and handled
-    fn handle_pointer_motion_recursive<D>(&mut self, surface: &wl_surface::WlSurface, y: f64, style: &MenuStyle, active_path: &mut Vec<usize>, qh: &QueueHandle<D>) -> bool 
+    fn handle_pointer_motion_recursive<D>(
+        &mut self,
+        surface: &wl_surface::WlSurface,
+        y: f64,
+        style: &MenuStyle,
+        active_path: &mut Vec<usize>,
+        qh: &QueueHandle<D>,
+    ) -> bool
     where
-        D: wayland_client::Dispatch<wayland_client::protocol::wl_callback::WlCallback, wl_surface::WlSurface> + 'static,
+        D: wayland_client::Dispatch<
+                wayland_client::protocol::wl_callback::WlCallback,
+                wl_surface::WlSurface,
+            > + 'static,
     {
         // Check if this is the surface we're looking for
         if self.configured && &self.wl_surface == surface {
@@ -890,7 +985,7 @@ impl MenuSurface {
             if self.hovered_item != new_hover {
                 self.hovered_item = new_hover;
                 self.set_needs_redraw(qh);
-                
+
                 // Close submenus that don't match the currently hovered item
                 let hovered_idx = new_hover;
                 for (sub_idx, sub_submenu) in self.open_submenus.iter_mut() {
@@ -907,7 +1002,7 @@ impl MenuSurface {
             }
             return true;
         }
-        
+
         // Recursively check all configured submenus
         for (idx, submenu) in self.open_submenus.iter_mut() {
             if submenu.configured {
@@ -918,31 +1013,31 @@ impl MenuSurface {
                 active_path.pop();
             }
         }
-        
+
         false
     }
-    
+
     /// Recursively check if this surface or any submenu owns the given surface
     fn owns_surface_recursive(&self, surface: &wl_surface::WlSurface) -> bool {
         // Check this surface
         if self.configured && &self.wl_surface == surface {
             return true;
         }
-        
+
         // Recursively check all submenus
         for submenu in self.open_submenus.values() {
             if submenu.owns_surface_recursive(surface) {
                 return true;
             }
         }
-        
+
         false
     }
-    
+
     /// Recursively handle pointer button click - returns true if an item was clicked
     fn handle_pointer_button_recursive<F>(&self, handler: &F) -> bool
     where
-        F: Fn(&MenuItemId)
+        F: Fn(&MenuItemId),
     {
         // Check if this surface has a clicked item
         if let Some(hover_idx) = self.hovered_item {
@@ -956,21 +1051,24 @@ impl MenuSurface {
                 }
             }
         }
-        
+
         // Recursively check submenus
         for submenu in self.open_submenus.values() {
             if submenu.configured && submenu.handle_pointer_button_recursive(handler) {
                 return true;
             }
         }
-        
+
         false
     }
-    
+
     /// Request redraw with frame callback synchronization
-    fn set_needs_redraw<D>(&mut self, qh: &QueueHandle<D>) 
+    fn set_needs_redraw<D>(&mut self, qh: &QueueHandle<D>)
     where
-        D: wayland_client::Dispatch<wayland_client::protocol::wl_callback::WlCallback, wl_surface::WlSurface> + 'static,
+        D: wayland_client::Dispatch<
+                wayland_client::protocol::wl_callback::WlCallback,
+                wl_surface::WlSurface,
+            > + 'static,
     {
         self.needs_redraw = true;
         if !self.frame_callback_pending && self.configured {
@@ -978,17 +1076,17 @@ impl MenuSurface {
             self.frame_callback_pending = true;
         }
     }
-    
+
     /// Handle frame callback - render if dirty
     fn on_frame_callback(&mut self, style: &MenuStyle) {
         self.frame_callback_pending = false;
-        
+
         if self.needs_redraw && self.configured {
             self.render(style);
             self.needs_redraw = false;
         }
     }
-    
+
     fn render(&mut self, style: &MenuStyle) {
         self.skia_surface.draw(&mut self.skia_context, |canvas| {
             draw_menu(
@@ -1001,7 +1099,7 @@ impl MenuSurface {
         });
         self.skia_surface.commit();
     }
-    
+
     /// Find which item is at the given Y position
     fn item_at_position(&self, y: f32, style: &MenuStyle) -> Option<usize> {
         find_item_at_position(&self.items, y, style)
@@ -1040,18 +1138,19 @@ fn create_positioner<D>(
 where
     D: 'static,
 {
-    use wayland_protocols::xdg::shell::client::xdg_positioner::{Anchor as WlAnchor, Gravity as WlGravity, ConstraintAdjustment};
-    
+    use wayland_protocols::xdg::shell::client::xdg_positioner::{
+        Anchor as WlAnchor, ConstraintAdjustment, Gravity as WlGravity,
+    };
+
     let width = style.calculate_menu_width(items) as i32;
     let height = style.calculate_menu_height(items) as i32;
 
     // Create the positioner
-    let positioner = XdgPositioner::new(xdg_shell)
-        .map_err(|_| MenuError::SurfaceCreationFailed)?;
+    let positioner = XdgPositioner::new(xdg_shell).map_err(|_| MenuError::SurfaceCreationFailed)?;
 
     // Set size of the popup
     positioner.set_size(width, height);
-    
+
     // Set anchor rectangle (1x1 point at the specified position)
     positioner.set_anchor_rect(position.x, position.y, 1, 1);
 
@@ -1087,7 +1186,7 @@ where
         ConstraintAdjustment::FlipX
             | ConstraintAdjustment::FlipY
             | ConstraintAdjustment::SlideX
-            | ConstraintAdjustment::SlideY
+            | ConstraintAdjustment::SlideY,
     );
 
     Ok(positioner)

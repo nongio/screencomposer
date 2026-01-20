@@ -85,13 +85,14 @@ pub fn render_appswitcher_view(
             });
 
             // Draw text with improved rendering
-            let mut text_paint = lay_rs::skia::Paint::new(theme_colors().text_secondary.c4f(), None);
+            let mut text_paint =
+                lay_rs::skia::Paint::new(theme_colors().text_secondary.c4f(), None);
             text_paint.set_anti_alias(true);
-            
+
             let text_bounds = font.measure_str(&app_name, Some(&text_paint)).1;
             let text_x = selection_x + (selection_width - text_bounds.width()) / 2.0;
             let text_y = selection_y + selection_height + FONT_SIZE * 1.2;
-            
+
             canvas.draw_str(&app_name, (text_x, text_y), &font, &text_paint);
         }
         lay_rs::skia::Rect::from_xywh(0.0, 0.0, w, h)

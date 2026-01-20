@@ -100,8 +100,8 @@ impl DockView {
     /// Calculate dock bar height based on icon size
     /// Bar height = app container height + top padding + bottom padding
     fn calculate_bar_height(icon_size: f32, scale: f32) -> f32 {
-        let padding_top = 8.0 * scale;  // icon + running indicator padding
-        let padding_bottom = 8.0 * scale;              // top/bottom padding
+        let padding_top = 8.0 * scale; // icon + running indicator padding
+        let padding_bottom = 8.0 * scale; // top/bottom padding
         icon_size + padding_top + padding_bottom
     }
 
@@ -110,7 +110,7 @@ impl DockView {
         let dock_size_multiplier = Config::with(|config| config.dock.size.clamp(0.5, 2.0)) as f32;
         let base_icon_size = 95.0;
         let scaled_icon_size = base_icon_size * dock_size_multiplier * draw_scale;
-        
+
         let wrap_layer = layers_engine.new_layer();
         wrap_layer.set_key("dock");
         wrap_layer.set_pointer_events(false);
@@ -141,7 +141,8 @@ impl DockView {
 
         let bar_layer = layers_engine.new_layer();
         view_layer.add_sublayer(&bar_layer);
-        let initial_bar_height = Self::calculate_bar_height(scaled_icon_size, dock_size_multiplier * draw_scale);
+        let initial_bar_height =
+            Self::calculate_bar_height(scaled_icon_size, dock_size_multiplier * draw_scale);
         let bar_tree = LayerTreeBuilder::default()
             .key("dock-bar")
             .pointer_events(false)
@@ -366,9 +367,10 @@ impl DockView {
         let display_apps = self.display_entries(&state);
         let app_height = available_icon_width * (1.0 + 20.0 / 95.0);
         let miniwindow_height = available_icon_width * (1.0 + 60.0 / 95.0);
-        
+
         // Calculate bar height using helper function
-        let bar_height = Self::calculate_bar_height(available_icon_width, draw_scale * dock_size_multiplier);
+        let bar_height =
+            Self::calculate_bar_height(available_icon_width, draw_scale * dock_size_multiplier);
         let padding_top = bar_height * 0.05;
         let padding_bottom = bar_height * 0.1;
 
@@ -781,9 +783,11 @@ impl DockView {
                     let icon_focus = 1.0 + magnify_function(focus - icon_pos) * genie_scale;
                     let focused_icon_size = icon_size * icon_focus as f32;
                     let height_padding = draw_scale * dock_size_multiplier * 16.0;
-                    
-                    let change = layer
-                        .change_size(Size::points(focused_icon_size, focused_icon_size + height_padding));
+
+                    let change = layer.change_size(Size::points(
+                        focused_icon_size,
+                        focused_icon_size + height_padding,
+                    ));
                     changes.push(change);
                 }
             }
@@ -800,24 +804,24 @@ impl DockView {
                 let icon_pos = 1.0 / tot_elements * index as f32 + 1.0 / (tot_elements * 2.0);
                 let icon_focus = 1.0 + magnify_function(focus - icon_pos) * genie_scale;
                 let focused_icon_size = icon_size * icon_focus as f32;
-                                
+
                 // let ratio = win.w / win.h;
                 // let icon_height = focused_icon_size / ratio + 60.0;
                 let change = layer.change_size(Size::points(focused_icon_size, focused_icon_size));
                 changes.push(change);
             }
         }
-        
+
         // Update bar height to accommodate magnified icons using helper function
         let bar_height = Self::calculate_bar_height(icon_size, draw_scale * dock_size_multiplier);
-        
+
         let bar_change = self.bar_layer.change_size(Size {
             width: taffy::percent(1.0),
             height: taffy::Dimension::Length(bar_height),
         });
         self.bar_layer
             .set_border_corner_radius(bar_height / 3.5, None);
-        
+
         self.resize_handle.set_size(
             Size {
                 width: taffy::length(25.0 * draw_scale),

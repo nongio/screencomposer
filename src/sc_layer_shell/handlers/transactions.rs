@@ -1,12 +1,8 @@
 use wayland_backend::server::ClientId;
 use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, Resource};
 
-use crate::{ScreenComposer, sc_layer_shell::{handlers::commit_transaction}, state::Backend};
-use super::super::protocol::{
-    gen::{
-        sc_transaction_v1::{self, ScTransactionV1},
-    },
-};
+use super::super::protocol::gen::sc_transaction_v1::{self, ScTransactionV1};
+use crate::{sc_layer_shell::handlers::commit_transaction, state::Backend, ScreenComposer};
 
 impl<BackendData: Backend> Dispatch<ScTransactionV1, ()> for ScreenComposer<BackendData> {
     fn request(
