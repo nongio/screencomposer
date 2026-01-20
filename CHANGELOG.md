@@ -2,10 +2,76 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.11.0] - 2026-01-20
 
 ### 🚀 Features
 
+- Bump up smithay
+- Initial support for foreign toplevel protocol
+- Apps-manager component init
+- Initial protocol clients sample clients and system design
+- Add window-specific popup visibility control
+- Improve application info loading and icon fallback
+- Update sc-layer protocol implementation
+- Add session startup scripts
+- *(portal)* Add compositor watchdog for health monitoring
+- *(compositor)* Track and apply layer shell exclusive zones
+- Add configurable icon_theme option
+- Add wlr-foreign-toplevel-management protocol support
+- Support monitor resolution and refresh rate from config
+
+### 🐛 Bug Fixes
+
+- Buffer exaaustion for slow clients for screenshare
+- Upgrade smitahy, chrome viewport crash
+- Skip dock/workspace selector animations for non-current workspaces
+- Prevent window jump when dragging maximized windows
+- Reposition window during top/left edge resize
+- Use requested size for touch resize positioning
+- Dock rendering
+- Better AGENT.md
+- Workspace + sclayer early init
+- Dock scaling + config
+- Ux style + ux improvement
+- Update puffin_http to 0.16 for compatibility with puffin 0.19
+
+### 🚜 Refactor
+
+- Improve expose gesture handling and API
+
+### 📚 Documentation
+
+- Review doc files
+- Add profiling section to README
+- Add foreign toplevel management documentation
+- Add dock migration strategy to foreign-toplevel
+
+### 🎨 Styling
+
+- UI refinements for dock, expose mode, and app switcher
+
+### ⚙️ Miscellaneous Tasks
+
+- Initial protocol implementation layer protocol
+- Rendering metrics calculation
+
+## [0.11.0] - 2026-01-20
+
+### 🚀 Features
+
+- Bump up smithay
+- Initial support for foreign toplevel protocol
+- Apps-manager component init
+- Initial protocol clients sample clients and system design
+- Add window-specific popup visibility control
+- Improve application info loading and icon fallback
+- Update sc-layer protocol implementation
+- Add session startup scripts
+- *(portal)* Add compositor watchdog for health monitoring
+- *(compositor)* Track and apply layer shell exclusive zones
+- Add configurable icon_theme option
+- Add wlr-foreign-toplevel-management protocol support
+- Support monitor resolution and refresh rate from config
 - Xdg-desktop-portal for screencomposer
 - Screenshare fullscreen
 - Session script for dbus and keyring
@@ -13,16 +79,49 @@ All notable changes to this project will be documented in this file.
 
 ### 🐛 Bug Fixes
 
+- Buffer exaaustion for slow clients for screenshare
+- Upgrade smitahy, chrome viewport crash
+- Skip dock/workspace selector animations for non-current workspaces
+- Prevent window jump when dragging maximized windows
+- Reposition window during top/left edge resize
+- Use requested size for touch resize positioning
+- Dock rendering
+- Better AGENT.md
+- Workspace + sclayer early init
+- Dock scaling + config
+- Ux style + ux improvement
+- Update puffin_http to 0.16 for compatibility with puffin 0.19
 - Agent instructions + CLAUDE.md symlink
 - Agents.md
+- Cap screenshare framerate at 60fps for Chrome/WebRTC compatibility
+- Improve display mode refresh rate fallback logic in udev backend
+
+### 🚜 Refactor
+
+- Improve expose gesture handling and API
 
 ### 📚 Documentation
 
+- Review doc files
+- Add profiling section to README
+- Add foreign toplevel management documentation
+- Add dock migration strategy to foreign-toplevel
 - Update screenshare
+- Document framerate compatibility issue and fix in screenshare.md
 
-### Review
+### 🎨 Styling
 
+- UI refinements for dock, expose mode, and app switcher
+
+### ⚙️ Miscellaneous Tasks
+
+- Initial protocol implementation layer protocol
+- Rendering metrics calculation
 - Remove unused deps
+- Bump minimum Rust version to 1.85.0
+- Update Rust toolchain to 1.85.0 in GitHub Actions
+- Add libpipewire-0.3-dev to CI system dependencies
+- Use ubuntu-24.04 for clippy to match pipewire 0.9 requirements
 
 ## [0.9.0] - 2025-12-08
 
