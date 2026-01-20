@@ -53,6 +53,10 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         let window_layer = self.layers_engine.new_layer();
         let expose_mirror_layer = self.layers_engine.new_layer();
 
+        // Set key to match View rendering pipeline format so sc-layer can find it immediately
+        let surface_id = surface.wl_surface().id();
+        window_layer.set_key(format!("surface_{:?}", surface_id));
+
         expose_mirror_layer.set_draw_content(window_layer.as_content());
         expose_mirror_layer.set_picture_cached(false);
         expose_mirror_layer.set_key(format!("mirror_window_{}", window_layer.id.0));
@@ -64,7 +68,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
         let window_element = WindowElement::new(
             Window::new_wayland_window(surface.clone()),
-            window_layer,
+            window_layer.clone(),
             expose_mirror_layer,
         );
         let pointer_location = self.pointer.current_location();
@@ -90,12 +94,35 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         let handle = self.foreign_toplevel_list_state.new_toplevel::<Self>(&app_id, &title);
         self.foreign_toplevels.insert(surface_id.clone(), handle);
 
+        // Pre-populate surface_layers for toplevel and all subsurfaces
+        self.prepopulate_surface_layers(surface.wl_surface());
+
+        // Inject warm cache into WindowView's content view
+        if let Some(view) = self.workspaces.get_window_view(&surface_id) {
+            if let Some(cache) = self.view_warm_cache.remove(&surface_id) {
+                view.view_content.set_viewlayer_node_map(cache);
+                tracing::debug!("Injected warm cache into WindowView for {:?}", surface_id);
+            }
+        }
+
         let keyboard = self.seat.get_keyboard().unwrap();
         keyboard.set_focus(self, Some(window_element.into()), Serial::from(0));
     }
 
     fn toplevel_destroyed(&mut self, toplevel: ToplevelSurface) {
         let id = toplevel.wl_surface().id();
+
+        // Cascade destroy all sc-layers attached to this window
+        if let Some(layers) = self.sc_layers.remove(&id) {
+            for layer in layers {
+                self.layers_engine.mark_for_delete(layer.layer.id());
+                tracing::info!(
+                    "Cascade destroyed sc-layer {:?} with parent window {:?}",
+                    layer.wl_layer.id(),
+                    id
+                );
+            }
+        }
 
         if let Some(window) = self.workspaces.get_window_for_surface(&id) {
             if window.is_fullscreen() {
@@ -110,11 +137,17 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 }
             }
         }
-        self.workspaces.unmap_window(&id);
+        let removed_surface_ids = self.workspaces.unmap_window(&id);
 
         // Notify foreign toplevel list that this toplevel is closed
         if let Some(handle) = self.foreign_toplevels.remove(&id) {
             handle.send_closed();
+        }
+        
+        // Clean up surface_layers and sc_layers for removed popup surfaces
+        for surface_id in removed_surface_ids {
+            self.surface_layers.remove(&surface_id);
+            self.sc_layers.remove(&surface_id);
         }
 
         if let Some(keyboard) = self.seat.get_keyboard() {
@@ -137,12 +170,20 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
 
         self.unconstrain_popup(&surface);
 
-        let popup_kind = PopupKind::from(surface);
+        let popup_kind = PopupKind::from(surface.clone());
+        let popup_surface = popup_kind.wl_surface();
+        let popup_id = popup_surface.id();
 
         // Cache the root surface mapping for fast lookup during commit/destroy
         if let Ok(root) = find_popup_root_surface(&popup_kind) {
-            let popup_surface_id = popup_kind.wl_surface().id();
-            self.popup_root_cache.insert(popup_surface_id, root.id());
+            self.popup_root_cache.insert(popup_id.clone(), root.id());
+            
+            // Pre-create layer for popup with matching key format
+            let popup_layer = self.layers_engine.new_layer();
+            popup_layer.set_key(format!("surface_{:?}", popup_id));
+            
+            // Pre-populate for popup and subsurfaces
+            self.prepopulate_surface_layers(popup_surface);
         }
 
         if let Err(err) = self.popups.track_popup(popup_kind) {
@@ -154,8 +195,13 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         // Use cached root lookup - O(1) instead of traversing popup tree
         let popup_id = popup_surface.wl_surface().id();
 
-        // Remove from popup overlay layer
+        // Remove from popup overlay layer and unregister surface layers
         self.workspaces.popup_overlay.remove_popup(&popup_id);
+
+        self.surface_layers.remove(&popup_id);
+        // Also clean up any sc-layers attached to these surfaces
+        self.sc_layers.remove(&popup_id);
+        
 
         if let Some(root_id) = self.popup_root_cache.remove(&popup_id) {
             if let Some(window) = self.workspaces.get_window_for_surface(&root_id).cloned() {
@@ -933,5 +979,46 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         popup.with_pending_state(|state| {
             state.geometry = state.positioner.get_unconstrained_geometry(target);
         });
+    }
+
+    /// Pre-populate surface_layers for a surface and all its subsurfaces
+    /// This allows sc-layer to attach immediately without waiting for buffer commit
+    /// Also builds a warm cache for the View's layer lookup
+    fn prepopulate_surface_layers(&mut self, surface: &WlSurface) {
+        use smithay::wayland::compositor::with_surface_tree_downward;
+        use smithay::wayland::compositor::TraversalAction;
+        use std::collections::{HashMap, VecDeque};
+        
+        let surface_id = surface.id();
+        let mut cache: HashMap<String, VecDeque<lay_rs::prelude::NodeRef>> = HashMap::new();
+        
+        // Walk the surface tree and create layers for each surface + subsurfaces
+        with_surface_tree_downward(
+            surface,
+            (),
+            |_, _, _| TraversalAction::DoChildren(()),
+            |sub_surface, _, _| {
+                let sub_id = sub_surface.id();
+                
+                // Create a layer for this surface with matching key format
+                let layer = self.layers_engine.new_layer();
+                let key = format!("surface_{:?}", sub_id);
+                layer.set_key(&key);
+                
+                // Register in surface_layers for sc-layer attachment
+                self.surface_layers.insert(sub_id.clone(), layer.clone());
+                
+                // Add to warm cache for View
+                let mut deque = VecDeque::new();
+                deque.push_back(layer.id.into());
+                cache.insert(key, deque);
+                
+                tracing::debug!("Pre-populated surface_layer for {:?}", sub_id);
+            },
+            |_, _, _| true,
+        );
+        
+        // Store the warm cache indexed by main surface ID
+        self.view_warm_cache.insert(surface_id, cache);
     }
 }

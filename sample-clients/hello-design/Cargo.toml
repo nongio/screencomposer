@@ -1,0 +1,32 @@
+[package]
+name = "hello-design"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+smithay-client-toolkit = { version = "0.19", default-features = false, features = ["calloop"] }
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client"] }
+wayland-egl = "0.32"
+wayland-cursor = "0.31"
+wayland-scanner = "0.31"
+wayland-backend = "0.3"
+gl = "0.14"
+khronos-egl = { version = "6", features = ["dynamic"] }
+calloop = "0.13"
+
+[dependencies.skia-safe]
+version = "=0.88"
+features = ["gl", "textlayout"]
+
+[[example]]
+name = "simple_window"
+path = "examples/simple_window.rs"
+
+[[example]]
+name = "menu_bar"
+path = "examples/menu_bar.rs"
+
+[[example]]
+name = "menu_bar_visual"
+path = "examples/menu_bar_visual.rs"

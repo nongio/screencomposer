@@ -204,6 +204,16 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
 
     // foreign toplevel list - maps surface ObjectId to toplevel handle
     pub foreign_toplevels: HashMap<ObjectId, smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle>,
+
+    // sc_layer protocol
+    // Map from surface ID to list of sc-layers augmenting that surface
+    pub sc_layers: HashMap<ObjectId, Vec<crate::sc_layer_shell::ScLayer>>,
+    pub sc_transactions: HashMap<ObjectId, crate::sc_layer_shell::ScTransaction>,
+    // Map from surface ID to its rendering layer in the scene graph
+    pub surface_layers: HashMap<ObjectId, lay_rs::prelude::Layer>,
+    // Pre-warmed View caches: surface_id -> (layer_key -> NodeRef)
+    // Built during surface creation, moved into Views when they're created
+    pub view_warm_cache: HashMap<ObjectId, HashMap<String, std::collections::VecDeque<lay_rs::prelude::NodeRef>>>,
 }
 
 pub mod data_device_handler;
@@ -254,22 +264,16 @@ impl SwipeDirection {
 #[derive(Debug, Clone)]
 pub enum SwipeGestureState {
     Idle,
-    Detecting {
-        accumulated: (f64, f64),
-    },
-    WorkspaceSwitching {
-        velocity_samples: Vec<f64>,
-    },
-    Expose {
-        velocity_samples: Vec<f64>,
-    },
+    Detecting { accumulated: (f64, f64) },
+    WorkspaceSwitching { velocity_samples: Vec<f64> },
+    Expose { velocity_samples: Vec<f64> },
 }
 
 impl SwipeGestureState {
     pub fn is_active(&self) -> bool {
         !matches!(self, Self::Idle)
     }
-    
+
     pub fn is_expose(&self) -> bool {
         matches!(self, Self::Expose { .. })
     }
@@ -405,6 +409,9 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         let xdg_foreign_state = XdgForeignState::new::<Self>(&dh);
         let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
 
+        // Create minimal sc_layer shell global
+        crate::sc_layer_shell::create_layer_shell_global::<BackendData>(&dh);
+
         // init input
         let seat_name = backend_data.seat_name();
         let mut seat = seat_state.new_wl_seat(&dh, seat_name.clone());
@@ -502,6 +509,12 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
 
             // foreign toplevel list
             foreign_toplevels: HashMap::new(),
+
+            // sc_layer minimal protocol
+            sc_layers: HashMap::new(),
+            sc_transactions: HashMap::new(),
+            surface_layers: HashMap::new(),
+            view_warm_cache: HashMap::new(),
         };
 
         composer.rebuild_keycode_remap();
@@ -813,13 +826,21 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                     }
                 });
 
-                // Send popup to the overlay layer
-                self.workspaces.popup_overlay.update_popup(
+                // Remove warm cache for this popup if it exists
+                let warm_cache = self.view_warm_cache.remove(&popup_id);
+
+                // Send popup to the overlay layer with warm cache and register its surface layers
+                let popup_layers = self.workspaces.popup_overlay.update_popup(
                     &popup_id,
                     &id,
                     popup_position,
                     popup_surfaces,
+                    warm_cache,
                 );
+
+                self.surface_layers.extend(popup_layers);
+
+                
             });
 
             let initial_location: smithay::utils::Point<f64, smithay::utils::Physical> =
@@ -877,7 +898,15 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 window_view.view_base.update_state(&model);
                 window_view
                     .view_content
-                    .update_state(&render_elements.into());
+                    .update_state(&render_elements.iter().cloned().collect());
+
+                // Extract and store surface layers for sc_layer protocol
+                let render_elements_vec: Vec<_> = render_elements.into();
+                let (_, surface_layers) = crate::workspaces::utils::view_render_elements(
+                    &render_elements_vec,
+                    &window_view.view_content,
+                );
+                self.surface_layers.extend(surface_layers);
 
                 self.workspaces.expose_update_if_needed();
             }
@@ -1103,6 +1132,32 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         }
     }
 
+    /// Inject pre-created surface layers into a View's cache
+    /// This allows the View builder to find existing layers instead of creating new ones
+    pub fn inject_surface_layers_into_view<S: std::hash::Hash + Clone>(
+        &self,
+        surface: &WlSurface,
+        view: &lay_rs::prelude::View<S>,
+    ) {
+        use smithay::wayland::compositor::with_surface_tree_downward;
+        use smithay::wayland::compositor::TraversalAction;
+        
+        with_surface_tree_downward(
+            surface,
+            (),
+            |_, _, _| TraversalAction::DoChildren(()),
+            |sub_surface, _, _| {
+                let sub_id = sub_surface.id();
+                if let Some(layer) = self.surface_layers.get(&sub_id) {
+                    let key = format!("surface_{:?}", sub_id);
+                    view.viewlayer_node_map_insert(key, layer.id.into());
+                    tracing::debug!("Injected layer into view cache for {:?}", sub_id);
+                }
+            },
+            |_, _, _| true,
+        );
+    }
+
     /// Dismiss all active popups and release any pointer/keyboard grabs
     pub fn dismiss_all_popups(&mut self) {
         let serial = SERIAL_COUNTER.next_serial();
@@ -1209,7 +1264,6 @@ pub fn post_repaint<'a>(
             Some(output.clone())
         });
         // Send frame to all windows since we're processing all workspaces
-        window.send_frame(output, time, throttle, surface_primary_scanout_output);
         if let Some(dmabuf_feedback) = dmabuf_feedback {
             window.send_dmabuf_feedback(output, surface_primary_scanout_output, |surface, _| {
                 select_dmabuf_feedback(

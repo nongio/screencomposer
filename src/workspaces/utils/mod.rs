@@ -1,10 +1,11 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 
 use lay_rs::{
-    prelude::{taffy, LayerTree, LayerTreeBuilder, View},
+    prelude::{taffy, Layer, LayerTree, LayerTreeBuilder, View},
     types::{Point, Size},
 };
-use smithay::utils::Transform;
+use smithay::{reexports::wayland_server::backend::ObjectId, utils::Transform};
 
 use super::WindowViewSurface;
 
@@ -107,8 +108,8 @@ pub fn draw_balloon_rect(
 pub fn view_render_elements(
     render_elements: &Vec<WindowViewSurface>,
     _view: &View<Vec<WindowViewSurface>>,
-) -> LayerTree {
-    LayerTreeBuilder::default()
+) -> (LayerTree, HashMap<ObjectId, Layer>) {
+    let tree = LayerTreeBuilder::default()
         .key("window_content")
         .size((
             Size {
@@ -124,8 +125,7 @@ pub fn view_render_elements(
                 .filter(|render_element| {
                     render_element.phy_dst_w > 0.0 && render_element.phy_dst_h > 0.0
                 })
-                .enumerate()
-                .map(|(index, wvs)| {
+                .map(|wvs| {
                     let draw_wvs = wvs.clone();
 
                     let draw_container = move |canvas: &lay_rs::skia::Canvas, w: f32, h: f32| {
@@ -190,7 +190,7 @@ pub fn view_render_elements(
                         damage
                     };
                     LayerTreeBuilder::default()
-                        .key(format!("window_content_{}", index))
+                        .key(format!("surface_{:?}", wvs.id))
                         .layout_style(taffy::Style {
                             position: taffy::Position::Absolute,
                             ..Default::default()
@@ -218,5 +218,27 @@ pub fn view_render_elements(
                 .collect::<Vec<_>>(),
         )
         .build()
-        .unwrap()
+        .unwrap();
+
+    // Extract layers by key and map to surface IDs
+    let mut surface_layers = HashMap::new();
+    for wvs in render_elements.iter() {
+        if wvs.phy_dst_w > 0.0 && wvs.phy_dst_h > 0.0 {
+            let key = format!("surface_{:?}", wvs.id);
+            if let Some(layer) = _view.layer_by_key(&key) {
+                surface_layers.insert(wvs.id.clone(), layer);
+            }
+        }
+    }
+
+    (tree, surface_layers)
+}
+
+/// Wrapper for View::new that only returns the LayerTree
+#[allow(clippy::ptr_arg)]
+pub fn view_render_elements_wrapper(
+    render_elements: &Vec<WindowViewSurface>,
+    view: &View<Vec<WindowViewSurface>>,
+) -> LayerTree {
+    view_render_elements(render_elements, view).0
 }
