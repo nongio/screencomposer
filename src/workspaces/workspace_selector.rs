@@ -318,41 +318,39 @@ fn render_workspace_selector_view(
                             .unwrap(),
                         ),
                         // Only show remove button if not current workspace and not a non-empty fullscreen workspace
-                        (!(current || w.fullscreen && w.window_count > 0)).then(
-                            || -> LayerTree {
-                                LayerTreeBuilder::with_key(format!(
-                                    "workspace_selector_desktop_remove_{}",
-                                    w.index
-                                ))
-                                .layout_style(taffy::Style {
-                                    position: taffy::Position::Absolute,
-                                    ..Default::default()
-                                })
-                                .anchor_point(Point::new(0.5, 0.5))
-                                .scale(Point::new(0.2, 0.2))
-                                .opacity((0.0, None))
-                                .position(Point::new(preview_width, 0.0))
-                                .size((
-                                    lay_rs::types::Size {
-                                        width: lay_rs::taffy::style::Dimension::Length(50.0),
-                                        height: lay_rs::taffy::style::Dimension::Length(50.0),
-                                    },
-                                    None,
-                                ))
-                                .background_color(theme_colors().materials_ultrathick)
-                                .blend_mode(BlendMode::BackgroundBlur)
-                                .border_corner_radius(BorderRadius::new_single(25.0))
-                                .content(draw_named_icon("close-symbolic"))
-                                .shadow_color((Color::new_rgba(0.0, 0.0, 0.0, 0.2), None))
-                                .shadow_offset(((0.0, 0.0).into(), None))
-                                .shadow_radius((5.0, None))
-                                .image_cache(true)
-                                .on_pointer_press(button_press_scale(0.9))
-                                .on_pointer_release(button_release_scale())
-                                .build()
-                                .unwrap()
-                            },
-                        ),
+                        (!(current || w.fullscreen && w.window_count > 0)).then(|| -> LayerTree {
+                            LayerTreeBuilder::with_key(format!(
+                                "workspace_selector_desktop_remove_{}",
+                                w.index
+                            ))
+                            .layout_style(taffy::Style {
+                                position: taffy::Position::Absolute,
+                                ..Default::default()
+                            })
+                            .anchor_point(Point::new(0.5, 0.5))
+                            .scale(Point::new(0.2, 0.2))
+                            .opacity((0.0, None))
+                            .position(Point::new(preview_width, 0.0))
+                            .size((
+                                lay_rs::types::Size {
+                                    width: lay_rs::taffy::style::Dimension::Length(50.0),
+                                    height: lay_rs::taffy::style::Dimension::Length(50.0),
+                                },
+                                None,
+                            ))
+                            .background_color(theme_colors().materials_ultrathick)
+                            .blend_mode(BlendMode::BackgroundBlur)
+                            .border_corner_radius(BorderRadius::new_single(25.0))
+                            .content(draw_named_icon("close-symbolic"))
+                            .shadow_color((Color::new_rgba(0.0, 0.0, 0.0, 0.2), None))
+                            .shadow_offset(((0.0, 0.0).into(), None))
+                            .shadow_radius((5.0, None))
+                            .image_cache(true)
+                            .on_pointer_press(button_press_scale(0.9))
+                            .on_pointer_release(button_release_scale())
+                            .build()
+                            .unwrap()
+                        }),
                     ];
                     children
                 })
