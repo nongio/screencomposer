@@ -53,10 +53,15 @@ impl FontCache {
                 return font;
             }
         }
-        
+
         // Last resort: use default typeface from font manager
-        tracing::error!("Font '{}' and all fallbacks failed, using default", family.as_ref());
-        let typeface = self.font_mgr.legacy_make_typeface(None, style)
+        tracing::error!(
+            "Font '{}' and all fallbacks failed, using default",
+            family.as_ref()
+        );
+        let typeface = self
+            .font_mgr
+            .legacy_make_typeface(None, style)
             .expect("Failed to create default typeface");
         let mut font = lay_rs::skia::Font::from_typeface(typeface, size);
         font.set_subpixel(true);
@@ -270,6 +275,7 @@ pub fn view_render_elements(
         .unwrap();
 
     // Extract layers by key and map to surface IDs
+    #[allow(clippy::mutable_key_type)]
     let mut surface_layers = HashMap::new();
     for wvs in render_elements.iter() {
         if wvs.phy_dst_w > 0.0 && wvs.phy_dst_h > 0.0 {

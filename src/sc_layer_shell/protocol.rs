@@ -115,18 +115,18 @@ impl<BackendData: Backend> ScLayerShellHandler for ScreenComposer<BackendData> {
         // Try to find the existing rendering layer for this surface
         // Walk up the parent chain for subsurfaces to find the actual rendered surface
         use smithay::wayland::compositor::get_parent;
-        
+
         let mut current_surface = layer.surface.clone();
         let found = loop {
             let current_id = current_surface.id();
-            
+
             // Check if we have a rendering layer for this surface
             if let Some(rendering_layer) = self.surface_layers.get(&current_id).cloned() {
                 // Replace the empty layer with the actual rendering layer
                 layer.layer = rendering_layer;
                 break true;
             }
-            
+
             // Walk up to parent surface (for subsurfaces)
             if let Some(parent) = get_parent(&current_surface) {
                 current_surface = parent;

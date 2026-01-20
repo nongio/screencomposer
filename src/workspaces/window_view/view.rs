@@ -75,7 +75,11 @@ impl WindowView {
         view_base.mount_layer(shadow_layer.clone());
         let mirror_layer = window.mirror_layer().clone();
         mirror_layer.set_size(shadow_layer.render_layer().bounds.size(), None);
-        let view_content = View::new("window_content", render_elements, view_render_elements_wrapper);
+        let view_content = View::new(
+            "window_content",
+            render_elements,
+            view_render_elements_wrapper,
+        );
         view_content.mount_layer(content_layer.clone());
 
         layer.set_image_cached(true);

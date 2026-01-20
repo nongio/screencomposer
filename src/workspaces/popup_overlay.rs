@@ -104,6 +104,7 @@ impl PopupOverlayView {
     }
 
     /// Update popup position and surfaces
+    #[allow(clippy::mutable_key_type)]
     pub fn update_popup(
         &mut self,
         popup_id: &ObjectId,
@@ -111,13 +112,14 @@ impl PopupOverlayView {
         position: Point,
         surfaces: Vec<WindowViewSurface>,
         warm_cache: Option<HashMap<String, std::collections::VecDeque<lay_rs::prelude::NodeRef>>>,
-    ) -> HashMap<ObjectId, Layer>{
-        let popup = self.get_or_create_popup_layer(popup_id.clone(), root_window_id.clone(), warm_cache);
+    ) -> HashMap<ObjectId, Layer> {
+        let popup =
+            self.get_or_create_popup_layer(popup_id.clone(), root_window_id.clone(), warm_cache);
         popup.layer.set_position(position, None);
 
         popup.view_content.update_state(&surfaces);
 
-        let render_elements_vec: Vec<_> = surfaces.into();
+        let render_elements_vec: Vec<_> = surfaces;
         let (_, surface_layers) = crate::workspaces::utils::view_render_elements(
             &render_elements_vec,
             &popup.view_content,
@@ -148,7 +150,7 @@ impl PopupOverlayView {
             .collect();
 
         for id in to_remove.iter() {
-            self.remove_popup(&id);
+            self.remove_popup(id);
         }
 
         to_remove

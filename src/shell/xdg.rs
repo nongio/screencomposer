@@ -135,8 +135,20 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         let surface_id = surface.wl_surface().id();
         let app_id = window_element.xdg_app_id();
         let title = window_element.xdg_title();
-        let handle = self.foreign_toplevel_list_state.new_toplevel::<Self>(&app_id, &title);
-        self.foreign_toplevels.insert(surface_id.clone(), handle);
+
+        let ext_handle = self
+            .foreign_toplevel_list_state
+            .new_toplevel::<Self>(&app_id, &title);
+        let wlr_handle = self.wlr_foreign_toplevel_state.new_toplevel::<Self>(
+            &self.display_handle,
+            &app_id,
+            &title,
+        );
+
+        let handles = crate::state::foreign_toplevel_shared::ForeignToplevelHandles::new(
+            ext_handle, wlr_handle,
+        );
+        self.foreign_toplevels.insert(surface_id.clone(), handles);
 
         // Pre-populate surface_layers for toplevel and all subsurfaces
         self.prepopulate_surface_layers(surface.wl_surface());
@@ -189,7 +201,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         if let Some(handle) = self.foreign_toplevels.remove(&id) {
             handle.send_closed();
         }
-        
+
         // Clean up surface_layers and sc_layers for removed popup surfaces
         for surface_id in removed_surface_ids {
             self.surface_layers.remove(&surface_id);
@@ -223,11 +235,11 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         // Cache the root surface mapping for fast lookup during commit/destroy
         if let Ok(root) = find_popup_root_surface(&popup_kind) {
             self.popup_root_cache.insert(popup_id.clone(), root.id());
-            
+
             // Pre-create layer for popup with matching key format
             let popup_layer = self.layers_engine.new_layer();
             popup_layer.set_key(format!("surface_{:?}", popup_id));
-            
+
             // Pre-populate for popup and subsurfaces
             self.prepopulate_surface_layers(popup_surface);
         }
@@ -247,7 +259,6 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         self.surface_layers.remove(&popup_id);
         // Also clean up any sc-layers attached to these surfaces
         self.sc_layers.remove(&popup_id);
-        
 
         if let Some(root_id) = self.popup_root_cache.remove(&popup_id) {
             if let Some(window) = self.workspaces.get_window_for_surface(&root_id).cloned() {
@@ -787,31 +798,32 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
                 // Assumes that at least one output exists
                 .expect("No outputs found")
                 .clone(); // Clone to avoid borrow conflicts
-            
+
             let output_geom = self.workspaces.output_geometry(&output).unwrap();
-            
+
             // Recalculate exclusive zones for this output before using them
             // This ensures we have fresh data even if layer surfaces changed
             self.recalculate_exclusive_zones(&output);
-            
+
             // Get tracked exclusive zones for this output (from layer shell surfaces)
             let output_name = output.name();
-            let zones = self.exclusive_zones
+            let zones = self
+                .exclusive_zones
                 .get(&output_name)
                 .cloned()
                 .unwrap_or_default();
-            
+
             // Calculate usable area from tracked exclusive zones
             let mut usable_zone = zones.apply_to_output(output_geom);
-            
+
             // Get the actual dock geometry (position and size)
             let dock_geom = self.workspaces.get_dock_geometry();
-            
+
             // Dock reduces available height from the bottom
             if dock_geom.size.h > 0 {
                 let dock_top = dock_geom.loc.y;
                 let available_bottom = usable_zone.loc.y + usable_zone.size.h;
-                
+
                 // If dock is in the usable area, reduce height to stop above dock
                 if dock_top < available_bottom {
                     usable_zone.size.h = dock_top - usable_zone.loc.y;
@@ -1215,10 +1227,10 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
         use smithay::wayland::compositor::with_surface_tree_downward;
         use smithay::wayland::compositor::TraversalAction;
         use std::collections::{HashMap, VecDeque};
-        
+
         let surface_id = surface.id();
         let mut cache: HashMap<String, VecDeque<lay_rs::prelude::NodeRef>> = HashMap::new();
-        
+
         // Walk the surface tree and create layers for each surface + subsurfaces
         with_surface_tree_downward(
             surface,
@@ -1226,25 +1238,25 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
             |_, _, _| TraversalAction::DoChildren(()),
             |sub_surface, _, _| {
                 let sub_id = sub_surface.id();
-                
+
                 // Create a layer for this surface with matching key format
                 let layer = self.layers_engine.new_layer();
                 let key = format!("surface_{:?}", sub_id);
                 layer.set_key(&key);
-                
+
                 // Register in surface_layers for sc-layer attachment
                 self.surface_layers.insert(sub_id.clone(), layer.clone());
-                
+
                 // Add to warm cache for View
                 let mut deque = VecDeque::new();
-                deque.push_back(layer.id.into());
+                deque.push_back(layer.id);
                 cache.insert(key, deque);
-                
+
                 tracing::debug!("Pre-populated surface_layer for {:?}", sub_id);
             },
             |_, _, _| true,
         );
-        
+
         // Store the warm cache indexed by main surface ID
         self.view_warm_cache.insert(surface_id, cache);
     }

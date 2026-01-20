@@ -2,13 +2,17 @@ use lay_rs::types::BorderRadius;
 use wayland_backend::server::ClientId;
 use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, Resource};
 
-use crate::{ScreenComposer, sc_layer_shell::handlers::{ScLayerUserData, accumulate_change, find_active_transaction_for_client, trigger_window_update, wl_fixed_to_f32}, state::Backend};
+use crate::{
+    sc_layer_shell::handlers::{
+        accumulate_change, find_active_transaction_for_client, trigger_window_update,
+        wl_fixed_to_f32, ScLayerUserData,
+    },
+    state::Backend,
+    ScreenComposer,
+};
 
 use super::super::protocol::{
-    gen::{
-        sc_layer_v1::{self, ScLayerV1},
-
-    },
+    gen::sc_layer_v1::{self, ScLayerV1},
     ScLayerShellHandler,
 };
 
@@ -117,7 +121,9 @@ impl<BackendData: Backend> Dispatch<ScLayerV1, ScLayerUserData> for ScreenCompos
                     let change = sc_layer.layer.change_border_corner_radius(radius);
                     accumulate_change(state, txn_id, change);
                 } else {
-                    sc_layer.layer.set_border_corner_radius(BorderRadius::new_single(radius), None);
+                    sc_layer
+                        .layer
+                        .set_border_corner_radius(BorderRadius::new_single(radius), None);
                     // trigger_window_update(state, &sc_layer.surface.id());
                 }
             }
@@ -142,7 +148,7 @@ impl<BackendData: Backend> Dispatch<ScLayerV1, ScLayerUserData> for ScreenCompos
                     let layer = sc_layer.layer.clone();
                     let width_change = layer.change_border_width(width);
                     let color_change = layer.change_border_color(color);
-                    
+
                     // Accumulate both changes
                     accumulate_change(state, txn_id.clone(), width_change);
                     accumulate_change(state, txn_id, color_change);
@@ -153,7 +159,6 @@ impl<BackendData: Backend> Dispatch<ScLayerV1, ScLayerUserData> for ScreenCompos
                     trigger_window_update(state, &sc_layer.surface.id());
                 }
             }
-
 
             sc_layer_v1::Request::SetShadow {
                 opacity,

@@ -1,6 +1,6 @@
 use smithay_client_toolkit::{
     compositor::{CompositorState, SurfaceData},
-    reexports::client::{QueueHandle, protocol::wl_surface},
+    reexports::client::{protocol::wl_surface, QueueHandle},
 };
 use wayland_client::{
     protocol::{wl_subcompositor, wl_subsurface},
@@ -47,26 +47,26 @@ impl MenuBarSurface {
         display_ptr: *mut std::ffi::c_void,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
-        D: Dispatch<wl_surface::WlSurface, SurfaceData> + 
-           Dispatch<wl_subsurface::WlSubsurface, ()> + 
-           'static,
+        D: Dispatch<wl_surface::WlSurface, SurfaceData>
+            + Dispatch<wl_subsurface::WlSubsurface, ()>
+            + 'static,
     {
         let height = menu_bar.height() as i32;
-        
+
         // Create the Wayland surface
         let wl_surface = compositor.create_surface(qh);
-        
+
         // Create subsurface
         let subsurface = subcompositor.get_subsurface(&wl_surface, parent_surface, qh, ());
-        
+
         // Position at top of parent (0, 0)
         subsurface.set_position(0, 0);
         subsurface.set_desync();
-        
+
         // Use 2x buffer for HiDPI rendering
         let buffer_scale = 2;
         wl_surface.set_buffer_scale(buffer_scale);
-        
+
         // Create Skia context and surface
         let (skia_context, skia_surface) = SkiaContext::new(
             display_ptr,
@@ -74,7 +74,7 @@ impl MenuBarSurface {
             width * buffer_scale,
             height * buffer_scale,
         )?;
-        
+
         let mut menu_bar_surface = Self {
             wl_surface,
             subsurface,
@@ -87,13 +87,13 @@ impl MenuBarSurface {
             needs_redraw: true,
             display_ptr,
         };
-        
+
         // Initial render
         menu_bar_surface.render();
-        
+
         Ok(menu_bar_surface)
     }
-    
+
     /// Render the menu bar
     pub fn render(&mut self) {
         self.skia_surface.draw(&mut self.skia_context, |canvas| {
@@ -102,7 +102,7 @@ impl MenuBarSurface {
         self.skia_surface.commit();
         self.needs_redraw = false;
     }
-    
+
     /// Handle a click at the given position (in surface-local coordinates)
     /// Returns (label, x_position) of the menu that was toggled, if any
     pub fn handle_click(&mut self, x: f32, y: f32) -> Option<(String, f32)> {
@@ -114,7 +114,7 @@ impl MenuBarSurface {
         }
         result
     }
-    
+
     /// Handle hover at the given position (in surface-local coordinates)
     /// Returns (label, x_position, changed) if hovering over a menubar item
     /// changed is true if the active menu was switched
@@ -130,30 +130,30 @@ impl MenuBarSurface {
             None
         }
     }
-    
+
     /// Get the menu bar component
     pub fn menu_bar(&self) -> &MenuBar {
         &self.menu_bar
     }
-    
+
     /// Get mutable menu bar component
     pub fn menu_bar_mut(&mut self) -> &mut MenuBar {
         &mut self.menu_bar
     }
-    
+
     /// Get the surface
     pub fn surface(&self) -> &wl_surface::WlSurface {
         &self.wl_surface
     }
-    
+
     /// Resize the surface
     pub fn resize(&mut self, width: i32) {
         if self.width != width {
             self.width = width;
-            
+
             // Recreate Skia surface with new dimensions
             let buffer_scale = 2;
-            
+
             if let Ok((new_ctx, new_surface)) = SkiaContext::new(
                 self.display_ptr,
                 &self.wl_surface,

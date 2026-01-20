@@ -1501,7 +1501,7 @@ impl Workspaces {
         if let Some(index) = workspace_index {
             self.expose_update_if_needed_workspace(index);
         }
-        
+
         // Return the surface IDs so the compositor can clean up surface_layers and sc_layers
         removed_surface_ids
     }
@@ -1533,7 +1533,10 @@ impl Workspaces {
             let scale = Config::with(|c| c.screen_scale) as f32;
             Rectangle::from_loc_and_size(
                 ((bounds.x() / scale) as i32, (bounds.y() / scale) as i32 - 2),
-                ((bounds.width() / scale).ceil() as i32, (bounds.height() / scale).ceil() as i32),
+                (
+                    (bounds.width() / scale).ceil() as i32,
+                    (bounds.height() / scale).ceil() as i32,
+                ),
             )
         } else {
             Rectangle::from_loc_and_size((0, 0), (0, 0))
@@ -1617,7 +1620,7 @@ impl Workspaces {
         if let Some(view) = window_views.remove(object_id) {
             view.window_layer.remove();
         }
-        
+
         removed_surface_ids
     }
 
@@ -1741,12 +1744,12 @@ impl Workspaces {
                 if window.is_fullscreen() {
                     return;
                 }
-                
+
                 // Get the currently top window before raising the new one
                 let previous_top = space.elements().last().map(|w| w.id());
-                
+
                 space.raise_element(window, activate);
-                
+
                 // When activating a window, manage popup visibility
                 if activate {
                     // Hide popups for the previous top window
@@ -1758,7 +1761,7 @@ impl Workspaces {
                     // Show popups for the newly activated window
                     self.popup_overlay.show_popups_for_window(window_id);
                 }
-                
+
                 let workspace = self.with_model(|m| m.workspaces[index].clone());
                 {
                     if let Some(view) = self.get_window_view(window_id) {
@@ -1890,12 +1893,12 @@ impl Workspaces {
         for (window_id, we) in windows.iter() {
             let raw_app_id = we.xdg_app_id();
             let display_app_id = we.display_app_id(&self.display_handle);
-            
+
             // Skip only if both raw and display app_id are empty
             if raw_app_id.is_empty() && display_app_id.is_empty() {
                 tracing::warn!("[update_workspace_model] Skipping window with no app_id");
                 continue;
-            }           
+            }
             if let Ok(mut model_mut) = self.model.write() {
                 // Use raw_app_id for window mapping if available, otherwise use display_app_id
                 let map_key = if !raw_app_id.is_empty() {
@@ -1903,7 +1906,7 @@ impl Workspaces {
                 } else {
                     display_app_id.clone()
                 };
-                
+
                 model_mut
                     .app_windows_map
                     .entry(map_key)
@@ -1912,10 +1915,14 @@ impl Workspaces {
 
                 // Use display_app_id for UI lists (shows actual programs)
                 if !model_mut.application_list.contains(&display_app_id) {
-                    model_mut.application_list.push_front(display_app_id.clone());
+                    model_mut
+                        .application_list
+                        .push_front(display_app_id.clone());
                 }
                 if app_set.insert(display_app_id.clone()) {
-                    model_mut.zindex_application_list.push(display_app_id.clone());
+                    model_mut
+                        .zindex_application_list
+                        .push(display_app_id.clone());
                 }
             }
         }

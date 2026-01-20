@@ -1,9 +1,8 @@
 /// Shared abstraction for foreign toplevel management across different protocols
-/// 
+///
 /// This module provides a unified interface for both:
 /// - ext-foreign-toplevel-list-v1 (newer, Smithay built-in)
 /// - wlr-foreign-toplevel-management-unstable-v1 (older, wlroots protocol)
-
 use smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle as ExtHandle;
 
 use super::wlr_foreign_toplevel::WlrForeignToplevelHandle;

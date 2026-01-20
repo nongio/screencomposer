@@ -2,13 +2,13 @@ use std::{
     collections::hash_map::HashMap,
     io,
     path::Path,
-    sync::{atomic::Ordering, Arc, Mutex},
+    sync::{atomic::Ordering, Arc},
     time::{Duration, Instant},
 };
 
 use crate::{
     config::Config,
-    cursor::Cursor,
+    cursor::{CursorManager, CursorTextureCache},
     render_elements::{output_render_elements::OutputRenderElements, scene_element::SceneElement},
     shell::WindowRenderElement,
     skia_renderer::SkiaTextureImage,
@@ -46,12 +46,10 @@ use smithay::{
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{
             damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
-            element::{
-                texture::TextureBuffer, AsRenderElements, RenderElement, RenderElementStates,
-            },
-            multigpu::{gbm::GbmGlesBackend, GpuManager, MultiRenderer, MultiTexture},
+            element::{AsRenderElements, Kind, RenderElement, RenderElementStates},
+            multigpu::{gbm::GbmGlesBackend, GpuManager, MultiRenderer},
             sync::SyncPoint,
-            utils::{import_surface, RendererSurfaceStateUserData},
+            utils::import_surface,
             Bind, DebugFlags, ExportMem, ImportDma, ImportMemWl, Offscreen, Renderer,
         },
         session::{
@@ -63,7 +61,7 @@ use smithay::{
     },
     delegate_dmabuf, delegate_drm_lease,
     desktop::utils::OutputPresentationFeedback,
-    input::pointer::{CursorImageAttributes, CursorImageStatus},
+    input::pointer::CursorImageStatus,
     output::{Mode as WlMode, Output, PhysicalProperties, Subpixel},
     reexports::{
         calloop::{
@@ -85,9 +83,7 @@ use smithay::{
         },
         wayland_server::{backend::GlobalId, protocol::wl_surface, Display, DisplayHandle},
     },
-    utils::{
-        Clock, DeviceFd, IsAlive, Logical, Monotonic, Physical, Point, Rectangle, Scale, Transform,
-    },
+    utils::{Clock, DeviceFd, IsAlive, Logical, Monotonic, Physical, Point, Rectangle, Scale},
     wayland::{
         compositor,
         dmabuf::{
@@ -137,12 +133,9 @@ pub struct UdevData {
     primary_gpu: DrmNode,
     gpus: GpuManager<GbmGlesBackend<SkiaRenderer, DrmDeviceFd>>,
     backends: HashMap<DrmNode, BackendData>,
-    pointer_images: Vec<(xcursor::parser::Image, TextureBuffer<MultiTexture>)>,
-    pointer_element: PointerElement<MultiTexture>,
     #[cfg(feature = "fps_ticker")]
     fps_texture: Option<MultiTexture>,
     debug_flags: DebugFlags,
-    cursor_manager: Cursor,
 }
 
 impl UdevData {
@@ -237,10 +230,8 @@ impl Backend for UdevData {
         }
         None
     }
-    fn set_cursor(&mut self, image: &CursorImageStatus) {
-        if let CursorImageStatus::Named(image) = image {
-            self.cursor_manager.load_icon(image.name());
-        }
+    fn set_cursor(&mut self, _image: &CursorImageStatus) {
+        // No-op: cursor rendering handled directly in render_surface
     }
     fn renderer_context(&mut self) -> Option<lay_rs::skia::gpu::DirectContext> {
         let r = self.gpus.single_renderer(&self.primary_gpu).unwrap();
@@ -499,12 +490,9 @@ pub fn run_udev() {
         primary_gpu,
         gpus,
         backends: HashMap::new(),
-        pointer_images: Vec::new(),
-        pointer_element: PointerElement::default(),
         #[cfg(feature = "fps_ticker")]
         fps_texture: None,
         debug_flags: DebugFlags::empty(),
-        cursor_manager: Cursor::load(),
     };
     let mut state = ScreenComposer::init(display, event_loop.handle(), data, true);
 
@@ -1013,9 +1001,6 @@ struct SurfaceData {
     #[cfg(feature = "fps_ticker")]
     fps_element: Option<FpsElement<MultiTexture>>,
     dmabuf_feedback: Option<DrmSurfaceDmabufFeedback>,
-    /// Last pointer element count for tracking transitions (used in fullscreen mode)
-    /// When element count changes (0↔1), buffer ages need reset to clear stale cursor
-    last_pointer_element_count: usize,
     /// Track whether we were in direct scanout mode on the previous frame
     /// Used to reset buffers when transitioning between modes
     was_direct_scanout: bool,
@@ -1484,7 +1469,6 @@ impl ScreenComposer<UdevData> {
                 #[cfg(feature = "fps_ticker")]
                 fps_element,
                 dmabuf_feedback,
-                last_pointer_element_count: 0,
                 was_direct_scanout: false,
                 render_metrics: Some(self.render_metrics.clone()),
             };
@@ -1858,47 +1842,10 @@ impl ScreenComposer<UdevData> {
 
         // let output_scale = output.current_scale().fractional_scale();
         // let integer_scale = output_scale.round() as u32;
-        let config_scale = Config::with(|c| c.screen_scale);
-
-        // TODO get scale from the rendersurface when supporting HiDPI
-        let cursor_frame = self
-            .backend_data
-            .cursor_manager
-            .get_image(config_scale as f32, self.clock.now().into());
+        let _config_scale = Config::with(|c| c.screen_scale);
 
         let scene_has_damage = self.scene_element.update();
-        let pointer_width = cursor_frame.width as i32;
-
-        let pointer_images = &mut self.backend_data.pointer_images;
-        let pointer_image = pointer_images
-            .iter()
-            .find_map(|(image, texture)| {
-                if image == &cursor_frame {
-                    Some(texture.clone())
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_else(|| {
-                let texture = TextureBuffer::from_memory(
-                    &mut renderer,
-                    &cursor_frame.pixels_rgba,
-                    Fourcc::Abgr8888,
-                    (cursor_frame.width as i32, cursor_frame.height as i32),
-                    false,
-                    2,
-                    Transform::Normal,
-                    None,
-                )
-                .expect("Failed to import cursor bitmap");
-                pointer_images.push((cursor_frame, texture.clone()));
-                texture
-            });
-        // set cursor
-        self.backend_data
-            .pointer_element
-            .set_texture(pointer_image.clone());
-        let pointer_scale = pointer_width as f64 / self.backend_data.cursor_manager.size as f64;
+        let pointer_scale = 1.0;
         let all_window_elements: Vec<&WindowElement> = self.workspaces.spaces_elements().collect();
 
         // Determine if direct scanout should be allowed:
@@ -1921,8 +1868,8 @@ impl ScreenComposer<UdevData> {
             &all_window_elements,
             &output,
             self.pointer.current_location(),
-            // &pointer_image,
-            &mut self.backend_data.pointer_element,
+            &self.cursor_manager,
+            &self.cursor_texture_cache,
             pointer_scale,
             self.dnd_icon.as_ref(),
             &mut self.cursor_status.lock().unwrap(),
@@ -2133,10 +2080,11 @@ fn render_surface<'a, 'b>(
     window_elements: &[&WindowElement],
     output: &Output,
     pointer_location: Point<f64, Logical>,
-    pointer_element: &mut PointerElement<MultiTexture>,
+    cursor_manager: &CursorManager,
+    cursor_texture_cache: &CursorTextureCache,
     _pointer_scale: f64,
     dnd_icon: Option<&wl_surface::WlSurface>,
-    cursor_status: &mut CursorImageStatus,
+    _cursor_status: &mut CursorImageStatus,
     clock: &Clock<Monotonic>,
     scene_element: SceneElement,
     scene_has_damage: bool,
@@ -2155,106 +2103,59 @@ fn render_surface<'a, 'b>(
 
     let output_scale = output.current_scale().fractional_scale();
 
-    let cursor_config_size = Config::with(|c| c.cursor_size);
-    let cursor_config_physical_size = cursor_config_size as f64 * output_scale;
+    let _cursor_config_size = Config::with(|c| c.cursor_size);
     let dnd_needs_draw = dnd_icon.map(|surface| surface.alive()).unwrap_or(false);
-    let mut pointer_needs_draw = false;
 
     let pointer_in_output = output_geometry
         .to_f64()
         .contains(pointer_location.to_physical(scale));
 
     if pointer_in_output {
-        pointer_needs_draw = true;
-        let (cursor_phy_size, cursor_hotspot) = match cursor_status {
-            CursorImageStatus::Surface(ref surface) => {
-                compositor::with_states(surface, |states| {
-                    let data = states.data_map.get::<RendererSurfaceStateUserData>();
-                    let (size, cursor_scale) = data
-                        .map(|data| {
-                            let data = data.lock().unwrap();
-                            if let Some(view) = data.view().as_ref() {
-                                let surface_scale = data.buffer_scale() as f64;
-                                // println!("surface_scale: {}", surface_scale);
-                                let src_view = view.src.to_physical(surface_scale);
-                                (src_view.size, surface_scale)
-                            } else {
-                                (
-                                    (cursor_config_size as f64, cursor_config_size as f64).into(),
-                                    1.0,
-                                )
-                            }
-                        })
-                        .unwrap_or_else(|| {
-                            (
-                                (
-                                    cursor_config_size as f64 * output_scale,
-                                    cursor_config_size as f64 * output_scale,
-                                )
-                                    .into(),
-                                1.0,
-                            )
-                        });
-                    (
-                        size,
-                        states
-                            .data_map
-                            .get::<Mutex<CursorImageAttributes>>()
-                            .unwrap()
-                            .lock()
-                            .unwrap()
-                            .hotspot
-                            .to_f64()
-                            .to_physical(cursor_scale),
-                    )
-                })
+        use crate::cursor::RenderCursor;
+        use smithay::backend::renderer::element::surface::render_elements_from_surface_tree;
+
+        match cursor_manager.get_render_cursor(output_scale.round() as i32) {
+            RenderCursor::Hidden => {}
+            RenderCursor::Surface { hotspot, surface } => {
+                let cursor_pos_scaled = (pointer_location.to_physical(scale)
+                    - hotspot.to_f64().to_physical(scale))
+                .to_i32_round();
+                let elements: Vec<WorkspaceRenderElements<_>> = render_elements_from_surface_tree(
+                    renderer,
+                    &surface,
+                    cursor_pos_scaled,
+                    scale,
+                    1.0,
+                    Kind::Cursor,
+                );
+                workspace_render_elements.extend(elements);
             }
-            CursorImageStatus::Named(_) => {
-                let cursor_image = pointer_element
-                    .cursor_manager
-                    .get_image(output_scale as f32, clock.now().into());
-                (
-                    (cursor_image.width as f64, cursor_image.height as f64).into(),
-                    (cursor_image.xhot as f64, cursor_image.yhot as f64).into(),
+            RenderCursor::Named {
+                icon,
+                scale: _,
+                cursor,
+            } => {
+                let elapsed_millis = clock.now().as_millis();
+                let (idx, image) = cursor.frame(elapsed_millis);
+                let texture =
+                    cursor_texture_cache.get(icon, output_scale.round() as i32, &cursor, idx);
+                use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
+                let hotspot_physical = Point::from((image.xhot as f64, image.yhot as f64));
+                let cursor_pos_scaled: Point<i32, Physical> =
+                    (pointer_location.to_physical(scale) - hotspot_physical).to_i32_round();
+                let elem = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    cursor_pos_scaled.to_f64(),
+                    &texture,
+                    None,
+                    None,
+                    None,
+                    Kind::Cursor,
                 )
+                .expect("Failed to create cursor render element");
+                workspace_render_elements.push(WorkspaceRenderElements::from(elem));
             }
-            _ => (
-                (
-                    cursor_config_size as f64 * output_scale,
-                    cursor_config_size as f64 * output_scale,
-                )
-                    .into(),
-                (0.0, 0.0).into(),
-            ),
-        };
-        let cursor_pos = pointer_location.to_physical(scale) - output_geometry.loc.to_f64();
-        let cursor_pos_scaled = (cursor_pos - cursor_hotspot).to_i32_round();
-
-        let cursor_rescale = cursor_config_physical_size / cursor_phy_size.w;
-        // // set cursor
-        // pointer_element.set_texture(pointer_image.clone());
-        // println!("rendering cursor: {:?}", rescale_cursor);
-        // draw the cursor as relevant
-        // println!("cursor phy size: {:?}, config_phy {:?} should_scale: {}", cursor_phy_size, cursor_config_physical_size, cursor_scale);
-
-        {
-            // reset the cursor if the surface is no longer alive
-            let mut reset = false;
-            if let CursorImageStatus::Surface(ref surface) = *cursor_status {
-                reset = !surface.alive();
-            }
-            if reset {
-                *cursor_status = CursorImageStatus::default_named();
-            }
-
-            pointer_element.set_status(cursor_status.clone());
         }
-        workspace_render_elements.extend(pointer_element.render_elements(
-            renderer,
-            cursor_pos_scaled,
-            cursor_rescale.into(),
-            1.0,
-        ));
 
         // draw the dnd icon if applicable
         // {
@@ -2298,8 +2199,6 @@ fn render_surface<'a, 'b>(
             let mut elements: Vec<OutputRenderElements<'a, _, WindowRenderElement<_>>> = Vec::new();
 
             // Add pointer elements first (rendered at bottom, but cursor plane may handle separately)
-            // Capture pointer element count before moving workspace_render_elements
-            let pointer_element_count = workspace_render_elements.len();
             elements.extend(
                 workspace_render_elements
                     .into_iter()
@@ -2316,18 +2215,6 @@ fn render_surface<'a, 'b>(
                     .map(|e| OutputRenderElements::Window(Wrap::from(e))),
             );
 
-            // Track element count transitions in fullscreen mode.
-            // When pointer element count changes (0↔1 transition), force a full redraw.
-            // This handles cursor appearing/disappearing when cursor surface damage state changes.
-            let element_count_changed = pointer_element_count != surface.last_pointer_element_count;
-            surface.last_pointer_element_count = pointer_element_count;
-
-            if element_count_changed && pointer_in_output {
-                // reset_buffers() forces a complete re-render of all content, ensuring
-                // the full window is redrawn when cursor appears/disappears.
-                surface.compositor.reset_buffers();
-            }
-
             // Always render in fullscreen mode since the window surface may have damage
             // Use black clear color - the window fills the screen anyway
             (elements, CLEAR_COLOR, true)
@@ -2335,7 +2222,9 @@ fn render_surface<'a, 'b>(
             // Normal mode: render the full scene
             workspace_render_elements.push(WorkspaceRenderElements::Scene(scene_element));
 
-            let should_draw = scene_has_damage || pointer_needs_draw || dnd_needs_draw;
+            // Render if scene has damage, dnd icon needs drawing, or cursor is visible
+            let cursor_needs_draw = pointer_in_output;
+            let should_draw = scene_has_damage || dnd_needs_draw || cursor_needs_draw;
             if !should_draw {
                 return Ok(RenderOutcome::skipped());
             }
@@ -2376,7 +2265,7 @@ fn render_surface<'a, 'b>(
         let mode = output.current_mode().unwrap();
         let output_size = (mode.size.w, mode.size.h);
 
-        if let Some(ref damage_rects) = damage {
+        if let Some(damage_rects) = damage {
             // Have actual damage information
             metrics.as_ref().record_damage(output_size, damage_rects);
         } else if rendered {
@@ -2460,7 +2349,7 @@ pub fn probe_displays() {
         }
     };
 
-    let udev_backend = match UdevBackend::new(&session.seat()) {
+    let udev_backend = match UdevBackend::new(session.seat()) {
         Ok(ret) => ret,
         Err(err) => {
             error!("Failed to initialize udev backend: {:?}", err);

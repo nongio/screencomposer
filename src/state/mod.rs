@@ -19,9 +19,9 @@ use smithay::{
         },
         utils::{RendererSurfaceState, RendererSurfaceStateUserData},
     },
-    delegate_compositor, delegate_keyboard_shortcuts_inhibit, delegate_layer_shell,
-    delegate_output, delegate_pointer_gestures, delegate_presentation, delegate_relative_pointer,
-    delegate_shm, delegate_text_input_manager, delegate_viewporter,
+    delegate_compositor, delegate_cursor_shape, delegate_keyboard_shortcuts_inhibit,
+    delegate_layer_shell, delegate_output, delegate_pointer_gestures, delegate_presentation,
+    delegate_relative_pointer, delegate_shm, delegate_text_input_manager, delegate_viewporter,
     delegate_virtual_keyboard_manager, delegate_xdg_foreign, delegate_xdg_shell,
     desktop::{
         utils::{
@@ -56,6 +56,7 @@ use smithay::{
             self, CompositorClientState, CompositorState, SurfaceAttributes, SurfaceData,
             TraversalAction,
         },
+        cursor_shape::CursorShapeManagerState,
         dmabuf::DmabufFeedback,
         foreign_toplevel_list::ForeignToplevelListState,
         fractional_scale::{with_fractional_scale, FractionalScaleManagerState},
@@ -89,8 +90,7 @@ use smithay::{
     },
 };
 
-#[cfg(feature = "xwayland")]
-use crate::cursor::Cursor;
+use crate::cursor::{CursorManager, CursorTextureCache};
 use crate::{
     config::{Config, ModifierMaskLookup},
     focus::KeyboardFocusTarget,
@@ -138,18 +138,18 @@ impl ExclusiveZones {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Get the usable area after applying exclusive zones
-    pub fn apply_to_output(&self, output_geometry: utils::Rectangle<i32, utils::Logical>) -> utils::Rectangle<i32, utils::Logical> {
+    pub fn apply_to_output(
+        &self,
+        output_geometry: utils::Rectangle<i32, utils::Logical>,
+    ) -> utils::Rectangle<i32, utils::Logical> {
         let loc_x = output_geometry.loc.x + self.left;
         let loc_y = output_geometry.loc.y + self.top;
         let width = output_geometry.size.w - self.left - self.right;
         let height = output_geometry.size.h - self.top - self.bottom;
-        
-        utils::Rectangle::from_loc_and_size(
-            (loc_x, loc_y),
-            (width, height)
-        )
+
+        utils::Rectangle::from_loc_and_size((loc_x, loc_y), (width, height))
     }
 }
 
@@ -192,6 +192,7 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub xdg_foreign_state: XdgForeignState,
     pub foreign_toplevel_list_state: ForeignToplevelListState,
     pub wlr_foreign_toplevel_state: wlr_foreign_toplevel::WlrForeignToplevelManagerState,
+    pub cursor_shape_manager_state: CursorShapeManagerState,
 
     #[cfg(feature = "xwayland")]
     pub xwayland_shell_state: xwayland_shell::XWaylandShellState,
@@ -205,6 +206,8 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub app_switcher_hold_modifiers: Option<ModifiersState>,
     pub modifier_masks: ModifierMaskLookup,
     pub cursor_status: Arc<Mutex<CursorImageStatus>>,
+    pub cursor_manager: CursorManager,
+    pub cursor_texture_cache: CursorTextureCache,
     pub seat_name: String,
     pub seat: Seat<ScreenComposer<BackendData>>,
     pub clock: Clock<Monotonic>,
@@ -233,8 +236,8 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     /// Manager for the screenshare D-Bus service (started lazily when needed).
     pub screenshare_manager: Option<crate::screenshare::ScreenshareManager>,
 
-    // foreign toplevel list - maps surface ObjectId to toplevel handle
-    pub foreign_toplevels: HashMap<ObjectId, smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle>,
+    // foreign toplevel list - maps surface ObjectId to unified toplevel handles (both protocols)
+    pub foreign_toplevels: HashMap<ObjectId, foreign_toplevel_shared::ForeignToplevelHandles>,
 
     // sc_layer protocol
     // Map from surface ID to list of sc-layers augmenting that surface
@@ -244,19 +247,23 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub surface_layers: HashMap<ObjectId, lay_rs::prelude::Layer>,
     // Pre-warmed View caches: surface_id -> (layer_key -> NodeRef)
     // Built during surface creation, moved into Views when they're created
-    pub view_warm_cache: HashMap<ObjectId, HashMap<String, std::collections::VecDeque<lay_rs::prelude::NodeRef>>>,
+    pub view_warm_cache:
+        HashMap<ObjectId, HashMap<String, std::collections::VecDeque<lay_rs::prelude::NodeRef>>>,
+
+    // Rendering metrics
+    pub render_metrics: Arc<crate::render_metrics::RenderMetrics>,
 }
 
 pub mod data_device_handler;
 pub mod dnd_grab_handler;
 pub mod foreign_toplevel_list_handler;
 pub mod foreign_toplevel_shared;
-pub mod wlr_foreign_toplevel;
 pub mod fractional_scale_handler;
 pub mod input_method_handler;
 pub mod seat_handler;
 pub mod security_context_handler;
 pub mod selection_handler;
+pub mod wlr_foreign_toplevel;
 pub mod xdg_activation_handler;
 pub mod xdg_decoration_handler;
 pub mod xwayland_handler;
@@ -340,6 +347,7 @@ impl<BackendData: Backend> XdgForeignHandler for ScreenComposer<BackendData> {
 delegate_compositor!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 delegate_output!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 delegate_shm!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_cursor_shape!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 delegate_text_input_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 delegate_keyboard_shortcuts_inhibit!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
 delegate_virtual_keyboard_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
@@ -459,7 +467,8 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         });
         let xdg_foreign_state = XdgForeignState::new::<Self>(&dh);
         let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
-        let wlr_foreign_toplevel_state = wlr_foreign_toplevel::WlrForeignToplevelManagerState::new::<Self>(&dh);
+        let wlr_foreign_toplevel_state =
+            wlr_foreign_toplevel::WlrForeignToplevelManagerState::new::<Self>(&dh);
 
         // Create minimal sc_layer shell global
         crate::sc_layer_shell::create_layer_shell_global::<BackendData>(&dh);
@@ -469,12 +478,16 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         let mut seat = seat_state.new_wl_seat(&dh, seat_name.clone());
 
         let cursor_status = Arc::new(Mutex::new(CursorImageStatus::default_named()));
+        let (cursor_theme, cursor_size) = Config::with(|c| (c.cursor_theme.clone(), c.cursor_size));
+        let cursor_manager = CursorManager::new(&cursor_theme, cursor_size as u8);
+        let cursor_texture_cache = CursorTextureCache::default();
         let pointer = seat.add_pointer();
         let k = Config::with(|c| (c.keyboard_repeat_delay, c.keyboard_repeat_rate));
         seat.add_keyboard(XkbConfig::default(), k.0, k.1)
             .expect("Failed to initialize the keyboard");
 
         let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
+        let cursor_shape_manager_state = CursorShapeManagerState::new::<Self>(&dh);
 
         #[cfg(feature = "xwayland")]
         let xwayland_shell_state = xwayland_shell::XWaylandShellState::new::<Self>(&dh.clone());
@@ -530,6 +543,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             xdg_foreign_state,
             foreign_toplevel_list_state,
             wlr_foreign_toplevel_state,
+            cursor_shape_manager_state,
             dnd_icon: None,
             suppressed_keys: Vec::new(),
             keycode_remap: HashMap::new(),
@@ -537,6 +551,8 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
             app_switcher_hold_modifiers: None,
             modifier_masks: ModifierMaskLookup::default(),
             cursor_status,
+            cursor_manager,
+            cursor_texture_cache,
             seat_name,
             seat,
             pointer,
@@ -587,43 +603,39 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     pub fn recalculate_exclusive_zones(&mut self, output: &Output) {
         use smithay::desktop::layer_map_for_output;
         use smithay::wayland::shell::wlr_layer::{Anchor, ExclusiveZone};
-        
+
         let output_name = output.name();
         let layer_map = layer_map_for_output(output);
-        
+
         let mut zones = ExclusiveZones::new();
         let layer_config = Config::with(|c| c.layer_shell.clone());
         let scale = Config::with(|c| c.screen_scale);
-        
+
         // Calculate scaled max limits
         let max_top = (layer_config.max_top as f64 * scale) as i32;
         let max_bottom = (layer_config.max_bottom as f64 * scale) as i32;
         let max_left = (layer_config.max_left as f64 * scale) as i32;
         let max_right = (layer_config.max_right as f64 * scale) as i32;
-        
+
         for layer_surface in layer_map.layers() {
-            let anchor = smithay::wayland::compositor::with_states(
-                layer_surface.wl_surface(),
-                |states| {
+            let anchor =
+                smithay::wayland::compositor::with_states(layer_surface.wl_surface(), |states| {
                     states
                         .cached_state
                         .get::<smithay::wayland::shell::wlr_layer::LayerSurfaceCachedState>()
                         .current()
                         .anchor
-                },
-            );
-            
-            let exclusive_zone = smithay::wayland::compositor::with_states(
-                layer_surface.wl_surface(),
-                |states| {
+                });
+
+            let exclusive_zone =
+                smithay::wayland::compositor::with_states(layer_surface.wl_surface(), |states| {
                     states
                         .cached_state
                         .get::<smithay::wayland::shell::wlr_layer::LayerSurfaceCachedState>()
                         .current()
                         .exclusive_zone
-                },
-            );
-            
+                });
+
             match exclusive_zone {
                 ExclusiveZone::Exclusive(size) if size > 0 => {
                     let size = size as i32;
@@ -632,22 +644,34 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                         let clamped = if max_top > 0 { size.min(max_top) } else { size };
                         zones.top += clamped;
                     } else if anchor.contains(Anchor::BOTTOM) && !anchor.contains(Anchor::TOP) {
-                        let clamped = if max_bottom > 0 { size.min(max_bottom) } else { size };
+                        let clamped = if max_bottom > 0 {
+                            size.min(max_bottom)
+                        } else {
+                            size
+                        };
                         zones.bottom += clamped;
                     }
-                    
+
                     if anchor.contains(Anchor::LEFT) && !anchor.contains(Anchor::RIGHT) {
-                        let clamped = if max_left > 0 { size.min(max_left) } else { size };
+                        let clamped = if max_left > 0 {
+                            size.min(max_left)
+                        } else {
+                            size
+                        };
                         zones.left += clamped;
                     } else if anchor.contains(Anchor::RIGHT) && !anchor.contains(Anchor::LEFT) {
-                        let clamped = if max_right > 0 { size.min(max_right) } else { size };
+                        let clamped = if max_right > 0 {
+                            size.min(max_right)
+                        } else {
+                            size
+                        };
                         zones.right += clamped;
                     }
                 }
                 _ => {}
             }
         }
-        
+
         self.exclusive_zones.insert(output_name.clone(), zones);
     }
 
@@ -968,8 +992,6 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 );
 
                 self.surface_layers.extend(popup_layers);
-
-                
             });
 
             let initial_location: smithay::utils::Point<f64, smithay::utils::Physical> =
@@ -1270,7 +1292,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
     ) {
         use smithay::wayland::compositor::with_surface_tree_downward;
         use smithay::wayland::compositor::TraversalAction;
-        
+
         with_surface_tree_downward(
             surface,
             (),
@@ -1279,7 +1301,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
                 let sub_id = sub_surface.id();
                 if let Some(layer) = self.surface_layers.get(&sub_id) {
                     let key = format!("surface_{:?}", sub_id);
-                    view.viewlayer_node_map_insert(key, layer.id.into());
+                    view.viewlayer_node_map_insert(key, layer.id);
                     tracing::debug!("Injected layer into view cache for {:?}", sub_id);
                 }
             },
