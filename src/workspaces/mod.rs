@@ -1346,29 +1346,29 @@ impl Workspaces {
             .and_then(|o| {
                 let geo = self.output_geometry(&o)?;
                 tracing::info!("new_window_placement: output geometry = {:?}", geo);
-                
+
                 let map = layer_map_for_output(&o);
                 let zone = map.non_exclusive_zone();
                 tracing::info!("new_window_placement: non_exclusive_zone = {:?}", zone);
-                
+
                 let mut adjusted = Rectangle::from_loc_and_size(geo.loc + zone.loc, zone.size);
                 tracing::info!("new_window_placement: adjusted geometry (geo.loc + zone.loc, zone.size) = {:?}", adjusted);
-                
+
                 // Account for the dock geometry (internal compositor UI, not layer-shell)
                 let dock_geom = self.get_dock_geometry();
                 tracing::info!("new_window_placement: dock geometry = {:?}", dock_geom);
-                
+
                 if dock_geom.size.h > 0 {
                     let dock_top = dock_geom.loc.y;
                     let available_bottom = adjusted.loc.y + adjusted.size.h;
-                    
+
                     // If dock is in the usable area, reduce height to stop above dock
                     if dock_top < available_bottom {
                         adjusted.size.h = dock_top - adjusted.loc.y;
                         tracing::info!("new_window_placement: adjusted for dock, new height = {}", adjusted.size.h);
                     }
                 }
-                
+
                 Some(adjusted)
             })
             .unwrap_or_else(|| Rectangle::from_loc_and_size((0, 0), (800, 800)));

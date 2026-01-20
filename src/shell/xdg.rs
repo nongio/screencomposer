@@ -879,7 +879,9 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         let id = surface.wl_surface().id();
         let window = self.workspaces.get_window_for_surface(&id).unwrap().clone();
         if let Some(view) = self.workspaces.get_window_view(&id) {
-            let current_element_geometry = self.workspaces.element_geometry(&window)
+            let current_element_geometry = self
+                .workspaces
+                .element_geometry(&window)
                 .unwrap_or(view.unmaximised_rect);
 
             let transition = Transition::ease_out(0.3);

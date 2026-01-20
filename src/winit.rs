@@ -523,11 +523,11 @@ pub fn run_winit() {
                                         .unwrap()
                                         .hotspot
                                 });
-                                
+
                                 let pointer_pos = (cursor_pos - hotspot.to_f64()).to_physical_precise_round(scale);
-                                
+
                                 use smithay::backend::renderer::element::surface::render_elements_from_surface_tree;
-                                let elements: Vec<WorkspaceRenderElements<_>> = 
+                                let elements: Vec<WorkspaceRenderElements<_>> =
                                     render_elements_from_surface_tree(
                                         renderer,
                                         surface,

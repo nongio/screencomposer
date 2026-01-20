@@ -27,6 +27,3 @@ path = "examples/simple_window.rs"
 name = "menu_bar"
 path = "examples/menu_bar.rs"
 
-[[example]]
-name = "menu_bar_visual"
-path = "examples/menu_bar_visual.rs"

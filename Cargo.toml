@@ -17,6 +17,7 @@ image = { version = "0.24.5", optional = true }
 xcursor = { version = "0.3.3", optional = true }
 xkbcommon = "0.6.0"
 thiserror = "1"
+anyhow = "1"
 usvg = "0.37.0"
 rand = "0.8"
 tokio = { version = "1", features = ["full"] }
