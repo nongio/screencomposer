@@ -52,6 +52,15 @@ max_bottom = 100    # Bottom panels/docks
 max_left = 50       # Left side panels
 max_right = 50      # Right side panels
 
+# Layer shell (panels, bars, overlays)
+[layer_shell]
+# Maximum exclusive zone per edge in logical points (0 = unlimited)
+# These values are multiplied by screen_scale to get physical pixels
+max_top = 100       # Top panels/bars
+max_bottom = 100    # Bottom panels/docks
+max_left = 50       # Left side panels
+max_right = 50      # Right side panels
+
 # Apps
 terminal_bin = "weston-terminal"
 file_manager_bin = "dolphin"

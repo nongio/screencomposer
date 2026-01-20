@@ -22,6 +22,9 @@ use smithay::{
     delegate_compositor, delegate_cursor_shape, delegate_keyboard_shortcuts_inhibit,
     delegate_layer_shell, delegate_output, delegate_pointer_gestures, delegate_presentation,
     delegate_relative_pointer, delegate_shm, delegate_text_input_manager, delegate_viewporter,
+    delegate_compositor, delegate_cursor_shape, delegate_keyboard_shortcuts_inhibit,
+    delegate_layer_shell, delegate_output, delegate_pointer_gestures, delegate_presentation,
+    delegate_relative_pointer, delegate_shm, delegate_text_input_manager, delegate_viewporter,
     delegate_virtual_keyboard_manager, delegate_xdg_foreign, delegate_xdg_shell,
     desktop::{
         utils::{
