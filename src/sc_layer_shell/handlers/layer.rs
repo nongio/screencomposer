@@ -1,3 +1,4 @@
+use lay_rs::types::BorderRadius;
 use wayland_backend::server::ClientId;
 use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, Resource};
 
@@ -116,8 +117,8 @@ impl<BackendData: Backend> Dispatch<ScLayerV1, ScLayerUserData> for ScreenCompos
                     let change = sc_layer.layer.change_border_corner_radius(radius);
                     accumulate_change(state, txn_id, change);
                 } else {
-                    sc_layer.layer.set_border_corner_radius(radius, None);
-                    trigger_window_update(state, &sc_layer.surface.id());
+                    sc_layer.layer.set_border_corner_radius(BorderRadius::new_single(radius), None);
+                    // trigger_window_update(state, &sc_layer.surface.id());
                 }
             }
 
@@ -193,6 +194,12 @@ impl<BackendData: Backend> Dispatch<ScLayerV1, ScLayerUserData> for ScreenCompos
                 // Hidden doesn't animate, always apply immediately
                 sc_layer.layer.set_hidden(hidden);
                 trigger_window_update(state, &sc_layer.surface.id());
+            }
+
+            sc_layer_v1::Request::SetMasksToBounds { masks } => {
+                let masks_to_bounds = masks != 0;
+
+                sc_layer.layer.set_clip_content(masks_to_bounds, None);
             }
 
             sc_layer_v1::Request::SetBlendMode { mode } => {

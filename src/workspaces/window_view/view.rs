@@ -44,7 +44,6 @@ impl WindowView {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
-        layer.set_image_cached(true);
         let content_layer = layers_engine.new_layer();
         content_layer.set_layout_style(taffy::Style {
             position: taffy::Position::Absolute,

@@ -1,5 +1,6 @@
 use std::{
     borrow::Cow,
+    fs,
     sync::{
         atomic::{AtomicBool, AtomicUsize},
         Arc,
@@ -33,6 +34,7 @@ use smithay::{
         shell::xdg::{ToplevelSurface, XdgToplevelSurfaceData},
     },
 };
+use wayland_server::DisplayHandle;
 
 use crate::{focus::PointerFocusTarget, state::Backend};
 
@@ -230,6 +232,108 @@ impl WindowElement {
         } else {
             "".to_string()
         }
+    }
+    
+    /// Get the app_id to display in dock/app switcher
+    /// Uses PID resolution as fallback when XDG app_id is missing
+    pub fn display_app_id(&self, display_handle: &DisplayHandle) -> String {
+        let raw_app_id = self.xdg_app_id();
+        
+        // If we have a valid XDG app_id, use it
+        if !raw_app_id.is_empty() {
+            tracing::debug!("[display_app_id] Using XDG app_id: '{}'", raw_app_id);
+            return raw_app_id;
+        }
+        
+        // Only try PID resolution as fallback when app_id is missing
+        if let Some(resolved_id) = self.resolve_app_id_from_pid(display_handle) {
+            tracing::info!("[display_app_id] Resolved missing app_id -> '{}' via PID", resolved_id);
+            return resolved_id;
+        }
+        
+        // Last resort: empty string
+        String::new()
+    }
+    
+    /// Resolve the actual app_id by examining the client's PID
+    fn resolve_app_id_from_pid(&self, display_handle: &DisplayHandle) -> Option<String> {
+        let surface = self.wl_surface()?;
+        
+        // Get the client from the surface
+        let client = display_handle.get_client(surface.id()).ok()?;
+        
+        // Get client PID from credentials
+        let credentials = client.get_credentials(display_handle).ok()?;
+        let pid = credentials.pid;
+        
+        tracing::debug!("[resolve_app_id_from_pid] Got PID: {}", pid);
+        
+        // Read /proc/PID/exe to get the executable path
+        let exe_path = fs::read_link(format!("/proc/{}/exe", pid)).ok()?;
+        let exe_name = exe_path
+            .file_name()?
+            .to_str()?
+            .to_string();
+        
+        tracing::info!("[resolve_app_id_from_pid] PID {} -> exe: {} ({})", pid, exe_name, exe_path.display());
+        
+        // Try to find matching desktop entry
+        if let Some(desktop_id) = Self::find_desktop_entry_for_exe(&exe_name, &exe_path) {
+            tracing::info!("[resolve_app_id_from_pid] Matched to desktop entry: {}", desktop_id);
+            return Some(desktop_id);
+        }
+        
+        // Fall back to executable name
+        tracing::debug!("[resolve_app_id_from_pid] No desktop entry found, using exe name: {}", exe_name);
+        Some(exe_name)
+    }
+    
+    /// Find a desktop entry matching the executable
+    fn find_desktop_entry_for_exe(exe_name: &str, exe_path: &std::path::Path) -> Option<String> {
+        use freedesktop_desktop_entry::{DesktopEntry, Iter};
+        
+        let exe_path_str = exe_path.to_str()?;
+        
+        // Iterate through all desktop entries
+        for path in Iter::new(freedesktop_desktop_entry::default_paths()) {
+            if let Ok(entry) = DesktopEntry::from_path(&path, None::<&[&str]>) {
+                // Check Exec field
+                if let Some(exec) = entry.exec() {
+                    let exec_parts: Vec<&str> = exec.split_whitespace().collect();
+                    if let Some(exec_binary) = exec_parts.first() {
+                        // Extract basename from exec
+                        let exec_basename = std::path::Path::new(exec_binary)
+                            .file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or(exec_binary);
+                        
+                        // Match by executable name
+                        if exec_basename == exe_name || exec_binary.contains(exe_name) {
+                            let desktop_id = path
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .map(|s| s.to_string())?;
+                            tracing::debug!("[find_desktop_entry] Matched {} via Exec field to {}", exe_name, desktop_id);
+                            return Some(desktop_id);
+                        }
+                    }
+                }
+                
+                // Check TryExec field
+                if let Some(try_exec) = entry.try_exec() {
+                    if try_exec.contains(exe_name) || try_exec == exe_path_str {
+                        let desktop_id = path
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .map(|s| s.to_string())?;
+                        tracing::debug!("[find_desktop_entry] Matched {} via TryExec to {}", exe_name, desktop_id);
+                        return Some(desktop_id);
+                    }
+                }
+            }
+        }
+        
+        None
     }
 
     pub fn is_minimised(&self) -> bool {

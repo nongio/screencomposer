@@ -629,17 +629,17 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
             let output_geom = self.workspaces.output_geometry(output).unwrap();
             let top_bar_geom: smithay::utils::Rectangle<i32, Logical> =
                 smithay::utils::Rectangle::from_loc_and_size((0, 0), (output_geom.size.w, 30));
-            let dock_geom: smithay::utils::Rectangle<i32, Logical> =
-                smithay::utils::Rectangle::from_loc_and_size(
-                    (0, output_geom.size.h - 110),
-                    (output_geom.size.w, 110),
-                );
+            
+            // Get the actual dock geometry (position and size)
+            let dock_geom = self.workspaces.get_dock_geometry();
+            
+            // Calculate available space: from below top bar to above dock
+            let available_y = top_bar_geom.size.h;
+            let available_height = dock_geom.loc.y - top_bar_geom.size.h;
+            
             let new_geometry = smithay::utils::Rectangle::from_loc_and_size(
-                (0, top_bar_geom.size.h),
-                (
-                    output_geom.size.w,
-                    output_geom.size.h - top_bar_geom.size.h - dock_geom.size.h,
-                ),
+                (0, available_y),
+                (output_geom.size.w, available_height),
             );
             surface.with_pending_state(|state| {
                 state.states.set(xdg_toplevel::State::Maximized);

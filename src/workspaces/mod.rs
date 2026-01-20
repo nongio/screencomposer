@@ -20,6 +20,7 @@ use smithay::{
     utils::{IsAlive, Rectangle},
 };
 
+use wayland_server::DisplayHandle;
 use workspace::WorkspaceView;
 
 mod app_switcher;
@@ -79,6 +80,7 @@ pub struct Workspaces {
     model: Arc<RwLock<WorkspacesModel>>,
     spaces: Vec<Space<WindowElement>>,
     outputs: Vec<Output>,
+    display_handle: DisplayHandle,
 
     pub windows_map: HashMap<ObjectId, WindowElement>,
     // views
@@ -167,7 +169,7 @@ impl Workspaces {
         drop(dragging);
         self.expose_set_visible(true);
     }
-    pub fn new(layers_engine: Arc<Engine>) -> Self {
+    pub fn new(layers_engine: Arc<Engine>, display_handle: DisplayHandle) -> Self {
         let model = WorkspacesModel::default();
         let spaces = Vec::new();
 
@@ -286,6 +288,7 @@ impl Workspaces {
             observers: Vec::new(),
             layers_engine,
             expose_dragged_window: Arc::new(std::sync::Mutex::new(None)),
+            display_handle,
         };
         workspaces.add_workspace();
         workspaces.add_workspace();
@@ -1477,6 +1480,31 @@ impl Workspaces {
                 .contains(skia::Point::new(x, y))
     }
 
+    /// Return the actual rendered height of the dock in logical pixels
+    pub fn get_dock_height(&self) -> i32 {
+        if self.dock.alive() {
+            let bounds = self.dock.bar_layer.render_bounds_transformed();
+            let scale = Config::with(|c| c.screen_scale);
+            (bounds.height() / scale as f32).ceil() as i32
+        } else {
+            0
+        }
+    }
+
+    /// Return the actual rendered geometry of the dock in logical coordinates
+    pub fn get_dock_geometry(&self) -> Rectangle<i32, smithay::utils::Logical> {
+        if self.dock.alive() {
+            let bounds = self.dock.bar_layer.render_bounds_transformed();
+            let scale = Config::with(|c| c.screen_scale) as f32;
+            Rectangle::from_loc_and_size(
+                ((bounds.x() / scale) as i32, (bounds.y() / scale) as i32 - 2),
+                ((bounds.width() / scale).ceil() as i32, (bounds.height() / scale).ceil() as i32),
+            )
+        } else {
+            Rectangle::from_loc_and_size((0, 0), (0, 0))
+        }
+    }
+
     /// Return the list of WlSurface ids of an app by its id
     pub fn get_app_windows(&self, app_id: &str) -> Vec<ObjectId> {
         let model = self.model.read().unwrap();
@@ -1678,7 +1706,24 @@ impl Workspaces {
                 if window.is_fullscreen() {
                     return;
                 }
+                
+                // Get the currently top window before raising the new one
+                let previous_top = space.elements().last().map(|w| w.id());
+                
                 space.raise_element(window, activate);
+                
+                // When activating a window, manage popup visibility
+                if activate {
+                    // Hide popups for the previous top window
+                    if let Some(prev_id) = previous_top {
+                        if prev_id != *window_id {
+                            self.popup_overlay.hide_popups_for_window(&prev_id);
+                        }
+                    }
+                    // Show popups for the newly activated window
+                    self.popup_overlay.show_popups_for_window(window_id);
+                }
+                
                 let workspace = self.with_model(|m| m.workspaces[index].clone());
                 {
                     if let Some(view) = self.get_window_view(window_id) {
@@ -1808,22 +1853,34 @@ impl Workspaces {
 
         let mut app_set = HashSet::new();
         for (window_id, we) in windows.iter() {
-            let app_id = we.xdg_app_id();
-            if app_id.is_empty() {
+            let raw_app_id = we.xdg_app_id();
+            let display_app_id = we.display_app_id(&self.display_handle);
+            
+            // Skip only if both raw and display app_id are empty
+            if raw_app_id.is_empty() && display_app_id.is_empty() {
+                tracing::warn!("[update_workspace_model] Skipping window with no app_id");
                 continue;
-            }
+            }           
             if let Ok(mut model_mut) = self.model.write() {
+                // Use raw_app_id for window mapping if available, otherwise use display_app_id
+                let map_key = if !raw_app_id.is_empty() {
+                    raw_app_id.clone()
+                } else {
+                    display_app_id.clone()
+                };
+                
                 model_mut
                     .app_windows_map
-                    .entry(app_id.clone())
+                    .entry(map_key)
                     .or_default()
                     .push(window_id.clone());
 
-                if !model_mut.application_list.contains(&app_id) {
-                    model_mut.application_list.push_front(app_id.clone());
+                // Use display_app_id for UI lists (shows actual programs)
+                if !model_mut.application_list.contains(&display_app_id) {
+                    model_mut.application_list.push_front(display_app_id.clone());
                 }
-                if app_set.insert(app_id.clone()) {
-                    model_mut.zindex_application_list.push(app_id.clone());
+                if app_set.insert(display_app_id.clone()) {
+                    model_mut.zindex_application_list.push(display_app_id.clone());
                 }
             }
         }

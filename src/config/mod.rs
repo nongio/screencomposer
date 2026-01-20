@@ -34,8 +34,6 @@ pub struct Config {
     pub browser_args: Vec<String>,
     pub compositor_mode: String,
     pub font_family: String,
-    pub genie_scale: f64,
-    pub genie_span: f64,
     pub keyboard_repeat_delay: i32,
     pub keyboard_repeat_rate: i32,
     pub theme_scheme: ThemeScheme,
@@ -73,8 +71,6 @@ impl Default for Config {
             browser_args: vec!["".to_string()],
             compositor_mode: "drm".to_string(),
             font_family: "Inter".to_string(),
-            genie_scale: 0.5,
-            genie_span: 10.0,
             keyboard_repeat_delay: 300,
             keyboard_repeat_rate: 30,
             theme_scheme: ThemeScheme::Light,
@@ -308,8 +304,26 @@ fn sanitize_remap_tables(value: &mut toml::Value) {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DockConfig {
+    #[serde(default = "default_dock_size")]
+    pub size: f64,
+    #[serde(default = "default_genie_scale")]
+    pub genie_scale: f64,
+    #[serde(default = "default_genie_span")]
+    pub genie_span: f64,
     #[serde(default)]
     pub bookmarks: Vec<DockBookmark>,
+}
+
+fn default_dock_size() -> f64 {
+    1.0
+}
+
+fn default_genie_scale() -> f64 {
+    0.5
+}
+
+fn default_genie_span() -> f64 {
+    10.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

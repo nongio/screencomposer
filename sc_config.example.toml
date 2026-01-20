@@ -24,11 +24,6 @@ keyboard_repeat_delay = 300
 keyboard_repeat_rate = 30
 natural_scroll = true
 
-
-# Dock
-genie_scale = 0.5
-genie_span = 10.0
-
 # Apps
 terminal_bin = "weston-terminal"
 file_manager_bin = "dolphin"
@@ -73,6 +68,9 @@ browser_args = [""]
 "Alt+J" = "SceneSnapshot"
 
 [dock]
+size = 1.0  # Dock size multiplier (0.5 - 2.0, default: 1.0)
+genie_scale = 0.5
+genie_span = 10.0
 bookmarks = [
   { desktop_id = "org.kde.dolphin.desktop" },
   { desktop_id = "org.mozilla.firefox.desktop", label = "Web", exec_args = ["--private-window"] },

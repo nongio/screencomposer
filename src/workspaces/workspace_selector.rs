@@ -278,14 +278,16 @@ fn render_workspace_selector_view(
                             ))
                             .scale(Point::new(scale, scale))
                             .replicate_node(w.workspace_node)
-                            .picture_cached(false)
-                            .color_filter(color_filter)
-                            .on_pointer_press(button_press_filter())
-                            .on_pointer_release(button_release_filter())
-                            .border_corner_radius(BorderRadius::new_single(10.0 / scale))
+                            .picture_cached(true)
                             .image_cache(true)
+                            .color_filter(color_filter)
+                            .border_corner_radius(BorderRadius::new_single(20.0 / scale))
                             .clip_children(true)
                             .clip_content(true)
+                            .pointer_events(true)
+                            .on_pointer_press(button_press_filter())
+                            .on_pointer_release(button_release_filter())
+                            .on_pointer_out(button_release_filter())
                             .build()
                             .unwrap(),
                         ),
@@ -308,7 +310,8 @@ fn render_workspace_selector_view(
                             ))
                             .border_width((border_width, None))
                             .border_color(border_color)
-                            .border_corner_radius(BorderRadius::new_single(10.0))
+                            .border_corner_radius(BorderRadius::new_single(20.0))
+                            .pointer_events(false)
                             .build()
                             .unwrap(),
                         ),
@@ -334,13 +337,14 @@ fn render_workspace_selector_view(
                                 None,
                             ))
                             .background_color(theme_colors().materials_ultrathick)
+                            .blend_mode(BlendMode::BackgroundBlur)
                             .border_corner_radius(BorderRadius::new_single(25.0))
                             .content(draw_named_icon("close-symbolic"))
                             .shadow_color((Color::new_rgba(0.0, 0.0, 0.0, 0.2), None))
                             .shadow_offset(((0.0, 0.0).into(), None))
                             .shadow_radius((5.0, None))
                             .image_cache(true)
-                            .on_pointer_press(button_press_scale(0.8))
+                            .on_pointer_press(button_press_scale(0.9))
                             .on_pointer_release(button_release_scale())
                             .build()
                             .unwrap()
@@ -364,7 +368,7 @@ fn render_workspace_selector_view(
                     ))
                     // .background_color(theme_colors().accents_purple)
                     .content(draw_text_content(
-                        format!("Bench {}", i + 1),
+                        format!("Workspace {}", i + 1),
                         theme::text_styles::title_3_regular(),
                         lay_rs::skia::textlayout::TextAlign::Center,
                     ))
@@ -392,10 +396,9 @@ fn render_workspace_selector_view(
         ))
         .background_color(theme_colors().materials_medium)
         .blend_mode(BlendMode::BackgroundBlur)
-        .shadow_color((Color::new_rgba(0.0, 0.0, 0.0, 0.2), None))
-        .shadow_offset(((0.0, 0.0).into(), None))
-        .shadow_radius((5.0, None))
-        // .content(Some(draw_container))
+        .shadow_color(theme_colors().shadow_color)
+        .shadow_offset(((0.0, -5.0).into(), None))
+        .shadow_radius((20.0, None))
         .children(vec![
             LayerTreeBuilder::with_key("workspace_selector_view_content")
                 .layout_style(taffy::Style {
