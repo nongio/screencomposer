@@ -1,8 +1,8 @@
-# Dock / Task manager component
+## Dock / Task manager component
 
 The dock is a task manager that shows minimized windows and apps. It is a layer that is always on top of the screen.
 
-## Features
+### Features
 
 ### Taskbar
 - list running applications

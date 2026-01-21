@@ -1,15 +1,22 @@
-# Screen Sharing in Otto
+## Screen Sharing in Otto
 
-This document describes the screen sharing implementation in Otto, including
-architecture, D-Bus API, and PipeWire integration.
+This document explains (at a high level) how screensharing is wired in Otto.
+It focuses on the control flow and where to look in the code.
 
-## Overview
+### Overview
 
-Otto implements screen sharing via the xdg-desktop-portal standard, allowing
-applications like OBS, Chromium, Firefox, and GNOME tools to capture screen content
-through PipeWire video streams.
+Otto exposes a compositor-side ScreenCast service (`org.otto.ScreenCast`). A portal
+backend (`components/xdg-desktop-portal-otto`) uses it to create a session, pick an
+output, and publish a PipeWire node that apps consume via the standard
+`org.freedesktop.portal.ScreenCast` API.
 
-## Architecture
+Conceptually there are two halves:
+
+- **Control plane**: D-Bus calls create/stop sessions and streams.
+- **Data plane**: after Otto renders a frame, it copies the rendered framebuffer into
+  a PipeWire-provided DMA-BUF (GPU-only blit), then tells PipeWire a new frame is ready.
+
+### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -21,8 +28,8 @@ through PipeWire video streams.
 │       │                                                                     │
 │       ▼ Backend D-Bus API (org.freedesktop.impl.portal.ScreenCast)          │
 │                                                                             │
-│  xdg-desktop-portal-otto                                                      │
-│  (components/xdg-desktop-portal-otto/)                                        │
+│  xdg-desktop-portal-otto                                                    │
+│  (components/xdg-desktop-portal-otto/)                                      │
 │       │                                                                     │
 │       ▼ Compositor D-Bus API (org.otto.ScreenCast)                │
 │                                                                             │
@@ -30,7 +37,7 @@ through PipeWire video streams.
 │  │  Otto Compositor                                          │    │
 │  │                                                                     │    │
 │  │  ┌─────────────────┐    ┌──────────────────────────────────────┐   │    │
-│  │  │ D-Bus Service   │    │ Render Loop (winit/udev)             │   │    │
+│  │  │ D-Bus Service   │    │ Render Loop (udev)                   │   │    │
 │  │  │ (tokio thread)  │    │                                      │   │    │
 │  │  │                 │    │  ┌────────────────────────────────┐  │   │    │
 │  │  │ CreateSession   │◄───│──│ Direct GPU Blit                │  │   │    │
@@ -65,12 +72,20 @@ through PipeWire video streams.
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Components
+If you only remember one thing: **apps talk to the portal**, and the portal talks to
+**Otto’s `org.otto.ScreenCast` service**, while frames are produced from the compositor
+render loop.
 
-### 1. D-Bus Service (`src/screenshare/dbus_service.rs`)
+### Components
 
-The compositor exposes a D-Bus service at `org.otto.ScreenCast` that the
-portal backend uses to control screen sharing sessions.
+#### 1. D-Bus Service (`src/screenshare/dbus_service.rs`)
+
+The compositor runs a zbus server on a dedicated tokio thread and registers:
+
+- Service: `org.otto.ScreenCast`
+- Root object: `/org/otto/ScreenCast`
+- Per-session objects: `/org/otto/ScreenCast/session/<id>`
+- Per-stream objects: `<session>/stream/<id>`
 
 **Interfaces:**
 
@@ -80,7 +95,7 @@ portal backend uses to control screen sharing sessions.
 | `org.otto.ScreenCast.Session` | `/org/otto/ScreenCast/session/<id>` | Per-session control |
 | `org.otto.ScreenCast.Stream` | `/org/otto/ScreenCast/stream/<id>` | Per-stream control |
 
-**Methods:**
+**Methods (what they mean):**
 
 ```
 org.otto.ScreenCast:
@@ -99,20 +114,24 @@ org.otto.ScreenCast.Stream:
   Stop()
   PipeWireNode() -> info: a{sv}
   Metadata() -> info: a{sv}
+
+Notes:
+
+- `RecordWindow` currently returns “not supported”.
+- `Start()` is where the compositor actually creates a PipeWire stream and returns a node id
+  through `PipeWireNode()`.
 ```
 
 ### 2. PipeWire Stream (`src/screenshare/pipewire_stream.rs`)
 
-The `PipeWireStream` manages the actual PipeWire video stream:
+`PipeWireStream` owns the PipeWire stream and its buffer pool.
 
-**Features:**
-- Runs on a dedicated thread with its own PipeWire main loop
-- Creates `MainLoopBox`, `ContextBox`, and `StreamBox`
-- Negotiates video format (BGRA preferred for GPU compatibility)
-- Uses DMA-BUF buffers for zero-copy GPU rendering
-- Single buffer mode (min=1, max=1) for optimal damage tracking
-- Advertises VideoDamage metadata (SPA_META_VideoDamage) for client-side optimizations
-- Proper cleanup on stop/drop
+What matters for understanding the design:
+
+- It runs a **PipeWire main loop on a dedicated thread**.
+- It negotiates a video format and asks PipeWire for **DMA-BUF buffers**.
+- It configures **single-buffer mode** (`min=1,max=1`) and advertises
+  `SPA_META_VideoDamage` (so clients can take advantage of damage metadata).
 
 **Configuration:**
 
@@ -129,80 +148,70 @@ pub struct StreamConfig {
 
 ### 3. Command Handler (`src/screenshare/mod.rs`)
 
-The command handler bridges async D-Bus operations with the sync compositor loop:
+The compositor is synchronous (calloop), but zbus is async. The bridge is:
+
+- D-Bus thread sends a `CompositorCommand` through a `calloop::channel`.
+- The compositor main loop handles the command and mutates `state.screenshare_sessions`.
+
+The command enum is defined in `src/screenshare/mod.rs`.
 
 ```rust
 pub enum CompositorCommand {
-    CreateSession { session_id, response_tx },
-    StartRecording { session_id, output_connector, stream_id, response_tx },
-    StopRecording { session_id, stream_id, response_tx },
-    DestroySession { session_id, response_tx },
-    GetPipeWireFd { session_id, response_tx },
+  CreateSession { session_id: String },
+  ListOutputs { response_tx: tokio::sync::oneshot::Sender<Vec<OutputInfo>> },
+  StartRecording {
+    session_id: String,
+    output_connector: String,
+    response_tx: tokio::sync::oneshot::Sender<Result<u32, String>>,
+  },
+  StopRecording { session_id: String, output_connector: String },
+  DestroySession { session_id: String },
+  GetPipeWireFd {
+    session_id: String,
+    response_tx: tokio::sync::oneshot::Sender<Result<zbus::zvariant::OwnedFd, String>>,
+  },
 }
 ```
 
-Commands are sent via a calloop channel from the tokio D-Bus thread to the
-compositor's main loop.
+This is the core pattern to keep in mind when debugging: if a D-Bus call “hangs” or
+does nothing, it’s usually because the calloop side didn’t receive/handle the command.
 
-## Frame Delivery
+### Frame Delivery
 
-Screen sharing uses a **direct GPU blit** approach for maximum performance:
+Screen sharing uses a **direct GPU blit** approach:
 
-### Udev Backend (`src/udev.rs`)
+1. Otto renders the output as usual (Skia → GL framebuffer).
+2. If a screenshare stream exists for that output, Otto asks the `PipeWireStream` for
+  an available buffer.
+3. Otto blits the framebuffer into that DMA-BUF using `Blit<Dmabuf>` (GPU-only
+  `glBlitFramebuffer`).
+4. Otto signals PipeWire that a new frame can be queued.
 
-After successful rendering, frames are delivered directly to PipeWire buffers:
+#### Udev Backend (`src/udev.rs`)
 
-```rust
-// After render_surface() succeeds
-if outcome.rendered && !self.screenshare_sessions.is_empty() {
-    for (_session_id, session) in &self.screenshare_sessions {
-        for (connector, stream) in &session.streams {
-            if connector == &output.name() {
-                let buffer_pool = stream.pipewire_stream.buffer_pool();
-                let mut pool = buffer_pool.lock().unwrap();
-                
-                if let Some(available) = pool.available.pop_front() {
-                    // Direct GPU blit with damage awareness
-                    crate::screenshare::fullscreen_to_dmabuf(
-                        &mut renderer,
-                        available.dmabuf,
-                        size,
-                        outcome.damage.as_deref(),  // Only blit damaged regions
-                    )?;
-                    
-                    pool.to_queue.insert(available.fd, available.pw_buffer);
-                    drop(pool);
-                    stream.pipewire_stream.trigger_frame();
-                }
-            }
-        }
-    }
-}
-```
+This is the only backend that currently has the “after-render blit into PipeWire buffer”
+integration.
 
 **Key Features:**
 - **GPU-only path**: No CPU memcpy, direct FBO→dmabuf blit via `glBlitFramebuffer`
-- **Damage-aware**: Only blits changed regions (or full frame if buffer changed)
+- **Damage-aware**: Only blits changed regions when reusing the same PipeWire buffer
 - **Zero-copy**: Compositor renders once, PipeWire consumes GPU buffer directly
 - **Synchronous**: Blit happens on main thread immediately after render
 
 ### Winit Backend (`src/winit.rs`)
 
-Similar direct blit pattern using RGBA capture for development/testing.
+Winit starts the screenshare D-Bus service, but does not currently implement the
+per-frame PipeWire delivery path described above.
 
-## Usage
+### Usage
 
-### Session Setup and Prerequisites
+#### Session Setup and Prerequisites
 
 Screen sharing requires proper D-Bus session setup and PipeWire services. The compositor must share the same D-Bus session with applications.
 
-**Required Services:**
-- PipeWire (`pipewire.service`)
-- PipeWire PulseAudio (`pipewire-pulse.service`)  
-- WirePlumber (`wireplumber.service`)
-- KDE Wallet or GNOME Keyring (for password management)
+**Required Services:** PipeWire + a session manager (typically WirePlumber).
 
-### Starting the Compositor
+#### Starting the Compositor
 
 **Production (TTY/bare metal):**
 
@@ -234,8 +243,11 @@ To use Chrome, Firefox, OBS, etc. with screen sharing support:
 **From another terminal on the same TTY:**
 
 ```bash
-# Connect to the compositor session
-source ./scripts/connect-to-session.sh
+# Load D-Bus session environment created by start_session.sh
+source "$XDG_RUNTIME_DIR/dbus-session"
+
+# Ensure you target the compositor Wayland socket
+export WAYLAND_DISPLAY=wayland-0
 
 # Now run applications
 google-chrome        # Chrome/Chromium
@@ -243,57 +255,33 @@ firefox             # Firefox
 obs                 # OBS Studio
 ```
 
-**Manual connection:**
-
-```bash
-# Load D-Bus session environment
-source $XDG_RUNTIME_DIR/dbus-session
-
-# Set Wayland display
-export WAYLAND_DISPLAY=wayland-0
-export XDG_SESSION_TYPE=wayland
-
-# Run application
-google-chrome
-```
+That’s usually enough. If an app can’t see screensharing, it’s almost always a
+**D-Bus session mismatch**.
 
 ### Testing with D-Bus
 
-```bash
-# Create a session
-dbus-send --session --print-reply \
-  --dest=org.otto.ScreenCast \
-  /org/otto/ScreenCast \
-  org.otto.ScreenCast.CreateSession \
-  dict:string:variant:
+If you need to sanity-check the compositor service itself:
 
-# List available outputs
-dbus-send --session --print-reply \
-  --dest=org.otto.ScreenCast \
-  /org/otto/ScreenCast \
-  org.otto.ScreenCast.ListOutputs
-```
+- `busctl --user list | grep org.otto.ScreenCast`
+- `busctl --user introspect org.otto.ScreenCast /org/otto/ScreenCast`
 
 ### Verifying PipeWire Stream
 
-```bash
-# Check if PipeWire node appears
-pw-dump | grep otto
-```
+Look for the node id returned by the portal / compositor, then inspect it with `pw-dump`.
 
 ### Testing with Applications
 
 After setting up the portal backend (see `docs/xdg-desktop-portal.md`):
 
 1. Start the compositor: `./scripts/start_session.sh`
-2. In another terminal: `source ./scripts/connect-to-session.sh`
+2. In another terminal: `source "$XDG_RUNTIME_DIR/dbus-session"`
 3. Launch an application and test screen sharing:
    - **Chrome/Chromium**: Visit a meeting site, click share screen
    - **OBS Studio**: Add a "Screen Capture (PipeWire)" source
    - **Firefox**: Start screen sharing in a web conference
    - **GNOME Screen Recorder**: Use built-in screen recorder
 
-Expected performance: 60 FPS at full resolution (e.g., 2880x1920).
+Expected performance: typically capped at 60 FPS for WebRTC compatibility.
 
 ### Troubleshooting
 
@@ -301,7 +289,7 @@ Expected performance: 60 FPS at full resolution (e.g., 2880x1920).
 - Ensure the app is running in the same D-Bus session as the compositor
 - Check `$DBUS_SESSION_BUS_ADDRESS` is set: `echo $DBUS_SESSION_BUS_ADDRESS`
 - Verify portal is registered: `busctl --user list | grep otto`
-- Try: `source ./scripts/connect-to-session.sh` before launching the app
+- Try: `source "$XDG_RUNTIME_DIR/dbus-session"` before launching the app
 
 **Video freezes after a few seconds:**
 - Verify PipeWire is running: `pgrep -x pipewire`
@@ -323,29 +311,20 @@ Expected performance: 60 FPS at full resolution (e.g., 2880x1920).
 - Check portal logs: `tail -f components/xdg-desktop-portal-otto/portal.log`
 - Rebuild if needed: `cargo build -p xdg-desktop-portal-otto --release`
 
-## File Overview
+### File Overview
 
 | File | Purpose |
 |------|---------|
 | `src/screenshare/mod.rs` | Module root, session state, command handlers, direct blit utility |
 | `src/screenshare/dbus_service.rs` | D-Bus interface implementation |
 | `src/screenshare/pipewire_stream.rs` | PipeWire stream management, buffer pool, format negotiation |
-| `src/screenshare/frame_tap.rs` | Frame capture utilities (legacy, not used for delivery) |
-| `src/screenshare/session_tap.rs` | Session tap implementation (legacy, not used for delivery) |
 | `src/skia_renderer.rs` | Blit<Dmabuf> trait implementation for direct GPU blitting |
 | `src/udev.rs` | Direct blit integration (udev backend) |
-| `src/winit.rs` | RGBA capture integration (winit backend) |
+| `src/winit.rs` | Starts the screenshare D-Bus service (frame delivery currently udev-only) |
 
-## Future Enhancements
+### Known Issues and Fixes
 
-- **Window capture**: Capture individual windows instead of full outputs
-- **Cursor metadata**: Separate cursor position/image stream
-- **Multiple buffer modes**: Experiment with multi-buffering for specific use cases
-- **Configurable framerate cap**: Allow per-client or global FPS limit configuration
-
-## Known Issues and Fixes
-
-### Framerate Compatibility (January 2026)
+#### Framerate Compatibility (January 2026)
 
 **Issue**: When the compositor runs on high-refresh-rate displays (e.g., 120Hz), screensharing 
 would fail with Chrome/WebRTC clients showing "no more input formats" error.
@@ -368,36 +347,20 @@ compositor operation.
 **Future**: The FPS cap should be made configurable (e.g., `config.screenshare.max_fps`) to 
 allow power users to experiment with higher framerates for specific clients that support them.
 
-## Implementation Details
+#### Portal/compositor integration drift (January 2026)
 
-### GPU-Only Rendering Path (December 2024)
+If screensharing fails very early (no portal session / `OpenPipeWireRemote` failures), double-check:
 
-The screenshare implementation uses a pure GPU rendering path with no CPU roundtrips:
+- **Compositor object path**: the compositor registers `org.otto.ScreenCast` at `/org/otto/ScreenCast`.
+- **Portal client default path**: `components/xdg-desktop-portal-otto` currently has a hard-coded
+  default path of `/org/screencomposer/ScreenCast` in its D-Bus proxy; that must match the compositor.
+- **PipeWire remote FD**: the compositor-side `OpenPipeWireRemote` currently forwards to a
+  `GetPipeWireFd` command which is still marked TODO in `src/screenshare/mod.rs`.
 
-**DMA-BUF Direct Blitting**:
-- Implements `Blit<Dmabuf>` trait for `SkiaRenderer`
-- Direct GPU framebuffer blitting using `glBlitFramebuffer`
-- No CPU memory access or pixel readback
-- Achieves 60 FPS at 2880x1920 resolution
+If you are debugging this, start by looking at the logs from:
 
-**Damage-Aware Optimization**:
-- Tracks damaged regions from compositor render loop
-- Only blits changed areas when rendering to same buffer
-- Forces full blit on buffer changes
-- Single buffer mode (min=1, max=1) for optimal damage tracking
+- `otto.log` (compositor)
+- `components/xdg-desktop-portal-otto/portal.log` (portal backend)
 
-**Implementation Files**:
-- `src/skia_renderer.rs`: Blit<Dmabuf> trait, lazy SkiaTextureMapping
-- `src/screenshare/mod.rs`: blit_to_dmabuf_direct() helper
-- `src/udev.rs`: Damage-aware blitting in render loop
-
-**PipeWire Integration**:
-- Buffer pool management with single buffer
-- VideoDamage metadata support (SPA_META_VideoDamage)
-- Up to 16 damage rectangles per frame advertised
-- BGRA format negotiation with DRM modifiers
-
-**Performance**:
-- GPU-only blitting: no CPU bottleneck
-- Damage tracking: reduced GPU work for partial updates
-- Verified working at 2880x1920@60fps consistently
+<!-- Implementation details intentionally omitted here.
+  If you need them, start from src/screenshare/pipewire_stream.rs and src/udev.rs. -->
