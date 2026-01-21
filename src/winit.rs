@@ -56,7 +56,7 @@ use crate::{
     render_elements::workspace_render_elements::WorkspaceRenderElements,
     shell::WindowElement,
     skia_renderer::{SkiaRenderer, SkiaTextureImage},
-    state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
+    state::{post_repaint, take_presentation_feedback, Backend, Otto},
 };
 
 #[cfg(feature = "debug")]
@@ -156,7 +156,7 @@ pub struct WinitData {
     pub fps: fps_ticker::Fps,
 }
 
-impl DmabufHandler for ScreenComposer<WinitData> {
+impl DmabufHandler for Otto<WinitData> {
     fn dmabuf_state(&mut self) -> &mut DmabufState {
         &mut self.backend_data.dmabuf_state.0
     }
@@ -174,13 +174,13 @@ impl DmabufHandler for ScreenComposer<WinitData> {
             .import_dmabuf(&dmabuf, None)
             .is_ok()
         {
-            let _ = notifier.successful::<ScreenComposer<WinitData>>();
+            let _ = notifier.successful::<Otto<WinitData>>();
         } else {
             notifier.failed();
         }
     }
 }
-delegate_dmabuf!(ScreenComposer<WinitData>);
+delegate_dmabuf!(Otto<WinitData>);
 
 impl Backend for WinitData {
     fn seat_name(&self) -> String {
@@ -252,11 +252,11 @@ pub fn run_winit() {
         PhysicalProperties {
             size: (0, 0).into(),
             subpixel: Subpixel::Unknown,
-            make: "ScreenComposer".into(),
+            make: "Otto".into(),
             model: "Winit".into(),
         },
     );
-    let _global = output.create_global::<ScreenComposer<WinitData>>(&display.handle());
+    let _global = output.create_global::<Otto<WinitData>>(&display.handle());
     let config_screen_scale = Config::with(|c| c.screen_scale);
     output.change_current_state(
         Some(mode),
@@ -311,17 +311,16 @@ pub fn run_winit() {
     // Note: egl on Mesa requires either v4 or wl_drm (initialized with bind_wl_display)
     let dmabuf_state = if let Some(default_feedback) = dmabuf_default_feedback {
         let mut dmabuf_state = DmabufState::new();
-        let dmabuf_global = dmabuf_state
-            .create_global_with_default_feedback::<ScreenComposer<WinitData>>(
-                &display.handle(),
-                &default_feedback,
-            );
+        let dmabuf_global = dmabuf_state.create_global_with_default_feedback::<Otto<WinitData>>(
+            &display.handle(),
+            &default_feedback,
+        );
         (dmabuf_state, dmabuf_global, Some(default_feedback))
     } else {
         let dmabuf_formats = backend.renderer().dmabuf_formats();
         let mut dmabuf_state = DmabufState::new();
-        let dmabuf_global = dmabuf_state
-            .create_global::<ScreenComposer<WinitData>>(&display.handle(), dmabuf_formats);
+        let dmabuf_global =
+            dmabuf_state.create_global::<Otto<WinitData>>(&display.handle(), dmabuf_formats);
         (dmabuf_state, dmabuf_global, None)
     };
 
@@ -346,7 +345,7 @@ pub fn run_winit() {
             fps: fps_ticker::Fps::default(),
         }
     };
-    let mut state = ScreenComposer::init(display, event_loop.handle(), data, true);
+    let mut state = Otto::init(display, event_loop.handle(), data, true);
 
     let root = state.scene_element.root_layer().unwrap();
     let scene_size = size;

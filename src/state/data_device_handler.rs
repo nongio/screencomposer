@@ -7,9 +7,9 @@ use smithay::{
     },
 };
 
-use super::{Backend, ScreenComposer};
+use super::{Backend, Otto};
 
-impl<BackendData: Backend> DataDeviceHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> DataDeviceHandler for Otto<BackendData> {
     fn data_device_state(&self) -> &DataDeviceState {
         &self.data_device_state
     }
@@ -43,11 +43,11 @@ impl<BackendData: Backend> DataDeviceHandler for ScreenComposer<BackendData> {
     }
 }
 
-impl<BackendData: Backend> DataControlHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> DataControlHandler for Otto<BackendData> {
     fn data_control_state(&self) -> &DataControlState {
         &self.data_control_state
     }
 }
 
-delegate_data_device!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-delegate_data_control!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_data_device!(@<BackendData: Backend + 'static> Otto<BackendData>);
+delegate_data_control!(@<BackendData: Backend + 'static> Otto<BackendData>);

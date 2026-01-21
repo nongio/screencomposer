@@ -12,14 +12,14 @@ use smithay::{
 
 use crate::focus::{KeyboardFocusTarget, PointerFocusTarget};
 
-use super::{Backend, ScreenComposer};
+use super::{Backend, Otto};
 
-impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> SeatHandler for Otto<BackendData> {
     type KeyboardFocus = KeyboardFocusTarget<BackendData>;
     type PointerFocus = PointerFocusTarget<BackendData>;
     type TouchFocus = PointerFocusTarget<BackendData>;
 
-    fn seat_state(&mut self) -> &mut SeatState<ScreenComposer<BackendData>> {
+    fn seat_state(&mut self) -> &mut SeatState<Otto<BackendData>> {
         &mut self.seat_state
     }
 
@@ -50,7 +50,7 @@ impl<BackendData: Backend> SeatHandler for ScreenComposer<BackendData> {
     }
 }
 
-impl<BackendData: Backend> TabletSeatHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> TabletSeatHandler for Otto<BackendData> {
     fn tablet_tool_image(&mut self, _tool: &TabletToolDescriptor, image: CursorImageStatus) {
         let mut cursor_status = self.cursor_status.lock().unwrap();
         *cursor_status = image.clone();
@@ -58,5 +58,5 @@ impl<BackendData: Backend> TabletSeatHandler for ScreenComposer<BackendData> {
     }
 }
 
-delegate_seat!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-delegate_tablet_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_seat!(@<BackendData: Backend + 'static> Otto<BackendData>);
+delegate_tablet_manager!(@<BackendData: Backend + 'static> Otto<BackendData>);

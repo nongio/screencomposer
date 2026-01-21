@@ -273,7 +273,7 @@ fn run_pipewire_thread(
     // Create stream
     let stream = pw::stream::StreamRc::new(
         core,
-        "screencomposer-screencast",
+        "otto-screencast",
         pw::properties::properties! {
             *pw::keys::MEDIA_TYPE => "Video",
             *pw::keys::MEDIA_CATEGORY => "Capture",

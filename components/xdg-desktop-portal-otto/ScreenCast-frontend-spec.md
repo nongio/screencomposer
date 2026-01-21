@@ -144,5 +144,5 @@ it with `pw_context_connect_fd()` to access the published nodes.
 5. Either side can terminate the session via `Session.Close`, emitting
    `Session::Closed` to notify the peer.
 
-Maintaining fidelity to these semantics ensures ScreenComposer remains a drop-in
+Maintaining fidelity to these semantics ensures Otto remains a drop-in
 replacement for other portal backends.

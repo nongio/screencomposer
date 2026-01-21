@@ -29,7 +29,7 @@ use crate::{
     config::Config,
     interactive_view::InteractiveView,
     shell::WindowElement,
-    state::{Backend, ScreenComposer},
+    state::{Backend, Otto},
     workspaces::{AppSwitcherView, DockView, WindowSelectorView, WorkspaceSelectorView},
 };
 
@@ -150,13 +150,8 @@ impl<B: Backend> From<PointerFocusTarget<B>> for WlSurface {
     }
 }
 
-impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
-    fn enter(
-        &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
-        event: &MotionEvent,
-    ) {
+impl<B: Backend> PointerTarget<Otto<B>> for PointerFocusTarget<B> {
+    fn enter(&self, seat: &Seat<Otto<B>>, data: &mut Otto<B>, event: &MotionEvent) {
         match self {
             PointerFocusTarget::WlSurface(w) => PointerTarget::enter(w, seat, data, event),
             #[cfg(feature = "xwayland")]
@@ -164,12 +159,7 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
             PointerFocusTarget::View(w) => PointerTarget::enter(w, seat, data, event),
         }
     }
-    fn motion(
-        &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
-        event: &MotionEvent,
-    ) {
+    fn motion(&self, seat: &Seat<Otto<B>>, data: &mut Otto<B>, event: &MotionEvent) {
         match self {
             PointerFocusTarget::WlSurface(w) => PointerTarget::motion(w, seat, data, event),
             #[cfg(feature = "xwayland")]
@@ -179,8 +169,8 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
     }
     fn relative_motion(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &RelativeMotionEvent,
     ) {
         match self {
@@ -194,12 +184,7 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
             PointerFocusTarget::View(w) => PointerTarget::relative_motion(w, seat, data, event),
         }
     }
-    fn button(
-        &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
-        event: &ButtonEvent,
-    ) {
+    fn button(&self, seat: &Seat<Otto<B>>, data: &mut Otto<B>, event: &ButtonEvent) {
         match self {
             PointerFocusTarget::WlSurface(w) => PointerTarget::button(w, seat, data, event),
             #[cfg(feature = "xwayland")]
@@ -207,7 +192,7 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
             PointerFocusTarget::View(w) => PointerTarget::button(w, seat, data, event),
         }
     }
-    fn axis(&self, seat: &Seat<ScreenComposer<B>>, data: &mut ScreenComposer<B>, frame: AxisFrame) {
+    fn axis(&self, seat: &Seat<Otto<B>>, data: &mut Otto<B>, frame: AxisFrame) {
         match self {
             PointerFocusTarget::WlSurface(w) => PointerTarget::axis(w, seat, data, frame),
             #[cfg(feature = "xwayland")]
@@ -215,7 +200,7 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
             PointerFocusTarget::View(w) => PointerTarget::axis(w, seat, data, frame),
         }
     }
-    fn frame(&self, seat: &Seat<ScreenComposer<B>>, data: &mut ScreenComposer<B>) {
+    fn frame(&self, seat: &Seat<Otto<B>>, data: &mut Otto<B>) {
         match self {
             PointerFocusTarget::WlSurface(w) => PointerTarget::frame(w, seat, data),
             #[cfg(feature = "xwayland")]
@@ -223,13 +208,7 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
             PointerFocusTarget::View(w) => PointerTarget::frame(w, seat, data),
         }
     }
-    fn leave(
-        &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
-        serial: Serial,
-        time: u32,
-    ) {
+    fn leave(&self, seat: &Seat<Otto<B>>, data: &mut Otto<B>, serial: Serial, time: u32) {
         match self {
             PointerFocusTarget::WlSurface(w) => PointerTarget::leave(w, seat, data, serial, time),
             #[cfg(feature = "xwayland")]
@@ -239,8 +218,8 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
     }
     fn gesture_swipe_begin(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &GestureSwipeBeginEvent,
     ) {
         match self {
@@ -256,8 +235,8 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
     }
     fn gesture_swipe_update(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &GestureSwipeUpdateEvent,
     ) {
         match self {
@@ -275,8 +254,8 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
     }
     fn gesture_swipe_end(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &GestureSwipeEndEvent,
     ) {
         match self {
@@ -292,8 +271,8 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
     }
     fn gesture_pinch_begin(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &GesturePinchBeginEvent,
     ) {
         match self {
@@ -309,8 +288,8 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
     }
     fn gesture_pinch_update(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &GesturePinchUpdateEvent,
     ) {
         match self {
@@ -328,8 +307,8 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
     }
     fn gesture_pinch_end(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &GesturePinchEndEvent,
     ) {
         match self {
@@ -345,8 +324,8 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
     }
     fn gesture_hold_begin(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &GestureHoldBeginEvent,
     ) {
         match self {
@@ -362,8 +341,8 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
     }
     fn gesture_hold_end(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &GestureHoldEndEvent,
     ) {
         match self {
@@ -379,11 +358,11 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
     }
 }
 
-impl<B: Backend> KeyboardTarget<ScreenComposer<B>> for KeyboardFocusTarget<B> {
+impl<B: Backend> KeyboardTarget<Otto<B>> for KeyboardFocusTarget<B> {
     fn enter(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         keys: Vec<KeysymHandle<'_>>,
         serial: Serial,
     ) {
@@ -404,7 +383,7 @@ impl<B: Backend> KeyboardTarget<ScreenComposer<B>> for KeyboardFocusTarget<B> {
             KeyboardFocusTarget::View(d) => KeyboardTarget::enter(d, seat, data, keys, serial),
         }
     }
-    fn leave(&self, seat: &Seat<ScreenComposer<B>>, data: &mut ScreenComposer<B>, serial: Serial) {
+    fn leave(&self, seat: &Seat<Otto<B>>, data: &mut Otto<B>, serial: Serial) {
         // Show popups for the window gaining focus
         if let KeyboardFocusTarget::Window(w) = self {
             let window_id = w.wl_surface().map(|s| s.id());
@@ -439,8 +418,8 @@ impl<B: Backend> KeyboardTarget<ScreenComposer<B>> for KeyboardFocusTarget<B> {
     }
     fn key(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         key: KeysymHandle<'_>,
         state: KeyState,
         serial: Serial,
@@ -470,8 +449,8 @@ impl<B: Backend> KeyboardTarget<ScreenComposer<B>> for KeyboardFocusTarget<B> {
     /// Hold modifiers were changed on a keyboard from a given seat
     fn modifiers(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         modifiers: ModifiersState,
         serial: Serial,
     ) {
@@ -506,11 +485,11 @@ impl<B: Backend> KeyboardTarget<ScreenComposer<B>> for KeyboardFocusTarget<B> {
     }
 }
 
-impl<B: Backend> TouchTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
+impl<B: Backend> TouchTarget<Otto<B>> for PointerFocusTarget<B> {
     fn down(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &smithay::input::touch::DownEvent,
         seq: Serial,
     ) {
@@ -524,8 +503,8 @@ impl<B: Backend> TouchTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
 
     fn up(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &smithay::input::touch::UpEvent,
         seq: Serial,
     ) {
@@ -539,8 +518,8 @@ impl<B: Backend> TouchTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
 
     fn motion(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &smithay::input::touch::MotionEvent,
         seq: Serial,
     ) {
@@ -552,7 +531,7 @@ impl<B: Backend> TouchTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
         }
     }
 
-    fn frame(&self, seat: &Seat<ScreenComposer<B>>, data: &mut ScreenComposer<B>, seq: Serial) {
+    fn frame(&self, seat: &Seat<Otto<B>>, data: &mut Otto<B>, seq: Serial) {
         match self {
             PointerFocusTarget::WlSurface(w) => TouchTarget::frame(w, seat, data, seq),
             #[cfg(feature = "xwayland")]
@@ -561,7 +540,7 @@ impl<B: Backend> TouchTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
         }
     }
 
-    fn cancel(&self, seat: &Seat<ScreenComposer<B>>, data: &mut ScreenComposer<B>, seq: Serial) {
+    fn cancel(&self, seat: &Seat<Otto<B>>, data: &mut Otto<B>, seq: Serial) {
         match self {
             PointerFocusTarget::WlSurface(w) => TouchTarget::cancel(w, seat, data, seq),
             #[cfg(feature = "xwayland")]
@@ -572,8 +551,8 @@ impl<B: Backend> TouchTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
 
     fn shape(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &smithay::input::touch::ShapeEvent,
         seq: Serial,
     ) {
@@ -587,8 +566,8 @@ impl<B: Backend> TouchTarget<ScreenComposer<B>> for PointerFocusTarget<B> {
 
     fn orientation(
         &self,
-        seat: &Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &smithay::input::touch::OrientationEvent,
         seq: Serial,
     ) {

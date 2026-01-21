@@ -496,8 +496,8 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WorkspaceSele
     }
     fn on_motion(
         &self,
-        _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-        data: &mut crate::ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<crate::Otto<Backend>>,
+        data: &mut crate::Otto<Backend>,
         event: &smithay::input::pointer::MotionEvent,
     ) {
         let state = self.view.get_state().clone();
@@ -540,8 +540,8 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WorkspaceSele
     }
     fn on_button(
         &self,
-        _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-        screencomposer: &mut crate::ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<crate::Otto<Backend>>,
+        otto: &mut crate::Otto<Backend>,
         event: &smithay::input::pointer::ButtonEvent,
     ) {
         let location = self.cursor_location.read().unwrap();
@@ -580,20 +580,20 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WorkspaceSele
                 if let (Some(pressed_key), Some(release_key)) = (pressed.clone(), release_key) {
                     if pressed_key == release_key {
                         if release_key == "workspace_selector_desktop_add" {
-                            screencomposer.workspaces.add_workspace();
+                            otto.workspaces.add_workspace();
                         } else if let Some(index) = release_key
                             .strip_prefix("workspace_selector_desktop_remove_")
                             .and_then(|idx| idx.parse::<usize>().ok())
                         {
                             if let Some(pos) = get_position_worspace_by_index(index) {
-                                screencomposer.workspaces.remove_workspace_at(pos);
+                                otto.workspaces.remove_workspace_at(pos);
                             }
                         } else if let Some(index) = release_key
                             .strip_prefix("workspace_selector_desktop_")
                             .and_then(|idx| idx.parse::<usize>().ok())
                         {
                             if let Some(pos) = get_position_worspace_by_index(index) {
-                                screencomposer.set_current_workspace_index(pos);
+                                otto.set_current_workspace_index(pos);
                             }
                         }
                     }

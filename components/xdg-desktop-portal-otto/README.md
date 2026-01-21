@@ -1,11 +1,11 @@
-# ScreenComposer ScreenCast portal
+# Otto ScreenCast portal
 
-`xdg-desktop-portal-screencomposer` is the canonical ScreenComposer
+`xdg-desktop-portal-otto` is the canonical Otto
 implementation of the `org.freedesktop.impl.portal.ScreenCast` **backend**
 D-Bus interface. The upstream `xdg-desktop-portal` process exposes
 `org.freedesktop.portal.ScreenCast` to applications and delegates each request
-to this service. We in turn translate those requests into ScreenComposer’s
-private API (`org.screencomposer.ScreenCast`), bridging the frontend portal to
+to this service. We in turn translate those requests into Otto’s
+private API (`org.otto.ScreenCast`), bridging the frontend portal to
 the compositor. The current implementation focuses exclusively on the ScreenCast
 portal as defined in the upstream specifications. See
 [`ScreenCast-backend-spec.md`](./ScreenCast-backend-spec.md)
@@ -25,16 +25,16 @@ for the D-Bus bindings and logs every method invocation and emitted signal via
 ## Architecture
 
 The portal backend acts as a translator: it receives standard portal requests and
-translates them into ScreenComposer-specific D-Bus calls to create and manage
+translates them into Otto-specific D-Bus calls to create and manage
 PipeWire streams.
 
 ## Running
 
 ```bash
-cargo run -p xdg-desktop-portal-screencomposer
+cargo run -p xdg-desktop-portal-otto
 ```
 
-On startup the binary prints `ScreenComposer portal running` once it has
+On startup the binary prints `Otto portal running` once it has
 successfully registered on the session bus. The process continues to service
 requests until it receives `Ctrl+C`.
 

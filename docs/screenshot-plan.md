@@ -18,11 +18,11 @@ Implement `org.freedesktop.impl.portal.Screenshot` D-Bus interface to allow thir
 │       │                                                        │
 │       ▼ Backend D-Bus (org.freedesktop.impl.portal.Screenshot)│
 │                                                                │
-│  xdg-desktop-portal-sc                                        │
+│  xdg-desktop-portal-otto                                        │
 │       │                                                        │
-│       ▼ Compositor D-Bus (org.screencomposer.Screenshot)      │
+│       ▼ Compositor D-Bus (org.otto.Screenshot)      │
 │                                                                │
-│  ScreenComposer Compositor                                    │
+│  Otto Compositor                                    │
 │       │                                                        │
 │       ├─► Capture single frame (reuse FrameTapManager)        │
 │       ├─► Encode to PNG (image crate)                         │
@@ -56,7 +56,7 @@ Implement `org.freedesktop.impl.portal.Screenshot` D-Bus interface to allow thir
 
 ### Phase 1: Basic Screenshot (Minimum Viable)
 
-**Portal Backend** (`components/xdg-desktop-portal-sc/src/screenshot.rs`):
+**Portal Backend** (`components/xdg-desktop-portal-otto/src/screenshot.rs`):
 ```rust
 // New D-Bus interface implementation
 impl Screenshot for PortalBackend {
@@ -84,7 +84,7 @@ pub enum CompositorCommand {
 }
 
 pub async fn handle_screenshot(
-    state: &mut ScreenComposer,
+    state: &mut Otto,
     output_name: &str,
 ) -> Result<String> {
     // 1. Capture single frame using FrameTapManager
@@ -148,7 +148,7 @@ async fn pick_color(
 **Compositor Handler**:
 ```rust
 pub fn pick_color_at(
-    state: &ScreenComposer,
+    state: &Otto,
     output_name: &str,
     x: i32,
     y: i32,
@@ -172,7 +172,7 @@ tempfile = "3.0"
 ## File Structure
 
 ```
-components/xdg-desktop-portal-sc/src/
+components/xdg-desktop-portal-otto/src/
 ├── screenshot.rs          # New: Screenshot D-Bus interface
 └── main.rs               # Register Screenshot interface
 
@@ -242,7 +242,7 @@ flameshot gui
 ```bash
 # Call Screenshot method directly
 gdbus call --session \
-  --dest org.freedesktop.impl.portal.ScreenCast.screencomposer \
+  --dest org.freedesktop.impl.portal.ScreenCast.otto \
   --object-path /org/freedesktop/portal/desktop \
   --method org.freedesktop.impl.portal.Screenshot.Screenshot \
   "/org/freedesktop/portal/desktop/request/1_1" \
@@ -260,7 +260,7 @@ gdbus call --session \
 - [ ] Add one-shot frame capture using FrameTapManager
 - [ ] Implement PNG encoding
 - [ ] Implement temp file creation with proper URI format
-- [ ] Create `components/xdg-desktop-portal-sc/src/screenshot.rs`
+- [ ] Create `components/xdg-desktop-portal-otto/src/screenshot.rs`
 - [ ] Implement Screenshot D-Bus interface in portal backend
 - [ ] Register Screenshot interface in portal backend main.rs
 - [ ] Test with gnome-screenshot

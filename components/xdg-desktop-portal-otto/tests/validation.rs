@@ -1,4 +1,4 @@
-use xdg_desktop_portal_screencomposer::portal::{
+use xdg_desktop_portal_otto::portal::{
     fallback_mapping_id, make_output_mapping_id, validate_cursor_mode, validate_persist_mode,
     CURSOR_MODE_EMBEDDED, CURSOR_MODE_HIDDEN, CURSOR_MODE_METADATA,
 };

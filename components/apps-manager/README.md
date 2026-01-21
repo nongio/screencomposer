@@ -1,6 +1,6 @@
 # Apps - Foreign Toplevel List Debug Tool
 
-A simple command-line tool to test the `ext_foreign_toplevel_list_v1` protocol implementation in ScreenComposer.
+A simple command-line tool to test the `ext_foreign_toplevel_list_v1` protocol implementation in Otto.
 
 ## Building
 
@@ -10,9 +10,9 @@ cargo build -p apps-manager
 
 ## Usage
 
-### Testing with ScreenComposer
+### Testing with Otto
 
-1. **Start ScreenComposer in one terminal:**
+1. **Start Otto in one terminal:**
    ```bash
    cargo run -- --winit
    ```
@@ -20,13 +20,13 @@ cargo build -p apps-manager
 2. **Run the debug tool in another terminal:**
    ```bash
    # Set the Wayland display if needed
-   export WAYLAND_DISPLAY=wayland-1  # or wayland-0, check ScreenComposer output
+   export WAYLAND_DISPLAY=wayland-1  # or wayland-0, check Otto output
    
    # Run the tool
    cargo run -p apps-manager
    ```
 
-3. **Open some windows** in ScreenComposer (e.g., with sample clients or other applications)
+3. **Open some windows** in Otto (e.g., with sample clients or other applications)
 
 4. **Observe the output:**
    The tool will print messages when:

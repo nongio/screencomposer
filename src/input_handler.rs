@@ -8,7 +8,7 @@ use crate::{
     },
     focus::PointerFocusTarget,
     shell::FullscreenSurface,
-    ScreenComposer,
+    Otto,
 };
 
 #[cfg(feature = "udev")]
@@ -72,7 +72,7 @@ use smithay::{
     },
 };
 
-impl<BackendData: Backend> ScreenComposer<BackendData> {
+impl<BackendData: Backend> Otto<BackendData> {
     pub fn launch_program(&mut self, cmd: String, args: Vec<String>) {
         info!(program = %cmd, args = ?args, "Starting program");
 
@@ -600,7 +600,7 @@ impl<BackendData: Backend> ScreenComposer<BackendData> {
 }
 
 #[cfg(any(feature = "winit", feature = "x11"))]
-impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
+impl<Backend: crate::state::Backend> Otto<Backend> {
     pub fn process_input_event_windowed<B: InputBackend>(
         &mut self,
         event: InputEvent<B>,
@@ -794,7 +794,7 @@ impl<Backend: crate::state::Backend> ScreenComposer<Backend> {
 }
 
 #[cfg(feature = "udev")]
-impl ScreenComposer<UdevData> {
+impl Otto<UdevData> {
     pub fn process_input_event<B: InputBackend>(
         &mut self,
         dh: &DisplayHandle,

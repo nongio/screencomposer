@@ -1,4 +1,4 @@
-# ScreenComposer
+# Otto
 A wayland compositor and stacking window manager,  built on top of [LayersEngine](https://github.com/nongio/layers);
 
 The compositor is heavily inspired by MacOS, the goal is to learn and experiment with wayland, rust, skia and see how far can I go with it.
@@ -8,19 +8,19 @@ The project is not currently ready for a daily usage but any contributor curious
 
 ## :framed_picture: How does it look like?
 <figure>
-  <img src="https://github.com/nongio/screencomposer/blob/main/assets/simple_desktop_with_dock.jpg?raw=true" alt="Basic desktop with Dock">
+  <img src="https://github.com/nongio/otto/blob/main/assets/simple_desktop_with_dock.jpg?raw=true" alt="Basic desktop with Dock">
   <figcaption>Standard desktop with windows overlapping and Dock task manager. Windows shadow is added by the compositor.</figcaption>
 </figure>
 
 
 <figure>
-  <img src="https://github.com/nongio/screencomposer/blob/main/assets/application_switcher.jpg?raw=true" alt="Application switcher">
+  <img src="https://github.com/nongio/otto/blob/main/assets/application_switcher.jpg?raw=true" alt="Application switcher">
   <figcaption>Application switcher showcasing icons and application names, with background blur blending.</figcaption>
 </figure>
 
 
 <figure>
-  <img src="https://github.com/nongio/screencomposer/blob/main/assets/expose_windows.jpg?raw=true" alt="Expose windows">
+  <img src="https://github.com/nongio/otto/blob/main/assets/expose_windows.jpg?raw=true" alt="Expose windows">
   <figcaption>Expose windows, showing all open windows.</figcaption>
 </figure>
 
@@ -101,7 +101,7 @@ Following a draft roadmap of features and improvements.
 - [ ] setup screen mode
 
 ### Keyboard Shortcuts
-Hotkeys are now fully configurable via the `sc_config.toml` file. See the `[keyboard_shortcuts]` section to customize keybindings for your setup. Example:
+Hotkeys are now fully configurable via the `otto_config.toml` file. See the `[keyboard_shortcuts]` section to customize keybindings for your setup. Example:
 
 ```toml
 [keyboard_shortcuts]
@@ -114,7 +114,7 @@ Hotkeys are now fully configurable via the `sc_config.toml` file. See the `[keyb
 ```
 
 ## Supported Wayland Protocols
-ScreenComposer implements a comprehensive set of Wayland protocols, including:
+Otto implements a comprehensive set of Wayland protocols, including:
 - Core: `wl_compositor`, `wl_shm`, `wl_seat`, `wl_data_device_manager`
 - Shells: `xdg_wm_base` (XDG shell), `wlr_layer_shell_v1` (Layer shell 1.0)
 - Output management: `wl_output`, `xdg_output`, `wp_presentation`
@@ -127,12 +127,12 @@ For a complete and up-to-date list, see [docs/wayland.md](./docs/wayland.md).
 
 ## Components
 
-ScreenComposer consists of the main compositor and additional components:
+Otto consists of the main compositor and additional components:
 
 | Component | Description |
 |-----------|-------------|
-| `screen-composer` | Main compositor binary |
-| `xdg-desktop-portal-screencomposer` | XDG Desktop Portal backend for screen sharing |
+| `otto` | Main compositor binary |
+| `xdg-desktop-portal-otto` | XDG Desktop Portal backend for screen sharing |
 
 See [docs/xdg-desktop-portal.md](./docs/xdg-desktop-portal.md) for details on the portal integration.
 
@@ -158,20 +158,20 @@ then you'll need to install the following packages as well:
 
 ## Configuration
 
-ScreenComposer uses TOML configuration files. A complete example configuration is provided in `sc_config.example.toml` which you can copy and modify:
+Otto uses TOML configuration files. A complete example configuration is provided in `otto_config.example.toml` which you can copy and modify:
 
 ```bash
-cp sc_config.example.toml sc_config.toml
+cp otto_config.example.toml otto_config.toml
 ```
 
 ### Backend-specific configuration
 
-You can create backend-specific configuration files using the naming convention `sc_config.{backend}.toml`. For example:
+You can create backend-specific configuration files using the naming convention `otto_config.{backend}.toml`. For example:
 
-- `sc_config.winit.toml` - Configuration for the winit backend
-- `sc_config.udev.toml` - Configuration for the tty-udev/DRM backend
+- `otto_config.winit.toml` - Configuration for the winit backend
+- `otto_config.udev.toml` - Configuration for the tty-udev/DRM backend
 
-When running with a specific backend, ScreenComposer will automatically load the corresponding configuration file if it exists, falling back to `sc_config.toml` otherwise.
+When running with a specific backend, Otto will automatically load the corresponding configuration file if it exists, falling back to `otto_config.toml` otherwise.
 
 This allows you to maintain different display settings, keyboard shortcuts, or other preferences for each backend. For instance, you might want different `screen_scale` values or display resolutions when running in a window (winit/X11) versus on bare metal (tty-udev).
 
@@ -179,7 +179,7 @@ For detailed configuration options, see the [configuration documentation](./docs
 
 ## Profiling
 
-ScreenComposer includes built-in support for profiling using [puffin](https://github.com/EmbarkStudios/puffin). The profiler is enabled by default through the `profile` feature.
+Otto includes built-in support for profiling using [puffin](https://github.com/EmbarkStudios/puffin). The profiler is enabled by default through the `profile` feature.
 
 ### Using the Profiler
 
@@ -199,14 +199,14 @@ ScreenComposer includes built-in support for profiling using [puffin](https://gi
 
 The profiler will show frame timing, render performance, and other metrics to help identify performance bottlenecks.
 
-**Note:** Make sure your `puffin_viewer` version matches the puffin version used by ScreenComposer (0.19.x requires puffin_viewer 0.22.0 or later).
+**Note:** Make sure your `puffin_viewer` version matches the puffin version used by Otto (0.19.x requires puffin_viewer 0.22.0 or later).
 
 ## Build and run
 
 You can run it with cargo after having cloned this repository:
 
 ```
-cd screen-composer;
+cd otto;
 
 cargo run -- --{backend}
 ```
@@ -214,10 +214,10 @@ cargo run -- --{backend}
 The currently available backends are:
 
 - `--x11`: start anvil as an X11 client. This allows you to run the compositor inside an X11 session or any compositor supporting XWayland. Should be preferred over the winit backend where possible.
-- `--winit`: start screen-composer as a [Winit](https://github.com/tomaka/winit) application. This allows you to run it
+- `--winit`: start otto as a [Winit](https://github.com/tomaka/winit) application. This allows you to run it
   inside of an other X11 or Wayland session.
-- `--tty-udev`: start screen-composer in a tty with udev support. This is the "traditional" launch of a Wayland
-  compositor. Note that this requires you to start screen-composer as root if your system does not have logind
+- `--tty-udev`: start otto in a tty with udev support. This is the "traditional" launch of a Wayland
+  compositor. Note that this requires you to start otto as root if your system does not have logind
   available.
 
 ### Credits

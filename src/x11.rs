@@ -9,7 +9,7 @@ use crate::{
     render_elements::workspace_render_elements::WorkspaceRenderElements,
     shell::WindowElement,
     skia_renderer::{SkiaRenderer, SkiaTextureImage},
-    state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
+    state::{post_repaint, take_presentation_feedback, Backend, Otto},
 };
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;
@@ -62,7 +62,7 @@ impl OldGeometry {
     }
 }
 #[cfg(feature = "xwayland")]
-impl<BackendData: Backend> XWaylandShellHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> XWaylandShellHandler for Otto<BackendData> {
     fn xwayland_shell_state(&mut self) -> &mut XWaylandShellState {
         &mut self.xwayland_shell_state
     }
@@ -85,7 +85,7 @@ pub struct X11Data {
     fps: fps_ticker::Fps,
 }
 
-impl DmabufHandler for ScreenComposer<X11Data> {
+impl DmabufHandler for Otto<X11Data> {
     fn dmabuf_state(&mut self) -> &mut DmabufState {
         &mut self.backend_data.dmabuf_state
     }
@@ -102,13 +102,13 @@ impl DmabufHandler for ScreenComposer<X11Data> {
             .import_dmabuf(&dmabuf, None)
             .is_ok()
         {
-            let _ = notifier.successful::<ScreenComposer<X11Data>>();
+            let _ = notifier.successful::<Otto<X11Data>>();
         } else {
             notifier.failed();
         }
     }
 }
-delegate_dmabuf!(ScreenComposer<X11Data>);
+delegate_dmabuf!(Otto<X11Data>);
 
 impl Backend for X11Data {
     fn seat_name(&self) -> String {
@@ -234,11 +234,10 @@ pub fn run_x11() {
         .build()
         .unwrap();
     let mut dmabuf_state = DmabufState::new();
-    let dmabuf_global = dmabuf_state
-        .create_global_with_default_feedback::<ScreenComposer<X11Data>>(
-            &display.handle(),
-            &dmabuf_default_feedback,
-        );
+    let dmabuf_global = dmabuf_state.create_global_with_default_feedback::<Otto<X11Data>>(
+        &display.handle(),
+        &dmabuf_default_feedback,
+    );
 
     let size = {
         let s = window.size();
@@ -278,7 +277,7 @@ pub fn run_x11() {
             model: "X11".into(),
         },
     );
-    let _global = output.create_global::<ScreenComposer<X11Data>>(&display.handle());
+    let _global = output.create_global::<Otto<X11Data>>(&display.handle());
     output.change_current_state(Some(mode), None, None, Some((0, 0).into()));
     output.set_preferred(mode);
 
@@ -297,7 +296,7 @@ pub fn run_x11() {
         fps: fps_ticker::Fps::default(),
     };
 
-    let mut state = ScreenComposer::init(display, event_loop.handle(), data, true);
+    let mut state = Otto::init(display, event_loop.handle(), data, true);
     state
         .shm_state
         .update_formats(state.backend_data.renderer.shm_formats());

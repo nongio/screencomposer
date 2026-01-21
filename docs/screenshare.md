@@ -1,11 +1,11 @@
-# Screen Sharing in ScreenComposer
+# Screen Sharing in Otto
 
-This document describes the screen sharing implementation in ScreenComposer, including
+This document describes the screen sharing implementation in Otto, including
 architecture, D-Bus API, and PipeWire integration.
 
 ## Overview
 
-ScreenComposer implements screen sharing via the xdg-desktop-portal standard, allowing
+Otto implements screen sharing via the xdg-desktop-portal standard, allowing
 applications like OBS, Chromium, Firefox, and GNOME tools to capture screen content
 through PipeWire video streams.
 
@@ -21,13 +21,13 @@ through PipeWire video streams.
 │       │                                                                     │
 │       ▼ Backend D-Bus API (org.freedesktop.impl.portal.ScreenCast)          │
 │                                                                             │
-│  xdg-desktop-portal-sc                                                      │
-│  (components/xdg-desktop-portal-sc/)                                        │
+│  xdg-desktop-portal-otto                                                      │
+│  (components/xdg-desktop-portal-otto/)                                        │
 │       │                                                                     │
-│       ▼ Compositor D-Bus API (org.screencomposer.ScreenCast)                │
+│       ▼ Compositor D-Bus API (org.otto.ScreenCast)                │
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │  ScreenComposer Compositor                                          │    │
+│  │  Otto Compositor                                          │    │
 │  │                                                                     │    │
 │  │  ┌─────────────────┐    ┌──────────────────────────────────────┐   │    │
 │  │  │ D-Bus Service   │    │ Render Loop (winit/udev)             │   │    │
@@ -69,32 +69,32 @@ through PipeWire video streams.
 
 ### 1. D-Bus Service (`src/screenshare/dbus_service.rs`)
 
-The compositor exposes a D-Bus service at `org.screencomposer.ScreenCast` that the
+The compositor exposes a D-Bus service at `org.otto.ScreenCast` that the
 portal backend uses to control screen sharing sessions.
 
 **Interfaces:**
 
 | Interface | Path | Description |
 |-----------|------|-------------|
-| `org.screencomposer.ScreenCast` | `/org/screencomposer/ScreenCast` | Main service interface |
-| `org.screencomposer.ScreenCast.Session` | `/org/screencomposer/ScreenCast/session/<id>` | Per-session control |
-| `org.screencomposer.ScreenCast.Stream` | `/org/screencomposer/ScreenCast/stream/<id>` | Per-stream control |
+| `org.otto.ScreenCast` | `/org/otto/ScreenCast` | Main service interface |
+| `org.otto.ScreenCast.Session` | `/org/otto/ScreenCast/session/<id>` | Per-session control |
+| `org.otto.ScreenCast.Stream` | `/org/otto/ScreenCast/stream/<id>` | Per-stream control |
 
 **Methods:**
 
 ```
-org.screencomposer.ScreenCast:
+org.otto.ScreenCast:
   CreateSession(properties: a{sv}) -> session_path: o
   ListOutputs() -> connectors: as
 
-org.screencomposer.ScreenCast.Session:
+org.otto.ScreenCast.Session:
   RecordMonitor(connector: s, properties: a{sv}) -> stream_path: o
   RecordWindow(properties: a{sv}) -> stream_path: o
   Start()
   Stop()
   OpenPipeWireRemote(options: a{sv}) -> fd: h
 
-org.screencomposer.ScreenCast.Stream:
+org.otto.ScreenCast.Stream:
   Start()
   Stop()
   PipeWireNode() -> info: a{sv}
@@ -216,7 +216,7 @@ This script automatically:
 1. Creates or reuses a D-Bus session
 2. Saves D-Bus info to `$XDG_RUNTIME_DIR/dbus-session` for other terminals
 3. Starts/verifies PipeWire services via systemctl
-4. Launches the xdg-desktop-portal-screencomposer backend
+4. Launches the xdg-desktop-portal-otto backend
 5. Starts the compositor with correct environment variables
 
 **Development (windowed mode):**
@@ -262,23 +262,23 @@ google-chrome
 ```bash
 # Create a session
 dbus-send --session --print-reply \
-  --dest=org.screencomposer.ScreenCast \
-  /org/screencomposer/ScreenCast \
-  org.screencomposer.ScreenCast.CreateSession \
+  --dest=org.otto.ScreenCast \
+  /org/otto/ScreenCast \
+  org.otto.ScreenCast.CreateSession \
   dict:string:variant:
 
 # List available outputs
 dbus-send --session --print-reply \
-  --dest=org.screencomposer.ScreenCast \
-  /org/screencomposer/ScreenCast \
-  org.screencomposer.ScreenCast.ListOutputs
+  --dest=org.otto.ScreenCast \
+  /org/otto/ScreenCast \
+  org.otto.ScreenCast.ListOutputs
 ```
 
 ### Verifying PipeWire Stream
 
 ```bash
 # Check if PipeWire node appears
-pw-dump | grep screen-composer
+pw-dump | grep otto
 ```
 
 ### Testing with Applications
@@ -300,12 +300,12 @@ Expected performance: 60 FPS at full resolution (e.g., 2880x1920).
 **Screen sharing dialog shows no outputs:**
 - Ensure the app is running in the same D-Bus session as the compositor
 - Check `$DBUS_SESSION_BUS_ADDRESS` is set: `echo $DBUS_SESSION_BUS_ADDRESS`
-- Verify portal is registered: `busctl --user list | grep screencomposer`
+- Verify portal is registered: `busctl --user list | grep otto`
 - Try: `source ./scripts/connect-to-session.sh` before launching the app
 
 **Video freezes after a few seconds:**
 - Verify PipeWire is running: `pgrep -x pipewire`
-- Check compositor logs: `tail -f screencomposer.log`
+- Check compositor logs: `tail -f otto.log`
 - Ensure systemd user services are enabled:
   ```bash
   systemctl --user enable --now pipewire.service pipewire-pulse.service wireplumber.service
@@ -319,9 +319,9 @@ Expected performance: 60 FPS at full resolution (e.g., 2880x1920).
 - Check permissions: `ls -la $XDG_RUNTIME_DIR/dbus-session`
 
 **Portal backend not found:**
-- Verify portal is built: `ls target/release/xdg-desktop-portal-screencomposer`
-- Check portal logs: `tail -f components/xdg-desktop-portal-sc/portal.log`
-- Rebuild if needed: `cargo build -p xdg-desktop-portal-screencomposer --release`
+- Verify portal is built: `ls target/release/xdg-desktop-portal-otto`
+- Check portal logs: `tail -f components/xdg-desktop-portal-otto/portal.log`
+- Rebuild if needed: `cargo build -p xdg-desktop-portal-otto --release`
 
 ## File Overview
 

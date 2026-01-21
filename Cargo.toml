@@ -1,5 +1,5 @@
 [package]
-name = "screen-composer"
+name = "otto"
 authors = ["Riccardo Canalicchio <riccardo.canalicchio@gmail.com>"]
 version = "0.12.0"
 edition = "2021"
@@ -127,7 +127,7 @@ renderer_sync = []
 
 [workspace]
 members = [
-    "components/xdg-desktop-portal-sc",
+    "components/xdg-desktop-portal-otto",
     "components/apps-manager",
     "sample-clients/client-rainbow",
     "sample-clients/hello-layers",

@@ -1,6 +1,6 @@
 # Rendering pipeline overview
 
-This document explains at a high level how ScreenComposer renders frames and where integration points live.
+This document explains at a high level how Otto renders frames and where integration points live.
 
 - Backend: udev/DRM+GBM+EGL (primary), plus optional winit/x11 paths.
 - Renderer: Smithay GlesRenderer wrapped by Skia (`src/skia_renderer.rs`) to draw, import dmabufs, and manage textures/surfaces; integrated with the `lay-rs` engine.

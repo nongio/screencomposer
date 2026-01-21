@@ -9,9 +9,9 @@ use smithay::{
     },
 };
 
-use super::{Backend, ScreenComposer};
+use super::{Backend, Otto};
 
-impl<BackendData: Backend> XdgDecorationHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> XdgDecorationHandler for Otto<BackendData> {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
         use xdg_decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
         // Set the default to client side
@@ -61,4 +61,4 @@ impl<BackendData: Backend> XdgDecorationHandler for ScreenComposer<BackendData> 
         }
     }
 }
-delegate_xdg_decoration!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_xdg_decoration!(@<BackendData: Backend + 'static> Otto<BackendData>);

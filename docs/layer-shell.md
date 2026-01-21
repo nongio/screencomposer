@@ -1,6 +1,6 @@
 # WLR Layer Shell Implementation
 
-This document describes the implementation of the `wlr_layer_shell_v1` protocol in ScreenComposer. It's intended as a reference for agents and developers working on layer-shell related features.
+This document describes the implementation of the `wlr_layer_shell_v1` protocol in Otto. It's intended as a reference for agents and developers working on layer-shell related features.
 
 ## Implementation Status
 
@@ -26,7 +26,7 @@ This document describes the implementation of the `wlr_layer_shell_v1` protocol 
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        ScreenComposer                                │
+│                        Otto                                │
 │  ┌─────────────────────────────────────────────────────────────────┐│
 │  │ layer_surfaces: HashMap<ObjectId, LayerShellSurface>            ││
 │  └─────────────────────────────────────────────────────────────────┘│

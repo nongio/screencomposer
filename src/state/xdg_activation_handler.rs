@@ -6,9 +6,9 @@ use smithay::{
     },
 };
 
-use super::{Backend, ScreenComposer};
+use super::{Backend, Otto};
 
-impl<BackendData: Backend> XdgActivationHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> XdgActivationHandler for Otto<BackendData> {
     fn activation_state(&mut self) -> &mut XdgActivationState {
         &mut self.xdg_activation_state
     }
@@ -38,4 +38,4 @@ impl<BackendData: Backend> XdgActivationHandler for ScreenComposer<BackendData> 
         }
     }
 }
-delegate_xdg_activation!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_xdg_activation!(@<BackendData: Backend + 'static> Otto<BackendData>);

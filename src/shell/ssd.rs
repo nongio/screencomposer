@@ -13,7 +13,7 @@
 
 // use std::cell::{RefCell, RefMut};
 
-// use crate::ScreenComposer;
+// use crate::Otto;
 
 // use super::WindowElement;
 
@@ -55,8 +55,8 @@
 
 //     pub fn clicked<B: crate::state::Backend>(
 //         &mut self,
-//         seat: &Seat<ScreenComposer<B>>,
-//         state: &mut ScreenComposer<B>,
+//         seat: &Seat<Otto<B>>,
+//         state: &mut Otto<B>,
 //         window: &WindowElement,
 //         serial: Serial,
 //     ) {

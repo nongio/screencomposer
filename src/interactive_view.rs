@@ -12,23 +12,23 @@ use smithay::{
     utils::IsAlive,
 };
 
-use crate::{state::Backend, ScreenComposer};
+use crate::{state::Backend, Otto};
 
 pub trait ViewInteractions<B: Backend>: Sync + Send {
     fn id(&self) -> Option<usize>;
     fn is_alive(&self) -> bool;
     fn on_motion(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         _event: &smithay::input::pointer::MotionEvent,
     ) {
     }
     fn on_relative_motion(&self, _event: &smithay::input::pointer::RelativeMotionEvent) {}
     fn on_button(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         _event: &smithay::input::pointer::ButtonEvent,
     ) {
     }
@@ -49,16 +49,16 @@ pub trait ViewInteractions<B: Backend>: Sync + Send {
 
     fn on_up(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         _event: &smithay::input::touch::UpEvent,
         _seq: smithay::utils::Serial,
     ) {
     }
     fn on_down(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         _event: &smithay::input::touch::DownEvent,
         _seq: smithay::utils::Serial,
     ) {
@@ -66,24 +66,24 @@ pub trait ViewInteractions<B: Backend>: Sync + Send {
 
     fn on_orientation(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         _event: &smithay::input::touch::OrientationEvent,
         _seq: smithay::utils::Serial,
     ) {
     }
     fn on_shape(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         _event: &smithay::input::touch::ShapeEvent,
         _seq: smithay::utils::Serial,
     ) {
     }
     fn on_cancel(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         _seq: smithay::utils::Serial,
     ) {
     }
@@ -151,106 +151,102 @@ impl<B: Backend> IsAlive for InteractiveView<B> {
     }
 }
 
-impl<B: Backend> PointerTarget<ScreenComposer<B>> for InteractiveView<B> {
+impl<B: Backend> PointerTarget<Otto<B>> for InteractiveView<B> {
     fn axis(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         frame: smithay::input::pointer::AxisFrame,
     ) {
         self.view.on_axis(&frame);
     }
     fn button(
         &self,
-        seat: &smithay::input::Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &smithay::input::Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &smithay::input::pointer::ButtonEvent,
     ) {
         self.view.on_button(seat, data, event);
     }
     fn enter(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         event: &smithay::input::pointer::MotionEvent,
     ) {
         self.view.on_enter(event);
     }
-    fn frame(
-        &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
-    ) {
+    fn frame(&self, _seat: &smithay::input::Seat<Otto<B>>, _data: &mut Otto<B>) {
         self.view.on_frame();
     }
     fn gesture_hold_begin(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         event: &smithay::input::pointer::GestureHoldBeginEvent,
     ) {
         self.view.on_gesture_hold_begin(event);
     }
     fn gesture_hold_end(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         event: &smithay::input::pointer::GestureHoldEndEvent,
     ) {
         self.view.on_gesture_hold_end(event);
     }
     fn gesture_pinch_begin(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         event: &smithay::input::pointer::GesturePinchBeginEvent,
     ) {
         self.view.on_gesture_pinch_begin(event);
     }
     fn gesture_pinch_end(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         event: &smithay::input::pointer::GesturePinchEndEvent,
     ) {
         self.view.on_gesture_pinch_end(event);
     }
     fn gesture_pinch_update(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         event: &smithay::input::pointer::GesturePinchUpdateEvent,
     ) {
         self.view.on_gesture_pinch_update(event);
     }
     fn gesture_swipe_begin(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         event: &smithay::input::pointer::GestureSwipeBeginEvent,
     ) {
         self.view.on_gesture_swipe_begin(event);
     }
     fn gesture_swipe_end(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         event: &smithay::input::pointer::GestureSwipeEndEvent,
     ) {
         self.view.on_gesture_swipe_end(event);
     }
     fn gesture_swipe_update(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         event: &smithay::input::pointer::GestureSwipeUpdateEvent,
     ) {
         self.view.on_gesture_swipe_update(event);
     }
     fn leave(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         serial: smithay::utils::Serial,
         time: u32,
     ) {
@@ -258,35 +254,35 @@ impl<B: Backend> PointerTarget<ScreenComposer<B>> for InteractiveView<B> {
     }
     fn motion(
         &self,
-        seat: &smithay::input::Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &smithay::input::Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &smithay::input::pointer::MotionEvent,
     ) {
         self.view.on_motion(seat, data, event);
     }
     fn relative_motion(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         event: &smithay::input::pointer::RelativeMotionEvent,
     ) {
         self.view.on_relative_motion(event);
     }
 }
 
-impl<B: Backend> KeyboardTarget<ScreenComposer<B>> for InteractiveView<B> {
+impl<B: Backend> KeyboardTarget<Otto<B>> for InteractiveView<B> {
     fn enter(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         _keys: Vec<smithay::input::keyboard::KeysymHandle<'_>>,
         _serial: smithay::utils::Serial,
     ) {
     }
     fn key(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         key: smithay::input::keyboard::KeysymHandle<'_>,
         _state: smithay::backend::input::KeyState,
         _serial: smithay::utils::Serial,
@@ -296,15 +292,15 @@ impl<B: Backend> KeyboardTarget<ScreenComposer<B>> for InteractiveView<B> {
     }
     fn leave(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         _serial: smithay::utils::Serial,
     ) {
     }
     fn modifiers(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         modifiers: smithay::input::keyboard::ModifiersState,
         _serial: smithay::utils::Serial,
     ) {
@@ -312,11 +308,11 @@ impl<B: Backend> KeyboardTarget<ScreenComposer<B>> for InteractiveView<B> {
     }
 }
 
-impl<B: Backend> TouchTarget<ScreenComposer<B>> for InteractiveView<B> {
+impl<B: Backend> TouchTarget<Otto<B>> for InteractiveView<B> {
     fn up(
         &self,
-        seat: &smithay::input::Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &smithay::input::Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &smithay::input::touch::UpEvent,
         seq: smithay::utils::Serial,
     ) {
@@ -324,8 +320,8 @@ impl<B: Backend> TouchTarget<ScreenComposer<B>> for InteractiveView<B> {
     }
     fn down(
         &self,
-        seat: &smithay::input::Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &smithay::input::Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &smithay::input::touch::DownEvent,
         seq: smithay::utils::Serial,
     ) {
@@ -333,8 +329,8 @@ impl<B: Backend> TouchTarget<ScreenComposer<B>> for InteractiveView<B> {
     }
     fn motion(
         &self,
-        seat: &smithay::input::Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &smithay::input::Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &smithay::input::touch::MotionEvent,
         seq: smithay::utils::Serial,
     ) {
@@ -350,16 +346,16 @@ impl<B: Backend> TouchTarget<ScreenComposer<B>> for InteractiveView<B> {
     }
     fn frame(
         &self,
-        _seat: &smithay::input::Seat<ScreenComposer<B>>,
-        _data: &mut ScreenComposer<B>,
+        _seat: &smithay::input::Seat<Otto<B>>,
+        _data: &mut Otto<B>,
         _seq: smithay::utils::Serial,
     ) {
         self.view.on_frame();
     }
     fn orientation(
         &self,
-        seat: &smithay::input::Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &smithay::input::Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &smithay::input::touch::OrientationEvent,
         seq: smithay::utils::Serial,
     ) {
@@ -367,8 +363,8 @@ impl<B: Backend> TouchTarget<ScreenComposer<B>> for InteractiveView<B> {
     }
     fn shape(
         &self,
-        seat: &smithay::input::Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &smithay::input::Seat<Otto<B>>,
+        data: &mut Otto<B>,
         event: &smithay::input::touch::ShapeEvent,
         seq: smithay::utils::Serial,
     ) {
@@ -376,8 +372,8 @@ impl<B: Backend> TouchTarget<ScreenComposer<B>> for InteractiveView<B> {
     }
     fn cancel(
         &self,
-        seat: &smithay::input::Seat<ScreenComposer<B>>,
-        data: &mut ScreenComposer<B>,
+        seat: &smithay::input::Seat<Otto<B>>,
+        data: &mut Otto<B>,
         seq: smithay::utils::Serial,
     ) {
         self.view.on_cancel(seat, data, seq);

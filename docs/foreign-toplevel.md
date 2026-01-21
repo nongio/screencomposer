@@ -1,6 +1,6 @@
 # Foreign Toplevel Management
 
-ScreenComposer implements dual-protocol support for foreign toplevel management, providing window list information to taskbars, launchers, and window switchers.
+Otto implements dual-protocol support for foreign toplevel management, providing window list information to taskbars, launchers, and window switchers.
 
 ## Implemented Protocols
 
@@ -29,7 +29,7 @@ Provides `ForeignToplevelHandles` struct that wraps both protocol handles:
 **wlr-foreign-toplevel-management**: `src/state/wlr_foreign_toplevel.rs`
 - Custom implementation
 - Manages manager instances and toplevel handles
-- Implements Dispatch traits for ScreenComposer
+- Implements Dispatch traits for Otto
 
 ### Integration Points
 
@@ -141,7 +141,7 @@ WAYLAND_DISPLAY=wayland-1 waybar
 ## Dock Migration to External App
 
 ### Current State
-ScreenComposer has a built-in dock implementation (`src/workspaces/dock/`) that's tightly integrated with the compositor's internal window management.
+Otto has a built-in dock implementation (`src/workspaces/dock/`) that's tightly integrated with the compositor's internal window management.
 
 ### Migration Path
 With wlr-foreign-toplevel-management protocol support, the dock can be migrated to an external standalone application. This provides several benefits:

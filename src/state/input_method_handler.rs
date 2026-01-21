@@ -12,9 +12,9 @@ use smithay::{
 };
 use tracing::warn;
 
-use super::{Backend, ScreenComposer};
+use super::{Backend, Otto};
 
-impl<BackendData: Backend> InputMethodHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> InputMethodHandler for Otto<BackendData> {
     fn new_popup(&mut self, surface: PopupSurface) {
         if let Err(err) = self.popups.track_popup(PopupKind::from(surface)) {
             warn!("Failed to track popup: {}", err);
@@ -39,9 +39,9 @@ impl<BackendData: Backend> InputMethodHandler for ScreenComposer<BackendData> {
     }
 }
 
-delegate_input_method_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_input_method_manager!(@<BackendData: Backend + 'static> Otto<BackendData>);
 
-impl<BackendData: Backend> PointerConstraintsHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> PointerConstraintsHandler for Otto<BackendData> {
     fn cursor_position_hint(
         &mut self,
         _surface: &WlSurface,
@@ -63,4 +63,4 @@ impl<BackendData: Backend> PointerConstraintsHandler for ScreenComposer<BackendD
         }
     }
 }
-delegate_pointer_constraints!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_pointer_constraints!(@<BackendData: Backend + 'static> Otto<BackendData>);

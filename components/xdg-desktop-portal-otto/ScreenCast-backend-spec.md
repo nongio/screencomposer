@@ -4,11 +4,11 @@
 
 ## Scope
 
-This document captures the contract that `xdg-desktop-portal-screencomposer`
-implements as the **portal backend** for ScreenComposer. The upstream
+This document captures the contract that `xdg-desktop-portal-otto`
+implements as the **portal backend** for Otto. The upstream
 `xdg-desktop-portal` frontend exports `org.freedesktop.portal.ScreenCast` to
 clients and delegates each request to this service via
-`org.freedesktop.impl.portal.ScreenCast`. We in turn call ScreenComposer’s
+`org.freedesktop.impl.portal.ScreenCast`. We in turn call Otto’s
 private API to satisfy those requests. All types, defaults, and behavioural
 notes below mirror version **5** of the upstream spec so both sides remain
 aligned.
@@ -17,7 +17,7 @@ aligned.
 
 | Item | Value |
 | --- | --- |
-| Bus name | `org.freedesktop.impl.portal.desktop.screencomposer` (recommended) |
+| Bus name | `org.freedesktop.impl.portal.desktop.otto` (recommended) |
 | Object path | `/org/freedesktop/portal/desktop` |
 | Interface | `org.freedesktop.impl.portal.ScreenCast` |
 | Helper objects | `Request` and `Session` objects are created by the frontend and passed by object path |
@@ -27,7 +27,7 @@ aligned.
 
 ### `AvailableSourceTypes` (readable `u`)
 
-Bitmask describing which capture targets ScreenComposer can satisfy:
+Bitmask describing which capture targets Otto can satisfy:
 
 | Bit | Name | Meaning |
 | --- | --- | --- |
@@ -144,7 +144,7 @@ Any non-zero code should be accompanied by diagnostic logging.
 The backend spec intentionally lacks an `OpenPipeWireRemote` method. Clients call
 `org.freedesktop.portal.ScreenCast.OpenPipeWireRemote`, and the frontend must
 request a PipeWire FD from the backend synchronously (commonly via an internal
-IPC such as ScreenComposer’s private API) before handing it to the client. This
+IPC such as Otto’s private API) before handing it to the client. This
 file descriptor must stay valid for the duration of the session.
 
 ## References

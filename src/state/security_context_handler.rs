@@ -7,9 +7,9 @@ use smithay::{
     },
 };
 
-use super::{Backend, ClientState, ScreenComposer};
+use super::{Backend, ClientState, Otto};
 
-impl<BackendData: Backend + 'static> SecurityContextHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend + 'static> SecurityContextHandler for Otto<BackendData> {
     fn context_created(
         &mut self,
         source: SecurityContextListenerSource,
@@ -31,4 +31,4 @@ impl<BackendData: Backend + 'static> SecurityContextHandler for ScreenComposer<B
             .expect("Failed to init wayland socket source");
     }
 }
-delegate_security_context!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_security_context!(@<BackendData: Backend + 'static> Otto<BackendData>);

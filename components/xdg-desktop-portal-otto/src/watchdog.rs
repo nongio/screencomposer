@@ -11,8 +11,8 @@ use zbus::Connection;
 
 /// D-Bus interface for the compositor's health monitoring.
 #[zbus::proxy(
-    interface = "org.screencomposer.Compositor",
-    default_service = "org.screencomposer.Compositor",
+    interface = "org.otto.Compositor",
+    default_service = "org.otto.Compositor",
     default_path = "/org/screencomposer/Compositor"
 )]
 trait Compositor {

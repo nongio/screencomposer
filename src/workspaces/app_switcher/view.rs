@@ -256,8 +256,8 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for AppSwitcherVi
     }
     // fn on_motion(
     //     &self,
-    //     _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-    //     _data: &mut crate::ScreenComposer<Backend>,
+    //     _seat: &smithay::input::Seat<crate::Otto<Backend>>,
+    //     _data: &mut crate::Otto<Backend>,
     //     event: &smithay::input::pointer::MotionEvent,
     // ) {
     //     let id = self.view_layer.id().unwrap();
@@ -272,8 +272,8 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for AppSwitcherVi
     // }
     // fn on_button(
     //     &self,
-    //     _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-    //     _data: &mut crate::ScreenComposer<Backend>,
+    //     _seat: &smithay::input::Seat<crate::Otto<Backend>>,
+    //     _data: &mut crate::Otto<Backend>,
     //     event: &smithay::input::pointer::ButtonEvent,
     // ) {
     //     // let id = self.view_layer.id().unwrap();
