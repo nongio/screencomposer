@@ -25,7 +25,7 @@ use smithay::{
 };
 use tracing::{error, trace};
 
-use crate::{focus::KeyboardFocusTarget, state::Backend, ScreenComposer};
+use crate::{focus::KeyboardFocusTarget, state::Backend, Otto};
 
 use super::{
     place_new_window, FullscreenSurface, PointerMoveSurfaceGrab, PointerResizeSurfaceGrab,
@@ -44,7 +44,7 @@ impl OldGeometry {
     }
 }
 
-impl<BackendData: Backend> XwmHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> XwmHandler for Otto<BackendData> {
     fn xwm_state(&mut self, _xwm: XwmId) -> &mut X11Wm {
         self.xwm.as_mut().unwrap()
     }
@@ -336,7 +336,7 @@ impl<BackendData: Backend> XwmHandler for ScreenComposer<BackendData> {
     }
 }
 
-impl<BackendData: Backend> ScreenComposer<BackendData> {
+impl<BackendData: Backend> Otto<BackendData> {
     pub fn maximize_request_x11(&mut self, window: &X11Surface) {
         let Some(elem) = self
             .space

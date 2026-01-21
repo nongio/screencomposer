@@ -31,7 +31,7 @@ use tracing::warn;
 use crate::{
     focus::KeyboardFocusTarget,
     shell::TouchResizeSurfaceGrab,
-    state::{Backend, ScreenComposer},
+    state::{Backend, Otto},
     workspaces::ApplicationsInfo,
 };
 
@@ -41,7 +41,7 @@ use super::{
     WindowElement,
 };
 
-impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
     }
@@ -283,7 +283,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
     }
 
     fn move_request(&mut self, surface: ToplevelSurface, seat: wl_seat::WlSeat, serial: Serial) {
-        let seat: Seat<ScreenComposer<BackendData>> = Seat::from_resource(&seat).unwrap();
+        let seat: Seat<Otto<BackendData>> = Seat::from_resource(&seat).unwrap();
         self.move_request_xdg(&surface, &seat, serial)
     }
 
@@ -294,7 +294,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
         serial: Serial,
         edges: xdg_toplevel::ResizeEdge,
     ) {
-        let seat: Seat<ScreenComposer<BackendData>> = Seat::from_resource(&seat).unwrap();
+        let seat: Seat<Otto<BackendData>> = Seat::from_resource(&seat).unwrap();
         let sid = top_level.wl_surface().id();
         if let Some(touch) = seat.get_touch() {
             if touch.has_grab(serial) {
@@ -948,7 +948,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
     }
 
     fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
-        let seat: Seat<ScreenComposer<BackendData>> = Seat::from_resource(&seat).unwrap();
+        let seat: Seat<Otto<BackendData>> = Seat::from_resource(&seat).unwrap();
         let kind = PopupKind::Xdg(surface);
         if let Some(root) = find_popup_root_surface(&kind).ok().and_then(|root| {
             self.workspaces
@@ -997,7 +997,7 @@ impl<BackendData: Backend> XdgShellHandler for ScreenComposer<BackendData> {
     }
 }
 
-impl<BackendData: Backend> ScreenComposer<BackendData> {
+impl<BackendData: Backend> Otto<BackendData> {
     pub fn move_request_xdg(
         &mut self,
         surface: &ToplevelSurface,

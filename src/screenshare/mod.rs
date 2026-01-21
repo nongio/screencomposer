@@ -13,7 +13,7 @@
 //!
 //! ```text
 //! ┌─────────────────────────────────────────────────────────────┐
-//! │  org.screencomposer.ScreenCast (D-Bus)                      │
+//! │  org.otto.ScreenCast (D-Bus)                      │
 //! │       │                                                     │
 //! │       ▼                                                     │
 //! │  FrameTapManager ← receives frames from render loop         │
@@ -51,7 +51,7 @@ use zbus::zvariant::OwnedFd;
 ///
 /// Tracks all active streams for a D-Bus session.
 pub struct ScreencastSession {
-    /// The D-Bus session path (e.g., "/org/screencomposer/ScreenCast/session/1").
+    /// The D-Bus session path (e.g., "/org/otto/ScreenCast/session/1").
     pub session_id: String,
     /// Active streams indexed by output connector name.
     pub streams: HashMap<String, ActiveStream>,
@@ -129,10 +129,7 @@ impl ScreenshareManager {
     /// This spawns a dedicated tokio runtime thread that runs the zbus server.
     /// Returns a manager that can be stored in the compositor state.
     pub fn start<B: crate::state::Backend + 'static>(
-        loop_handle: &smithay::reexports::calloop::LoopHandle<
-            'static,
-            crate::state::ScreenComposer<B>,
-        >,
+        loop_handle: &smithay::reexports::calloop::LoopHandle<'static, crate::state::Otto<B>>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let (cmd_sender, cmd_receiver) = channel::<CompositorCommand>();
 
@@ -170,7 +167,7 @@ impl ScreenshareManager {
 
 /// Handle a command from the D-Bus service.
 fn handle_screenshare_command<B: crate::state::Backend + 'static>(
-    state: &mut crate::state::ScreenComposer<B>,
+    state: &mut crate::state::Otto<B>,
     cmd: CompositorCommand,
 ) {
     match cmd {

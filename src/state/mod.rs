@@ -109,7 +109,7 @@ use smithay::{
 };
 
 pub struct CalloopData<BackendData: Backend + 'static> {
-    pub state: ScreenComposer<BackendData>,
+    pub state: Otto<BackendData>,
     pub display_handle: DisplayHandle,
 }
 
@@ -153,12 +153,12 @@ impl ExclusiveZones {
     }
 }
 
-pub struct ScreenComposer<BackendData: Backend + 'static> {
+pub struct Otto<BackendData: Backend + 'static> {
     pub backend_data: BackendData,
     pub socket_name: Option<String>,
     pub display_handle: DisplayHandle,
     pub running: Arc<AtomicBool>,
-    pub handle: LoopHandle<'static, ScreenComposer<BackendData>>,
+    pub handle: LoopHandle<'static, Otto<BackendData>>,
     pub loop_wakeup_sender: ChannelSender<()>,
     pub loop_wakeup_pending: Arc<AtomicBool>,
 
@@ -180,7 +180,7 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub output_manager_state: OutputManagerState,
     pub primary_selection_state: PrimarySelectionState,
     pub data_control_state: DataControlState,
-    pub seat_state: SeatState<ScreenComposer<BackendData>>,
+    pub seat_state: SeatState<Otto<BackendData>>,
     pub keyboard_shortcuts_inhibit_state: KeyboardShortcutsInhibitState,
     pub shm_state: ShmState,
     pub viewporter_state: ViewporterState,
@@ -209,9 +209,9 @@ pub struct ScreenComposer<BackendData: Backend + 'static> {
     pub cursor_manager: CursorManager,
     pub cursor_texture_cache: CursorTextureCache,
     pub seat_name: String,
-    pub seat: Seat<ScreenComposer<BackendData>>,
+    pub seat: Seat<Otto<BackendData>>,
     pub clock: Clock<Monotonic>,
-    pub pointer: PointerHandle<ScreenComposer<BackendData>>,
+    pub pointer: PointerHandle<Otto<BackendData>>,
 
     #[cfg(feature = "xwayland")]
     pub xwm: Option<X11Wm>,
@@ -319,15 +319,15 @@ impl SwipeGestureState {
     }
 }
 
-impl<BackendData: Backend> OutputHandler for ScreenComposer<BackendData> {}
+impl<BackendData: Backend> OutputHandler for Otto<BackendData> {}
 
-impl<BackendData: Backend> ShmHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> ShmHandler for Otto<BackendData> {
     fn shm_state(&self) -> &ShmState {
         &self.shm_state
     }
 }
 
-impl<BackendData: Backend> KeyboardShortcutsInhibitHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> KeyboardShortcutsInhibitHandler for Otto<BackendData> {
     fn keyboard_shortcuts_inhibit_state(&mut self) -> &mut KeyboardShortcutsInhibitState {
         &mut self.keyboard_shortcuts_inhibit_state
     }
@@ -338,34 +338,34 @@ impl<BackendData: Backend> KeyboardShortcutsInhibitHandler for ScreenComposer<Ba
     }
 }
 
-impl<BackendData: Backend> XdgForeignHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> XdgForeignHandler for Otto<BackendData> {
     fn xdg_foreign_state(&mut self) -> &mut XdgForeignState {
         &mut self.xdg_foreign_state
     }
 }
 
-delegate_compositor!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-delegate_output!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-delegate_shm!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-delegate_cursor_shape!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-delegate_text_input_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-delegate_keyboard_shortcuts_inhibit!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-delegate_virtual_keyboard_manager!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-delegate_pointer_gestures!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-delegate_relative_pointer!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-delegate_viewporter!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-delegate_xdg_shell!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-delegate_layer_shell!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-delegate_presentation!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
-delegate_xdg_foreign!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_compositor!(@<BackendData: Backend + 'static> Otto<BackendData>);
+delegate_output!(@<BackendData: Backend + 'static> Otto<BackendData>);
+delegate_shm!(@<BackendData: Backend + 'static> Otto<BackendData>);
+delegate_cursor_shape!(@<BackendData: Backend + 'static> Otto<BackendData>);
+delegate_text_input_manager!(@<BackendData: Backend + 'static> Otto<BackendData>);
+delegate_keyboard_shortcuts_inhibit!(@<BackendData: Backend + 'static> Otto<BackendData>);
+delegate_virtual_keyboard_manager!(@<BackendData: Backend + 'static> Otto<BackendData>);
+delegate_pointer_gestures!(@<BackendData: Backend + 'static> Otto<BackendData>);
+delegate_relative_pointer!(@<BackendData: Backend + 'static> Otto<BackendData>);
+delegate_viewporter!(@<BackendData: Backend + 'static> Otto<BackendData>);
+delegate_xdg_shell!(@<BackendData: Backend + 'static> Otto<BackendData>);
+delegate_layer_shell!(@<BackendData: Backend + 'static> Otto<BackendData>);
+delegate_presentation!(@<BackendData: Backend + 'static> Otto<BackendData>);
+delegate_xdg_foreign!(@<BackendData: Backend + 'static> Otto<BackendData>);
 
-impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
+impl<BackendData: Backend + 'static> Otto<BackendData> {
     pub fn init(
-        display: Display<ScreenComposer<BackendData>>,
-        handle: LoopHandle<'static, ScreenComposer<BackendData>>,
+        display: Display<Otto<BackendData>>,
+        handle: LoopHandle<'static, Otto<BackendData>>,
         backend_data: BackendData,
         listen_on_socket: bool,
-    ) -> ScreenComposer<BackendData> {
+    ) -> Otto<BackendData> {
         let dh = display.handle();
 
         let clock = Clock::new();
@@ -512,7 +512,7 @@ impl<BackendData: Backend + 'static> ScreenComposer<BackendData> {
         // Get backend name before moving backend_data
         let backend_name = backend_data.backend_name();
 
-        let mut composer = ScreenComposer {
+        let mut composer = Otto {
             backend_data,
             display_handle: dh,
             socket_name,

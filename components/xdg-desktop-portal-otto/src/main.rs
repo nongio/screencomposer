@@ -9,9 +9,9 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 use zbus::ConnectionBuilder;
 
-use xdg_desktop_portal_screencomposer::portal::{desktop_path, ScreenCastPortal};
-use xdg_desktop_portal_screencomposer::screencomposer_client::ScreenComposerClient;
-use xdg_desktop_portal_screencomposer::watchdog::{Watchdog, WatchdogConfig};
+use xdg_desktop_portal_otto::portal::{desktop_path, ScreenCastPortal};
+use xdg_desktop_portal_otto::screencomposer_client::ScreenComposerClient;
+use xdg_desktop_portal_otto::watchdog::{Watchdog, WatchdogConfig};
 
 /// Well-known D-Bus name for the ScreenComposer portal backend.
 const DBUS_NAME: &str = "org.freedesktop.impl.portal.desktop.screencomposer";

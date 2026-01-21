@@ -1,4 +1,4 @@
-//! D-Bus service implementation for `org.screencomposer.ScreenCast`.
+//! D-Bus service implementation for `org.otto.ScreenCast`.
 //!
 //! Implements the backend D-Bus API that the portal expects, as defined in
 //! the portal's screencomposer_client module.
@@ -23,7 +23,7 @@ static STREAM_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// The main ScreenCast D-Bus interface.
 ///
-/// Implements `org.screencomposer.ScreenCast` at `/org/screencomposer/ScreenCast`.
+/// Implements `org.otto.ScreenCast` at `/org/otto/ScreenCast`.
 pub struct ScreenCastInterface {
     /// Channel to send commands to the compositor's main loop.
     compositor_tx: Sender<CompositorCommand>,
@@ -52,7 +52,7 @@ impl ScreenCastInterface {
     }
 }
 
-#[interface(name = "org.screencomposer.ScreenCast")]
+#[interface(name = "org.otto.ScreenCast")]
 impl ScreenCastInterface {
     /// Creates a new screencast session.
     ///
@@ -68,7 +68,7 @@ impl ScreenCastInterface {
             .unwrap_or(1); // Default to embedded cursor
 
         let session_id = SESSION_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let session_path = format!("/org/screencomposer/ScreenCast/session/{session_id}");
+        let session_path = format!("/org/otto/ScreenCast/session/{session_id}");
 
         info!(
             session_id,
@@ -145,7 +145,7 @@ impl ScreenCastInterface {
 
 /// Session D-Bus interface.
 ///
-/// Implements `org.screencomposer.ScreenCast.Session` at dynamic paths.
+/// Implements `org.otto.ScreenCast.Session` at dynamic paths.
 pub struct SessionInterface {
     /// The session's object path.
     session_path: String,
@@ -187,7 +187,7 @@ impl SessionInterface {
     }
 }
 
-#[interface(name = "org.screencomposer.ScreenCast.Session")]
+#[interface(name = "org.otto.ScreenCast.Session")]
 impl SessionInterface {
     /// Starts recording a monitor by connector name.
     async fn record_monitor(
@@ -413,7 +413,7 @@ impl SessionInterface {
 
 /// Stream D-Bus interface.
 ///
-/// Implements `org.screencomposer.ScreenCast.Stream` at dynamic paths.
+/// Implements `org.otto.ScreenCast.Stream` at dynamic paths.
 pub struct StreamInterface {
     /// The stream's object path.
     stream_path: String,
@@ -438,7 +438,7 @@ impl StreamInterface {
     }
 }
 
-#[interface(name = "org.screencomposer.ScreenCast.Stream")]
+#[interface(name = "org.otto.ScreenCast.Stream")]
 impl StreamInterface {
     /// Starts this individual stream.
     async fn start(&self) -> zbus::fdo::Result<()> {
@@ -512,7 +512,7 @@ impl StreamInterface {
 /// Provides a simple ping/pong mechanism for watchdog health checks.
 pub struct CompositorHealthInterface;
 
-#[interface(name = "org.screencomposer.Compositor")]
+#[interface(name = "org.otto.Compositor")]
 impl CompositorHealthInterface {
     /// Ping method for watchdog health checks.
     ///
@@ -531,25 +531,21 @@ pub async fn run_dbus_service(compositor_tx: Sender<CompositorCommand>) -> zbus:
 
     connection
         .object_server()
-        .at("/org/screencomposer/ScreenCast", screencast)
+        .at("/org/otto/ScreenCast", screencast)
         .await?;
 
-    connection
-        .request_name("org.screencomposer.ScreenCast")
-        .await?;
+    connection.request_name("org.otto.ScreenCast").await?;
 
     // Register the health interface for watchdog
     let health = CompositorHealthInterface;
     connection
         .object_server()
-        .at("/org/screencomposer/Compositor", health)
+        .at("/org/otto/Compositor", health)
         .await?;
 
-    connection
-        .request_name("org.screencomposer.Compositor")
-        .await?;
+    connection.request_name("org.otto.Compositor").await?;
 
-    info!("D-Bus service started at org.screencomposer.ScreenCast");
+    info!("D-Bus service started at org.otto.ScreenCast");
 
     // Keep the service running
     std::future::pending::<()>().await;

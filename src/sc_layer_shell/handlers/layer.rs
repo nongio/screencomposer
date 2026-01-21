@@ -8,7 +8,7 @@ use crate::{
         wl_fixed_to_f32, ScLayerUserData,
     },
     state::Backend,
-    ScreenComposer,
+    Otto,
 };
 
 use super::super::protocol::{
@@ -16,7 +16,7 @@ use super::super::protocol::{
     ScLayerShellHandler,
 };
 
-impl<BackendData: Backend> Dispatch<ScLayerV1, ScLayerUserData> for ScreenComposer<BackendData> {
+impl<BackendData: Backend> Dispatch<ScLayerV1, ScLayerUserData> for Otto<BackendData> {
     fn request(
         state: &mut Self,
         _client: &Client,

@@ -11,7 +11,7 @@ use wayland_protocols_wlr::foreign_toplevel::v1::server::{
     zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1},
 };
 
-use crate::state::{Backend, ScreenComposer};
+use crate::state::{Backend, Otto};
 
 /// Global state for wlr foreign toplevel management
 pub struct WlrForeignToplevelManagerState {
@@ -138,17 +138,16 @@ impl WlrForeignToplevelHandle {
 }
 
 // Implement GlobalDispatch for manager
-impl<BackendData: Backend>
-    GlobalDispatch<ZwlrForeignToplevelManagerV1, (), ScreenComposer<BackendData>>
-    for ScreenComposer<BackendData>
+impl<BackendData: Backend> GlobalDispatch<ZwlrForeignToplevelManagerV1, (), Otto<BackendData>>
+    for Otto<BackendData>
 {
     fn bind(
-        state: &mut ScreenComposer<BackendData>,
+        state: &mut Otto<BackendData>,
         _handle: &DisplayHandle,
         _client: &Client,
         resource: New<ZwlrForeignToplevelManagerV1>,
         _global_data: &(),
-        data_init: &mut DataInit<'_, ScreenComposer<BackendData>>,
+        data_init: &mut DataInit<'_, Otto<BackendData>>,
     ) {
         let manager = data_init.init(resource, ());
         state
@@ -161,7 +160,7 @@ impl<BackendData: Backend>
                 // Create a new handle resource for this manager
                 if let Some(client) = manager.client() {
                     let handle = client
-                        .create_resource::<ZwlrForeignToplevelHandleV1, _, ScreenComposer<BackendData>>(
+                        .create_resource::<ZwlrForeignToplevelHandleV1, _, Otto<BackendData>>(
                             _handle,
                             manager.version(),
                             wlr_handle.data.clone(),
@@ -188,17 +187,17 @@ impl<BackendData: Backend>
 }
 
 // Implement Dispatch for manager
-impl<BackendData: Backend> Dispatch<ZwlrForeignToplevelManagerV1, (), ScreenComposer<BackendData>>
-    for ScreenComposer<BackendData>
+impl<BackendData: Backend> Dispatch<ZwlrForeignToplevelManagerV1, (), Otto<BackendData>>
+    for Otto<BackendData>
 {
     fn request(
-        state: &mut ScreenComposer<BackendData>,
+        state: &mut Otto<BackendData>,
         _client: &Client,
         resource: &ZwlrForeignToplevelManagerV1,
         request: zwlr_foreign_toplevel_manager_v1::Request,
         _data: &(),
         _dhandle: &DisplayHandle,
-        _data_init: &mut DataInit<'_, ScreenComposer<BackendData>>,
+        _data_init: &mut DataInit<'_, Otto<BackendData>>,
     ) {
         if let zwlr_foreign_toplevel_manager_v1::Request::Stop = request {
             state
@@ -208,7 +207,7 @@ impl<BackendData: Backend> Dispatch<ZwlrForeignToplevelManagerV1, (), ScreenComp
     }
 
     fn destroyed(
-        state: &mut ScreenComposer<BackendData>,
+        state: &mut Otto<BackendData>,
         _client: wayland_server::backend::ClientId,
         resource: &ZwlrForeignToplevelManagerV1,
         _data: &(),
@@ -221,17 +220,17 @@ impl<BackendData: Backend> Dispatch<ZwlrForeignToplevelManagerV1, (), ScreenComp
 
 // Implement Dispatch for handle
 impl<BackendData: Backend>
-    Dispatch<ZwlrForeignToplevelHandleV1, Arc<Mutex<WlrToplevelData>>, ScreenComposer<BackendData>>
-    for ScreenComposer<BackendData>
+    Dispatch<ZwlrForeignToplevelHandleV1, Arc<Mutex<WlrToplevelData>>, Otto<BackendData>>
+    for Otto<BackendData>
 {
     fn request(
-        _state: &mut ScreenComposer<BackendData>,
+        _state: &mut Otto<BackendData>,
         _client: &Client,
         _resource: &ZwlrForeignToplevelHandleV1,
         request: zwlr_foreign_toplevel_handle_v1::Request,
         _data: &Arc<Mutex<WlrToplevelData>>,
         _dhandle: &DisplayHandle,
-        _data_init: &mut DataInit<'_, ScreenComposer<BackendData>>,
+        _data_init: &mut DataInit<'_, Otto<BackendData>>,
     ) {
         match request {
             zwlr_foreign_toplevel_handle_v1::Request::SetMaximized => {

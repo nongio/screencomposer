@@ -6,9 +6,9 @@ use smithay::{
     wayland::selection::data_device::{ClientDndGrabHandler, ServerDndGrabHandler},
 };
 
-use super::{Backend, ScreenComposer};
+use super::{Backend, Otto};
 
-impl<BackendData: Backend> ClientDndGrabHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> ClientDndGrabHandler for Otto<BackendData> {
     fn started(
         &mut self,
         _source: Option<WlDataSource>,
@@ -44,8 +44,8 @@ impl<BackendData: Backend> ClientDndGrabHandler for ScreenComposer<BackendData> 
         // self.dnd_view.layer.set_position(self.dnd_view.initial_position, Some(Transition::default()));
     }
 }
-impl<BackendData: Backend> ServerDndGrabHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> ServerDndGrabHandler for Otto<BackendData> {
     fn send(&mut self, _mime_type: String, _fd: OwnedFd, _seat: smithay::input::Seat<Self>) {
-        unreachable!("ScreenComposer doesn't do server-side grabs");
+        unreachable!("Otto doesn't do server-side grabs");
     }
 }

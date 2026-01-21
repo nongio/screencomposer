@@ -1,5 +1,5 @@
 [package]
-name = "wlcs_screencomposer"
+name = "wlcs_otto"
 version = "0.0.1"
 license = "MIT"
 publish = false
@@ -14,7 +14,7 @@ smithay = { path = "../../smithay", default-features = false, features = [
     "backend_egl",
     "use_system_lib",
 ] }
-screen-composer = { path = "../", default-features = false,  features = [
+otto = { path = "../", default-features = false,  features = [
     "udev",
     "winit",
     "debug",

@@ -106,7 +106,7 @@ while [ $WAIT_COUNT -lt 30 ]; do
     fi
     
     # Check if D-Bus service is available
-    if busctl --user list 2>/dev/null | grep -q "org.screencomposer.ScreenCast"; then
+    if busctl --user list 2>/dev/null | grep -q "org.otto.ScreenCast"; then
         log_info "Compositor D-Bus service is ready"
         break
     fi

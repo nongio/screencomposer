@@ -2,7 +2,7 @@
 
 This file provides guidance to agents when working with code in this repository.
 
-## Build & Run Commands for ScreenComposer
+## Build & Run Commands for Otto
 
 ```sh
 # Development (debug build, faster compilation)
@@ -27,19 +27,19 @@ RUST_LOG=debug cargo run -- --winit 2> winit.log
 ```
 
 ## Build apps and tools
-when working with the apps/tools in `components/apps-manager` and `components/xdg-desktop-portal-sc`, use these commands:
+when working with the apps/tools in `components/apps-manager` and `components/xdg-desktop-portal-otto`, use these commands:
 ```sh
 cargo build -p apps-manager
 
 cargo run -p apps-manager
 
-cargo build -p xdg-desktop-portal-sc
-cargo run -p xdg-desktop-portal-sc
+cargo build -p xdg-desktop-portal-otto
+cargo run -p xdg-desktop-portal-otto
 ```
 
-sometimes we need to test a component together with ScreenComposer, in that case use:
+sometimes we need to test a component together with Otto, in that case use:
 ```sh
-# First, run ScreenComposer in one terminal
+# First, run Otto in one terminal
 cargo run -- --winit &
 # Then, in another terminal, run the app/tool
 WAYLAND_DISPLAY=wayland-1 cargo run -p apps-manager
@@ -49,7 +49,7 @@ WAYLAND_DISPLAY=wayland-1 cargo run -p apps-manager
 
 ## Architecture Overview
 
-ScreenComposer is a Wayland compositor built on Smithay with a Skia-based rendering pipeline and the `lay-rs` engine for scene graph/layout management.
+Otto is a Wayland compositor built on Smithay with a Skia-based rendering pipeline and the `lay-rs` engine for scene graph/layout management.
 
 ### Backend System
 
@@ -59,13 +59,13 @@ Three interchangeable backends implement the same compositor logic:
 
 Each backend:
 1. Sets up its display/input subsystem
-2. Creates `ScreenComposer<BackendData>` state
+2. Creates `Otto<BackendData>` state
 3. Runs the event loop with calloop
 4. Calls the shared rendering pipeline
 
 ### Core State (`src/state/mod.rs`)
 
-`ScreenComposer<BackendData>` is the central compositor state containing:
+`Otto<BackendData>` is the central compositor state containing:
 - Wayland protocol handlers (via Smithay delegates)
 - `Workspaces` — multi-workspace window management with dock, app switcher, expose mode
 - `PopupManager` — popup surface management
@@ -91,22 +91,22 @@ The state module also contains protocol handler implementations (`*_handler.rs` 
 
 Located in `src/screenshare/`:
 - `mod.rs` — Session state management and command handlers
-- `dbus_service.rs` — D-Bus API (`org.screencomposer.ScreenCast`)
+- `dbus_service.rs` — D-Bus API (`org.otto.ScreenCast`)
 - `frame_tap.rs` — Frame capture hooks with damage tracking
 - `pipewire_stream.rs` — PipeWire stream with SHM buffer handling
 - `session_tap.rs` — Per-session frame filtering
 
-Portal backend: `components/xdg-desktop-portal-sc/` — separate binary that bridges xdg-desktop-portal to compositor
+Portal backend: `components/xdg-desktop-portal-otto/` — separate binary that bridges xdg-desktop-portal to compositor
 
 See [docs/screenshare.md](./docs/screenshare.md) for detailed architecture documentation.
 
 ## Configuration
 
 TOML-based config at runtime:
-- `sc_config.toml` — Default configuration
-- `sc_config.{backend}.toml` — Backend-specific overrides (e.g., `sc_config.winit.toml`)
+- `otto_config.toml` — Default configuration
+- `otto_config.{backend}.toml` — Backend-specific overrides (e.g., `otto_config.winit.toml`)
 
-See `sc_config.example.toml` for all options.
+See `otto_config.example.toml` for all options.
 
 ## Key Dependencies
 

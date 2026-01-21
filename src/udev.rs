@@ -20,7 +20,7 @@ use crate::{
     render_elements::workspace_render_elements::WorkspaceRenderElements,
     shell::WindowElement,
     skia_renderer::{SkiaGLesFbo, SkiaRenderer},
-    state::{post_repaint, take_presentation_feedback, Backend, ScreenComposer},
+    state::{post_repaint, take_presentation_feedback, Backend, Otto},
 };
 #[cfg(feature = "renderer_sync")]
 use smithay::backend::drm::compositor::PrimaryPlaneElement;
@@ -156,7 +156,7 @@ impl UdevData {
     }
 }
 
-impl DmabufHandler for ScreenComposer<UdevData> {
+impl DmabufHandler for Otto<UdevData> {
     fn dmabuf_state(&mut self) -> &mut DmabufState {
         &mut self.backend_data.dmabuf_state.as_mut().unwrap().0
     }
@@ -174,13 +174,13 @@ impl DmabufHandler for ScreenComposer<UdevData> {
             .and_then(|mut renderer| renderer.import_dmabuf(&dmabuf, None))
             .is_ok()
         {
-            let _ = notifier.successful::<ScreenComposer<UdevData>>();
+            let _ = notifier.successful::<Otto<UdevData>>();
         } else {
             notifier.failed();
         }
     }
 }
-delegate_dmabuf!(ScreenComposer<UdevData>);
+delegate_dmabuf!(Otto<UdevData>);
 
 impl Backend for UdevData {
     const HAS_RELATIVE_MOTION: bool = true;
@@ -494,7 +494,7 @@ pub fn run_udev() {
         fps_texture: None,
         debug_flags: DebugFlags::empty(),
     };
-    let mut state = ScreenComposer::init(display, event_loop.handle(), data, true);
+    let mut state = Otto::init(display, event_loop.handle(), data, true);
 
     /*
      * Initialize the udev backend
@@ -563,7 +563,7 @@ pub fn run_udev() {
                 {
                     let _ = backend.drm.activate(false);
                     if let Some(lease_global) = backend.leasing_global.as_mut() {
-                        lease_global.resume::<ScreenComposer<UdevData>>();
+                        lease_global.resume::<Otto<UdevData>>();
                     }
                     for surface in backend.surfaces.values_mut() {
                         if let Err(err) = surface.compositor.surface().reset_state() {
@@ -648,10 +648,8 @@ pub fn run_udev() {
         .build()
         .unwrap();
     let mut dmabuf_state = DmabufState::new();
-    let global = dmabuf_state.create_global_with_default_feedback::<ScreenComposer<UdevData>>(
-        &display_handle,
-        &default_feedback,
-    );
+    let global = dmabuf_state
+        .create_global_with_default_feedback::<Otto<UdevData>>(&display_handle, &default_feedback);
     state.backend_data.dmabuf_state = Some((dmabuf_state, global));
 
     let gpus = &mut state.backend_data.gpus;
@@ -733,7 +731,7 @@ pub fn run_udev() {
     }
 }
 
-impl DrmLeaseHandler for ScreenComposer<UdevData> {
+impl DrmLeaseHandler for Otto<UdevData> {
     fn drm_lease_state(&mut self, node: DrmNode) -> &mut DrmLeaseState {
         self.backend_data
             .backends
@@ -810,7 +808,7 @@ impl DrmLeaseHandler for ScreenComposer<UdevData> {
     }
 }
 
-delegate_drm_lease!(ScreenComposer<UdevData>);
+delegate_drm_lease!(Otto<UdevData>);
 
 pub type RenderSurface =
     GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, Option<OutputPresentationFeedback>>;
@@ -1011,7 +1009,7 @@ struct SurfaceData {
 impl Drop for SurfaceData {
     fn drop(&mut self) {
         if let Some(global) = self.global.take() {
-            self.dh.remove_global::<ScreenComposer<UdevData>>(global);
+            self.dh.remove_global::<Otto<UdevData>>(global);
         }
     }
 }
@@ -1097,7 +1095,7 @@ fn get_surface_dmabuf_feedback(
     })
 }
 
-impl ScreenComposer<UdevData> {
+impl Otto<UdevData> {
     fn device_added(&mut self, node: DrmNode, path: &Path) -> Result<(), DeviceAddError> {
         // Try to open the device
         let fd = self
@@ -1119,7 +1117,7 @@ impl ScreenComposer<UdevData> {
             .handle
             .insert_source(
                 notifier,
-                move |event, metadata, data: &mut ScreenComposer<_>| match event {
+                move |event, metadata, data: &mut Otto<_>| match event {
                     DrmEvent::VBlank(crtc) => {
                         profiling::scope!("vblank", &format!("{crtc:?}"));
                         data.frame_finish(node, crtc, metadata);
@@ -1153,16 +1151,13 @@ impl ScreenComposer<UdevData> {
                 non_desktop_connectors: Vec::new(),
                 render_node,
                 surfaces: HashMap::new(),
-                leasing_global: DrmLeaseState::new::<ScreenComposer<UdevData>>(
-                    &self.display_handle,
-                    &node,
-                )
-                .map_err(|err| {
-                    // TODO replace with inspect_err, once stable
-                    warn!(?err, "Failed to initialize drm lease global for: {}", node);
-                    err
-                })
-                .ok(),
+                leasing_global: DrmLeaseState::new::<Otto<UdevData>>(&self.display_handle, &node)
+                    .map_err(|err| {
+                        // TODO replace with inspect_err, once stable
+                        warn!(?err, "Failed to initialize drm lease global for: {}", node);
+                        err
+                    })
+                    .ok(),
                 active_leases: Vec::new(),
             },
         );
@@ -1236,7 +1231,7 @@ impl ScreenComposer<UdevData> {
                 .non_desktop_connectors
                 .push((connector.handle(), crtc));
             if let Some(lease_state) = device.leasing_global.as_mut() {
-                lease_state.add_connector::<ScreenComposer<UdevData>>(
+                lease_state.add_connector::<Otto<UdevData>>(
                     connector.handle(),
                     output_name,
                     format!("{} {}", make, model),
@@ -1356,7 +1351,7 @@ impl ScreenComposer<UdevData> {
             self.scene_element.set_size(w, h);
             self.layers_engine.scene_set_size(w, h);
 
-            let global = output.create_global::<ScreenComposer<UdevData>>(&self.display_handle);
+            let global = output.create_global::<Otto<UdevData>>(&self.display_handle);
 
             let x = self.workspaces.outputs().fold(0, |acc, o| {
                 acc + self.workspaces.output_geometry(o).unwrap().size.w
@@ -1585,7 +1580,7 @@ impl ScreenComposer<UdevData> {
         // drop the backends on this side
         if let Some(mut backend_data) = self.backend_data.backends.remove(&node) {
             if let Some(mut leasing_global) = backend_data.leasing_global.take() {
-                leasing_global.disable_global::<ScreenComposer<UdevData>>();
+                leasing_global.disable_global::<Otto<UdevData>>();
             }
 
             self.backend_data
@@ -2020,7 +2015,7 @@ impl ScreenComposer<UdevData> {
         &mut self,
         node: DrmNode,
         crtc: crtc::Handle,
-        evt_handle: LoopHandle<'static, ScreenComposer<UdevData>>,
+        evt_handle: LoopHandle<'static, Otto<UdevData>>,
     ) {
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
             device

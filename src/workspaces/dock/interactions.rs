@@ -16,8 +16,8 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
     }
     fn on_motion(
         &self,
-        _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-        _data: &mut crate::ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<crate::Otto<Backend>>,
+        _data: &mut crate::Otto<Backend>,
         event: &smithay::input::pointer::MotionEvent,
     ) {
         if self.dragging.load(std::sync::atomic::Ordering::SeqCst) {
@@ -32,8 +32,8 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for DockView {
     }
     fn on_button(
         &self,
-        _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-        state: &mut crate::ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<crate::Otto<Backend>>,
+        state: &mut crate::Otto<Backend>,
         event: &smithay::input::pointer::ButtonEvent,
     ) {
         match event.state {

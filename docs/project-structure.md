@@ -2,7 +2,7 @@
 
 ## Overview
 
-ScreenComposer is a Wayland compositor built with Smithay. The codebase follows a modular architecture separating backends, rendering, shell handling, and UI components.
+Otto is a Wayland compositor built with Smithay. The codebase follows a modular architecture separating backends, rendering, shell handling, and UI components.
 
 ## Directory Layout
 
@@ -20,7 +20,7 @@ src/                    # Main crate source
 ├── sc_layer_shell/     # Custom layer shell protocol
 └── screenshare/        # Screen sharing via PipeWire (see docs/screenshare.md)
 components/             # Standalone components
-└── xdg-desktop-portal-sc/  # XDG Desktop Portal backend
+└── xdg-desktop-portal-otto/  # XDG Desktop Portal backend
 
 docs/                   # Design documentation
 assets/                 # Static assets (icons, images)
@@ -41,8 +41,8 @@ sample-clients/         # Example Wayland client applications
 
 ```sh
 cargo build
-./target/release/screen-composer --winit   # Winit backend (development)
-./target/release/screen-composer --tty-udev # Native DRM/GBM (production)
+./target/release/otto --winit   # Winit backend (development)
+./target/release/otto --tty-udev # Native DRM/GBM (production)
 ```
 
 ## Feature Flags

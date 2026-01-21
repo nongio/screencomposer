@@ -8,9 +8,9 @@ use smithay::{
     },
 };
 
-use super::{Backend, ScreenComposer};
+use super::{Backend, Otto};
 
-impl<BackendData: Backend> FractionalScaleHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> FractionalScaleHandler for Otto<BackendData> {
     fn new_fractional_scale(
         &mut self,
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
@@ -62,4 +62,4 @@ impl<BackendData: Backend> FractionalScaleHandler for ScreenComposer<BackendData
         });
     }
 }
-delegate_fractional_scale!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_fractional_scale!(@<BackendData: Backend + 'static> Otto<BackendData>);

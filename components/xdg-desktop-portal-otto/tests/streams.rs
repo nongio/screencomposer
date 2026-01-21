@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
 
-use xdg_desktop_portal_screencomposer::portal::{
+use xdg_desktop_portal_otto::portal::{
     build_streams_value_from_descriptors, StreamDescriptor, SOURCE_TYPE_MONITOR,
 };
 use zbus::zvariant::{OwnedValue, Value};

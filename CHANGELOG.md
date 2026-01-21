@@ -72,7 +72,7 @@ All notable changes to this project will be documented in this file.
 - Add configurable icon_theme option
 - Add wlr-foreign-toplevel-management protocol support
 - Support monitor resolution and refresh rate from config
-- Xdg-desktop-portal for screencomposer
+- Xdg-desktop-portal for otto
 - Screenshare fullscreen
 - Session script for dbus and keyring
 - Script for aumated testing

@@ -265,7 +265,7 @@ impl WindowSelectorView {
 
     fn current_pointer_or_default<Backend: crate::state::Backend>(
         &self,
-        composer: &crate::ScreenComposer<Backend>,
+        composer: &crate::Otto<Backend>,
     ) -> (f32, f32) {
         if let Some(location) = *self.cursor_location.read().unwrap() {
             location
@@ -376,7 +376,7 @@ impl WindowSelectorView {
     fn try_activate_drag<Backend: crate::state::Backend>(
         &self,
         pointer_location: (f32, f32),
-        screencomposer: &crate::ScreenComposer<Backend>,
+        otto: &crate::Otto<Backend>,
     ) -> Option<ObjectId> {
         // If already dragging, return the current window_id
         if self.drag_state.read().unwrap().is_some() {
@@ -389,7 +389,7 @@ impl WindowSelectorView {
         }
 
         // Do not allow dragging when the current workspace is fullscreen
-        if screencomposer
+        if otto
             .workspaces
             .get_current_workspace()
             .get_fullscreen_mode()
@@ -401,7 +401,7 @@ impl WindowSelectorView {
         let selection = selection?;
 
         if let Some(window_id) = &selection.window_id {
-            let window_in_space = screencomposer
+            let window_in_space = otto
                 .workspaces
                 .space()
                 .elements()
@@ -411,7 +411,7 @@ impl WindowSelectorView {
                 return None;
             }
 
-            if let Some(window) = screencomposer.workspaces.windows_map.get(window_id) {
+            if let Some(window) = otto.workspaces.windows_map.get(window_id) {
                 if window.is_fullscreen() {
                     return None;
                 }
@@ -750,8 +750,8 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
     }
     fn on_motion(
         &self,
-        _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-        screencomposer: &mut crate::ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<crate::Otto<Backend>>,
+        otto: &mut crate::Otto<Backend>,
         event: &smithay::input::pointer::MotionEvent,
     ) {
         // println!("on_motion");
@@ -767,10 +767,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
             self.update_drag_position(cursor_point);
 
             // Check if dragged window intersects with any workspace preview drop target
-            let drop_targets = screencomposer
-                .workspaces
-                .workspace_selector_view
-                .get_drop_targets();
+            let drop_targets = otto.workspaces.workspace_selector_view.get_drop_targets();
             let mut new_drop_target = None;
 
             // Get the dragged window's bounds
@@ -779,7 +776,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
 
                 for target in drop_targets {
                     // Map view index to workspace position
-                    let Some(target_pos) = screencomposer
+                    let Some(target_pos) = otto
                         .workspaces
                         .workspace_position_by_view_index(target.workspace_index)
                     else {
@@ -789,11 +786,11 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                         );
                         continue;
                     };
-                    if target_pos == screencomposer.workspaces.get_current_workspace_index() {
+                    if target_pos == otto.workspaces.get_current_workspace_index() {
                         continue; // Skip current workspace
                     }
                     // Skip fullscreen workspaces - can't drop windows into them
-                    if let Some(ws) = screencomposer.workspaces.get_workspace_at(target_pos) {
+                    if let Some(ws) = otto.workspaces.get_workspace_at(target_pos) {
                         if ws.get_fullscreen_mode() {
                             continue;
                         }
@@ -817,8 +814,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                 if let Some(drag_state) = self.drag_state.write().unwrap().as_mut() {
                     drag_state.current_drop_target = new_drop_target;
                 }
-                screencomposer
-                    .workspaces
+                otto.workspaces
                     .workspace_selector_view
                     .set_drop_hover(new_drop_target);
             }
@@ -836,15 +832,11 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                     let delta_x = (cursor_point.0 - start.0).abs();
                     let delta_y = (cursor_point.1 - start.1).abs();
                     if delta_x >= drag_threshold || delta_y >= drag_threshold {
-                        if let Some(window_id) =
-                            self.try_activate_drag(cursor_point, screencomposer)
-                        {
-                            screencomposer
-                                .workspaces
-                                .start_window_selector_drag(&window_id);
+                        if let Some(window_id) = self.try_activate_drag(cursor_point, otto) {
+                            otto.workspaces.start_window_selector_drag(&window_id);
                             self.update_drag_position(cursor_point);
                             let cursor = CursorImageStatus::Named(CursorIcon::Move);
-                            screencomposer.set_cursor(&cursor);
+                            otto.set_cursor(&cursor);
                             return;
                         }
                     }
@@ -862,11 +854,11 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                 {
                     state.current_selection = Some(rect.index);
                     let cursor = CursorImageStatus::Named(CursorIcon::Pointer);
-                    screencomposer.set_cursor(&cursor);
+                    otto.set_cursor(&cursor);
                     true
                 } else {
                     let cursor = CursorImageStatus::Named(CursorIcon::default());
-                    screencomposer.set_cursor(&cursor);
+                    otto.set_cursor(&cursor);
                     false
                 }
             })
@@ -879,14 +871,14 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
     }
     fn on_button(
         &self,
-        _seat: &smithay::input::Seat<crate::ScreenComposer<Backend>>,
-        screencomposer: &mut crate::ScreenComposer<Backend>,
+        _seat: &smithay::input::Seat<crate::Otto<Backend>>,
+        otto: &mut crate::Otto<Backend>,
         event: &smithay::input::pointer::ButtonEvent,
     ) {
         match event.state {
             ButtonState::Pressed => {
                 self.pointer_down.store(true, Ordering::SeqCst);
-                let pointer_location = self.current_pointer_or_default(screencomposer);
+                let pointer_location = self.current_pointer_or_default(otto);
                 *self.press_location.write().unwrap() = Some(pointer_location);
 
                 let state = self.view.get_state();
@@ -909,13 +901,10 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                         let drop_target = drag_state.current_drop_target;
 
                         // Clear drop hover visual feedback
-                        screencomposer
-                            .workspaces
-                            .workspace_selector_view
-                            .set_drop_hover(None);
+                        otto.workspaces.workspace_selector_view.set_drop_hover(None);
 
                         if let Some(target_workspace) = drop_target {
-                            let target_pos = screencomposer
+                            let target_pos = otto
                                 .workspaces
                                 .workspace_position_by_view_index(target_workspace);
                             if target_pos.is_none() {
@@ -927,43 +916,37 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                             }
                             // Drop window onto target workspace
                             if let (Some(window_element), Some(target_pos)) = (
-                                screencomposer
-                                    .workspaces
+                                otto.workspaces
                                     .windows_map
                                     .get(&drag_state.window_id)
                                     .cloned(),
                                 target_pos,
                             ) {
                                 // Get position in current workspace before moving
-                                let position = screencomposer
+                                let position = otto
                                     .workspaces
                                     .space()
                                     .element_location(&window_element)
                                     .unwrap_or_default();
 
                                 // Clear dragging state
-                                *screencomposer
-                                    .workspaces
-                                    .expose_dragged_window
-                                    .lock()
-                                    .unwrap() = None;
+                                *otto.workspaces.expose_dragged_window.lock().unwrap() = None;
 
                                 // Move window to target workspace
                                 // Note: unmap_window no longer removes the mirror layer to avoid SlotMap key issues
-                                screencomposer.workspaces.move_window_to_workspace(
+                                otto.workspaces.move_window_to_workspace(
                                     &window_element,
                                     target_pos,
                                     position,
                                 );
                                 // Refresh expose view
-                                screencomposer.workspaces.expose_set_visible(true);
+                                otto.workspaces.expose_set_visible(true);
                             } else {
                                 tracing::warn!(
                                     "Expose drop: window {:?} not found in windows_map, ending drag only",
                                     drag_state.window_id
                                 );
-                                screencomposer
-                                    .workspaces
+                                otto.workspaces
                                     .end_window_selector_drag(&drag_state.window_id);
                             }
                         } else {
@@ -974,14 +957,13 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                             // No drop target - restore to original position
                             self.restore_rect_to_state(drag_state.selection.clone());
                             self.restore_layer_order_from_state();
-                            screencomposer
-                                .workspaces
+                            otto.workspaces
                                 .end_window_selector_drag(&drag_state.window_id);
-                            screencomposer.workspaces.expose_update_if_needed();
+                            otto.workspaces.expose_update_if_needed();
                         }
                     }
                     self.clear_press_context();
-                    screencomposer.set_cursor(&CursorImageStatus::default_named());
+                    otto.set_cursor(&CursorImageStatus::default_named());
                     return;
                 }
                 self.clear_press_context();
@@ -990,13 +972,13 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WindowSelecto
                 if let Some(index) = selector_state.current_selection {
                     if let Some(window_selection) = selector_state.rects.get(index) {
                         if let Some(wid) = window_selection.window_id.clone() {
-                            screencomposer.workspaces.focus_app_with_window(&wid);
-                            screencomposer.set_keyboard_focus_on_surface(&wid);
+                            otto.workspaces.focus_app_with_window(&wid);
+                            otto.set_keyboard_focus_on_surface(&wid);
                         }
                     }
                 }
-                screencomposer.workspaces.expose_set_visible(false);
-                screencomposer.set_cursor(&CursorImageStatus::default_named());
+                otto.workspaces.expose_set_visible(false);
+                otto.set_cursor(&CursorImageStatus::default_named());
                 let state = WindowSelectorState {
                     current_selection: None,
                     ..selector_state

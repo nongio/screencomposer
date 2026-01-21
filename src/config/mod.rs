@@ -105,13 +105,13 @@ impl Config {
         let mut merged =
             toml::Value::try_from(Self::default()).expect("default config is always valid toml");
 
-        if let Ok(content) = std::fs::read_to_string("sc_config.toml") {
+        if let Ok(content) = std::fs::read_to_string("otto_config.toml") {
             match content.parse::<toml::Value>() {
                 Ok(mut value) => {
                     sanitize_remap_tables(&mut value);
                     merge_value(&mut merged, value)
                 }
-                Err(err) => warn!("Failed to parse sc_config.toml: {err}"),
+                Err(err) => warn!("Failed to parse otto_config.toml: {err}"),
             }
         }
 
@@ -145,7 +145,7 @@ impl Config {
 
         // Environment variables for Wayland session
         std::env::set_var("XDG_SESSION_TYPE", "wayland");
-        std::env::set_var("XDG_CURRENT_DESKTOP", "screencomposer");
+        std::env::set_var("XDG_CURRENT_DESKTOP", "otto");
 
         tracing::info!("Config initialized: {:#?}", config.theme_scheme);
         config
@@ -255,13 +255,16 @@ fn merge_value(base: &mut toml::Value, overrides: toml::Value) {
 
 fn backend_override_candidates(backend: &str) -> Vec<String> {
     match backend {
-        "winit" => vec!["sc_config.winit.toml".into()],
+        "winit" => vec!["otto_config.winit.toml".into()],
         "tty-udev" => vec![
-            "sc_config.tty-udev.toml".into(),
-            "sc_config.udev.toml".into(),
+            "otto_config.tty-udev.toml".into(),
+            "otto_config.udev.toml".into(),
         ],
-        "x11" => vec!["sc_config.x11.toml".into(), "sc_config.udev.toml".into()],
-        other => vec![format!("sc_config.{other}.toml")],
+        "x11" => vec![
+            "otto_config.x11.toml".into(),
+            "otto_config.udev.toml".into(),
+        ],
+        other => vec![format!("otto_config.{other}.toml")],
     }
 }
 

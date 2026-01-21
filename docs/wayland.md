@@ -1,8 +1,8 @@
 # Wayland globals and where they are implemented
 
-This page lists the Wayland globals exposed by ScreenComposer and points to the code that wires them up.
+This page lists the Wayland globals exposed by Otto and points to the code that wires them up.
 
-Most globals are initialized in `ScreenComposer::init` within `src/state/mod.rs`, and many of the event handlers are connected via `delegate_*` macros.
+Most globals are initialized in `Otto::init` within `src/state/mod.rs`, and many of the event handlers are connected via `delegate_*` macros.
 
 ## Core and compositor
 - wl_compositor — `CompositorState::new::<Self>(&dh)`; `delegate_compositor!`

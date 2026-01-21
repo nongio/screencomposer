@@ -1,6 +1,6 @@
-# DRM Plane Selection in ScreenComposer
+# DRM Plane Selection in Otto
 
-This document explains how Smithay's `DrmCompositor` selects render elements that can be assigned to hardware DRM planes for direct scanout, and how ScreenComposer configures this functionality.
+This document explains how Smithay's `DrmCompositor` selects render elements that can be assigned to hardware DRM planes for direct scanout, and how Otto configures this functionality.
 
 ## Overview
 
@@ -8,7 +8,7 @@ Hardware planes are dedicated display hardware layers that can composite surface
 
 ## Compositor Modes
 
-ScreenComposer supports two compositor modes, configured via `compositor_mode` in the config:
+Otto supports two compositor modes, configured via `compositor_mode` in the config:
 
 ### 1. Surface Mode (`compositor_mode == "surface"`)
 - Uses `GbmBufferedSurface` with simple swapchain rendering
@@ -154,7 +154,7 @@ Elements that cannot be assigned to planes are:
 
 ## Dmabuf Feedback for Scanout Optimization
 
-ScreenComposer provides dmabuf feedback to Wayland clients to help them allocate buffers in scanout-compatible formats:
+Otto provides dmabuf feedback to Wayland clients to help them allocate buffers in scanout-compatible formats:
 
 ```rust
 fn get_surface_dmabuf_feedback(
@@ -294,6 +294,6 @@ Look for trace messages like:
 ## References
 
 - Smithay's `DrmCompositor` implementation handles the actual plane assignment algorithm
-- The decision logic is internal to Smithay and not directly visible in ScreenComposer
-- ScreenComposer's role is to configure the compositor and provide properly formatted render elements
+- The decision logic is internal to Smithay and not directly visible in Otto
+- Otto's role is to configure the compositor and provide properly formatted render elements
 - See `smithay/src/backend/drm/compositor/mod.rs` for full plane assignment implementation

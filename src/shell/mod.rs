@@ -36,7 +36,7 @@ use smithay::{
 };
 
 use crate::{
-    state::{Backend, ScreenComposer},
+    state::{Backend, Otto},
     workspaces::Workspaces,
     ClientState,
 };
@@ -85,11 +85,11 @@ impl FullscreenSurface {
     }
 }
 
-impl<BackendData: Backend> BufferHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> BufferHandler for Otto<BackendData> {
     fn buffer_destroyed(&mut self, _buffer: &WlBuffer) {}
 }
 
-impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> CompositorHandler for Otto<BackendData> {
     fn compositor_state(&mut self) -> &mut CompositorState {
         &mut self.compositor_state
     }
@@ -264,7 +264,7 @@ impl<BackendData: Backend> CompositorHandler for ScreenComposer<BackendData> {
     }
 }
 
-impl<BackendData: Backend> WlrLayerShellHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> WlrLayerShellHandler for Otto<BackendData> {
     fn shell_state(&mut self) -> &mut WlrLayerShellState {
         &mut self.layer_shell_state
     }
@@ -354,8 +354,8 @@ pub struct SurfaceData {
 
 fn ensure_initial_configure<Backend: crate::state::Backend>(
     surface: &WlSurface,
-    state: &mut ScreenComposer<Backend>, // space: &Space<WindowElement>,
-                                         // popups: &mut PopupManager,
+    state: &mut Otto<Backend>, // space: &Space<WindowElement>,
+                               // popups: &mut PopupManager,
 ) {
     with_surface_tree_upward(
         surface,

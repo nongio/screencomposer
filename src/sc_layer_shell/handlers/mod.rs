@@ -2,7 +2,7 @@ use smithay::reexports::wayland_server::{
     Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
 };
 
-use crate::{state::Backend, ScreenComposer};
+use crate::{state::Backend, Otto};
 use lay_rs::prelude::Transition;
 
 use super::protocol::{
@@ -22,7 +22,7 @@ fn wl_fixed_to_f32(fixed: f64) -> f32 {
 
 // Helper to find active transaction for a client
 fn find_active_transaction_for_client<BackendData: Backend>(
-    state: &ScreenComposer<BackendData>,
+    state: &Otto<BackendData>,
     client: &Client,
 ) -> Option<smithay::reexports::wayland_server::backend::ObjectId> {
     state
@@ -34,7 +34,7 @@ fn find_active_transaction_for_client<BackendData: Backend>(
 
 // Helper to accumulate a layer change in a transaction
 fn accumulate_change<BackendData: Backend>(
-    state: &mut ScreenComposer<BackendData>,
+    state: &mut Otto<BackendData>,
     txn_id: smithay::reexports::wayland_server::backend::ObjectId,
     change: lay_rs::engine::AnimatedNodeChange,
 ) {
@@ -45,7 +45,7 @@ fn accumulate_change<BackendData: Backend>(
 
 // Helper to trigger window redraw after layer property change
 fn trigger_window_update<BackendData: Backend>(
-    state: &mut ScreenComposer<BackendData>,
+    state: &mut Otto<BackendData>,
     surface_id: &smithay::reexports::wayland_server::backend::ObjectId,
 ) {
     if let Some(window) = state.workspaces.get_window_for_surface(surface_id).cloned() {
@@ -55,7 +55,7 @@ fn trigger_window_update<BackendData: Backend>(
 
 // Helper to commit a transaction and apply all accumulated changes
 fn commit_transaction<BackendData: Backend>(
-    state: &mut ScreenComposer<BackendData>,
+    state: &mut Otto<BackendData>,
     txn_id: smithay::reexports::wayland_server::backend::ObjectId,
 ) {
     let Some(txn) = state.sc_transactions.remove(&txn_id) else {
@@ -113,10 +113,10 @@ pub mod transactions;
 pub fn create_layer_shell_global<BackendData: Backend + 'static>(
     display: &DisplayHandle,
 ) -> smithay::reexports::wayland_server::backend::GlobalId {
-    display.create_global::<ScreenComposer<BackendData>, ScLayerShellV1, _>(1, ())
+    display.create_global::<Otto<BackendData>, ScLayerShellV1, _>(1, ())
 }
 
-impl<BackendData: Backend> GlobalDispatch<ScLayerShellV1, ()> for ScreenComposer<BackendData> {
+impl<BackendData: Backend> GlobalDispatch<ScLayerShellV1, ()> for Otto<BackendData> {
     fn bind(
         _state: &mut Self,
         _handle: &DisplayHandle,
@@ -129,7 +129,7 @@ impl<BackendData: Backend> GlobalDispatch<ScLayerShellV1, ()> for ScreenComposer
     }
 }
 
-impl<BackendData: Backend> Dispatch<ScLayerShellV1, ()> for ScreenComposer<BackendData> {
+impl<BackendData: Backend> Dispatch<ScLayerShellV1, ()> for Otto<BackendData> {
     fn request(
         state: &mut Self,
         _client: &Client,

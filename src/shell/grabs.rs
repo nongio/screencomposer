@@ -22,11 +22,11 @@ use smithay::{utils::Rectangle, xwayland::xwm::ResizeEdge as X11ResizeEdge};
 use super::{SurfaceData, WindowElement};
 use crate::{
     focus::PointerFocusTarget,
-    state::{Backend, ScreenComposer},
+    state::{Backend, Otto},
 };
 
 pub struct PointerResizeSurfaceGrab<B: Backend + 'static> {
-    pub start_data: PointerGrabStartData<ScreenComposer<B>>,
+    pub start_data: PointerGrabStartData<Otto<B>>,
     pub window: WindowElement,
     pub edges: ResizeEdge,
     pub initial_window_location: Point<i32, Logical>,
@@ -35,16 +35,16 @@ pub struct PointerResizeSurfaceGrab<B: Backend + 'static> {
 }
 
 pub struct PointerMoveSurfaceGrab<B: Backend + 'static> {
-    pub start_data: PointerGrabStartData<ScreenComposer<B>>,
+    pub start_data: PointerGrabStartData<Otto<B>>,
     pub window: WindowElement,
     pub initial_window_location: Point<i32, Logical>,
 }
 
-impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
+impl<B: Backend> PointerGrab<Otto<B>> for PointerMoveSurfaceGrab<B> {
     fn motion(
         &mut self,
-        state: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        state: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         _focus: Option<(PointerFocusTarget<B>, Point<f64, Logical>)>,
         event: &MotionEvent,
     ) {
@@ -79,8 +79,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
 
     fn relative_motion(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         focus: Option<(PointerFocusTarget<B>, Point<f64, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
@@ -89,8 +89,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
 
     fn button(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &ButtonEvent,
     ) {
         handle.button(data, event);
@@ -102,25 +102,21 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
 
     fn axis(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         details: AxisFrame,
     ) {
         handle.axis(data, details)
     }
 
-    fn frame(
-        &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
-    ) {
+    fn frame(&mut self, data: &mut Otto<B>, handle: &mut PointerInnerHandle<'_, Otto<B>>) {
         handle.frame(data);
     }
 
     fn gesture_swipe_begin(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &GestureSwipeBeginEvent,
     ) {
         handle.gesture_swipe_begin(data, event);
@@ -128,8 +124,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
 
     fn gesture_swipe_update(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &GestureSwipeUpdateEvent,
     ) {
         handle.gesture_swipe_update(data, event);
@@ -137,8 +133,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
 
     fn gesture_swipe_end(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &GestureSwipeEndEvent,
     ) {
         handle.gesture_swipe_end(data, event);
@@ -146,8 +142,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
 
     fn gesture_pinch_begin(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &GesturePinchBeginEvent,
     ) {
         handle.gesture_pinch_begin(data, event);
@@ -155,8 +151,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
 
     fn gesture_pinch_update(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &GesturePinchUpdateEvent,
     ) {
         handle.gesture_pinch_update(data, event);
@@ -164,8 +160,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
 
     fn gesture_pinch_end(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &GesturePinchEndEvent,
     ) {
         handle.gesture_pinch_end(data, event);
@@ -173,8 +169,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
 
     fn gesture_hold_begin(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &GestureHoldBeginEvent,
     ) {
         handle.gesture_hold_begin(data, event);
@@ -182,34 +178,32 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerMoveSurfaceGrab<B> {
 
     fn gesture_hold_end(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &GestureHoldEndEvent,
     ) {
         handle.gesture_hold_end(data, event);
     }
 
-    fn start_data(&self) -> &PointerGrabStartData<ScreenComposer<B>> {
+    fn start_data(&self) -> &PointerGrabStartData<Otto<B>> {
         &self.start_data
     }
-    fn unset(&mut self, _data: &mut ScreenComposer<B>) {}
+    fn unset(&mut self, _data: &mut Otto<B>) {}
 }
 
 pub struct TouchMoveSurfaceGrab<BackendData: Backend + 'static> {
-    pub start_data: TouchGrabStartData<ScreenComposer<BackendData>>,
+    pub start_data: TouchGrabStartData<Otto<BackendData>>,
     pub window: WindowElement,
     pub initial_window_location: Point<i32, Logical>,
 }
 
-impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
-    for TouchMoveSurfaceGrab<BackendData>
-{
+impl<BackendData: Backend> TouchGrab<Otto<BackendData>> for TouchMoveSurfaceGrab<BackendData> {
     fn down(
         &mut self,
-        _data: &mut ScreenComposer<BackendData>,
-        _handle: &mut smithay::input::touch::TouchInnerHandle<'_, ScreenComposer<BackendData>>,
+        _data: &mut Otto<BackendData>,
+        _handle: &mut smithay::input::touch::TouchInnerHandle<'_, Otto<BackendData>>,
         _focus: Option<(
-            <ScreenComposer<BackendData> as smithay::input::SeatHandler>::TouchFocus,
+            <Otto<BackendData> as smithay::input::SeatHandler>::TouchFocus,
             Point<f64, Logical>,
         )>,
         _event: &smithay::input::touch::DownEvent,
@@ -219,8 +213,8 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
 
     fn up(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut smithay::input::touch::TouchInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut Otto<BackendData>,
+        handle: &mut smithay::input::touch::TouchInnerHandle<'_, Otto<BackendData>>,
         event: &smithay::input::touch::UpEvent,
         seq: Serial,
     ) {
@@ -234,10 +228,10 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
 
     fn motion(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        _handle: &mut smithay::input::touch::TouchInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut Otto<BackendData>,
+        _handle: &mut smithay::input::touch::TouchInnerHandle<'_, Otto<BackendData>>,
         _focus: Option<(
-            <ScreenComposer<BackendData> as smithay::input::SeatHandler>::TouchFocus,
+            <Otto<BackendData> as smithay::input::SeatHandler>::TouchFocus,
             Point<f64, Logical>,
         )>,
         event: &smithay::input::touch::MotionEvent,
@@ -255,16 +249,16 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
 
     fn frame(
         &mut self,
-        _data: &mut ScreenComposer<BackendData>,
-        _handle: &mut smithay::input::touch::TouchInnerHandle<'_, ScreenComposer<BackendData>>,
+        _data: &mut Otto<BackendData>,
+        _handle: &mut smithay::input::touch::TouchInnerHandle<'_, Otto<BackendData>>,
         _seq: Serial,
     ) {
     }
 
     fn cancel(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut smithay::input::touch::TouchInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut Otto<BackendData>,
+        handle: &mut smithay::input::touch::TouchInnerHandle<'_, Otto<BackendData>>,
         seq: Serial,
     ) {
         handle.cancel(data, seq);
@@ -273,8 +267,8 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
 
     fn shape(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut smithay::input::touch::TouchInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut Otto<BackendData>,
+        handle: &mut smithay::input::touch::TouchInnerHandle<'_, Otto<BackendData>>,
         event: &smithay::input::touch::ShapeEvent,
         seq: Serial,
     ) {
@@ -283,19 +277,19 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
 
     fn orientation(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut smithay::input::touch::TouchInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut Otto<BackendData>,
+        handle: &mut smithay::input::touch::TouchInnerHandle<'_, Otto<BackendData>>,
         event: &smithay::input::touch::OrientationEvent,
         seq: Serial,
     ) {
         handle.orientation(data, event, seq);
     }
 
-    fn start_data(&self) -> &smithay::input::touch::GrabStartData<ScreenComposer<BackendData>> {
+    fn start_data(&self) -> &smithay::input::touch::GrabStartData<Otto<BackendData>> {
         &self.start_data
     }
 
-    fn unset(&mut self, _data: &mut ScreenComposer<BackendData>) {}
+    fn unset(&mut self, _data: &mut Otto<BackendData>) {}
 }
 
 bitflags::bitflags! {
@@ -368,11 +362,11 @@ pub enum ResizeState {
     WaitingForCommit(ResizeData),
 }
 
-impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> {
+impl<B: Backend> PointerGrab<Otto<B>> for PointerResizeSurfaceGrab<B> {
     fn motion(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         _focus: Option<(PointerFocusTarget<B>, Point<f64, Logical>)>,
         event: &MotionEvent,
     ) {
@@ -495,8 +489,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
 
     fn relative_motion(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         focus: Option<(PointerFocusTarget<B>, Point<f64, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
@@ -505,8 +499,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
 
     fn button(
         &mut self,
-        state: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        state: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &ButtonEvent,
     ) {
         handle.button(state, event);
@@ -574,25 +568,21 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
 
     fn axis(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         details: AxisFrame,
     ) {
         handle.axis(data, details)
     }
 
-    fn frame(
-        &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
-    ) {
+    fn frame(&mut self, data: &mut Otto<B>, handle: &mut PointerInnerHandle<'_, Otto<B>>) {
         handle.frame(data);
     }
 
     fn gesture_swipe_begin(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &GestureSwipeBeginEvent,
     ) {
         handle.gesture_swipe_begin(data, event);
@@ -600,8 +590,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
 
     fn gesture_swipe_update(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &GestureSwipeUpdateEvent,
     ) {
         handle.gesture_swipe_update(data, event);
@@ -609,8 +599,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
 
     fn gesture_swipe_end(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &GestureSwipeEndEvent,
     ) {
         handle.gesture_swipe_end(data, event);
@@ -618,8 +608,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
 
     fn gesture_pinch_begin(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &GesturePinchBeginEvent,
     ) {
         handle.gesture_pinch_begin(data, event);
@@ -627,8 +617,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
 
     fn gesture_pinch_update(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &GesturePinchUpdateEvent,
     ) {
         handle.gesture_pinch_update(data, event);
@@ -636,8 +626,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
 
     fn gesture_pinch_end(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &GesturePinchEndEvent,
     ) {
         handle.gesture_pinch_end(data, event);
@@ -645,8 +635,8 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
 
     fn gesture_hold_begin(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &GestureHoldBeginEvent,
     ) {
         handle.gesture_hold_begin(data, event);
@@ -654,22 +644,22 @@ impl<B: Backend> PointerGrab<ScreenComposer<B>> for PointerResizeSurfaceGrab<B> 
 
     fn gesture_hold_end(
         &mut self,
-        data: &mut ScreenComposer<B>,
-        handle: &mut PointerInnerHandle<'_, ScreenComposer<B>>,
+        data: &mut Otto<B>,
+        handle: &mut PointerInnerHandle<'_, Otto<B>>,
         event: &GestureHoldEndEvent,
     ) {
         handle.gesture_hold_end(data, event);
     }
 
-    fn start_data(&self) -> &PointerGrabStartData<ScreenComposer<B>> {
+    fn start_data(&self) -> &PointerGrabStartData<Otto<B>> {
         &self.start_data
     }
 
-    fn unset(&mut self, _data: &mut ScreenComposer<B>) {}
+    fn unset(&mut self, _data: &mut Otto<B>) {}
 }
 
 pub struct TouchResizeSurfaceGrab<BackendData: Backend + 'static> {
-    pub start_data: TouchGrabStartData<ScreenComposer<BackendData>>,
+    pub start_data: TouchGrabStartData<Otto<BackendData>>,
     pub window: WindowElement,
     pub edges: ResizeEdge,
     pub initial_window_location: Point<i32, Logical>,
@@ -677,15 +667,13 @@ pub struct TouchResizeSurfaceGrab<BackendData: Backend + 'static> {
     pub last_window_size: Size<i32, Logical>,
 }
 
-impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
-    for TouchResizeSurfaceGrab<BackendData>
-{
+impl<BackendData: Backend> TouchGrab<Otto<BackendData>> for TouchResizeSurfaceGrab<BackendData> {
     fn down(
         &mut self,
-        _data: &mut ScreenComposer<BackendData>,
-        _handle: &mut smithay::input::touch::TouchInnerHandle<'_, ScreenComposer<BackendData>>,
+        _data: &mut Otto<BackendData>,
+        _handle: &mut smithay::input::touch::TouchInnerHandle<'_, Otto<BackendData>>,
         _focus: Option<(
-            <ScreenComposer<BackendData> as smithay::input::SeatHandler>::TouchFocus,
+            <Otto<BackendData> as smithay::input::SeatHandler>::TouchFocus,
             Point<f64, Logical>,
         )>,
         _event: &smithay::input::touch::DownEvent,
@@ -695,8 +683,8 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
 
     fn up(
         &mut self,
-        state: &mut ScreenComposer<BackendData>,
-        handle: &mut smithay::input::touch::TouchInnerHandle<'_, ScreenComposer<BackendData>>,
+        state: &mut Otto<BackendData>,
+        handle: &mut smithay::input::touch::TouchInnerHandle<'_, Otto<BackendData>>,
         event: &smithay::input::touch::UpEvent,
         _seq: Serial,
     ) {
@@ -763,10 +751,10 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
 
     fn motion(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut smithay::input::touch::TouchInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut Otto<BackendData>,
+        handle: &mut smithay::input::touch::TouchInnerHandle<'_, Otto<BackendData>>,
         _focus: Option<(
-            <ScreenComposer<BackendData> as smithay::input::SeatHandler>::TouchFocus,
+            <Otto<BackendData> as smithay::input::SeatHandler>::TouchFocus,
             Point<f64, Logical>,
         )>,
         event: &smithay::input::touch::MotionEvent,
@@ -891,16 +879,16 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
 
     fn frame(
         &mut self,
-        _data: &mut ScreenComposer<BackendData>,
-        _handle: &mut smithay::input::touch::TouchInnerHandle<'_, ScreenComposer<BackendData>>,
+        _data: &mut Otto<BackendData>,
+        _handle: &mut smithay::input::touch::TouchInnerHandle<'_, Otto<BackendData>>,
         _seq: Serial,
     ) {
     }
 
     fn cancel(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut smithay::input::touch::TouchInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut Otto<BackendData>,
+        handle: &mut smithay::input::touch::TouchInnerHandle<'_, Otto<BackendData>>,
         seq: Serial,
     ) {
         handle.cancel(data, seq);
@@ -909,8 +897,8 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
 
     fn shape(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut smithay::input::touch::TouchInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut Otto<BackendData>,
+        handle: &mut smithay::input::touch::TouchInnerHandle<'_, Otto<BackendData>>,
         event: &smithay::input::touch::ShapeEvent,
         seq: Serial,
     ) {
@@ -919,17 +907,17 @@ impl<BackendData: Backend> TouchGrab<ScreenComposer<BackendData>>
 
     fn orientation(
         &mut self,
-        data: &mut ScreenComposer<BackendData>,
-        handle: &mut smithay::input::touch::TouchInnerHandle<'_, ScreenComposer<BackendData>>,
+        data: &mut Otto<BackendData>,
+        handle: &mut smithay::input::touch::TouchInnerHandle<'_, Otto<BackendData>>,
         event: &smithay::input::touch::OrientationEvent,
         seq: Serial,
     ) {
         handle.orientation(data, event, seq);
     }
 
-    fn start_data(&self) -> &smithay::input::touch::GrabStartData<ScreenComposer<BackendData>> {
+    fn start_data(&self) -> &smithay::input::touch::GrabStartData<Otto<BackendData>> {
         &self.start_data
     }
 
-    fn unset(&mut self, _data: &mut ScreenComposer<BackendData>) {}
+    fn unset(&mut self, _data: &mut Otto<BackendData>) {}
 }

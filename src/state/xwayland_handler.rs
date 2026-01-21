@@ -1,5 +1,5 @@
 #[cfg(feature = "xwayland")]
-impl<BackendData: Backend + 'static> XWaylandKeyboardGrabHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend + 'static> XWaylandKeyboardGrabHandler for Otto<BackendData> {
     fn keyboard_focus_for_xsurface(
         &self,
         surface: &WlSurface,
@@ -12,7 +12,7 @@ impl<BackendData: Backend + 'static> XWaylandKeyboardGrabHandler for ScreenCompo
     }
 }
 #[cfg(feature = "xwayland")]
-delegate_xwayland_keyboard_grab!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_xwayland_keyboard_grab!(@<BackendData: Backend + 'static> Otto<BackendData>);
 
 #[cfg(feature = "xwayland")]
-delegate_xwayland_shell!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_xwayland_shell!(@<BackendData: Backend + 'static> Otto<BackendData>);

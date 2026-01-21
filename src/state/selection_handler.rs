@@ -8,9 +8,9 @@ use smithay::{
     },
 };
 
-use super::{Backend, ScreenComposer};
+use super::{Backend, Otto};
 
-impl<BackendData: Backend> SelectionHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> SelectionHandler for Otto<BackendData> {
     type SelectionUserData = ();
 
     #[cfg(feature = "xwayland")]
@@ -62,10 +62,10 @@ impl<BackendData: Backend> SelectionHandler for ScreenComposer<BackendData> {
     }
 }
 
-impl<BackendData: Backend> PrimarySelectionHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> PrimarySelectionHandler for Otto<BackendData> {
     fn primary_selection_state(&self) -> &PrimarySelectionState {
         &self.primary_selection_state
     }
 }
 
-delegate_primary_selection!(@<BackendData: Backend + 'static> ScreenComposer<BackendData>);
+delegate_primary_selection!(@<BackendData: Backend + 'static> Otto<BackendData>);

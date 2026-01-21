@@ -1,6 +1,6 @@
 //! ScreenCast D-Bus client for ScreenComposer's backend API.
 //!
-//! This module speaks to `org.screencomposer.ScreenCast` (the backend interface
+//! This module speaks to `org.otto.ScreenCast` (the backend interface
 //! described in `ScreenCast-backend-spec.md`) so the portal can fulfill frontend
 //! requests.
 
@@ -12,10 +12,10 @@ use zbus::Result;
 
 use crate::screencomposer_client::ScreenComposerClient;
 
-/// D-Bus proxy for `org.screencomposer.ScreenCast` service.
+/// D-Bus proxy for `org.otto.ScreenCast` service.
 #[zbus::proxy(
-    interface = "org.screencomposer.ScreenCast",
-    default_service = "org.screencomposer.ScreenCast",
+    interface = "org.otto.ScreenCast",
+    default_service = "org.otto.ScreenCast",
     default_path = "/org/screencomposer/ScreenCast"
 )]
 trait ScreenCast {
@@ -27,10 +27,10 @@ trait ScreenCast {
     async fn list_outputs(&self) -> Result<Vec<String>>;
 }
 
-/// D-Bus proxy for `org.screencomposer.ScreenCast.Session`.
+/// D-Bus proxy for `org.otto.ScreenCast.Session`.
 #[zbus::proxy(
-    interface = "org.screencomposer.ScreenCast.Session",
-    default_service = "org.screencomposer.ScreenCast"
+    interface = "org.otto.ScreenCast.Session",
+    default_service = "org.otto.ScreenCast"
 )]
 trait ScreenCastSession {
     /// Starts recording a monitor by connector name.
@@ -50,10 +50,10 @@ trait ScreenCastSession {
     async fn stop(&self) -> Result<()>;
 }
 
-/// D-Bus proxy for `org.screencomposer.ScreenCast.Stream`.
+/// D-Bus proxy for `org.otto.ScreenCast.Stream`.
 #[zbus::proxy(
-    interface = "org.screencomposer.ScreenCast.Stream",
-    default_service = "org.screencomposer.ScreenCast"
+    interface = "org.otto.ScreenCast.Stream",
+    default_service = "org.otto.ScreenCast"
 )]
 trait ScreenCastStream {
     /// Starts this individual stream.
@@ -200,9 +200,9 @@ impl ScreenComposerClient {
         let result: Result<zbus::zvariant::OwnedFd> = self
             .connection
             .call_method(
-                Some("org.screencomposer.ScreenCast"),
+                Some("org.otto.ScreenCast"),
                 session_path,
-                Some("org.screencomposer.ScreenCast.Session"),
+                Some("org.otto.ScreenCast.Session"),
                 "OpenPipeWireRemote",
                 &HashMap::<String, Value>::new(),
             )

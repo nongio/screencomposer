@@ -42,26 +42,26 @@ async fn main() {
     match arg.as_ref().map(|s| &s[..]) {
         #[cfg(feature = "winit")]
         Some("--winit") => {
-            tracing::info!("Starting screen-composer with winit backend");
+            tracing::info!("Starting otto with winit backend");
             std::env::set_var("SCREEN_COMPOSER_BACKEND", "winit");
-            screen_composer::winit::run_winit();
+            otto::winit::run_winit();
         }
         #[cfg(feature = "udev")]
         Some("--tty-udev") => {
-            tracing::info!("Starting screen-composer on a tty using udev");
+            tracing::info!("Starting otto on a tty using udev");
             std::env::set_var("SCREEN_COMPOSER_BACKEND", "tty-udev");
-            screen_composer::udev::run_udev();
+            otto::udev::run_udev();
         }
         #[cfg(feature = "udev")]
         Some("--probe") => {
             tracing::info!("Probing available displays and resolutions");
-            screen_composer::udev::probe_displays();
+            otto::udev::probe_displays();
         }
         #[cfg(feature = "x11")]
         Some("--x11") => {
-            tracing::info!("Starting screen-composer with x11 backend");
+            tracing::info!("Starting otto with x11 backend");
             std::env::set_var("SCREEN_COMPOSER_BACKEND", "x11");
-            screen_composer::x11::run_x11();
+            otto::x11::run_x11();
         }
         Some(other) => {
             tracing::error!("Unknown backend: {}", other);
@@ -69,7 +69,7 @@ async fn main() {
         None => {
             #[allow(clippy::disallowed_macros)]
             {
-                println!("USAGE: screen-composer --backend");
+                println!("USAGE: otto --backend");
                 println!();
                 println!("Possible backends are:");
                 for b in POSSIBLE_BACKENDS {

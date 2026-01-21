@@ -1,7 +1,7 @@
 use smithay::reexports::wayland_server;
 use wayland_server::Resource;
 
-use crate::{state::Backend, ScreenComposer};
+use crate::{state::Backend, Otto};
 
 use smithay::reexports::wayland_server::protocol::*;
 
@@ -107,7 +107,7 @@ pub trait ScLayerShellHandler {
     fn destroy_layer(&mut self, _layer: &ScLayer) {}
 }
 
-impl<BackendData: Backend> ScLayerShellHandler for ScreenComposer<BackendData> {
+impl<BackendData: Backend> ScLayerShellHandler for Otto<BackendData> {
     fn new_layer(&mut self, mut layer: ScLayer) {
         let layer_id = layer.wl_layer.id();
         let surface_id = layer.surface.id();
