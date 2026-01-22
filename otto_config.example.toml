@@ -43,6 +43,16 @@ touchpad_left_handed = false
 # Middle mouse button emulation (left+right click simultaneously)
 touchpad_middle_emulation_enabled = false
 
+# Keyboard layout and options (XKB configuration)
+# See 'man xkeyboard-config' for available options
+# xkb_layout = "us"
+# xkb_variant = "dvorak"
+# xkb_options = [
+#     "ctrl:swapcaps",    # Swap Ctrl and Caps Lock
+#     "caps:escape",      # Make Caps Lock an Escape key
+#     # "altwin:swap_alt_win",  # Swap Alt and Win keys
+# ]
+
 # Layer shell (panels, bars, overlays)
 [layer_shell]
 # Maximum exclusive zone per edge in logical points (0 = unlimited)
@@ -66,13 +76,6 @@ terminal_bin = "weston-terminal"
 file_manager_bin = "dolphin"
 browser_bin = "google-chrome-stable"
 browser_args = [""]
-
-# Keyboard remapping
-# [modifier_remap]
-# logo = "ctrl"
-
-[key_remap]
-"BackSpace" = "Delete"
 
 [keyboard_shortcuts]
 "Ctrl+Alt+BackSpace" = "Quit"

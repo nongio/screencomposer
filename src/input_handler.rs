@@ -21,7 +21,7 @@ use smithay::{
     },
     desktop::{layer_map_for_output, WindowSurfaceType},
     input::{
-        keyboard::{keysyms as xkb, FilterResult, Keycode, Keysym, ModifiersState},
+        keyboard::{keysyms as xkb, FilterResult, Keysym, ModifiersState},
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
     },
     output::Scale,
@@ -166,12 +166,7 @@ impl<BackendData: Backend> Otto<BackendData> {
     }
 
     fn keyboard_key_to_action<B: InputBackend>(&mut self, evt: B::KeyboardKeyEvent) -> KeyAction {
-        let original_keycode = evt.key_code();
-        let keycode = self
-            .keycode_remap
-            .get(&original_keycode.raw())
-            .map(|&raw| Keycode::new(raw))
-            .unwrap_or(original_keycode);
+        let keycode = evt.key_code();
         let state = evt.state();
         debug!(?keycode, ?state, "key");
         let serial = SCOUNTER.next_serial();
@@ -215,7 +210,6 @@ impl<BackendData: Backend> Otto<BackendData> {
             .map(|inhibitor| inhibitor.is_active())
             .unwrap_or(false);
 
-        let modifier_masks = self.modifier_masks;
         let action = keyboard
             .input(
                 self,
@@ -233,17 +227,14 @@ impl<BackendData: Backend> Otto<BackendData> {
                         "keysym"
                     );
 
-                    let (remapped_modifiers, shortcut_action) = Config::with(|config| {
-                        let remapped =
-                            config.apply_modifier_remap(*modifiers, Some(&modifier_masks));
-                        let action = if matches!(state, KeyState::Pressed) && !inhibited {
-                            process_keyboard_shortcut(config, remapped, keysym)
+                    let shortcut_action = Config::with(|config| {
+                        if matches!(state, KeyState::Pressed) && !inhibited {
+                            process_keyboard_shortcut(config, *modifiers, keysym)
                         } else {
                             None
-                        };
-                        (remapped, action)
+                        }
                     });
-                    updated_modifiers = Some(remapped_modifiers);
+                    updated_modifiers = Some(*modifiers);
 
                     // If the key is pressed and triggered an action
                     // we will not forward the key to the client.

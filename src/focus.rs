@@ -26,7 +26,6 @@ use smithay::{
 };
 
 use crate::{
-    config::Config,
     interactive_view::InteractiveView,
     shell::WindowElement,
     state::{Backend, Otto},
@@ -454,32 +453,24 @@ impl<B: Backend> KeyboardTarget<Otto<B>> for KeyboardFocusTarget<B> {
         modifiers: ModifiersState,
         serial: Serial,
     ) {
-        let masks = data.modifier_masks;
-        let remapped_modifiers =
-            Config::with(|config| config.apply_modifier_remap(modifiers, Some(&masks)));
-
         match self {
             KeyboardFocusTarget::Window(w) => match w.underlying_surface() {
-                WindowSurface::Wayland(w) => KeyboardTarget::modifiers(
-                    w.wl_surface(),
-                    seat,
-                    data,
-                    remapped_modifiers,
-                    serial,
-                ),
+                WindowSurface::Wayland(w) => {
+                    KeyboardTarget::modifiers(w.wl_surface(), seat, data, modifiers, serial)
+                }
                 #[cfg(feature = "xwayland")]
                 WindowSurface::X11(s) => {
-                    KeyboardTarget::modifiers(s, seat, data, remapped_modifiers, serial)
+                    KeyboardTarget::modifiers(s, seat, data, modifiers, serial)
                 }
             },
             KeyboardFocusTarget::LayerSurface(l) => {
-                KeyboardTarget::modifiers(l.wl_surface(), seat, data, remapped_modifiers, serial)
+                KeyboardTarget::modifiers(l.wl_surface(), seat, data, modifiers, serial)
             }
             KeyboardFocusTarget::Popup(p) => {
-                KeyboardTarget::modifiers(p.wl_surface(), seat, data, remapped_modifiers, serial)
+                KeyboardTarget::modifiers(p.wl_surface(), seat, data, modifiers, serial)
             }
             KeyboardFocusTarget::View(d) => {
-                KeyboardTarget::modifiers(d, seat, data, remapped_modifiers, serial)
+                KeyboardTarget::modifiers(d, seat, data, modifiers, serial)
             }
         }
     }
