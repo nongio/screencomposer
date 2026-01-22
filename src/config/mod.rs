@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
@@ -11,11 +11,6 @@ use toml::map::Entry;
 use tracing::warn;
 
 use crate::theme::ThemeScheme;
-use smithay::input::keyboard::{
-    keysyms::KEY_NoSymbol,
-    xkb::{self, MOD_INVALID},
-    Keysym, ModifiersState, SerializedMods,
-};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -49,13 +44,6 @@ pub struct Config {
     #[serde(skip)]
     #[serde(default)]
     shortcut_bindings: Vec<ShortcutBinding>,
-    #[serde(default)]
-    pub modifier_remap: BTreeMap<String, String>,
-    #[serde(default)]
-    pub key_remap: BTreeMap<String, String>,
-    #[serde(skip)]
-    #[serde(default)]
-    modifier_lookup: HashMap<ModifierKind, ModifierKind>,
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
@@ -85,12 +73,8 @@ impl Default for Config {
             use_10bit_color: false,
             keyboard_shortcuts: shortcuts::default_shortcut_map(),
             shortcut_bindings: Vec::new(),
-            modifier_remap: BTreeMap::new(),
-            key_remap: BTreeMap::new(),
-            modifier_lookup: HashMap::new(),
         };
         config.rebuild_shortcut_bindings();
-        config.rebuild_remap_tables();
         config
     }
 }
@@ -107,10 +91,7 @@ impl Config {
 
         if let Ok(content) = std::fs::read_to_string("otto_config.toml") {
             match content.parse::<toml::Value>() {
-                Ok(mut value) => {
-                    sanitize_remap_tables(&mut value);
-                    merge_value(&mut merged, value)
-                }
+                Ok(value) => merge_value(&mut merged, value),
                 Err(err) => warn!("Failed to parse otto_config.toml: {err}"),
             }
         }
@@ -120,8 +101,7 @@ impl Config {
                 println!("Trying to load backend override config: {}", &candidate);
                 if let Ok(content) = std::fs::read_to_string(&candidate) {
                     match content.parse::<toml::Value>() {
-                        Ok(mut value) => {
-                            sanitize_remap_tables(&mut value);
+                        Ok(value) => {
                             merge_value(&mut merged, value);
                             break;
                         }
@@ -133,15 +113,12 @@ impl Config {
             }
         }
 
-        sanitize_remap_tables(&mut merged);
-
         let mut config: Config = merged.try_into().unwrap_or_else(|err| {
             warn!("Falling back to default config due to invalid overrides: {err}");
             Self::default()
         });
 
         config.rebuild_shortcut_bindings();
-        config.rebuild_remap_tables();
 
         // Environment variables for Wayland session
         std::env::set_var("XDG_SESSION_TYPE", "wayland");
@@ -159,79 +136,12 @@ impl Config {
         &self.shortcut_bindings
     }
 
-    pub fn apply_modifier_remap(
-        &self,
-        state: ModifiersState,
-        masks: Option<&ModifierMaskLookup>,
-    ) -> ModifiersState {
-        if self.modifier_lookup.is_empty() {
-            return state;
-        }
-
-        let mut result = state;
-        for &kind in ModifierKind::ALL {
-            kind.set(&mut result, false);
-        }
-
-        for &kind in ModifierKind::ALL {
-            if !kind.get(&state) {
-                continue;
-            }
-
-            let target = self.modifier_lookup.get(&kind).copied().unwrap_or(kind);
-            target.set(&mut result, true);
-        }
-
-        if let Some(mask_lookup) = masks {
-            result.serialized =
-                remap_serialized_modifiers(&self.modifier_lookup, state.serialized, mask_lookup);
-        }
-
-        result
-    }
-
-    pub fn parsed_key_remaps(&self) -> Vec<(Keysym, Keysym)> {
-        self.key_remap
-            .iter()
-            .filter_map(|(from, to)| {
-                let from_sym = parse_keysym_name(from);
-                let to_sym = parse_keysym_name(to);
-                match (from_sym, to_sym) {
-                    (Some(src), Some(dst)) => Some((src, dst)),
-                    (None, _) => {
-                        warn!(from = %from, "unknown keysym in key_remap entry");
-                        None
-                    }
-                    (_, None) => {
-                        warn!(to = %to, "unknown target keysym in key_remap entry");
-                        None
-                    }
-                }
-            })
-            .collect()
-    }
-
     pub fn resolve_display_profile(
         &self,
         name: &str,
         descriptor: &DisplayDescriptor<'_>,
     ) -> Option<DisplayProfile> {
         self.displays.resolve(name, descriptor)
-    }
-
-    fn rebuild_remap_tables(&mut self) {
-        self.modifier_lookup.clear();
-        for (from, to) in &self.modifier_remap {
-            match (parse_modifier_kind(from), parse_modifier_kind(to)) {
-                (Some(from_kind), Some(to_kind)) => {
-                    if self.modifier_lookup.insert(from_kind, to_kind).is_some() {
-                        warn!(from = %from, "duplicate modifier remap entry; last value wins");
-                    }
-                }
-                (None, _) => warn!(from = %from, "unknown modifier in remap entry"),
-                (_, None) => warn!(to = %to, "unknown modifier target in remap entry"),
-            }
-        }
     }
 }
 
@@ -265,50 +175,6 @@ fn backend_override_candidates(backend: &str) -> Vec<String> {
             "otto_config.udev.toml".into(),
         ],
         other => vec![format!("otto_config.{other}.toml")],
-    }
-}
-
-fn sanitize_remap_tables(value: &mut toml::Value) {
-    if let toml::Value::Table(table) = value {
-        if let Some(key_remap) = table.get_mut("key_remap") {
-            if let toml::Value::Table(map) = key_remap {
-                let invalid_keys: Vec<String> = map
-                    .iter()
-                    .filter(|(_, v)| !matches!(v, toml::Value::String(_)))
-                    .map(|(k, _)| k.clone())
-                    .collect();
-
-                for key in invalid_keys {
-                    warn!(key, "ignoring key remap entry with non-string target");
-                    map.remove(&key);
-                }
-            } else {
-                warn!("ignoring malformed key_remap table");
-                table.remove("key_remap");
-            }
-        }
-
-        if let Some(mod_remap) = table.get_mut("modifier_remap") {
-            if let toml::Value::Table(map) = mod_remap {
-                let invalid_keys: Vec<String> = map
-                    .iter()
-                    .filter(|(_, v)| !matches!(v, toml::Value::String(_)))
-                    .map(|(k, _)| k.clone())
-                    .collect();
-
-                for key in invalid_keys {
-                    warn!(key, "ignoring modifier remap entry with non-string target");
-                    map.remove(&key);
-                }
-            } else {
-                warn!("ignoring malformed modifier_remap table");
-                table.remove("modifier_remap");
-            }
-        }
-
-        for (_, value) in table.iter_mut() {
-            sanitize_remap_tables(value);
-        }
     }
 }
 
@@ -404,6 +270,12 @@ pub struct InputConfig {
     pub touchpad_left_handed: bool,
     #[serde(default = "default_touchpad_middle_emulation_enabled")]
     pub touchpad_middle_emulation_enabled: bool,
+    #[serde(default)]
+    pub xkb_layout: Option<String>,
+    #[serde(default)]
+    pub xkb_variant: Option<String>,
+    #[serde(default)]
+    pub xkb_options: Vec<String>,
 }
 
 /// Touchpad click method configuration
@@ -434,6 +306,9 @@ impl Default for InputConfig {
             touchpad_natural_scroll_enabled: default_touchpad_natural_scroll_enabled(),
             touchpad_left_handed: default_touchpad_left_handed(),
             touchpad_middle_emulation_enabled: default_touchpad_middle_emulation_enabled(),
+            xkb_layout: None,
+            xkb_variant: None,
+            xkb_options: Vec::new(),
         }
     }
 }
@@ -631,254 +506,9 @@ fn equals_ignore_case(actual: &str, expected: &str) -> bool {
     actual.eq_ignore_ascii_case(expected)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ModifierKind {
-    Ctrl,
-    Alt,
-    Shift,
-    Logo,
-    CapsLock,
-    NumLock,
-}
-
-impl ModifierKind {
-    const ALL: &'static [ModifierKind] = &[
-        ModifierKind::Ctrl,
-        ModifierKind::Alt,
-        ModifierKind::Shift,
-        ModifierKind::Logo,
-        ModifierKind::CapsLock,
-        ModifierKind::NumLock,
-    ];
-
-    fn get(self, state: &ModifiersState) -> bool {
-        match self {
-            ModifierKind::Ctrl => state.ctrl,
-            ModifierKind::Alt => state.alt,
-            ModifierKind::Shift => state.shift,
-            ModifierKind::Logo => state.logo,
-            ModifierKind::CapsLock => state.caps_lock,
-            ModifierKind::NumLock => state.num_lock,
-        }
-    }
-
-    fn set(self, state: &mut ModifiersState, value: bool) {
-        match self {
-            ModifierKind::Ctrl => state.ctrl = value,
-            ModifierKind::Alt => state.alt = value,
-            ModifierKind::Shift => state.shift = value,
-            ModifierKind::Logo => state.logo = value,
-            ModifierKind::CapsLock => state.caps_lock = value,
-            ModifierKind::NumLock => state.num_lock = value,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ModifierMaskLookup {
-    ctrl: Option<u32>,
-    alt: Option<u32>,
-    shift: Option<u32>,
-    logo: Option<u32>,
-    caps_lock: Option<u32>,
-    num_lock: Option<u32>,
-}
-
-impl ModifierMaskLookup {
-    pub fn from_keymap(keymap: &xkb::Keymap) -> Self {
-        fn mask_for(keymap: &xkb::Keymap, name: &str) -> Option<u32> {
-            let idx = keymap.mod_get_index(name);
-            (idx != MOD_INVALID).then(|| 1u32 << idx)
-        }
-
-        Self {
-            ctrl: mask_for(keymap, xkb::MOD_NAME_CTRL),
-            alt: mask_for(keymap, xkb::MOD_NAME_ALT),
-            shift: mask_for(keymap, xkb::MOD_NAME_SHIFT),
-            logo: mask_for(keymap, xkb::MOD_NAME_LOGO),
-            caps_lock: mask_for(keymap, xkb::MOD_NAME_CAPS),
-            num_lock: mask_for(keymap, xkb::MOD_NAME_NUM),
-        }
-    }
-
-    pub fn get(&self, kind: ModifierKind) -> Option<u32> {
-        match kind {
-            ModifierKind::Ctrl => self.ctrl,
-            ModifierKind::Alt => self.alt,
-            ModifierKind::Shift => self.shift,
-            ModifierKind::Logo => self.logo,
-            ModifierKind::CapsLock => self.caps_lock,
-            ModifierKind::NumLock => self.num_lock,
-        }
-    }
-}
-
-fn parse_modifier_kind(input: &str) -> Option<ModifierKind> {
-    match input.trim().to_ascii_lowercase().as_str() {
-        "ctrl" | "control" | "primary" => Some(ModifierKind::Ctrl),
-        "alt" | "option" => Some(ModifierKind::Alt),
-        "shift" => Some(ModifierKind::Shift),
-        "logo" | "win" | "super" | "meta" | "command" | "cmd" => Some(ModifierKind::Logo),
-        "caps" | "capslock" | "caps_lock" => Some(ModifierKind::CapsLock),
-        "num" | "numlock" | "num_lock" => Some(ModifierKind::NumLock),
-        _ => None,
-    }
-}
-
-fn remap_serialized_modifiers(
-    lookup: &HashMap<ModifierKind, ModifierKind>,
-    original: SerializedMods,
-    masks: &ModifierMaskLookup,
-) -> SerializedMods {
-    fn transfer(field: &mut u32, original: u32, from_mask: u32, to_mask: u32) {
-        if from_mask == to_mask {
-            return;
-        }
-        let from_active = original & from_mask;
-        if from_active == 0 {
-            return;
-        }
-        *field &= !from_mask;
-        *field |= to_mask;
-    }
-
-    let mut serialized = original;
-    for (&from, &to) in lookup {
-        let (Some(from_mask), Some(to_mask)) = (masks.get(from), masks.get(to)) else {
-            continue;
-        };
-        transfer(
-            &mut serialized.depressed,
-            original.depressed,
-            from_mask,
-            to_mask,
-        );
-        transfer(
-            &mut serialized.latched,
-            original.latched,
-            from_mask,
-            to_mask,
-        );
-        transfer(&mut serialized.locked, original.locked, from_mask, to_mask);
-    }
-
-    serialized
-}
-
-fn parse_keysym_name(name: &str) -> Option<Keysym> {
-    let trimmed = name.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    let sym = xkb::keysym_from_name(trimmed, xkb::KEYSYM_CASE_INSENSITIVE);
-    if sym.raw() == KEY_NoSymbol {
-        None
-    } else {
-        Some(sym)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn modifier_remap_logo_to_ctrl() {
-        let mut config = Config::default();
-        config.modifier_remap.insert("logo".into(), "ctrl".into());
-        config.rebuild_remap_tables();
-
-        let mut mods = ModifiersState::default();
-        mods.logo = true;
-
-        let remapped = config.apply_modifier_remap(mods, None);
-        assert!(remapped.ctrl);
-        assert!(!remapped.logo);
-    }
-
-    #[test]
-    fn modifier_swap_preserves_serialized_mods() {
-        let mut config = Config::default();
-        config.modifier_remap.insert("logo".into(), "ctrl".into());
-        config.modifier_remap.insert("ctrl".into(), "logo".into());
-        config.rebuild_remap_tables();
-
-        let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
-        let keymap = xkb::Keymap::new_from_names(
-            &context,
-            "",
-            "",
-            "",
-            "",
-            None,
-            xkb::KEYMAP_COMPILE_NO_FLAGS,
-        )
-        .expect("default keymap");
-        let masks = ModifierMaskLookup::from_keymap(&keymap);
-
-        let mut serialized = SerializedMods::default();
-        let logo_mask = masks.get(ModifierKind::Logo).expect("logo mask");
-        serialized.depressed = logo_mask;
-
-        let mut mods = ModifiersState::default();
-        mods.logo = true;
-        mods.serialized = serialized;
-
-        let remapped = config.apply_modifier_remap(mods, Some(&masks));
-        assert!(remapped.ctrl);
-        assert!(!remapped.logo);
-
-        let ctrl_mask = masks.get(ModifierKind::Ctrl).expect("ctrl mask");
-        assert_eq!(remapped.serialized.depressed & ctrl_mask, ctrl_mask);
-    }
-
-    #[test]
-    fn key_remap_backspace_to_delete() {
-        let mut config = Config::default();
-        config.key_remap.insert("BackSpace".into(), "Delete".into());
-        config.rebuild_remap_tables();
-
-        let backspace = xkb::keysym_from_name("BackSpace", xkb::KEYSYM_NO_FLAGS);
-        let delete = xkb::keysym_from_name("Delete", xkb::KEYSYM_NO_FLAGS);
-
-        let entries = config.parsed_key_remaps();
-        assert!(entries.contains(&(backspace, delete)));
-    }
-
-    #[test]
-    fn config_loads_shortcuts_and_remaps_from_toml() {
-        let overrides = r#"
-            [keyboard_shortcuts]
-            "Logo+Q" = "Quit"
-
-            [key_remap]
-            BackSpace = "Delete"
-            BadEntry = ["not", "a", "string"]
-        "#;
-
-        let mut merged = toml::Value::try_from(Config::default()).unwrap();
-        let mut overrides_value = overrides.parse::<toml::Value>().unwrap();
-        sanitize_remap_tables(&mut overrides_value);
-        merge_value(&mut merged, overrides_value);
-        sanitize_remap_tables(&mut merged);
-
-        let mut config: Config = merged.try_into().expect("config should deserialize");
-        config.rebuild_shortcut_bindings();
-        config.rebuild_remap_tables();
-
-        assert_eq!(config.shortcut_bindings().len(), 1);
-        assert!(config
-            .shortcut_bindings()
-            .iter()
-            .any(|binding| binding.trigger_repr == "Logo+Q"));
-
-        let backspace = xkb::keysym_from_name("BackSpace", xkb::KEYSYM_NO_FLAGS);
-        let delete = xkb::keysym_from_name("Delete", xkb::KEYSYM_NO_FLAGS);
-        let entries = config.parsed_key_remaps();
-        assert!(entries.contains(&(backspace, delete)));
-
-        assert!(config.key_remap.keys().all(|key| key != "BadEntry"));
-    }
 
     #[test]
     fn theme_scheme_defaults_to_light() {
