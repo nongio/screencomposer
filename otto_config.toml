@@ -49,18 +49,18 @@ file_manager_bin = "dolphin"
 browser_bin = "google-chrome-stable"
 browser_args = [""]
 
+# Keyboard layout and options (XKB configuration)
+# Migrated from old modifier_remap: logo = "ctrl", ctrl = "logo"
+# See 'man xkeyboard-config' for available options
+[input]
+xkb_options = [
+    "altwin:ctrl_win",    # Swap Ctrl and Win/Logo keys (replaces logo="ctrl", ctrl="logo")
+]
+
 [displays.named."winit"]
 resolution = { width = 1280, height = 1000 }
 refresh_hz = 60.0
 position = { x = 0, y = 0 }
-
-# Keyboard remapping
-[modifier_remap]
-logo = "ctrl"
-ctrl = "logo"
-
-#[key_remap]
-# "BackSpace" = "Delete"
 
 [keyboard_shortcuts]
 "Ctrl+Delete" = "Quit"
