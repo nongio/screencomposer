@@ -44,79 +44,22 @@ touchpad_left_handed = false
 touchpad_middle_emulation_enabled = false
 
 # Keyboard layout and options (XKB configuration)
-# See 'man xkeyboard-config' for available options or /usr/share/X11/xkb/rules/base.lst
+# Tools: xkbcli list | ./scripts/show-keys.sh | man xkeyboard-config
+#
 # xkb_layout = "us"
 # xkb_variant = "dvorak"
 # xkb_options = [
-#     # --- Caps Lock remapping (choose one) ---
-#     "caps:escape",              # Make Caps Lock an Escape key (Vim users)
-#     # "caps:ctrl_modifier",     # Make Caps Lock an additional Ctrl key
-#     # "caps:backspace",         # Make Caps Lock a Backspace key
-#     # "caps:none",              # Disable Caps Lock completely
-#     # "caps:swapescape",        # Swap Caps Lock and Escape
-#
-#     # --- Ctrl key remapping ---
-#     # "ctrl:nocaps",            # Make Caps Lock a Ctrl key, disable Caps Lock function
+#     # Common options:
+#     "caps:escape",              # Caps Lock → Escape (Vim users)
 #     # "ctrl:swapcaps",          # Swap Ctrl and Caps Lock
-#     # "ctrl:aa_ctrl",           # Both Alt keys act as Ctrl
-#     # "ctrl:lctrl_meta",        # Left Ctrl as Meta (Emacs users)
-#
-#     # --- Alt/Win key remapping ---
-#     # "altwin:swap_alt_win",    # Swap Alt and Win/Super keys
-#     # "altwin:ctrl_win",        # Win key acts as Ctrl (Mac-like)
-#     # "altwin:meta_win",        # Win key as Meta
-#     # "altwin:menu",            # Menu key as Alt
-#
-#     # --- International layouts ---
-#     # "compose:ralt",           # Right Alt as Compose key (for accents/symbols)
-#     # "compose:menu",           # Menu key as Compose key
-#     # "eurosign:e",             # AltGr+E produces Euro sign
-#     # "esperanto:qwerty",       # Esperanto layout
-#
-#     # --- Multiple layouts & switching ---
-#     # "grp:alt_shift_toggle",   # Alt+Shift to switch layouts
+#     # "altwin:ctrl_win",        # Win/Super → Ctrl (Mac-like)
+#     # "compose:ralt",           # Right Alt as Compose key (accents)
 #     # "grp:win_space_toggle",   # Win+Space to switch layouts
-#     # "grp:caps_toggle",        # Caps Lock to switch layouts
-#     # "grp_led:caps",           # Use Caps Lock LED for layout indicator
-#
-#     # --- Numpad ---
-#     # "numpad:microsoft",       # Microsoft-style numpad layout
-#     # "numpad:mac",             # Mac-style numpad layout
-#     # "keypad:pointerkeys",     # Numpad as mouse keys
-#
-#     # --- Advanced options ---
-#     # "shift:both_capslock",    # Both Shift keys together enable Caps Lock
-#     # "terminate:ctrl_alt_bksp",# Ctrl+Alt+Backspace to quit compositor
-#     # "lv3:ralt_switch",        # Right Alt as ISO Level3 shift (AltGr)
 # ]
 #
-# # --- Example: Multiple layouts with switching ---
-# # xkb_layout = "us,ru,fr"         # US, Russian, French layouts
-# # xkb_variant = "dvorak,,"         # Dvorak for US, default for others
-# # xkb_options = [
-# #     "grp:win_space_toggle",      # Win+Space to switch
-# #     "grp_led:caps",              # Use Caps LED as indicator
-# #     "caps:escape",               # Caps Lock as Escape in all layouts
-# # ]
-#
-# # --- Example: Vim-optimized setup ---
-# # xkb_options = [
-# #     "caps:escape",               # Essential for Vim users
-# #     "ctrl:nocaps",               # Alternative: Caps as Ctrl
-# # ]
-#
-# # --- Example: Mac-like setup ---
-# # xkb_options = [
-# #     "altwin:ctrl_win",           # Win/Super acts as Ctrl
-# #     "ctrl:swap_lalt_lctl",       # Swap left Ctrl and left Alt
-# # ]
-#
-# # --- Example: Emacs-optimized setup ---
-# # xkb_options = [
-# #     "ctrl:nocaps",               # Caps Lock as Ctrl
-# #     "ctrl:lctrl_meta",           # Left Ctrl as Meta
-# #     "compose:ralt",              # Right Alt for compose sequences
-# # ]
+# Multiple layouts example:
+# xkb_layout = "us,ru"
+# xkb_options = ["grp:win_space_toggle", "caps:escape"]
 
 # Layer shell (panels, bars, overlays)
 [layer_shell]
