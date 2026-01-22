@@ -21,7 +21,7 @@ use smithay::{
     },
     desktop::{layer_map_for_output, WindowSurfaceType},
     input::{
-        keyboard::{keysyms as xkb, FilterResult, Keysym, ModifiersState},
+        keyboard::{FilterResult, Keysym, ModifiersState},
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
     },
     output::Scale,
@@ -1716,7 +1716,7 @@ fn process_keyboard_shortcut(
     keysym: Keysym,
 ) -> Option<KeyAction> {
     use smithay::input::keyboard::xkb::{self, keysyms::*};
-    
+
     // Log the incoming key event for debugging
     let keysym_name = xkb::keysym_get_name(keysym);
     debug!(
@@ -1728,7 +1728,7 @@ fn process_keyboard_shortcut(
         modifiers.shift,
         modifiers.logo
     );
-    
+
     if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace
         || modifiers.logo && keysym == Keysym::q
     {
@@ -1755,11 +1755,11 @@ fn process_keyboard_shortcut(
             matches
         })
         .and_then(|binding| resolve_shortcut_action(config, &binding.action));
-    
+
     if result.is_none() {
         debug!("No shortcut matched for {}", keysym_name);
     }
-    
+
     result
 }
 
