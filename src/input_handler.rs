@@ -1715,6 +1715,20 @@ fn process_keyboard_shortcut(
     modifiers: ModifiersState,
     keysym: Keysym,
 ) -> Option<KeyAction> {
+    use smithay::input::keyboard::xkb::{self, keysyms::*};
+    
+    // Log the incoming key event for debugging
+    let keysym_name = xkb::keysym_get_name(keysym);
+    debug!(
+        "Shortcut check: keysym={} (0x{:x}), ctrl={}, alt={}, shift={}, logo={}",
+        keysym_name,
+        keysym.raw(),
+        modifiers.ctrl,
+        modifiers.alt,
+        modifiers.shift,
+        modifiers.logo
+    );
+    
     if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace
         || modifiers.logo && keysym == Keysym::q
     {
@@ -1724,17 +1738,29 @@ fn process_keyboard_shortcut(
         return Some(KeyAction::Quit);
     }
 
-    if (xkb::KEY_XF86Switch_VT_1..=xkb::KEY_XF86Switch_VT_12).contains(&keysym.raw()) {
+    if (KEY_XF86Switch_VT_1..=KEY_XF86Switch_VT_12).contains(&keysym.raw()) {
         return Some(KeyAction::VtSwitch(
-            (keysym.raw() - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
+            (keysym.raw() - KEY_XF86Switch_VT_1 + 1) as i32,
         ));
     }
 
-    config
+    let result = config
         .shortcut_bindings()
         .iter()
-        .find(|binding| binding.trigger.matches(&modifiers, keysym))
-        .and_then(|binding| resolve_shortcut_action(config, &binding.action))
+        .find(|binding| {
+            let matches = binding.trigger.matches(&modifiers, keysym);
+            if matches {
+                debug!("Matched shortcut: {}", binding.trigger_repr);
+            }
+            matches
+        })
+        .and_then(|binding| resolve_shortcut_action(config, &binding.action));
+    
+    if result.is_none() {
+        debug!("No shortcut matched for {}", keysym_name);
+    }
+    
+    result
 }
 
 fn resolve_shortcut_action(config: &Config, action: &ShortcutAction) -> Option<KeyAction> {

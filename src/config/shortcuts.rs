@@ -67,11 +67,12 @@ pub struct ShortcutTrigger {
 
 impl ShortcutTrigger {
     pub fn matches(&self, modifiers: &ModifiersState, keysym: xkb::Keysym) -> bool {
+        let normalized_keysym = normalize_alphanumeric_keysym(keysym);
         self.ctrl == modifiers.ctrl
             && self.alt == modifiers.alt
             && self.shift == modifiers.shift
             && self.logo == modifiers.logo
-            && self.keysym == normalize_alphanumeric_keysym(keysym)
+            && self.keysym == normalized_keysym
     }
 
     pub fn canonical_id(&self) -> String {

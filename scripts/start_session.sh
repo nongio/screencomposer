@@ -74,8 +74,8 @@ pipewire_setup
 
 wifi_autoconnect
 
-# Ensure compositor is built in release mode
-if [ ! -f "target/release/screen-composer" ]; then
+# Ensure compositor is built in otto mode
+if [ ! -f "target/release/otto" ]; then
     log_error "Compositor not built in release mode!"
     log_info "Please run: cargo build --release"
     exit 1
@@ -90,7 +90,7 @@ if [ "$EUID" -ne 0 ] && [ -z "$LIBSEAT_BACKEND" ]; then
 fi
 
 # Start compositor in background first
-RUST_LOG=$LOG_LEVEL target/release/screen-composer --tty-udev > "$COMPOSITOR_LOG" 2>&1 &
+RUST_LOG=$LOG_LEVEL target/release/otto --tty-udev > "$COMPOSITOR_LOG" 2>&1 &
 COMPOSITOR_PID=$!
 log_info "Compositor started in background (PID: $COMPOSITOR_PID)"
 
