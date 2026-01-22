@@ -1,8 +1,6 @@
-# Keyboard Configuration
+## Keyboard Configuration
 
-Otto uses XKB (X Keyboard Extension) for keyboard layout and remapping configuration, aligning with how other modern Wayland compositors (Sway, Hyprland, wlroots-based) handle keyboard customization.
-
-## Overview
+Otto uses XKB (X Keyboard Extension) for keyboard layout and remapping configuration.
 
 Keyboard configuration is handled through the `[input]` section of `otto_config.toml` using three XKB parameters:
 - `xkb_layout` - Keyboard layout (e.g., "us", "dvorak", "de")
@@ -10,7 +8,7 @@ Keyboard configuration is handled through the `[input]` section of `otto_config.
 - `xkb_options` - Array of XKB options for remapping and behavior
 
 The configuration is compiled into the XKB keymap at compositor startup, providing:
-- **Better performance** - No per-keystroke overhead (compiled into keymap)
+- **Performance** - No per-keystroke overhead (compiled into keymap)
 - **Standards compliance** - Same options as other compositors
 - **Rich feature set** - Access to all XKB's built-in options
 - **Simple implementation** - Leverages XKB's well-tested code
@@ -35,7 +33,7 @@ xkb_options = [
 
 ```toml
 [input]
-xkb_layout = "us,ru,fr"              # US, Russian, French
+xkb_layout = "us,it"              # US, Italian
 xkb_variant = "dvorak,,"              # Dvorak for US, default for others
 xkb_options = [
     "grp:win_space_toggle",          # Win+Space to switch layouts
