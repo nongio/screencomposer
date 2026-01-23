@@ -156,7 +156,7 @@ impl WindowView {
         self.window_layer.set_image_filter_progress(1.0, None);
         *self
             .window_layer
-            .set_image_filter_progress(0.0, Transition::linear(0.5))
+            .set_image_filter_progress(0.0, Transition::linear(1.5))
             .on_start(
                 |l: &Layer, _| {
                     l.set_opacity(1.0, None);

@@ -1,7 +1,7 @@
 //! D-Bus service implementation for `org.otto.ScreenCast`.
 //!
 //! Implements the backend D-Bus API that the portal expects, as defined in
-//! the portal's screencomposer_client module.
+//! the portal's otto_client module.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -544,6 +544,9 @@ pub async fn run_dbus_service(compositor_tx: Sender<CompositorCommand>) -> zbus:
         .await?;
 
     connection.request_name("org.otto.Compositor").await?;
+
+    // Register the Settings interface
+    crate::settings_service::register_settings_interface(&connection).await?;
 
     info!("D-Bus service started at org.otto.ScreenCast");
 

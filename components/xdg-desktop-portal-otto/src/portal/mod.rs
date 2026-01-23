@@ -1,17 +1,20 @@
-//! Portal module implementing the XDG Desktop Portal ScreenCast backend.
+//! Portal module implementing XDG Desktop Portal backends.
 //!
-//! This module provides the D-Bus interface implementation for
-//! `org.freedesktop.impl.portal.ScreenCast`.
+//! This module provides D-Bus interface implementations for:
+//! - `org.freedesktop.impl.portal.ScreenCast`
+//! - `org.freedesktop.impl.portal.Settings`
 
 mod interface;
 mod request;
 mod session;
+mod settings;
 mod state;
 mod stream;
 
 pub use interface::{
     fallback_mapping_id, validate_cursor_mode, validate_persist_mode, ScreenCastPortal,
 };
+pub use settings::SettingsPortal;
 pub use state::{PortalState, SessionState};
 pub use stream::{build_streams_value_from_descriptors, StreamDescriptor};
 
