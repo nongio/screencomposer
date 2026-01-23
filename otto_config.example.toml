@@ -43,14 +43,23 @@ touchpad_left_handed = false
 # Middle mouse button emulation (left+right click simultaneously)
 touchpad_middle_emulation_enabled = false
 
-# Layer shell (panels, bars, overlays)
-[layer_shell]
-# Maximum exclusive zone per edge in logical points (0 = unlimited)
-# These values are multiplied by screen_scale to get physical pixels
-max_top = 100       # Top panels/bars
-max_bottom = 100    # Bottom panels/docks
-max_left = 50       # Left side panels
-max_right = 50      # Right side panels
+# Keyboard layout and options (XKB configuration)
+# Tools: xkbcli list | ./scripts/show-keys.sh | man xkeyboard-config
+#
+# xkb_layout = "us"
+# xkb_variant = "dvorak"
+# xkb_options = [
+#     # Common options:
+#     "caps:escape",              # Caps Lock → Escape (Vim users)
+#     # "ctrl:swapcaps",          # Swap Ctrl and Caps Lock
+#     # "altwin:ctrl_win",        # Win/Super → Ctrl (Mac-like)
+#     # "compose:ralt",           # Right Alt as Compose key (accents)
+#     # "grp:win_space_toggle",   # Win+Space to switch layouts
+# ]
+#
+# Multiple layouts example:
+# xkb_layout = "us,ru"
+# xkb_options = ["grp:win_space_toggle", "caps:escape"]
 
 # Layer shell (panels, bars, overlays)
 [layer_shell]
@@ -67,41 +76,24 @@ file_manager_bin = "dolphin"
 browser_bin = "google-chrome-stable"
 browser_args = [""]
 
-# Keyboard remapping
-# [modifier_remap]
-# logo = "ctrl"
-
-[key_remap]
-"BackSpace" = "Delete"
-
 [keyboard_shortcuts]
-"Ctrl+Alt+BackSpace" = "Quit"
-"Logo+Q" = "Quit"
-"Logo+Return" = { run = { cmd = "terminator", args = [] } }
-"Logo+Space" = { run = { cmd = "dolphin", args = [] } }
-"Logo+Shift+B" = { open_default = "browser" }
-"Logo+1" = { builtin = "Screen", index = 0 }
-"Logo+2" = { builtin = "Screen", index = 1 }
-"Logo+3" = { builtin = "Screen", index = 2 }
-"Logo+4" = { builtin = "Screen", index = 3 }
-"Logo+5" = { builtin = "Screen", index = 4 }
-"Logo+6" = { builtin = "Screen", index = 5 }
-"Logo+7" = { builtin = "Screen", index = 6 }
-"Logo+8" = { builtin = "Screen", index = 7 }
-"Logo+9" = { builtin = "Screen", index = 8 }
-"Logo+Shift+M" = "ScaleDown"
-"Logo+Shift+P" = "ScaleUp"
-"Logo+Shift+R" = "RotateOutput"
-"Logo+Shift+I" = "RunLayersDebug"
-"Logo+ArrowUp" = "ToggleMaximizeWindow"
-"Alt+Tab" = "ApplicationSwitchNext"
-"Alt+Shift+Tab" = "ApplicationSwitchPrev"
-"Alt+`" = "ApplicationSwitchNextWindow"
-"Alt+W" = "CloseWindow"
-"Alt+Q" = "ApplicationSwitchQuit"
-"Alt+Shift+W" = "CloseWindow"
-"Alt+D" = "ExposeShowDesktop"
-"Alt+F" = "ExposeShowAll"
+"Ctrl+Esc" = "Quit"
+"Ctrl+Return" = { run = { cmd = "terminator", args = [] } }
+# "Logo+Space" = { run = { cmd = "dolphin", args = [] } }
+# "Logo+Shift+B" = { open_default = "browser" }
+
+"Ctrl+1" = { builtin = "Workspace", index = 0 }
+"Ctrl+2" = { builtin = "Workspace", index = 1 }
+"Ctrl+3" = { builtin = "Workspace", index = 2 }
+"Ctrl+4" = { builtin = "Workspace", index = 3 }
+
+"Ctrl+Tab" = "ApplicationSwitchNext"
+"Ctrl+Shift+ISO_Left_Tab" = "ApplicationSwitchPrev"
+"Ctrl+ArrowUp" = "ToggleMaximizeWindow"
+"Ctrl+grave" = "ApplicationSwitchNextWindow"
+"Ctrl+Q" = "ApplicationSwitchQuit"
+"Prior" = "ExposeShowAll"
+"Next" = "ExposeShowDesktop"
 "Alt+J" = "SceneSnapshot"
 
 [dock]

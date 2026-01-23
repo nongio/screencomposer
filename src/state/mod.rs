@@ -32,7 +32,7 @@ use smithay::{
         PopupManager,
     },
     input::{
-        keyboard::{xkb, Keysym, ModifiersState, XkbConfig},
+        keyboard::{Keysym, ModifiersState, XkbConfig},
         pointer::{CursorIcon, CursorImageAttributes, CursorImageStatus, PointerHandle},
         Seat, SeatState,
     },
@@ -92,7 +92,7 @@ use smithay::{
 
 use crate::cursor::{CursorManager, CursorTextureCache};
 use crate::{
-    config::{Config, ModifierMaskLookup},
+    config::Config,
     focus::KeyboardFocusTarget,
     render_elements::scene_element::SceneElement,
     shell::{LayerShellSurface, WindowElement},
@@ -201,10 +201,8 @@ pub struct Otto<BackendData: Backend + 'static> {
 
     // input-related fields
     pub suppressed_keys: Vec<Keysym>,
-    pub keycode_remap: HashMap<u32, u32>,
     pub current_modifiers: ModifiersState,
     pub app_switcher_hold_modifiers: Option<ModifiersState>,
-    pub modifier_masks: ModifierMaskLookup,
     pub cursor_status: Arc<Mutex<CursorImageStatus>>,
     pub cursor_manager: CursorManager,
     pub cursor_texture_cache: CursorTextureCache,
@@ -482,8 +480,29 @@ impl<BackendData: Backend + 'static> Otto<BackendData> {
         let cursor_manager = CursorManager::new(&cursor_theme, cursor_size as u8);
         let cursor_texture_cache = CursorTextureCache::default();
         let pointer = seat.add_pointer();
-        let k = Config::with(|c| (c.keyboard_repeat_delay, c.keyboard_repeat_rate));
-        seat.add_keyboard(XkbConfig::default(), k.0, k.1)
+        let (layout, variant, options, repeat_delay, repeat_rate) = Config::with(|c| {
+            let layout = c.input.xkb_layout.clone().unwrap_or_default();
+            let variant = c.input.xkb_variant.clone().unwrap_or_default();
+            let options = if c.input.xkb_options.is_empty() {
+                None
+            } else {
+                Some(c.input.xkb_options.join(","))
+            };
+            (
+                layout,
+                variant,
+                options,
+                c.keyboard_repeat_delay,
+                c.keyboard_repeat_rate,
+            )
+        });
+        let xkb_config = XkbConfig {
+            layout: &layout,
+            variant: &variant,
+            options,
+            ..Default::default()
+        };
+        seat.add_keyboard(xkb_config, repeat_delay, repeat_rate)
             .expect("Failed to initialize the keyboard");
 
         let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
@@ -512,7 +531,7 @@ impl<BackendData: Backend + 'static> Otto<BackendData> {
         // Get backend name before moving backend_data
         let backend_name = backend_data.backend_name();
 
-        let mut composer = Otto {
+        Otto {
             backend_data,
             display_handle: dh,
             socket_name,
@@ -546,10 +565,8 @@ impl<BackendData: Backend + 'static> Otto<BackendData> {
             cursor_shape_manager_state,
             dnd_icon: None,
             suppressed_keys: Vec::new(),
-            keycode_remap: HashMap::new(),
             current_modifiers: ModifiersState::default(),
             app_switcher_hold_modifiers: None,
-            modifier_masks: ModifierMaskLookup::default(),
             cursor_status,
             cursor_manager,
             cursor_texture_cache,
@@ -591,12 +608,7 @@ impl<BackendData: Backend + 'static> Otto<BackendData> {
 
             // render metrics
             render_metrics: Arc::new(crate::render_metrics::RenderMetrics::new(backend_name)),
-        };
-
-        composer.rebuild_keycode_remap();
-        composer.rebuild_modifier_masks();
-
-        composer
+        }
     }
 
     /// Recalculate exclusive zones for an output from its layer shell surfaces
@@ -681,41 +693,6 @@ impl<BackendData: Backend + 'static> Otto<BackendData> {
         {
             self.loop_wakeup_pending.store(false, Ordering::Release);
         }
-    }
-
-    fn rebuild_keycode_remap(&mut self) {
-        self.keycode_remap.clear();
-
-        let remaps = Config::with(|config| config.parsed_key_remaps());
-        if remaps.is_empty() {
-            return;
-        }
-
-        let Some(keyboard) = self.seat.get_keyboard() else {
-            return;
-        };
-
-        let mapping = keyboard.with_xkb_state(self, |ctx| {
-            let xkb = ctx.xkb().lock().unwrap();
-            let keymap = unsafe { xkb.keymap() };
-            build_keycode_remap_map(keymap, &remaps)
-        });
-
-        self.keycode_remap = mapping;
-    }
-
-    fn rebuild_modifier_masks(&mut self) {
-        let Some(keyboard) = self.seat.get_keyboard() else {
-            self.modifier_masks = ModifierMaskLookup::default();
-            return;
-        };
-
-        let masks = keyboard.with_xkb_state(self, |ctx| {
-            let xkb = ctx.xkb().lock().unwrap();
-            let keymap = unsafe { xkb.keymap() };
-            ModifierMaskLookup::from_keymap(keymap)
-        });
-        self.modifier_masks = masks;
     }
 
     #[cfg(feature = "xwayland")]
@@ -1327,55 +1304,6 @@ impl<BackendData: Backend + 'static> Otto<BackendData> {
             }
         }
     }
-}
-
-fn build_keycode_remap_map(keymap: &xkb::Keymap, remaps: &[(Keysym, Keysym)]) -> HashMap<u32, u32> {
-    let mut result = HashMap::new();
-
-    for &(from_sym, to_sym) in remaps {
-        let from_code = find_keycode_for_keysym(keymap, from_sym);
-        let to_code = find_keycode_for_keysym(keymap, to_sym);
-
-        match (from_code, to_code) {
-            (Some(src), Some(dst)) => {
-                if src != dst {
-                    result.insert(src, dst);
-                }
-            }
-            (None, _) => warn!(
-                source = xkb::keysym_get_name(from_sym),
-                "no keycode found for source keysym"
-            ),
-            (_, None) => warn!(
-                target = xkb::keysym_get_name(to_sym),
-                "no keycode found for target keysym"
-            ),
-        }
-    }
-
-    result
-}
-
-fn find_keycode_for_keysym(keymap: &xkb::Keymap, target: Keysym) -> Option<u32> {
-    let mut result = None;
-
-    keymap.key_for_each(|km, keycode| {
-        if result.is_some() {
-            return;
-        }
-
-        let layout_count = km.num_layouts_for_key(keycode);
-        for layout in 0..layout_count {
-            let syms = km.key_get_syms_by_level(keycode, layout, 0);
-            if syms.iter().any(|sym| *sym == target) {
-                let raw = keycode.raw();
-                result = Some(raw.saturating_sub(8));
-                break;
-            }
-        }
-    });
-
-    result
 }
 
 #[derive(Debug, Copy, Clone)]

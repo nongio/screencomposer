@@ -31,74 +31,64 @@ Following a draft roadmap of features and improvements.
 ## Features / Roadmap
 
 ### Core
-- [ ] login?
-- [ ] enable multiple screens (maybe virtual?)
-- [ ] fullscreen animation bug (try animated resize)
-- [x] listen to animations in LayersEngine
-- [ ] custom shape layers
+- [x] Single screen support
+- [ ] Multiple screens
+
+### Ideas
+- [ ] virtual screens available remotely (VNC/RDP)
 
 ### Basic window management
-- [x] move windows
-- [x] resize windows
-- [x] window fullscreen/maximize
-- [x] window scaling
-- [x] animated drag and drop
-- [x] minimize windows
-- [ ] fix resize from edge-top
-- [ ] 
+- [x] Move windows
+- [x] Resize windows
+- [x] Window fullscreen/maximize (animated)
+- [x] Minimize windows (animated / integrated with Dock)
 
-### Applications switcher (hotkey: `alt + Tab`)
-- [x] background search for application metadata and icons (following xdg specs)
-- [x] close applications from application switcher
-- [x] cycle between same app windows
-- [x] Fullscreen app switcher
-- [ ] 
+### Applications switcher (default shortcut: `Ctrl + Tab`)
+- [x] Background search for application metadata and icons (following XDG specs)
+- [x] Close applications from application switcher
+- [x] Cycle between same app windows
 
-### Expose windows (hotkey: `alt + f` gesture on udev: `three fingers swipe up`)
-- [x] all windows (algorithm from gnome-shell/kde)
-- [x] preview windows with name
-- [ ] show all desktop
+### Expose windows (default shortcut: `PageDown` or gesture: `three fingers swipe up`)
+- [x] All windows (algorithm from gnome-shell/kde)
+- [x] Preview windows with name
+- [ ] Show all desktop
 
 ### Dock task manager
-- [x] show running applications in their opening order
-- [x] show minimized windows
-- [x] show pinned applications
-- [ ] show favorite locations
-- [ ] refactor out of the compositor core
+- [x] Show running applications in their opening order
+- [x] Show minimized windows
+- [x] Show pinned/bookmarked applications
+- [ ] Show favorite locations
+- [ ] Refactor out of the compositor core
 
 ### Screenshare
 - [x] XDG Desktop Portal backend (see [docs/xdg-desktop-portal.md](./docs/xdg-desktop-portal.md))
 - [x] ScreenCast portal for PipeWire screen sharing
-- [x] fullscreenshare with dmabuf zero-copy
-- [ ] Window capture support (layers_element)
-- [ ] screenshot support
+- [x] Fullscreenshare with blitting from GPU and dmabuf
+- [ ] Window capture support
+- [ ] Screenshot support
 - [ ] Permission dialog UI
 
 ### Miscellaneus
 - [x] Theming dark/light
-- [ ] Volume control widget
 - [ ] Brightness control widget
+- [ ] Audio volume control widget
 - [ ] Keyboard light control widget
-- [ ] notifications
+- [ ] Notifications
 
-### Natural scrolling
-- [x] enable natural scrolling
+### Input
+- [x] Enable natural scrolling
 - [x] 2 finger scrolling
-- [ ] calculate scroll acceleration
+- [x] Keyboard remapping
+- [ ] Calculate scroll acceleration
 
 ### Workspace
-- [x] dynamic background
-- [x] multiple workspaces
-- [x] workspace switcher
-- [ ] animate create/delete workspace
-- [ ] enable multiple screens
-- [ ] screen rotation / resolution
+- [x] Configurable background
+- [x] Multiple workspaces
+- [x] Workspace switcher (animated)
+- [x] Drag windows between workspaces
 
 ### Config
-- [x] centralized config manager
-- [x] persistent config from text files
-- [x] setup keybindings from config
-- [ ] setup screen mode
+- [x] Centralized config manager
 
 ### Keyboard Shortcuts
 Hotkeys are now fully configurable via the `otto_config.toml` file. See the `[keyboard_shortcuts]` section to customize keybindings for your setup. Example:
