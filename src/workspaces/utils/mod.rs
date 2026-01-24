@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use lay_rs::{
+use layers::{
     prelude::{taffy, Layer, LayerTree, LayerTreeBuilder, View},
     types::{Point, Size},
 };
@@ -11,9 +11,9 @@ use super::WindowViewSurface;
 
 #[allow(unused)]
 pub struct FontCache {
-    pub font_collection: lay_rs::skia::textlayout::FontCollection,
-    pub font_mgr: lay_rs::skia::FontMgr,
-    pub type_face_font_provider: RefCell<lay_rs::skia::textlayout::TypefaceFontProvider>,
+    pub font_collection: layers::skia::textlayout::FontCollection,
+    pub font_mgr: layers::skia::FontMgr,
+    pub type_face_font_provider: RefCell<layers::skia::textlayout::TypefaceFontProvider>,
 }
 
 impl FontCache {
@@ -21,13 +21,13 @@ impl FontCache {
     pub fn make_font(
         &self,
         family: impl AsRef<str>,
-        style: lay_rs::skia::FontStyle,
+        style: layers::skia::FontStyle,
         size: f32,
-    ) -> Option<lay_rs::skia::Font> {
+    ) -> Option<layers::skia::Font> {
         let typeface = self.font_mgr.match_family_style(family.as_ref(), style)?;
-        let mut font = lay_rs::skia::Font::from_typeface(typeface, size);
+        let mut font = layers::skia::Font::from_typeface(typeface, size);
         font.set_subpixel(true);
-        font.set_edging(lay_rs::skia::font::Edging::SubpixelAntiAlias);
+        font.set_edging(layers::skia::font::Edging::SubpixelAntiAlias);
         Some(font)
     }
 
@@ -35,9 +35,9 @@ impl FontCache {
     pub fn make_font_with_fallback(
         &self,
         family: impl AsRef<str>,
-        style: lay_rs::skia::FontStyle,
+        style: layers::skia::FontStyle,
         size: f32,
-    ) -> lay_rs::skia::Font {
+    ) -> layers::skia::Font {
         if let Some(font) = self.make_font(&family, style, size) {
             return font;
         }
@@ -63,18 +63,18 @@ impl FontCache {
             .font_mgr
             .legacy_make_typeface(None, style)
             .expect("Failed to create default typeface");
-        let mut font = lay_rs::skia::Font::from_typeface(typeface, size);
+        let mut font = layers::skia::Font::from_typeface(typeface, size);
         font.set_subpixel(true);
-        font.set_edging(lay_rs::skia::font::Edging::SubpixelAntiAlias);
+        font.set_edging(layers::skia::font::Edging::SubpixelAntiAlias);
         font
     }
 }
 
 thread_local! {
     pub static FONT_CACHE: FontCache = {
-        let font_mgr = lay_rs::skia::FontMgr::new();
-        let type_face_font_provider = lay_rs::skia::textlayout::TypefaceFontProvider::new();
-        let mut font_collection = lay_rs::skia::textlayout::FontCollection::new();
+        let font_mgr = layers::skia::FontMgr::new();
+        let type_face_font_provider = layers::skia::textlayout::TypefaceFontProvider::new();
+        let mut font_collection = layers::skia::textlayout::FontCollection::new();
         font_collection.set_asset_font_manager(Some(type_face_font_provider.clone().into()));
         font_collection.set_dynamic_font_manager(font_mgr.clone());
         FontCache { font_collection, font_mgr, type_face_font_provider: RefCell::new(type_face_font_provider) }
@@ -92,8 +92,8 @@ pub fn draw_balloon_rect(
     arrow_height: f32,
     arrow_position: f32, // Position of the arrow along the bottom edge (0.0 to 1.0)
     arrow_corner_radius: f32,
-) -> lay_rs::skia::Path {
-    let mut path = lay_rs::skia::Path::new();
+) -> layers::skia::Path {
+    let mut path = layers::skia::Path::new();
 
     // Calculate the arrow tip position
     let arrow_tip_x = x + arrow_position * width;
@@ -182,19 +182,19 @@ pub fn view_render_elements(
                 .map(|wvs| {
                     let draw_wvs = wvs.clone();
 
-                    let draw_container = move |canvas: &lay_rs::skia::Canvas, w: f32, h: f32| {
+                    let draw_container = move |canvas: &layers::skia::Canvas, w: f32, h: f32| {
                         if w == 0.0 || h == 0.0 {
-                            return lay_rs::skia::Rect::default();
+                            return layers::skia::Rect::default();
                         }
                         let tex = crate::textures_storage::get(&draw_wvs.id);
                         if tex.is_none() {
-                            return lay_rs::skia::Rect::default();
+                            return layers::skia::Rect::default();
                         }
                         let tex = tex.unwrap();
-                        let mut damage = lay_rs::skia::Rect::default();
+                        let mut damage = layers::skia::Rect::default();
                         if let Some(tex_damage) = tex.damage {
                             tex_damage.iter().for_each(|bd| {
-                                let r = lay_rs::skia::Rect::from_xywh(
+                                let r = layers::skia::Rect::from_xywh(
                                     bd.loc.x as f32,
                                     bd.loc.y as f32,
                                     bd.size.w as f32,
@@ -208,7 +208,7 @@ pub fn view_render_elements(
                         let src_w = (draw_wvs.phy_src_w - draw_wvs.phy_src_x).max(1.0);
                         let scale_y = draw_wvs.phy_dst_h / src_h;
                         let scale_x = draw_wvs.phy_dst_w / src_w;
-                        let mut matrix = lay_rs::skia::Matrix::new_identity();
+                        let mut matrix = layers::skia::Matrix::new_identity();
                         match draw_wvs.transform {
                             Transform::Normal => {
                                 matrix.pre_translate((-draw_wvs.phy_src_x, -draw_wvs.phy_src_y));
@@ -226,20 +226,20 @@ pub fn view_render_elements(
                             Transform::Flipped270 => {}
                         }
 
-                        let sampling = lay_rs::skia::SamplingOptions::from(
-                            lay_rs::skia::CubicResampler::catmull_rom(),
+                        let sampling = layers::skia::SamplingOptions::from(
+                            layers::skia::CubicResampler::catmull_rom(),
                         );
-                        let mut paint = lay_rs::skia::Paint::new(
-                            lay_rs::skia::Color4f::new(1.0, 1.0, 1.0, 1.0),
+                        let mut paint = layers::skia::Paint::new(
+                            layers::skia::Color4f::new(1.0, 1.0, 1.0, 1.0),
                             None,
                         );
                         paint.set_shader(tex.image.to_shader(
-                            (lay_rs::skia::TileMode::Clamp, lay_rs::skia::TileMode::Clamp),
+                            (layers::skia::TileMode::Clamp, layers::skia::TileMode::Clamp),
                             sampling,
                             &matrix,
                         ));
 
-                        let rect = lay_rs::skia::Rect::from_xywh(0.0, 0.0, w, h);
+                        let rect = layers::skia::Rect::from_xywh(0.0, 0.0, w, h);
                         canvas.draw_rect(rect, &paint);
                         damage
                     };

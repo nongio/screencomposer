@@ -47,7 +47,7 @@ define_colors!(COLORS, {
     text_vibrant_tertiary => "#414141",
     text_vibrant_quaternary => "#414141",
     text_vibrant_quinary => "#414141",
-    materials_ultrathick => "#00000080",
+    materials_ultrathick => "#474747be",
     materials_thick => "#00000066",
     materials_medium => "#28282883",
     materials_thin => "#38383855",

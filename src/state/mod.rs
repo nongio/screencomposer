@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use lay_rs::{engine::Engine, prelude::taffy};
+use layers::{engine::Engine, prelude::taffy};
 use tracing::{info, warn};
 
 use smithay::{
@@ -243,11 +243,11 @@ pub struct Otto<BackendData: Backend + 'static> {
     pub sc_layers: HashMap<ObjectId, Vec<crate::sc_layer_shell::ScLayer>>,
     pub sc_transactions: HashMap<ObjectId, crate::sc_layer_shell::ScTransaction>,
     // Map from surface ID to its rendering layer in the scene graph
-    pub surface_layers: HashMap<ObjectId, lay_rs::prelude::Layer>,
+    pub surface_layers: HashMap<ObjectId, layers::prelude::Layer>,
     // Pre-warmed View caches: surface_id -> (layer_key -> NodeRef)
     // Built during surface creation, moved into Views when they're created
     pub view_warm_cache:
-        HashMap<ObjectId, HashMap<String, std::collections::VecDeque<lay_rs::prelude::NodeRef>>>,
+        HashMap<ObjectId, HashMap<String, std::collections::VecDeque<layers::prelude::NodeRef>>>,
 
     // Rendering metrics
     pub render_metrics: Arc<crate::render_metrics::RenderMetrics>,
@@ -940,7 +940,7 @@ impl<BackendData: Backend + 'static> Otto<BackendData> {
                 let popup_id = popup_surface.id();
 
                 // Calculate absolute popup position (window position + popup offset)
-                let popup_position = lay_rs::types::Point {
+                let popup_position = layers::types::Point {
                     x: location.x as f32 + offset.x as f32,
                     y: location.y as f32 + offset.y as f32,
                 };
@@ -1105,14 +1105,14 @@ impl<BackendData: Backend + 'static> Otto<BackendData> {
         // Update the lay_rs layer position and size
         let layer = &layer_shell_surface.layer;
         layer.set_position(
-            lay_rs::types::Point {
+            layers::types::Point {
                 x: (geometry.loc.x as f64 * scale_factor) as f32,
                 y: (geometry.loc.y as f64 * scale_factor) as f32,
             },
             None,
         );
         layer.set_size(
-            lay_rs::types::Size::points(
+            layers::types::Size::points(
                 (geometry.size.w as f64 * scale_factor) as f32,
                 (geometry.size.h as f64 * scale_factor) as f32,
             ),
@@ -1126,7 +1126,7 @@ impl<BackendData: Backend + 'static> Otto<BackendData> {
             let width = (geometry.size.w as f64 * scale_factor) as f32;
             let height = (geometry.size.h as f64 * scale_factor) as f32;
 
-            layer.set_draw_content(move |canvas: &lay_rs::skia::Canvas, _w, _h| {
+            layer.set_draw_content(move |canvas: &layers::skia::Canvas, _w, _h| {
                 for wvs in &elements {
                     if wvs.phy_dst_w <= 0.0 || wvs.phy_dst_h <= 0.0 {
                         continue;
@@ -1137,24 +1137,24 @@ impl<BackendData: Backend + 'static> Otto<BackendData> {
                         let src_w = (wvs.phy_src_w - wvs.phy_src_x).max(1.0);
                         let scale_y = wvs.phy_dst_h / src_h;
                         let scale_x = wvs.phy_dst_w / src_w;
-                        let mut matrix = lay_rs::skia::Matrix::new_identity();
+                        let mut matrix = layers::skia::Matrix::new_identity();
                         matrix.pre_translate((-wvs.phy_src_x, -wvs.phy_src_y));
                         matrix.pre_scale((scale_x, scale_y), None);
 
-                        let sampling = lay_rs::skia::SamplingOptions::from(
-                            lay_rs::skia::CubicResampler::catmull_rom(),
+                        let sampling = layers::skia::SamplingOptions::from(
+                            layers::skia::CubicResampler::catmull_rom(),
                         );
-                        let mut paint = lay_rs::skia::Paint::new(
-                            lay_rs::skia::Color4f::new(1.0, 1.0, 1.0, 1.0),
+                        let mut paint = layers::skia::Paint::new(
+                            layers::skia::Color4f::new(1.0, 1.0, 1.0, 1.0),
                             None,
                         );
                         paint.set_shader(tex.image.to_shader(
-                            (lay_rs::skia::TileMode::Clamp, lay_rs::skia::TileMode::Clamp),
+                            (layers::skia::TileMode::Clamp, layers::skia::TileMode::Clamp),
                             sampling,
                             &matrix,
                         ));
 
-                        let dst_rect = lay_rs::skia::Rect::from_xywh(
+                        let dst_rect = layers::skia::Rect::from_xywh(
                             wvs.phy_dst_x,
                             wvs.phy_dst_y,
                             wvs.phy_dst_w,
@@ -1163,7 +1163,7 @@ impl<BackendData: Backend + 'static> Otto<BackendData> {
                         canvas.draw_rect(dst_rect, &paint);
                     }
                 }
-                lay_rs::skia::Rect::from_xywh(0.0, 0.0, width, height)
+                layers::skia::Rect::from_xywh(0.0, 0.0, width, height)
             });
         }
     }
@@ -1267,7 +1267,7 @@ impl<BackendData: Backend + 'static> Otto<BackendData> {
     pub fn inject_surface_layers_into_view<S: std::hash::Hash + Clone>(
         &self,
         surface: &WlSurface,
-        view: &lay_rs::prelude::View<S>,
+        view: &layers::prelude::View<S>,
     ) {
         use smithay::wayland::compositor::with_surface_tree_downward;
         use smithay::wayland::compositor::TraversalAction;
@@ -1446,7 +1446,7 @@ pub trait Backend {
     fn early_import(&mut self, surface: &WlSurface);
     fn texture_for_surface(&self, surface: &RendererSurfaceState) -> Option<SkiaTextureImage>;
     fn set_cursor(&mut self, image: &CursorImageStatus); //, renderer: &mut SkiaRenderer);
-    fn renderer_context(&mut self) -> Option<lay_rs::skia::gpu::DirectContext>;
+    fn renderer_context(&mut self) -> Option<layers::skia::gpu::DirectContext>;
     fn request_redraw(&mut self) {}
     /// Get GBM device for DMA-BUF screenshare (None for backends without DMA-BUF support)
     fn gbm_device(

@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use lay_rs::{
+use layers::{
     engine::{
         animation::{TimingFunction, Transition},
         Engine, TransactionRef,
@@ -29,9 +29,9 @@ use super::model::AppSwitcherModel;
 
 #[derive(Debug, Clone)]
 pub struct AppSwitcherView {
-    pub wrap_layer: lay_rs::prelude::Layer,
-    pub view_layer: lay_rs::prelude::Layer,
-    pub view: lay_rs::prelude::View<AppSwitcherModel>,
+    pub wrap_layer: layers::prelude::Layer,
+    pub view_layer: layers::prelude::Layer,
+    pub view: layers::prelude::View<AppSwitcherModel>,
     active: Arc<AtomicBool>,
     notify_tx: tokio::sync::mpsc::Sender<WorkspacesModel>,
     latest_event: Arc<tokio::sync::RwLock<Option<WorkspacesModel>>>,
@@ -63,8 +63,8 @@ impl AppSwitcherView {
         wrap.set_key("app_switcher");
         wrap.set_size(Size::percent(1.0, 1.0), None);
         wrap.set_layout_style(Style {
-            position: lay_rs::taffy::style::Position::Absolute,
-            display: lay_rs::taffy::style::Display::Flex,
+            position: layers::taffy::style::Position::Absolute,
+            display: layers::taffy::style::Display::Flex,
             justify_content: Some(taffy::JustifyContent::Center),
             align_items: Some(taffy::AlignItems::Center),
             justify_items: Some(taffy::JustifyItems::Center),
@@ -79,7 +79,7 @@ impl AppSwitcherView {
         layer.set_pointer_events(false);
         let mut initial_state = AppSwitcherModel::new();
         initial_state.width = 1000;
-        let view = lay_rs::prelude::View::new(
+        let view = layers::prelude::View::new(
             "apps_switcher_inner",
             initial_state,
             Box::new(render_appswitcher_view),
@@ -165,7 +165,7 @@ impl AppSwitcherView {
             .wrap_layer
             .set_opacity(0.0, Some(Transition::ease_in_quad(0.01)));
         tr.on_finish(
-            |l: &lay_rs::prelude::Layer, _p: f32| {
+            |l: &layers::prelude::Layer, _p: f32| {
                 l.set_hidden(true);
             },
             true,

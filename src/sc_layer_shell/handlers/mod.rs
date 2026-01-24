@@ -3,7 +3,7 @@ use smithay::reexports::wayland_server::{
 };
 
 use crate::{state::Backend, Otto};
-use lay_rs::prelude::Transition;
+use layers::prelude::Transition;
 
 use super::protocol::{
     gen::sc_layer_shell_v1::{self, ScLayerShellV1},
@@ -36,7 +36,7 @@ fn find_active_transaction_for_client<BackendData: Backend>(
 fn accumulate_change<BackendData: Backend>(
     state: &mut Otto<BackendData>,
     txn_id: smithay::reexports::wayland_server::backend::ObjectId,
-    change: lay_rs::engine::AnimatedNodeChange,
+    change: layers::engine::AnimatedNodeChange,
 ) {
     if let Some(txn) = state.sc_transactions.get_mut(&txn_id) {
         txn.accumulated_changes.push(change);
@@ -155,8 +155,8 @@ impl<BackendData: Backend> Dispatch<ScLayerShellV1, ()> for Otto<BackendData> {
                 let layer = state.layers_engine.new_layer();
 
                 // Set some defaults
-                layer.set_layout_style(lay_rs::taffy::Style {
-                    position: lay_rs::taffy::Position::Absolute,
+                layer.set_layout_style(layers::taffy::Style {
+                    position: layers::taffy::Position::Absolute,
                     ..Default::default()
                 });
 

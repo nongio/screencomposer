@@ -128,7 +128,7 @@ impl Backend for X11Data {
     ) -> Option<SkiaTextureImage> {
         None
     }
-    fn renderer_context(&mut self) -> Option<lay_rs::skia::gpu::DirectContext> {
+    fn renderer_context(&mut self) -> Option<layers::skia::gpu::DirectContext> {
         None
     }
     fn request_redraw(&mut self) {

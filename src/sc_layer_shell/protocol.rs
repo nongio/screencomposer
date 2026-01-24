@@ -38,7 +38,7 @@ pub struct ScLayer {
     pub wl_layer: ZscLayerV1,
 
     /// The lay-rs layer backing this augmentation
-    pub layer: lay_rs::prelude::Layer,
+    pub layer: layers::prelude::Layer,
 
     /// Surface being augmented (any role)
     pub surface: wl_surface::WlSurface,
@@ -65,13 +65,13 @@ pub struct ScTransaction {
     pub delay_ms: Option<f32>,
 
     /// Timing function configured by client
-    pub timing_function: Option<lay_rs::prelude::Transition>,
+    pub timing_function: Option<layers::prelude::Transition>,
 
     /// Whether to send completion event
     pub send_completion: bool,
 
     /// Accumulated layer changes ready for scheduling
-    pub accumulated_changes: Vec<lay_rs::engine::AnimatedNodeChange>,
+    pub accumulated_changes: Vec<layers::engine::AnimatedNodeChange>,
 }
 
 impl Clone for ScTransaction {

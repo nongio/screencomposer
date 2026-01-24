@@ -1,5 +1,5 @@
-use lay_rs::skia::PathEffect;
-use lay_rs::{prelude::*, types::Size};
+use layers::skia::PathEffect;
+use layers::{prelude::*, types::Size};
 use taffy::LengthPercentageAuto;
 
 use crate::{
@@ -114,18 +114,19 @@ pub fn setup_miniwindow_icon(layer: &Layer, inner_layer: &Layer, _icon_width: f3
 }
 
 pub fn setup_label(new_layer: &Layer, label_text: String) {
+    let draw_scale = Config::with(|config| config.screen_scale as f32);
     let text_size = 26.0;
     let font_family = Config::with(|config| config.font_family.clone());
     let font = FONT_CACHE.with(|font_cache| {
         font_cache.make_font_with_fallback(
             font_family,
-            lay_rs::skia::FontStyle::default(),
+            layers::skia::FontStyle::default(),
             text_size,
         )
     });
 
     let text = label_text.clone();
-    let paint = lay_rs::skia::Paint::default();
+    let paint = layers::skia::Paint::default();
     let text_bounds = font.measure_str(label_text, Some(&paint));
 
     let text_bounds = text_bounds.1;
@@ -137,67 +138,52 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
     // Fixed height based on font size, not measured text bounds
     let label_size_height = text_size + arrow_height + text_padding_v * 2.0 + safe_margin * 2.0;
 
-    let draw_label = move |canvas: &lay_rs::skia::Canvas, w: f32, h: f32| -> lay_rs::skia::Rect {
+
+    let rect_corner_radius = 10.0;
+    let arrow_width = 25.0;
+    let arrow_corner_radius = 3.0;
+    // Calculate tooltip dimensions
+    let tooltip_width = label_size_width - safe_margin * 2.0;
+    let tooltip_height = label_size_height - safe_margin * 2.0;
+
+    let arrow_path = draw_balloon_rect(
+        safe_margin,
+        safe_margin,
+        tooltip_width,
+        tooltip_height,
+        rect_corner_radius,
+        arrow_width,
+        arrow_height,
+        0.5,
+        arrow_corner_radius,
+    );
+
+    
+    let draw_label = move |canvas: &layers::skia::Canvas, w: f32, h: f32| -> layers::skia::Rect {
         // Tooltip parameters
-        // let text = "This is a tooltip!";
+
         let text = text.clone();
-        let rect_corner_radius = 10.0;
-        let arrow_width = 25.0;
-        let arrow_corner_radius = 3.0;
+        let tooltip_height = h - safe_margin * 2.0;
 
         // Paint for the tooltip background
-        let mut paint = lay_rs::skia::Paint::default();
+        let mut paint = layers::skia::Paint::default();
 
         // choose colors according to theme scheme so tooltip looks correct in dark mode
-        let (bg_col, shadow_col, text_col) = Config::with(|c| match c.theme_scheme {
+        let (bg_col, text_col) = Config::with(|c| match c.theme_scheme {
             crate::theme::ThemeScheme::Light => (
-                lay_rs::skia::Color4f::new(157.0 / 255.0, 157.0 / 255.0, 157.0 / 255.0, 1.0),
-                theme_colors().shadow_color.c4f(),
+                layers::skia::Color4f::new(157.0 / 255.0, 157.0 / 255.0, 157.0 / 255.0, 1.0),
                 theme_colors().text_primary.c4f(),
             ),
             crate::theme::ThemeScheme::Dark => (
-                lay_rs::skia::Color4f::new(157.0 / 255.0, 157.0 / 255.0, 157.0 / 255.0, 1.0),
-                theme_colors().shadow_color.c4f(),
+                layers::skia::Color4f::new(157.0 / 255.0, 157.0 / 255.0, 157.0 / 255.0, 1.0),
                 theme_colors().text_primary.c4f(),
             ),
         });
         paint.set_color4f(bg_col, None);
         paint.set_anti_alias(true);
 
-        // Calculate tooltip dimensions
-        let tooltip_width = w - safe_margin * 2.0;
-        let tooltip_height = h - safe_margin * 2.0;
-
-        let arrow_path = draw_balloon_rect(
-            safe_margin,
-            safe_margin,
-            tooltip_width,
-            tooltip_height,
-            rect_corner_radius,
-            arrow_width,
-            arrow_height,
-            0.5,
-            arrow_corner_radius,
-        );
-        let mut shadow_paint = lay_rs::skia::Paint::default();
-        shadow_paint.set_blend_mode(lay_rs::skia::BlendMode::Multiply);
-        shadow_paint.set_color4f(shadow_col, None);
-        shadow_paint.set_anti_alias(true);
-        shadow_paint.set_mask_filter(lay_rs::skia::MaskFilter::blur(
-            lay_rs::skia::BlurStyle::Normal,
-            12.0,
-            None,
-        ));
-
-        let mut shadow_path = arrow_path.clone();
-        shadow_path.offset((-0.0, -0.0));
-        canvas.draw_path(&shadow_path, &shadow_paint);
-
-        // // Draw the arrow path (under the rectangle)
-        canvas.draw_path(&arrow_path, &paint);
-
         // // Paint for the text
-        let mut text_paint = lay_rs::skia::Paint::default();
+        let mut text_paint = layers::skia::Paint::default();
         text_paint.set_color4f(text_col, None);
         text_paint.set_anti_alias(true);
 
@@ -206,10 +192,12 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
         // Position text baseline at 68% of content area (excluding arrow)
         let text_y = safe_margin + (tooltip_height - arrow_height) * 0.68;
         canvas.draw_str(text.as_str(), (text_x, text_y), &font, &text_paint);
-        lay_rs::skia::Rect::from_xywh(0.0, 0.0, w, h)
+        layers::skia::Rect::from_xywh(0.0, 0.0, w, h)
     };
     let label_tree = LayerTreeBuilder::default()
         .key(format!("{}_label", new_layer.key()))
+        .shape(layers::prelude::Shape::from_path(&arrow_path))
+        .blend_mode(layers::prelude::BlendMode::BackgroundBlur)
         .layout_style(taffy::Style {
             position: taffy::Position::Absolute,
             max_size: taffy::geometry::Size {
@@ -228,10 +216,14 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
             width: taffy::Dimension::Length(label_size_width),
             height: taffy::Dimension::Length(label_size_height),
         })
+        .background_color(theme_colors().materials_ultrathick)
         .position(Point {
             x: -label_size_width / 2.0,
             y: -label_size_height - 10.0 + safe_margin,
         })
+        .shadow_color(theme_colors().shadow_color)
+        .shadow_offset(((0.0, 0.0).into(), None))
+        .shadow_radius((20.0, None))
         .opacity((0.0, None))
         .pointer_events(false)
         .content(Some(draw_label))
@@ -243,7 +235,7 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
 
 pub fn draw_app_icon(application: &Application, running: bool) -> ContentDrawFunction {
     let application = application.clone();
-    let draw_picture = move |canvas: &lay_rs::skia::Canvas, w: f32, h: f32| -> lay_rs::skia::Rect {
+    let draw_picture = move |canvas: &layers::skia::Canvas, w: f32, h: f32| -> layers::skia::Rect {
         let icon_size = (w * 0.95).max(0.0);
         // Scale indicator with icon size (base ratio from 95.0)
         let circle_radius = icon_size * 0.025;
@@ -251,60 +243,60 @@ pub fn draw_app_icon(application: &Application, running: bool) -> ContentDrawFun
         let icon_x = (w - icon_size) / 2.0;
         if let Some(image) = &application.icon.clone() {
             let mut paint =
-                lay_rs::skia::Paint::new(lay_rs::skia::Color4f::new(1.0, 1.0, 1.0, 1.0), None);
+                layers::skia::Paint::new(layers::skia::Color4f::new(1.0, 1.0, 1.0, 1.0), None);
 
-            paint.set_style(lay_rs::skia::paint::Style::Fill);
+            paint.set_style(layers::skia::paint::Style::Fill);
             // draw image with shadow
-            let shadow_color = lay_rs::skia::Color4f::new(0.0, 0.0, 0.0, 0.5);
+            let shadow_color = layers::skia::Color4f::new(0.0, 0.0, 0.0, 0.5);
 
-            let mut shadow_paint = lay_rs::skia::Paint::new(shadow_color, None);
-            let shadow_offset = lay_rs::skia::Vector::new(5.0, 5.0);
-            let shadow_color = lay_rs::skia::Color::from_argb(128, 0, 0, 0); // semi-transparent black
+            let mut shadow_paint = layers::skia::Paint::new(shadow_color, None);
+            let shadow_offset = layers::skia::Vector::new(5.0, 5.0);
+            let shadow_color = layers::skia::Color::from_argb(128, 0, 0, 0); // semi-transparent black
             let shadow_blur_radius = 5.0;
 
-            let shadow_filter = lay_rs::skia::image_filters::drop_shadow_only(
+            let shadow_filter = layers::skia::image_filters::drop_shadow_only(
                 (shadow_offset.x, shadow_offset.y),
                 (shadow_blur_radius, shadow_blur_radius),
                 shadow_color,
                 None,
                 None,
-                lay_rs::skia::image_filters::CropRect::default(),
+                layers::skia::image_filters::CropRect::default(),
             );
             shadow_paint.set_image_filter(shadow_filter);
 
             canvas.draw_image_rect(
                 image,
                 None,
-                lay_rs::skia::Rect::from_xywh(icon_x, icon_y, icon_size, icon_size),
+                layers::skia::Rect::from_xywh(icon_x, icon_y, icon_size, icon_size),
                 &shadow_paint,
             );
-            let resampler = lay_rs::skia::CubicResampler::catmull_rom();
+            let resampler = layers::skia::CubicResampler::catmull_rom();
 
             canvas.draw_image_rect_with_sampling_options(
                 image,
                 None,
-                lay_rs::skia::Rect::from_xywh(icon_x, icon_y, icon_size, icon_size),
-                lay_rs::skia::SamplingOptions::from(resampler),
+                layers::skia::Rect::from_xywh(icon_x, icon_y, icon_size, icon_size),
+                layers::skia::SamplingOptions::from(resampler),
                 &paint,
             );
         } else {
-            let mut rect = lay_rs::skia::Rect::from_xywh(0.0, 0.0, icon_size, icon_size);
+            let mut rect = layers::skia::Rect::from_xywh(0.0, 0.0, icon_size, icon_size);
             rect.inset((10.0, 10.0));
-            let rrect = lay_rs::skia::RRect::new_rect_xy(rect, 10.0, 10.0);
+            let rrect = layers::skia::RRect::new_rect_xy(rect, 10.0, 10.0);
             let mut paint =
-                lay_rs::skia::Paint::new(lay_rs::skia::Color4f::new(1.0, 1.0, 1.0, 0.2), None);
+                layers::skia::Paint::new(layers::skia::Color4f::new(1.0, 1.0, 1.0, 0.2), None);
             canvas.draw_rrect(rrect, &paint);
 
             paint.set_stroke(true);
             paint.set_stroke_width(6.0);
-            paint.set_color4f(lay_rs::skia::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
+            paint.set_color4f(layers::skia::Color4f::new(0.0, 0.0, 0.0, 1.0), None);
             let intervals = [12.0, 6.0]; // Length of the dash and the gap
             let path_effect = PathEffect::dash(&intervals, 0.0);
             paint.set_path_effect(path_effect);
             canvas.draw_rrect(rrect, &paint);
 
             if let Some(picure) = &application.picture {
-                // let mut paint = lay_rs::skia::Paint::default();
+                // let mut paint = layers::skia::Paint::default();
                 canvas.draw_picture(picure, None, None);
             }
         }
@@ -312,9 +304,9 @@ pub fn draw_app_icon(application: &Application, running: bool) -> ContentDrawFun
             // use primary text color for the running indicator (dark on light theme)
             let mut color = theme_colors().text_primary.c4f();
             color.a = 0.9;
-            let mut paint = lay_rs::skia::Paint::new(color, None);
+            let mut paint = layers::skia::Paint::new(color, None);
             paint.set_anti_alias(true);
-            paint.set_style(lay_rs::skia::paint::Style::Fill);
+            paint.set_style(layers::skia::paint::Style::Fill);
             let indicator_y_offset = icon_size * 0.04;
             canvas.draw_circle(
                 (w / 2.0, h - (indicator_y_offset + circle_radius)),
@@ -323,7 +315,7 @@ pub fn draw_app_icon(application: &Application, running: bool) -> ContentDrawFun
             );
         }
 
-        lay_rs::skia::Rect::from_xywh(0.0, 0.0, w, h)
+        layers::skia::Rect::from_xywh(0.0, 0.0, w, h)
     };
 
     draw_picture.into()

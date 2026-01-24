@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use lay_rs::{
+use layers::{
     engine::{animation::Transition, Engine, NodeRef, TransactionRef},
     prelude::{taffy, Layer, Point},
     skia,
@@ -44,12 +44,12 @@ type MiniWindowLayers = (Layer, Layer, Layer, Option<u32>);
 pub struct DockView {
     layers_engine: Arc<Engine>,
     // layers
-    pub wrap_layer: lay_rs::prelude::Layer,
-    pub view_layer: lay_rs::prelude::Layer,
-    pub bar_layer: lay_rs::prelude::Layer,
-    pub resize_handle: lay_rs::prelude::Layer,
-    dock_apps_container: lay_rs::prelude::Layer,
-    dock_windows_container: lay_rs::prelude::Layer,
+    pub wrap_layer: layers::prelude::Layer,
+    pub view_layer: layers::prelude::Layer,
+    pub bar_layer: layers::prelude::Layer,
+    pub resize_handle: layers::prelude::Layer,
+    dock_apps_container: layers::prelude::Layer,
+    dock_windows_container: layers::prelude::Layer,
 
     app_layers: Arc<RwLock<HashMap<String, AppLayerEntry>>>,
     miniwindow_layers: Arc<RwLock<HashMap<ObjectId, MiniWindowLayers>>>,
@@ -116,8 +116,8 @@ impl DockView {
         wrap_layer.set_pointer_events(false);
         wrap_layer.set_size(Size::percent(1.0, 1.0), None);
         wrap_layer.set_layout_style(Style {
-            position: lay_rs::taffy::style::Position::Absolute,
-            display: lay_rs::taffy::style::Display::Flex,
+            position: layers::taffy::style::Position::Absolute,
+            display: layers::taffy::style::Display::Flex,
             justify_content: Some(taffy::JustifyContent::Center), // horizontal
             align_items: Some(taffy::AlignItems::FlexEnd),        // vertical alignment
             justify_items: Some(taffy::JustifyItems::Center),
@@ -201,18 +201,18 @@ impl DockView {
             })
             // .background_color(Color::new_rgba(0.0, 0.0, 0.0, 0.0     ))
             .content(Some(move |canvas: &skia::Canvas, w, h| {
-                let paint = lay_rs::skia::Paint::new(theme_colors().text_tertiary.c4f(), None);
+                let paint = layers::skia::Paint::new(theme_colors().text_tertiary.c4f(), None);
 
                 let line_width: f32 = 3.0 * draw_scale;
                 let margin_h = (w - line_width) / 2.0;
                 let margin_v = 18.0 * draw_scale * dock_size_multiplier;
-                let rect = lay_rs::skia::Rect::from_xywh(
+                let rect = layers::skia::Rect::from_xywh(
                     margin_h,
                     margin_v,
                     w - 2.0 * margin_h,
                     h - 2.0 * margin_v,
                 );
-                let rrect = lay_rs::skia::RRect::new_rect_xy(rect, 3.0, 3.0);
+                let rrect = layers::skia::RRect::new_rect_xy(rect, 3.0, 3.0);
                 canvas.draw_rrect(rrect, &paint);
                 skia::Rect::from_xywh(0.0, 0.0, w, h)
             }))
@@ -587,7 +587,7 @@ impl DockView {
             layer.set_opacity(0.0, Transition::ease_out_quad(0.2));
             layer
                 .set_size(
-                    lay_rs::types::Size::points(0.0, app_height),
+                    layers::types::Size::points(0.0, app_height),
                     Transition::ease_out_quad(0.3),
                 )
                 .on_finish(
@@ -604,7 +604,7 @@ impl DockView {
             layer.set_opacity(0.0, Transition::ease_out_quad(0.2));
             layer
                 .set_size(
-                    lay_rs::types::Size::points(0.0, miniwindow_height),
+                    layers::types::Size::points(0.0, miniwindow_height),
                     Transition::ease_out_quad(0.3),
                 )
                 .on_finish(

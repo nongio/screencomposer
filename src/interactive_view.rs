@@ -126,7 +126,7 @@ impl<B: Backend> PartialEq for InteractiveView<B> {
         self.view.id() == other.view.id()
     }
 }
-impl<S: Hash + Clone + 'static, B: Backend> ViewInteractions<B> for lay_rs::prelude::View<S>
+impl<S: Hash + Clone + 'static, B: Backend> ViewInteractions<B> for layers::prelude::View<S>
 where
     Arc<RwLock<S>>: Send + Sync,
 {

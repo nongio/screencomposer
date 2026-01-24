@@ -233,7 +233,7 @@ impl Backend for UdevData {
     fn set_cursor(&mut self, _image: &CursorImageStatus) {
         // No-op: cursor rendering handled directly in render_surface
     }
-    fn renderer_context(&mut self) -> Option<lay_rs::skia::gpu::DirectContext> {
+    fn renderer_context(&mut self) -> Option<layers::skia::gpu::DirectContext> {
         let r = self.gpus.single_renderer(&self.primary_gpu).unwrap();
         let r = r.as_ref();
         r.context.clone()
@@ -1346,7 +1346,7 @@ impl Otto<UdevData> {
             let h = wl_mode.size.h as f32;
             self.workspaces
                 .set_screen_dimension(wl_mode.size.w, wl_mode.size.h);
-            let scene_size = lay_rs::types::Size::points(w, h);
+            let scene_size = layers::types::Size::points(w, h);
             root.set_size(scene_size, None);
             self.scene_element.set_size(w, h);
             self.layers_engine.scene_set_size(w, h);

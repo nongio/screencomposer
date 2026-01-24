@@ -151,7 +151,7 @@ new_layer_surface() in src/shell/mod.rs
     │
     ├── Create LayerSurface wrapper (Smithay)
     ├── Call workspaces.create_layer_shell_layer(wlr_layer, namespace)
-    │   └── Creates lay_rs::Layer at correct z-order
+    │   └── Creates layers::Layer at correct z-order
     ├── Create LayerShellSurface struct
     ├── Store in layer_surfaces HashMap
     └── Register with Smithay's layer_map_for_output

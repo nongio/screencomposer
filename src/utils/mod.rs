@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, OnceLock, RwLock},
 };
 
-use lay_rs::{
+use layers::{
     prelude::{ContentDrawFunction, Layer, PointerHandlerFunction, Transition},
     skia::{self},
     utils::load_svg_image,
@@ -24,14 +24,14 @@ fn icon_cache() -> Arc<RwLock<HashMap<String, skia::Image>>> {
 // pub fn image_from_svg(
 //     image_data: &[u8],
 //     ctx: Option<skia::gpu::DirectContext>,
-// ) -> lay_rs::skia::Image {
+// ) -> layers::skia::Image {
 //     let options = usvg::Options::default();
 //     let mut rtree = usvg::Tree::from_data(image_data, &options).unwrap();
 //     rtree.size = usvg::Size::from_wh(512.0, 512.0).unwrap();
 //     let xml_options = usvg::XmlOptions::default();
 //     let xml = usvg::TreeWriting::to_string(&rtree, &xml_options);
-//     let font_mgr = lay_rs::skia::FontMgr::new();
-//     let svg = lay_rs::skia::svg::Dom::from_bytes(xml.as_bytes(), font_mgr).unwrap();
+//     let font_mgr = layers::skia::FontMgr::new();
+//     let svg = layers::skia::svg::Dom::from_bytes(xml.as_bytes(), font_mgr).unwrap();
 
 //     let mut surface = {
 //         if let Some(mut ctx) = ctx {
@@ -62,21 +62,21 @@ fn icon_cache() -> Arc<RwLock<HashMap<String, skia::Image>>> {
 //     surface.image_snapshot()
 // }
 
-pub fn image_from_path(path: &str, size: impl Into<skia::ISize>) -> Option<lay_rs::skia::Image> {
+pub fn image_from_path(path: &str, size: impl Into<skia::ISize>) -> Option<layers::skia::Image> {
     let image_path = std::path::Path::new(path);
 
     let image = if image_path.extension().and_then(std::ffi::OsStr::to_str) == Some("svg") {
         load_svg_image(path, size).ok()?
     } else {
         let image_data = std::fs::read(image_path).ok()?;
-        lay_rs::skia::Image::from_encoded(lay_rs::skia::Data::new_copy(image_data.as_slice()))
+        layers::skia::Image::from_encoded(layers::skia::Data::new_copy(image_data.as_slice()))
             .unwrap()
     };
 
     Some(image)
 }
 
-pub fn named_icon(icon_name: &str) -> Option<lay_rs::skia::Image> {
+pub fn named_icon(icon_name: &str) -> Option<layers::skia::Image> {
     let ic = icon_cache();
     let mut ic = ic.write().unwrap();
     if let Some(icon) = ic.get(icon_name) {
@@ -139,7 +139,7 @@ pub fn draw_named_icon(icon_name: &str) -> Option<ContentDrawFunction> {
         let icon = icon.clone();
         let resampler = skia::CubicResampler::catmull_rom();
 
-        let draw_function = move |canvas: &skia::Canvas, w: f32, h: f32| -> lay_rs::skia::Rect {
+        let draw_function = move |canvas: &skia::Canvas, w: f32, h: f32| -> layers::skia::Rect {
             let paint = skia::Paint::new(skia::Color4f::new(1.0, 1.0, 1.0, 1.0), None);
             canvas.draw_image_rect_with_sampling_options(
                 &icon,
@@ -185,25 +185,25 @@ pub fn draw_text_content(
 ) -> Option<ContentDrawFunction> {
     let text = text.into();
     let foreground_paint =
-        lay_rs::skia::Paint::new(lay_rs::skia::Color4f::new(0.0, 0.0, 0.0, 0.5), None);
+        layers::skia::Paint::new(layers::skia::Color4f::new(0.0, 0.0, 0.0, 0.5), None);
     let mut text_style = text_style.clone();
     text_style.set_foreground_paint(&foreground_paint);
     let ff = Config::with(|c| c.font_family.clone());
     text_style.set_font_families(&[ff]);
 
-    let mut paragraph_style = lay_rs::skia::textlayout::ParagraphStyle::new();
-    paragraph_style.set_text_direction(lay_rs::skia::textlayout::TextDirection::LTR);
+    let mut paragraph_style = layers::skia::textlayout::ParagraphStyle::new();
+    paragraph_style.set_text_direction(layers::skia::textlayout::TextDirection::LTR);
     paragraph_style.set_text_style(&text_style.clone());
     paragraph_style.set_text_align(text_align);
     paragraph_style.set_max_lines(1);
     paragraph_style.set_ellipsis("…");
     // println!("FS: {}", text_style.font_size());
 
-    let draw_function = move |canvas: &skia::Canvas, w: f32, h: f32| -> lay_rs::skia::Rect {
+    let draw_function = move |canvas: &skia::Canvas, w: f32, h: f32| -> layers::skia::Rect {
         // let paint = skia::Paint::new(skia::Color4f::new(1.0, 1.0, 1.0, 1.0), None);
 
         let mut builder = FONT_CACHE.with(|font_cache| {
-            lay_rs::skia::textlayout::ParagraphBuilder::new(
+            layers::skia::textlayout::ParagraphBuilder::new(
                 &paragraph_style,
                 font_cache.font_collection.clone(),
             )
@@ -231,7 +231,7 @@ pub fn button_press_filter() -> PointerHandlerFunction {
 pub fn button_press_scale(s: f32) -> PointerHandlerFunction {
     let f = move |layer: &Layer, _x: f32, _y: f32| {
         layer.set_scale(
-            lay_rs::types::Point::new(s, s),
+            layers::types::Point::new(s, s),
             Transition::spring(0.3, 0.1),
         );
     };
@@ -248,7 +248,7 @@ pub fn button_release_filter() -> PointerHandlerFunction {
 pub fn button_release_scale() -> PointerHandlerFunction {
     let f = |layer: &Layer, _x: f32, _y: f32| {
         layer.set_scale(
-            lay_rs::types::Point::new(1.0, 1.0),
+            layers::types::Point::new(1.0, 1.0),
             Transition::spring(0.3, 0.1),
         );
     };

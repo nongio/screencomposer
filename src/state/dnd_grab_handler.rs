@@ -1,6 +1,6 @@
 use std::os::fd::OwnedFd;
 
-use lay_rs::prelude::Transition;
+use layers::prelude::Transition;
 use smithay::{
     reexports::wayland_server::protocol::{wl_data_source::WlDataSource, wl_surface::WlSurface},
     wayland::selection::data_device::{ClientDndGrabHandler, ServerDndGrabHandler},

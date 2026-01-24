@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use lay_rs::prelude::{taffy, Interpolate, Layer, Transition};
+use layers::prelude::{taffy, Interpolate, Layer, Transition};
 use smithay::{
     desktop::{
         find_popup_root_surface, get_popup_toplevel_coords, layer_map_for_output,
@@ -625,7 +625,7 @@ impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
                     .add_sublayer(&view.window_layer);
 
                 view.window_layer
-                    .set_position(lay_rs::types::Point { x: 0.0, y: 0.0 }, Some(transition))
+                    .set_position(layers::types::Point { x: 0.0, y: 0.0 }, Some(transition))
                     .on_finish(
                         move |l: &Layer, _| {
                             surface_clone.with_pending_state(|state| {
@@ -752,7 +752,7 @@ impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
 
                     view.window_layer
                         .set_position(
-                            lay_rs::types::Point {
+                            layers::types::Point {
                                 x: position.x as f32,
                                 y: position.y as f32,
                             },
@@ -1231,7 +1231,7 @@ impl<BackendData: Backend> Otto<BackendData> {
         use std::collections::{HashMap, VecDeque};
 
         let surface_id = surface.id();
-        let mut cache: HashMap<String, VecDeque<lay_rs::prelude::NodeRef>> = HashMap::new();
+        let mut cache: HashMap<String, VecDeque<layers::prelude::NodeRef>> = HashMap::new();
 
         // Walk the surface tree and create layers for each surface + subsurfaces
         with_surface_tree_downward(

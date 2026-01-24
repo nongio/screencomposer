@@ -2,7 +2,7 @@ use super::{BackgroundView, WindowSelectorView};
 use crate::{config::Config, shell::WindowElement, utils::image_from_path};
 use core::fmt;
 
-use lay_rs::{
+use layers::{
     engine::Engine,
     prelude::{taffy, Layer, Transition},
     types::Size,
@@ -75,7 +75,7 @@ impl WorkspaceView {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
-        workspace_layer.set_size(lay_rs::types::Size::auto(), None);
+        workspace_layer.set_size(layers::types::Size::auto(), None);
 
         workspace_layer.set_position((0.0, 0.0), None);
         workspace_layer.set_pointer_events(false);
@@ -84,7 +84,7 @@ impl WorkspaceView {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
-        background_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+        background_layer.set_size(layers::types::Size::percent(1.0, 1.0), None);
         // background_layer.set_opacity(0.0, None);
 
         let windows_layer = layers_engine.new_layer();
@@ -145,7 +145,7 @@ impl WorkspaceView {
 
     pub fn update_layout(&self, logical_index: usize, width: f32, height: f32) {
         self.workspace_layer
-            .set_size(lay_rs::types::Size::points(width, height), None);
+            .set_size(layers::types::Size::points(width, height), None);
         let x = logical_index as f32 * width;
         self.workspace_layer.set_position((x, 0.0), None);
     }
@@ -189,7 +189,7 @@ impl WorkspaceView {
         let location = location.to_f64().to_physical(scale);
 
         window_element.base_layer().set_position(
-            lay_rs::types::Point {
+            layers::types::Point {
                 x: location.x as f32,
                 y: location.y as f32,
             },
@@ -201,7 +201,7 @@ impl WorkspaceView {
             .layer_for_window(&window_element.id())
         {
             l.set_position(
-                lay_rs::types::Point {
+                layers::types::Point {
                     x: location.x as f32,
                     y: location.y as f32,
                 },

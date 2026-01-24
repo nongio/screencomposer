@@ -1,9 +1,9 @@
-use lay_rs::skia::{
+use layers::skia::{
     font_style::{Slant, Width},
     textlayout::TextStyle,
     FontStyle,
 };
-use lay_rs::types::Color;
+use layers::types::Color;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +12,7 @@ use crate::config::Config;
 // Macro to define a Lazy group of colors
 macro_rules! define_colors {
     ($init_name:ident, { $($name:ident => $hex:expr),* $(,)? }) => {
-        use lay_rs::types::Color;
+        use layers::types::Color;
         use once_cell::sync::Lazy;
         use crate::theme::ThemeColors;
         // Lazy static initialization of the group
@@ -24,8 +24,8 @@ macro_rules! define_colors {
 
 pub fn text_style_with_size_and_weight(
     size: f32,
-    weight: lay_rs::skia::font_style::Weight,
-) -> lay_rs::skia::textlayout::TextStyle {
+    weight: layers::skia::font_style::Weight,
+) -> layers::skia::textlayout::TextStyle {
     let scale = Config::with(|c| c.screen_scale);
     let mut ts = TextStyle::new();
     ts.set_font_size(size * scale as f32);
@@ -36,8 +36,8 @@ pub fn text_style_with_size_and_weight(
 
 macro_rules! define_text_styles {
     ({ $($name:ident => ($weight:expr, $size:expr)),* $(,)? }) => {
-        use lay_rs::skia::font_style::Weight;
-        use lay_rs::skia::textlayout::TextStyle;
+        use layers::skia::font_style::Weight;
+        use layers::skia::textlayout::TextStyle;
         use crate::theme::text_style_with_size_and_weight;
 
         paste::paste! {

@@ -7,7 +7,7 @@ use std::{
 };
 
 use apps_info::Application;
-use lay_rs::{
+use layers::{
     engine::{Engine, TransactionRef},
     prelude::{taffy, Interpolate, Layer, Spring, TimingFunction, Transition},
     skia::{self, Contains},
@@ -196,7 +196,7 @@ impl Workspaces {
             ..Default::default()
         });
 
-        workspaces_layer.set_size(lay_rs::types::Size::auto(), None);
+        workspaces_layer.set_size(layers::types::Size::auto(), None);
         workspaces_layer.set_pointer_events(false);
 
         layers_engine.add_layer(&workspaces_layer);
@@ -207,7 +207,7 @@ impl Workspaces {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
-        expose_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+        expose_layer.set_size(layers::types::Size::percent(1.0, 1.0), None);
         expose_layer.set_pointer_events(false);
         expose_layer.set_hidden(true);
         expose_layer.set_picture_cached(false);
@@ -555,7 +555,7 @@ impl Workspaces {
     /// Finalize expose gesture with velocity-based spring animation.
     /// The velocity from the gesture is used to initialize the spring's momentum.
     pub fn expose_end_with_velocity(&self, raw_velocity: f32) {
-        use lay_rs::prelude::*;
+        use layers::prelude::*;
 
         const MULTIPLIER: f32 = 1000.0;
         let current_gesture = self
@@ -642,7 +642,7 @@ impl Workspaces {
 
     /// Explicitly show or hide expose mode (keyboard toggle).
     pub fn expose_set_visible(&self, show: bool) {
-        use lay_rs::prelude::*;
+        use layers::prelude::*;
 
         // If show desktop is active, exit it first
         if self.get_show_desktop() && show {
@@ -966,9 +966,9 @@ impl Workspaces {
                                     // Only animate if this is the current workspace AND a transition is provided
                                     if transition.is_some() && is_current_workspace {
                                         let translation =
-                                            layer.change_position(lay_rs::types::Point { x, y });
+                                            layer.change_position(layers::types::Point { x, y });
                                         let scale_change =
-                                            layer.change_scale(lay_rs::types::Point {
+                                            layer.change_scale(layers::types::Point {
                                                 x: scale,
                                                 y: scale,
                                             });
@@ -976,9 +976,9 @@ impl Workspaces {
                                         changes.push(scale_change);
                                     } else {
                                         // Non-current workspaces: instant update without animation
-                                        layer.set_position(lay_rs::types::Point { x, y }, None);
+                                        layer.set_position(layers::types::Point { x, y }, None);
                                         layer.set_scale(
-                                            lay_rs::types::Point { x: scale, y: scale },
+                                            layers::types::Point { x: scale, y: scale },
                                             None,
                                         );
                                     }
@@ -1023,7 +1023,7 @@ impl Workspaces {
             workspace_selector_view_layer.set_hidden(!show_expose);
 
             let transaction = self.workspace_selector_view.layer.set_position(
-                lay_rs::types::Point {
+                layers::types::Point {
                     x: 0.0,
                     y: workspace_selector_y,
                 },
@@ -1235,7 +1235,7 @@ impl Workspaces {
             // Animate the mirror layer, not the actual window
             window
                 .mirror_layer()
-                .set_position(lay_rs::types::Point { x, y }, transition);
+                .set_position(layers::types::Point { x, y }, transition);
         }
 
         // If there's a transition, set up a callback to finalize visibility after animation

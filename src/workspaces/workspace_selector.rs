@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use lay_rs::prelude::*;
+use layers::prelude::*;
 use smithay::{
     backend::input::ButtonState,
     input::pointer::{CursorIcon, CursorImageStatus},
@@ -26,7 +26,7 @@ pub const WORKSPACE_SELECTOR_PREVIEW_WIDTH: f32 = 300.0;
 #[derive(Clone, Debug)]
 pub struct WorkspaceDropTarget {
     pub workspace_index: usize,
-    pub drop_layer: lay_rs::prelude::Layer,
+    pub drop_layer: layers::prelude::Layer,
 }
 
 #[derive(Clone, Debug)]
@@ -69,8 +69,8 @@ impl Hash for WorkspaceSelectorViewState {
 
 #[derive(Clone)]
 pub struct WorkspaceSelectorView {
-    pub layer: lay_rs::prelude::Layer,
-    pub view: lay_rs::prelude::View<WorkspaceSelectorViewState>,
+    pub layer: layers::prelude::Layer,
+    pub view: layers::prelude::View<WorkspaceSelectorViewState>,
     pub cursor_location: Arc<RwLock<Point>>,
     pub drop_targets: Arc<RwLock<Vec<WorkspaceDropTarget>>>,
     pub drop_hover_index: Arc<RwLock<Option<usize>>>,
@@ -189,9 +189,9 @@ fn render_workspace_selector_view(
             }
             let mut color_filter = None;
             if is_drop_hover {
-                let darken_color = lay_rs::skia::Color::from_argb(100, 100, 100, 100);
-                let add = lay_rs::skia::Color::from_argb(0, 0, 0, 0);
-                color_filter = lay_rs::skia::color_filters::lighting(darken_color, add);
+                let darken_color = layers::skia::Color::from_argb(100, 100, 100, 100);
+                let add = layers::skia::Color::from_argb(0, 0, 0, 0);
+                color_filter = layers::skia::color_filters::lighting(darken_color, add);
             }
 
             let workspace_width = w.workspace_width.max(1.0);
@@ -214,9 +214,9 @@ fn render_workspace_selector_view(
                 ..Default::default()
             })
             .size((
-                lay_rs::types::Size {
-                    width: lay_rs::taffy::style::Dimension::Length(preview_width),
-                    height: lay_rs::taffy::style::Dimension::Auto,
+                layers::types::Size {
+                    width: layers::taffy::style::Dimension::Length(preview_width),
+                    height: layers::taffy::style::Dimension::Auto,
                 },
                 None,
             ))
@@ -230,9 +230,9 @@ fn render_workspace_selector_view(
                     ..Default::default()
                 })
                 .size((
-                    lay_rs::types::Size {
-                        width: lay_rs::taffy::style::Dimension::Length(preview_width),
-                        height: lay_rs::taffy::style::Dimension::Length(preview_height),
+                    layers::types::Size {
+                        width: layers::taffy::style::Dimension::Length(preview_width),
+                        height: layers::taffy::style::Dimension::Length(preview_height),
                     },
                     None,
                 ))
@@ -270,9 +270,9 @@ fn render_workspace_selector_view(
                                 ..Default::default()
                             })
                             .size((
-                                lay_rs::types::Size {
-                                    width: lay_rs::taffy::style::Dimension::Length(workspace_width),
-                                    height: lay_rs::taffy::style::Dimension::Length(
+                                layers::types::Size {
+                                    width: layers::taffy::style::Dimension::Length(workspace_width),
+                                    height: layers::taffy::style::Dimension::Length(
                                         workspace_height,
                                     ),
                                 },
@@ -304,9 +304,9 @@ fn render_workspace_selector_view(
                             })
                             .position(Point::new(0.0, 0.0))
                             .size((
-                                lay_rs::types::Size {
-                                    width: lay_rs::taffy::style::Dimension::Percent(1.0),
-                                    height: lay_rs::taffy::style::Dimension::Percent(1.0),
+                                layers::types::Size {
+                                    width: layers::taffy::style::Dimension::Percent(1.0),
+                                    height: layers::taffy::style::Dimension::Percent(1.0),
                                 },
                                 None,
                             ))
@@ -332,9 +332,9 @@ fn render_workspace_selector_view(
                             .opacity((0.0, None))
                             .position(Point::new(preview_width, 0.0))
                             .size((
-                                lay_rs::types::Size {
-                                    width: lay_rs::taffy::style::Dimension::Length(50.0),
-                                    height: lay_rs::taffy::style::Dimension::Length(50.0),
+                                layers::types::Size {
+                                    width: layers::taffy::style::Dimension::Length(50.0),
+                                    height: layers::taffy::style::Dimension::Length(50.0),
                                 },
                                 None,
                             ))
@@ -362,9 +362,9 @@ fn render_workspace_selector_view(
                         ..Default::default()
                     })
                     .size((
-                        lay_rs::types::Size {
-                            width: lay_rs::taffy::style::Dimension::Percent(1.0),
-                            height: lay_rs::taffy::style::Dimension::Length(40.0),
+                        layers::types::Size {
+                            width: layers::taffy::style::Dimension::Percent(1.0),
+                            height: layers::taffy::style::Dimension::Length(40.0),
                         },
                         None,
                     ))
@@ -372,7 +372,7 @@ fn render_workspace_selector_view(
                     .content(draw_text_content(
                         w.name.clone(),
                         theme::text_styles::title_3_regular(),
-                        lay_rs::skia::textlayout::TextAlign::Center,
+                        layers::skia::textlayout::TextAlign::Center,
                     ))
                     .build()
                     .unwrap(),
@@ -390,9 +390,9 @@ fn render_workspace_selector_view(
             ..Default::default()
         })
         .size((
-            lay_rs::types::Size {
-                width: lay_rs::taffy::style::Dimension::Percent(1.0),
-                height: lay_rs::taffy::style::Dimension::Auto,
+            layers::types::Size {
+                width: layers::taffy::style::Dimension::Percent(1.0),
+                height: layers::taffy::style::Dimension::Auto,
             },
             None,
         ))
@@ -418,9 +418,9 @@ fn render_workspace_selector_view(
                     ..Default::default()
                 })
                 .size((
-                    lay_rs::types::Size {
-                        width: lay_rs::taffy::style::Dimension::Percent(1.0),
-                        height: lay_rs::taffy::style::Dimension::Auto,
+                    layers::types::Size {
+                        width: layers::taffy::style::Dimension::Percent(1.0),
+                        height: layers::taffy::style::Dimension::Auto,
                     },
                     None,
                 ))
@@ -433,9 +433,9 @@ fn render_workspace_selector_view(
                     ..Default::default()
                 })
                 .size((
-                    lay_rs::types::Size {
-                        width: lay_rs::taffy::style::Dimension::Length(80.0),
-                        height: lay_rs::taffy::style::Dimension::Length(80.0),
+                    layers::types::Size {
+                        width: layers::taffy::style::Dimension::Length(80.0),
+                        height: layers::taffy::style::Dimension::Length(80.0),
                     },
                     None,
                 ))
@@ -503,7 +503,7 @@ impl<Backend: crate::state::Backend> ViewInteractions<Backend> for WorkspaceSele
         let state = self.view.get_state().clone();
         let screen_scale = Config::with(|config| config.screen_scale);
         let location = event.location.to_physical(screen_scale);
-        let location = lay_rs::types::Point::new(location.x as f32, location.y as f32);
+        let location = layers::types::Point::new(location.x as f32, location.y as f32);
         let mut hover = false;
         if self
             .view

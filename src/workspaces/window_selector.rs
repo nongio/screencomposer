@@ -1,4 +1,4 @@
-use lay_rs::{prelude::*, skia};
+use layers::{prelude::*, skia};
 use smithay::{
     backend::input::ButtonState,
     input::pointer::{CursorIcon, CursorImageStatus},
@@ -93,21 +93,21 @@ pub struct DragState {
     pub selection: WindowSelection,
     pub start_location: (f32, f32),
     pub offset: (f32, f32),
-    pub original_position: lay_rs::types::Point,
-    pub original_scale: lay_rs::types::Point,
-    pub original_anchor: lay_rs::types::Point,
+    pub original_position: layers::types::Point,
+    pub original_scale: layers::types::Point,
+    pub original_anchor: layers::types::Point,
     pub original_parent: Layer,
     pub current_drop_target: Option<usize>,
 }
 
 #[derive(Clone)]
 pub struct WindowSelectorView {
-    pub layer: lay_rs::prelude::Layer,
-    pub background_layer: lay_rs::prelude::Layer,
-    pub windows_layer: lay_rs::prelude::Layer,
-    pub overlay_layer: lay_rs::prelude::Layer,
-    pub drag_overlay_layer: lay_rs::prelude::Layer,
-    pub view: lay_rs::prelude::View<WindowSelectorState>,
+    pub layer: layers::prelude::Layer,
+    pub background_layer: layers::prelude::Layer,
+    pub windows_layer: layers::prelude::Layer,
+    pub overlay_layer: layers::prelude::Layer,
+    pub drag_overlay_layer: layers::prelude::Layer,
+    pub view: layers::prelude::View<WindowSelectorState>,
     pub windows: std::sync::Arc<RwLock<HashMap<ObjectId, Layer>>>,
     pub cursor_location: Arc<RwLock<Option<(f32, f32)>>>,
     pub press_location: Arc<RwLock<Option<(f32, f32)>>>,
@@ -148,11 +148,11 @@ impl WindowSelectorView {
         });
 
         window_selector_root.set_key(format!("window_selector_root_{}", index));
-        window_selector_root.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+        window_selector_root.set_size(layers::types::Size::percent(1.0, 1.0), None);
         // window_selector_root.set_picture_cached(false);
         // window_selector_root.set_image_cached(false);
         layers_engine.add_layer(&window_selector_root);
-        window_selector_root.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+        window_selector_root.set_size(layers::types::Size::percent(1.0, 1.0), None);
 
         // window_selector_root.set_background_color(Color::new_hex("#ff0000ff"), None);
         let overlay_layer = layers_engine.new_layer();
@@ -163,7 +163,7 @@ impl WindowSelectorView {
         // let mut overlay_color = theme_colors().accents_green;
         // overlay_color.alpha = 0.5;
         // overlay_layer.set_background_color(overlay_color, None);
-        overlay_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+        overlay_layer.set_size(layers::types::Size::percent(1.0, 1.0), None);
         overlay_layer.set_pointer_events(false);
         // overlay_layer.set_picture_cached(false);
         // overlay_layer.set_image_cached(false);
@@ -173,7 +173,7 @@ impl WindowSelectorView {
             rects: vec![],
             current_selection: None,
         };
-        let view = lay_rs::prelude::View::new(
+        let view = layers::prelude::View::new(
             format!("window_selector_view_{}", index),
             state,
             view_window_selector,
@@ -186,7 +186,7 @@ impl WindowSelectorView {
             position: taffy::Position::Absolute,
             ..Default::default()
         });
-        clone_background_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+        clone_background_layer.set_size(layers::types::Size::percent(1.0, 1.0), None);
         clone_background_layer.set_draw_content(background_layer.as_content());
         clone_background_layer.set_picture_cached(false);
         background_layer.add_follower_node(&clone_background_layer);
@@ -200,7 +200,7 @@ impl WindowSelectorView {
         // windows_layer.set_pointer_events(false);
         // windows_layer.set_picture_cached(false);
         // windows_layer.set_image_cached(false);
-        windows_layer.set_size(lay_rs::types::Size::percent(1.0, 1.0), None);
+        windows_layer.set_size(layers::types::Size::percent(1.0, 1.0), None);
 
         window_selector_root.add_sublayer(&clone_background_layer);
 
@@ -288,7 +288,7 @@ impl WindowSelectorView {
     fn update_drag_position(&self, pointer_location: (f32, f32)) {
         let drag_state = self.drag_state.read().unwrap();
         if let Some(ref state) = *drag_state {
-            let position = lay_rs::types::Point {
+            let position = layers::types::Point {
                 x: pointer_location.0 - state.offset.0,
                 y: pointer_location.1 - state.offset.1,
             };
@@ -352,7 +352,7 @@ impl WindowSelectorView {
             let target_y = WORKSPACE_SELECTOR_TARGET_Y_LOGICAL * screen_scale;
 
             let preview_scale_value = self.preview_scale();
-            let preview_scale_point = lay_rs::types::Point {
+            let preview_scale_point = layers::types::Point {
                 x: preview_scale_value,
                 y: preview_scale_value,
             };
@@ -363,7 +363,7 @@ impl WindowSelectorView {
             let mut progress = (pointer_location.1 - target_y) / (start_y_value - target_y);
             progress = progress.clamp(0.0, 1.0);
 
-            let new_scale = lay_rs::types::Point {
+            let new_scale = layers::types::Point {
                 x: preview_scale_point.x
                     + (state.original_scale.x - preview_scale_point.x) * progress,
                 y: preview_scale_point.y
@@ -428,7 +428,7 @@ impl WindowSelectorView {
         let original_position = Point::new(bounds.left(), bounds.top());
         let render_size = bounds.size();
 
-        let anchor_point = lay_rs::types::Point {
+        let anchor_point = layers::types::Point {
             x: ((pointer_location.0 - original_position.x) / render_size.width).clamp(0.0, 1.0),
             y: ((pointer_location.1 - original_position.y) / render_size.height).clamp(0.0, 1.0),
         };
@@ -570,7 +570,7 @@ pub fn view_window_selector(
         .as_ref()
         .map(|(rect, bb)| (rect.clone(), *bb))
         .unwrap_or((WindowSelection::default(), skia::Rect::new_empty()));
-    let text_layer_size = lay_rs::types::Size::points(
+    let text_layer_size = layers::types::Size::points(
         if text_bounding_box.width() == 0.0 {
             0.0
         } else {
@@ -585,7 +585,7 @@ pub fn view_window_selector(
     LayerTreeBuilder::default()
         .key(view.get_key())
         .position(((0.0, 0.0).into(), None))
-        .size(lay_rs::types::Size::percent(1.0, 1.0))
+        .size(layers::types::Size::percent(1.0, 1.0))
         .content(draw_container)
         // .picture_cached(false)
         // .image_cache(false)
@@ -604,7 +604,7 @@ pub fn view_window_selector(
                 None,
             ))
             .size((text_layer_size, None))
-            .blend_mode(lay_rs::prelude::BlendMode::BackgroundBlur)
+            .blend_mode(layers::prelude::BlendMode::BackgroundBlur)
             .border_corner_radius((BorderRadius::new_single(8.0 * draw_scale), None))
             .background_color((
                 PaintColor::Solid {

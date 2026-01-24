@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use lay_rs::prelude::Layer;
+use layers::prelude::Layer;
 use smithay::{
     desktop::LayerSurface,
     output::Output,
