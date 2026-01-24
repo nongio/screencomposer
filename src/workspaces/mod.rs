@@ -1963,6 +1963,12 @@ impl Workspaces {
     /// returns the window id of the last window raised, and set to active, if any
     pub fn focus_app(&mut self, app_id: &str) -> Option<ObjectId> {
         tracing::trace!("workspaces::focus_app: {:?}", app_id);
+
+        // Hide show desktop when focusing an app (use -2.0 to force dismiss)
+        if self.get_show_desktop() {
+            self.expose_show_desktop(-2.0, true);
+        }
+
         let wid = self.raise_app_elements(app_id, None);
         if wid.is_none() {
             // return early
@@ -1987,6 +1993,12 @@ impl Workspaces {
             .map(|w| w.xdg_app_id())
             .unwrap_or_default();
         tracing::trace!("workspaces::focus_app_with_window {:?}", app_id);
+
+        // Hide show desktop when focusing an app (use -2.0 to force dismiss)
+        if self.get_show_desktop() {
+            self.expose_show_desktop(-2.0, true);
+        }
+
         let wid = self.raise_app_elements(&app_id, Some(wid));
         if wid.is_none() {
             // return early
