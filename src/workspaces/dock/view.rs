@@ -151,9 +151,9 @@ impl DockView {
                 height: taffy::Dimension::Length(initial_bar_height),
             })
             .blend_mode(BlendMode::BackgroundBlur)
-            .background_color(theme_colors().materials_thin)
-            .border_width((3.0, None))
-            .border_color(Color::new_rgba(0.9, 0.9, 0.9, 0.5))
+            .background_color(theme_colors().materials_medium)
+            .border_width((1.0 * draw_scale, None))
+            .border_color(theme_colors().materials_highlight)
             .shadow_color(theme_colors().shadow_color)
             .shadow_offset(((0.0, 0.0).into(), None))
             .shadow_radius((20.0, None))

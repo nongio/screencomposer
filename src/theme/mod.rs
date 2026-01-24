@@ -99,6 +99,7 @@ pub struct ThemeColors {
     pub materials_medium: Color,
     pub materials_thin: Color,
     pub materials_ultrathin: Color,
+    pub materials_highlight: Color,
     pub materials_controls_menu: Color,
     pub materials_controls_popover: Color,
     pub materials_controls_title_bar: Color,
