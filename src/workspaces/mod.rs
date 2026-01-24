@@ -455,9 +455,24 @@ impl Workspaces {
         let is_animating = self.is_animating.load(std::sync::atomic::Ordering::Relaxed);
 
         // We're transitioning if:
-        // 1. Animation is in progress, OR
-        // 2. Gesture value is between 0 and 1000 (not fully closed or fully open)
-        is_animating || (gesture_value > 0 && gesture_value < 1000)
+        // 1. Gesture value is between 0 and 1000 (not fully closed or fully open), OR
+        // 2. Animation is in progress AND we're not at a stable state (0 or 1000)
+        (gesture_value > 0 && gesture_value < 1000) 
+            || (is_animating && gesture_value != 0 && gesture_value != 1000)
+    }
+
+    /// Returns true if we're in the middle of opening or closing show desktop mode
+    pub fn is_show_desktop_transitioning(&self) -> bool {
+        let gesture_value = self
+            .show_desktop_gesture
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let is_animating = self.is_animating.load(std::sync::atomic::Ordering::Relaxed);
+
+        // We're transitioning if:
+        // 1. Gesture value is between 0 and 1000 (not fully closed or fully open), OR
+        // 2. Animation is in progress AND we're not at a stable state (0 or 1000)
+        (gesture_value > 0 && gesture_value < 1000) 
+            || (is_animating && gesture_value != 0 && gesture_value != 1000)
     }
 
     /// Set the window selection mode
@@ -520,6 +535,15 @@ impl Workspaces {
         let current_state = self.show_all.load(std::sync::atomic::Ordering::Relaxed);
         let reset_value = if current_state { 1000 } else { 0 };
         self.show_all_gesture
+            .store(reset_value, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Reset the accumulated show desktop gesture value.
+    /// Called when starting a new show desktop gesture to prevent accumulation.
+    pub fn reset_show_desktop_gesture(&self) {
+        let current_state = self.show_desktop.load(std::sync::atomic::Ordering::Relaxed);
+        let reset_value = if current_state { 1000 } else { 0 };
+        self.show_desktop_gesture
             .store(reset_value, std::sync::atomic::Ordering::Relaxed);
     }
 
@@ -619,6 +643,12 @@ impl Workspaces {
     /// Explicitly show or hide expose mode (keyboard toggle).
     pub fn expose_set_visible(&self, show: bool) {
         use lay_rs::prelude::*;
+
+        // If show desktop is active, exit it first
+        if self.get_show_desktop() && show {
+            self.expose_show_desktop(-1.0, true);
+            return;
+        }
 
         // Set the gesture state to target value
         const MULTIPLIER: f32 = 1000.0;
@@ -1067,6 +1097,17 @@ impl Workspaces {
 
     /// Set the mode to show desktop mode using a delta for gestures
     pub fn expose_show_desktop(&self, delta: f32, end_gesture: bool) {
+        // Don't allow mode switches while expose is animating
+        if self.is_expose_transitioning() {
+            return;
+        }
+
+        // If we're in expose mode, exit it first instead of transitioning directly
+        if self.get_show_all() && end_gesture && delta > 0.0 {
+            self.expose_set_visible(false);
+            return;
+        }
+
         const MULTIPLIER: f32 = 1000.0;
         let gesture = self
             .show_desktop_gesture
@@ -1096,41 +1137,127 @@ impl Workspaces {
                     self.set_show_desktop(false);
                 }
             }
-        } else if !show_desktop {
-            new_gesture -= MULTIPLIER as i32;
         }
 
         let delta = new_gesture as f32 / 1000.0;
-
         let delta = delta.clamp(0.0, 1.0);
 
-        let mut transition = Some(Transition::ease_in(0.5));
+        // Store the accumulated gesture value back for next update
+        self.show_desktop_gesture
+            .store(new_gesture, std::sync::atomic::Ordering::Relaxed);
 
+        // Use same spring transition as expose_show_all for consistency
+        let mut transition = Some(Transition::spring(0.5, 0.1));
         if !end_gesture {
-            // in the middle of the gesture
             transition = None;
         }
+
+        // Get screen dimensions for calculating center
+        let size = self.workspaces_layer.render_size_transformed();
+        let scale = Config::with(|c| c.screen_scale);
+        let screen_center_x = size.x / 2.0;
+        let screen_center_y = size.y / 2.0;
+
+        let current_workspace_index = self.get_current_workspace_index();
         let workspace = self.get_current_workspace();
         let windows_list = workspace.windows_list.read().unwrap();
-        for window in windows_list.iter() {
-            let window = self.get_window_for_surface(window).unwrap();
+        let space = self.spaces.get(current_workspace_index).unwrap();
+
+        // Similar to expose_show_all: show_desktop_active when delta > 0
+        let show_desktop_active = delta > 0.0 || transition.is_some();
+
+        // Show/hide expose_layer (master container) when showing desktop
+        // This matches the pattern in expose_show_all_apply
+        let expose_layer = self.expose_layer.clone();
+        let show_desktop_ref = self.show_desktop.clone();
+        
+        expose_layer.set_hidden(!show_desktop_active);
+
+        // Show mirror windows layer when showing desktop, hide when not
+        workspace
+            .window_selector_view
+            .windows_layer
+            .set_hidden(!show_desktop_active);
+
+        for window_id in windows_list.iter() {
+            let window = self.get_window_for_surface(window_id).unwrap();
             if window.is_minimised() {
                 continue;
             }
-            let bbox = window.bbox();
-            let window_width = bbox.size.w as f32;
-            let window_height = bbox.size.h as f32;
-            let window_x = bbox.loc.x as f32;
-            let window_y = bbox.loc.y as f32;
-            let to_x = -window_width;
-            let to_y = -window_height;
+
+            // Get the original position from the workspace Space
+            let Some(geometry) = space.element_geometry(window) else {
+                continue;
+            };
+            let geometry = geometry.to_f64().to_physical(scale);
+
+            let window_width = geometry.size.w as f32;
+            let window_height = geometry.size.h as f32;
+            let window_x = geometry.loc.x as f32;
+            let window_y = geometry.loc.y as f32;
+
+            // Set mirror layer size to match window
+            window.mirror_layer().set_size(
+                Size::points(window_width, window_height),
+                None,
+            );
+
+            // Calculate window center
+            let window_center_x = window_x + window_width / 2.0;
+            let window_center_y = window_y + window_height / 2.0;
+
+            // Calculate direction from screen center to window center
+            let mut direction_x = window_center_x - screen_center_x;
+            let mut direction_y = window_center_y - screen_center_y;
+
+            // Normalize direction vector (with fallback for windows at exact center)
+            let length = (direction_x * direction_x + direction_y * direction_y).sqrt();
+            if length > 0.0 {
+                direction_x /= length;
+                direction_y /= length;
+            } else {
+                // If window is at exact center, push it to the right
+                direction_x = 1.0;
+                direction_y = 0.0;
+            }
+
+            // Calculate how far to push: use screen diagonal + window size to guarantee offscreen
+            let screen_diagonal = (size.x * size.x + size.y * size.y).sqrt();
+            let push_distance = screen_diagonal + window_width.max(window_height);
+
+            // Calculate target position offscreen in the direction
+            let to_x = window_x + direction_x * push_distance;
+            let to_y = window_y + direction_y * push_distance;
+
+            // Interpolate between original workspace position and offscreen target
             let x = window_x.interpolate(&to_x, delta);
             let y = window_y.interpolate(&to_y, delta);
 
-            if let Some(view) = self.get_window_view(&window.id()) {
-                view.window_layer
-                    .set_position(lay_rs::types::Point { x, y }, transition);
-            }
+            // Animate the mirror layer, not the actual window
+            window.mirror_layer().set_position(lay_rs::types::Point { x, y }, transition);
+        }
+
+        // If there's a transition, set up a callback to finalize visibility after animation
+        if let Some(trans) = transition {
+            // Mark as animating when we have a transition
+            self.is_animating.store(true, std::sync::atomic::Ordering::Relaxed);
+
+            let expose_layer_ref = expose_layer.clone();
+            let window_selector_layer = workspace.window_selector_view.windows_layer.clone();
+            let is_animating_ref = self.is_animating.clone();
+            
+            // Create a simple animation transaction to hook the on_finish callback
+            let transaction = self.workspaces_layer.set_opacity(1.0, Some(trans));
+            transaction.on_finish(
+                move |_: &Layer, _: f32| {
+                    let is_active = show_desktop_ref.load(std::sync::atomic::Ordering::Relaxed);
+                    expose_layer_ref.set_hidden(!is_active);
+                    window_selector_layer.set_hidden(!is_active);
+                    // Clear animating flag when animation completes
+                    is_animating_ref.store(false, std::sync::atomic::Ordering::Relaxed);
+                },
+                true,
+            );
         }
     }
 

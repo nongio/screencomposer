@@ -227,6 +227,7 @@ pub struct Otto<BackendData: Backend + 'static> {
     pub show_desktop: bool,
     pub swipe_gesture: SwipeGestureState,
     pub is_pinching: bool,
+    pub pinch_last_scale: f64,
     pub is_resizing: bool,
 
     // screenshare
@@ -591,6 +592,7 @@ impl<BackendData: Backend + 'static> Otto<BackendData> {
             // support variables for gestures
             swipe_gesture: SwipeGestureState::Idle,
             is_pinching: false,
+            pinch_last_scale: 1.0,
             is_resizing: false,
 
             // screenshare
