@@ -1750,6 +1750,13 @@ impl Workspaces {
 
                 space.raise_element(window, activate);
 
+                // Explicitly send configure to ensure activation state is communicated to client
+                if activate {
+                    if let Some(toplevel) = window.toplevel() {
+                        toplevel.send_pending_configure();
+                    }
+                }
+
                 // When activating a window, manage popup visibility
                 if activate {
                     // Hide popups for the previous top window
@@ -2535,6 +2542,10 @@ impl UnminimizeContext {
             let target_pos = layer_pos;
             layer_ref.set_hidden(true);
             mirror_ref.set_hidden(true);
+
+            // Clear any color filter that might have been applied during dock interaction
+            layer_ref.set_color_filter(None);
+            mirror_ref.set_color_filter(None);
 
             layers_engine.update(0.0);
 
