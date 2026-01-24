@@ -41,7 +41,7 @@ Following a draft roadmap of features and improvements.
 - [x] Move windows
 - [x] Resize windows
 - [x] Window fullscreen/maximize (animated)
-- [ ] Minimize windows (animated / integrated with Dock) <-- BUG unminimize when there are multiple windows 
+- [x] Minimize windows (animated / integrated with Dock)
 
 ### Applications switcher (default shortcut: `Ctrl + Tab`)
 - [x] Background search for application metadata and icons (following XDG specs)
@@ -51,12 +51,13 @@ Following a draft roadmap of features and improvements.
 ### Expose windows (default shortcut: `PageDown` or gesture: `three fingers swipe up`)
 - [x] All windows (algorithm from gnome-shell/kde)
 - [x] Preview windows with name
-- [ ] Show all desktop
+- [x] Show all desktop
 
 ### Dock task manager
 - [x] Show running applications in their opening order
 - [x] Show minimized windows
 - [x] Show pinned/bookmarked applications
+
 - [ ] Show favorite locations
 - [ ] Refactor out of the compositor core
 
@@ -64,12 +65,14 @@ Following a draft roadmap of features and improvements.
 - [x] XDG Desktop Portal backend (see [docs/xdg-desktop-portal.md](./docs/xdg-desktop-portal.md))
 - [x] ScreenCast portal for PipeWire screen sharing
 - [x] Fullscreenshare with blitting from GPU and dmabuf
+
 - [ ] Window capture support
 - [ ] Screenshot support
 - [ ] Permission dialog UI
 
 ### Miscellaneus
 - [x] Theming dark/light
+
 - [ ] Brightness control widget
 - [ ] Audio volume control widget
 - [ ] Keyboard light control widget
@@ -79,7 +82,8 @@ Following a draft roadmap of features and improvements.
 - [x] Enable natural scrolling
 - [x] 2 finger scrolling
 - [x] Keyboard remapping
-- [ ] Calculate scroll acceleration
+
+- [ ] Scroll acceleration
 
 ### Workspace
 - [x] Configurable background
@@ -126,17 +130,16 @@ Otto consists of the main compositor and additional components:
 
 See [docs/xdg-desktop-portal.md](./docs/xdg-desktop-portal.md) for details on the portal integration.
 
-## Is it open for contributions?
+## How can I contribute?
 You can contribute by testing the compositor, reporting bugs, by implementing new features or bring new ideas. Both this project and the LayersEngine are open to contributions. If you have any questions,  open an issue on the repository.
 
-## Build Dependencies
+## Building Otto
+
+### Prerequisites
 You'll need to install the following dependencies (note, that those package
 names may vary depending on your OS and linux distribution):
 - `libwayland`
 - `libxkbcommon`
-
-#### These are needed for the "Udev/DRM backend"
-
 - `libudev`
 - `libinput`
 - `libgbm`
@@ -146,7 +149,7 @@ If you want to enable X11 support (to run X11 applications within anvil),
 then you'll need to install the following packages as well:
     - `xwayland`
 
-## Configuration
+## Configure Otto
 
 Otto uses TOML configuration files. A complete example configuration is provided in `otto_config.example.toml` which you can copy and modify:
 
@@ -166,6 +169,26 @@ When running with a specific backend, Otto will automatically load the correspon
 This allows you to maintain different display settings, keyboard shortcuts, or other preferences for each backend. For instance, you might want different `screen_scale` values or display resolutions when running in a window (winit/X11) versus on bare metal (tty-udev).
 
 For detailed configuration options, see the [configuration documentation](./docs/configuration.md).
+
+## Build and run
+
+You can run it with cargo after having cloned this repository:
+
+```
+cd otto;
+
+cargo run -- --{backend}
+```
+
+The currently available backends are:
+
+- `--x11`: start anvil as an X11 client. This allows you to run the compositor inside an X11 session or any compositor supporting XWayland. Should be preferred over the winit backend where possible.
+- `--winit`: start otto as a [Winit](https://github.com/tomaka/winit) application. This allows you to run it
+  inside of an other X11 or Wayland session.
+- `--tty-udev`: start otto in a tty with udev support. This is the "traditional" launch of a Wayland
+  compositor. Note that this requires you to start otto as root if your system does not have logind
+  available.
+
 
 ## Profiling
 
@@ -191,24 +214,6 @@ The profiler will show frame timing, render performance, and other metrics to he
 
 **Note:** Make sure your `puffin_viewer` version matches the puffin version used by Otto (0.19.x requires puffin_viewer 0.22.0 or later).
 
-## Build and run
-
-You can run it with cargo after having cloned this repository:
-
-```
-cd otto;
-
-cargo run -- --{backend}
-```
-
-The currently available backends are:
-
-- `--x11`: start anvil as an X11 client. This allows you to run the compositor inside an X11 session or any compositor supporting XWayland. Should be preferred over the winit backend where possible.
-- `--winit`: start otto as a [Winit](https://github.com/tomaka/winit) application. This allows you to run it
-  inside of an other X11 or Wayland session.
-- `--tty-udev`: start otto in a tty with udev support. This is the "traditional" launch of a Wayland
-  compositor. Note that this requires you to start otto as root if your system does not have logind
-  available.
 
 ### Credits
 - Icon used: [WhiteSur Icon Theme](https://github.com/vinceliuice/WhiteSur-icon-theme)
