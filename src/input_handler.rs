@@ -1576,14 +1576,14 @@ impl Otto<UdevData> {
             // Scale < 1.0 = pinch in (close fingers) = hide desktop (negative delta)
             let current_scale = evt.scale() as f32;
             let last_scale = self.pinch_last_scale as f32;
-            
+
             // Calculate the change in scale since last event
             let scale_delta = current_scale - last_scale;
-            
+
             // Pinching out (positive delta) should show desktop (positive)
             // Amplify the gesture for better sensitivity (reduced from 5.0 to 2.5)
             let delta = scale_delta * 1.5;
-            
+
             self.pinch_last_scale = current_scale as f64;
             self.workspaces.expose_show_desktop(delta, false);
         }

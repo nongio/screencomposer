@@ -457,7 +457,7 @@ impl Workspaces {
         // We're transitioning if:
         // 1. Gesture value is between 0 and 1000 (not fully closed or fully open), OR
         // 2. Animation is in progress AND we're not at a stable state (0 or 1000)
-        (gesture_value > 0 && gesture_value < 1000) 
+        (gesture_value > 0 && gesture_value < 1000)
             || (is_animating && gesture_value != 0 && gesture_value != 1000)
     }
 
@@ -471,7 +471,7 @@ impl Workspaces {
         // We're transitioning if:
         // 1. Gesture value is between 0 and 1000 (not fully closed or fully open), OR
         // 2. Animation is in progress AND we're not at a stable state (0 or 1000)
-        (gesture_value > 0 && gesture_value < 1000) 
+        (gesture_value > 0 && gesture_value < 1000)
             || (is_animating && gesture_value != 0 && gesture_value != 1000)
     }
 
@@ -1170,7 +1170,7 @@ impl Workspaces {
         // This matches the pattern in expose_show_all_apply
         let expose_layer = self.expose_layer.clone();
         let show_desktop_ref = self.show_desktop.clone();
-        
+
         expose_layer.set_hidden(!show_desktop_active);
 
         // Show mirror windows layer when showing desktop, hide when not
@@ -1197,10 +1197,9 @@ impl Workspaces {
             let window_y = geometry.loc.y as f32;
 
             // Set mirror layer size to match window
-            window.mirror_layer().set_size(
-                Size::points(window_width, window_height),
-                None,
-            );
+            window
+                .mirror_layer()
+                .set_size(Size::points(window_width, window_height), None);
 
             // Calculate window center
             let window_center_x = window_x + window_width / 2.0;
@@ -1221,9 +1220,9 @@ impl Workspaces {
                 direction_y = 0.0;
             }
 
-            // Calculate how far to push: use screen diagonal + window size to guarantee offscreen
-            let screen_diagonal = (size.x * size.x + size.y * size.y).sqrt();
-            let push_distance = screen_diagonal + window_width.max(window_height);
+            // Calculate how far to push: just beyond the screen edge
+            // Use screen size to push windows offscreen without going too far
+            let push_distance = size.x.max(size.y);
 
             // Calculate target position offscreen in the direction
             let to_x = window_x + direction_x * push_distance;
@@ -1234,18 +1233,21 @@ impl Workspaces {
             let y = window_y.interpolate(&to_y, delta);
 
             // Animate the mirror layer, not the actual window
-            window.mirror_layer().set_position(lay_rs::types::Point { x, y }, transition);
+            window
+                .mirror_layer()
+                .set_position(lay_rs::types::Point { x, y }, transition);
         }
 
         // If there's a transition, set up a callback to finalize visibility after animation
         if let Some(trans) = transition {
             // Mark as animating when we have a transition
-            self.is_animating.store(true, std::sync::atomic::Ordering::Relaxed);
+            self.is_animating
+                .store(true, std::sync::atomic::Ordering::Relaxed);
 
             let expose_layer_ref = expose_layer.clone();
             let window_selector_layer = workspace.window_selector_view.windows_layer.clone();
             let is_animating_ref = self.is_animating.clone();
-            
+
             // Create a simple animation transaction to hook the on_finish callback
             let transaction = self.workspaces_layer.set_opacity(1.0, Some(trans));
             transaction.on_finish(

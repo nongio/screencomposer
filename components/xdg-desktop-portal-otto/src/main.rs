@@ -40,7 +40,10 @@ async fn main() -> Result<()> {
         .at(desktop_path(), settings_portal)
         .await?;
 
-    info!(name = DBUS_NAME, "ScreenCast and Settings portal backends running");
+    info!(
+        name = DBUS_NAME,
+        "ScreenCast and Settings portal backends running"
+    );
 
     // Start the watchdog in a separate task
     let watchdog = Watchdog::new(connection.clone(), WatchdogConfig::default());

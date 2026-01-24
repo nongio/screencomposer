@@ -28,10 +28,7 @@ impl SettingsPortal {
         let mut namespaces = HashMap::new();
         let mut appearance = HashMap::new();
 
-        appearance.insert(
-            "color-scheme".to_string(),
-            color_scheme.into(),
-        );
+        appearance.insert("color-scheme".to_string(), color_scheme.into());
 
         namespaces.insert("org.freedesktop.appearance".to_string(), appearance);
         Ok(namespaces)
@@ -101,7 +98,9 @@ impl SettingsPortal {
         let filtered = all_settings
             .into_iter()
             .filter(|(ns, _)| {
-                namespaces.iter().any(|requested| Self::matches_namespace(ns, requested))
+                namespaces
+                    .iter()
+                    .any(|requested| Self::matches_namespace(ns, requested))
             })
             .collect();
 
