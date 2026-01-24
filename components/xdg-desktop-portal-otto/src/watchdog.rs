@@ -13,7 +13,7 @@ use zbus::Connection;
 #[zbus::proxy(
     interface = "org.otto.Compositor",
     default_service = "org.otto.Compositor",
-    default_path = "/org/screencomposer/Compositor"
+    default_path = "/org/otto/Compositor"
 )]
 trait Compositor {
     /// Ping the compositor to check if it's responsive.
@@ -178,7 +178,7 @@ impl Watchdog {
         // Try to find and kill the compositor process by name
         let output = Command::new("pkill")
             .arg("-9")
-            .arg("screen-composer")
+            .arg("otto")
             .output()
             .context("Failed to execute pkill")?;
 

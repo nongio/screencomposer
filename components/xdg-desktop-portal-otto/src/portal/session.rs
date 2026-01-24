@@ -10,8 +10,8 @@ use zbus::object_server::ObjectServer;
 use zbus::zvariant::OwnedObjectPath;
 use zbus::SignalContext;
 
+use crate::otto_client::OttoClient;
 use crate::portal::{PortalState, SessionState};
-use crate::screencomposer_client::ScreenComposerClient;
 
 /// Represents an active screencast session.
 ///
@@ -20,7 +20,7 @@ use crate::screencomposer_client::ScreenComposerClient;
 #[derive(Clone)]
 pub struct Session {
     path: OwnedObjectPath,
-    sc_client: Arc<ScreenComposerClient>,
+    sc_client: Arc<OttoClient>,
     state: Arc<Mutex<PortalState>>,
 }
 
@@ -28,7 +28,7 @@ impl Session {
     /// Creates a new session object.
     pub fn new(
         path: OwnedObjectPath,
-        sc_client: Arc<ScreenComposerClient>,
+        sc_client: Arc<OttoClient>,
         state: Arc<Mutex<PortalState>>,
     ) -> Self {
         Self {

@@ -12,12 +12,12 @@ use zbus::interface;
 use zbus::object_server::ObjectServer;
 use zbus::zvariant::{OwnedFd, OwnedObjectPath, OwnedValue};
 
+use crate::otto_client::OttoClient;
 use crate::portal::{
     build_streams_value_from_descriptors, make_output_mapping_id, PortalState, Request, Session,
     SessionState, StreamDescriptor, CURSOR_MODE_HIDDEN, SOURCE_TYPE_MONITOR,
     SUPPORTED_CURSOR_MODES,
 };
-use crate::screencomposer_client::ScreenComposerClient;
 use zbus::zvariant::Str;
 
 /// Maximum attempts when polling for PipeWire node ID.
@@ -58,11 +58,11 @@ pub fn validate_persist_mode(mode: u32) -> Result<u32, fdo::Error> {
 #[derive(Clone)]
 pub struct ScreenCastPortal {
     state: Arc<Mutex<PortalState>>,
-    sc_client: Arc<ScreenComposerClient>,
+    sc_client: Arc<OttoClient>,
 }
 
 impl ScreenCastPortal {
-    pub fn new(sc_client: ScreenComposerClient) -> Self {
+    pub fn new(sc_client: OttoClient) -> Self {
         Self {
             state: Arc::new(Mutex::new(PortalState::default())),
             sc_client: Arc::new(sc_client),

@@ -75,7 +75,7 @@ pipewire_setup
 wifi_autoconnect
 
 # Ensure compositor is built in release mode
-if [ ! -f "target/release/otto"]; then
+if [ ! -f "target/release/otto" ]; then
     log_error "Compositor not built in release mode!"
     log_info "Please run: cargo build --release"
     exit 1

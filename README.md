@@ -41,7 +41,7 @@ Following a draft roadmap of features and improvements.
 - [x] Move windows
 - [x] Resize windows
 - [x] Window fullscreen/maximize (animated)
-- [x] Minimize windows (animated / integrated with Dock)
+- [ ] Minimize windows (animated / integrated with Dock) <-- BUG unminimize when there are multiple windows 
 
 ### Applications switcher (default shortcut: `Ctrl + Tab`)
 - [x] Background search for application metadata and icons (following XDG specs)
