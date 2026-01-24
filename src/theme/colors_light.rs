@@ -34,6 +34,10 @@ define_colors!(COLORS, {
     fills_quinary => "#00000003",
     fills_vibrant_primary => "#D9D9D9",
     fills_vibrant_secondary => "#E6E6E6",
+    // Note: fills_vibrant_tertiary and fills_vibrant_quaternary intentionally use semi-transparent
+    // variants of the base grays. The alpha values 0x89 (~54% opacity) and 0x9E (~62% opacity)
+    // are chosen to match the visual density of surrounding vibrant fills and the
+    // materials_highlight color, and are not intended to be fully opaque.
     fills_vibrant_tertiary => "#f2f2f289",
     fills_vibrant_quaternary => "#f7f7f79e",
     fills_vibrant_quinary => "#FBFBFB",
