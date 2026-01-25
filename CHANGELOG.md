@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### 🚀 Features
+
+- Implement show desktop with 4-finger pinch gesture
+- *(screenshare)* Render cursor in screenshare on DRM backend
+- *(screenshare)* Implement cursor mode support
+
+### 🐛 Bug Fixes
+
+- Window unminimize bugs and improve animation
+- *(screenshare)* Fix frame timing with proper PTS timestamps
+
+### Portal
+
+- Complete ScreenComposer Otto renaming
+
+## [0.12.0] - 2026-01-20
+
+### 🚀 Features
+
+- Implement cursor_shape protocol with new CursorManager
+
+### 🐛 Bug Fixes
+
+- Resolve all clippy warnings
+- Remove duplicate delegate imports after merge
+- Cap screenshare framerate at 60fps for Chrome/WebRTC compatibility
+
+### ⚙️ Miscellaneous Tasks
+
+- Bump minimum Rust version to 1.85.0
+- Update Rust toolchain to 1.85.0 in GitHub Actions
+- Add libpipewire-0.3-dev to system dependencies
+- Use ubuntu-24.04 for clippy to match pipewire 0.9 requirements
+
+### Cargo
+
+- Pin smithay
+
 ## [0.11.0] - 2026-01-20
 
 ### 🚀 Features
@@ -15,6 +55,14 @@ All notable changes to this project will be documented in this file.
 - Update sc-layer protocol implementation
 - Add session startup scripts
 - *(portal)* Add compositor watchdog for health monitoring
+- *(compositor)* Track and apply layer shell exclusive zones
+- Add configurable icon_theme option
+- Add wlr-foreign-toplevel-management protocol support
+- Support monitor resolution and refresh rate from config
+- Animated window size and position
+- Smart window placement for fullscreen workspaces
+- Improve natural layout with grid-based initial positioning
+- Add touchpad configuration options
 - *(compositor)* Track and apply layer shell exclusive zones
 - Add configurable icon_theme option
 - Add wlr-foreign-toplevel-management protocol support
@@ -34,6 +82,16 @@ All notable changes to this project will be documented in this file.
 - Dock scaling + config
 - Ux style + ux improvement
 - Update puffin_http to 0.16 for compatibility with puffin 0.19
+- Lighten window shadows to prevent excessive darkening when overlapping
+- Layers visibility
+- Set WAYLAND_DISPLAY env variable
+- Account for reserved areas when calculating new window position
+- Session script start gtk portal
+- Fullscreen direct scanout timing and workspace naming
+- Dock show/hide
+- Prevent crash on window unmaximize
+- Fullscreen
+- Update puffin_http to 0.16 for compatibility with puffin 0.19
 
 ### 🚜 Refactor
 
@@ -42,6 +100,9 @@ All notable changes to this project will be documented in this file.
 ### 📚 Documentation
 
 - Review doc files
+- Add profiling section to README
+- Add foreign toplevel management documentation
+- Add dock migration strategy to foreign-toplevel
 - Add profiling section to README
 - Add foreign toplevel management documentation
 - Add dock migration strategy to foreign-toplevel
@@ -54,74 +115,37 @@ All notable changes to this project will be documented in this file.
 
 - Initial protocol implementation layer protocol
 - Rendering metrics calculation
+- Rendering metrics calculation
 
-## [0.11.0] - 2026-01-20
+### Fmt
+
+- Suppress dead_code warnings for text style functions
+
+## [0.10.0] - 2025-12-16
 
 ### 🚀 Features
 
-- Bump up smithay
-- Initial support for foreign toplevel protocol
-- Apps-manager component init
-- Initial protocol clients sample clients and system design
-- Add window-specific popup visibility control
-- Improve application info loading and icon fallback
-- Update sc-layer protocol implementation
-- Add session startup scripts
-- *(portal)* Add compositor watchdog for health monitoring
-- *(compositor)* Track and apply layer shell exclusive zones
-- Add configurable icon_theme option
-- Add wlr-foreign-toplevel-management protocol support
-- Support monitor resolution and refresh rate from config
-- Xdg-desktop-portal for otto
+- Xdg-desktop-portal for screencomposer
 - Screenshare fullscreen
 - Session script for dbus and keyring
 - Script for aumated testing
 
 ### 🐛 Bug Fixes
 
-- Buffer exaaustion for slow clients for screenshare
-- Upgrade smitahy, chrome viewport crash
-- Skip dock/workspace selector animations for non-current workspaces
-- Prevent window jump when dragging maximized windows
-- Reposition window during top/left edge resize
-- Use requested size for touch resize positioning
-- Dock rendering
-- Better AGENT.md
-- Workspace + sclayer early init
-- Dock scaling + config
-- Ux style + ux improvement
-- Update puffin_http to 0.16 for compatibility with puffin 0.19
 - Agent instructions + CLAUDE.md symlink
 - Agents.md
-- Cap screenshare framerate at 60fps for Chrome/WebRTC compatibility
-- Improve display mode refresh rate fallback logic in udev backend
-
-### 🚜 Refactor
-
-- Improve expose gesture handling and API
 
 ### 📚 Documentation
 
-- Review doc files
-- Add profiling section to README
-- Add foreign toplevel management documentation
-- Add dock migration strategy to foreign-toplevel
 - Update screenshare
-- Document framerate compatibility issue and fix in screenshare.md
-
-### 🎨 Styling
-
-- UI refinements for dock, expose mode, and app switcher
 
 ### ⚙️ Miscellaneous Tasks
 
-- Initial protocol implementation layer protocol
-- Rendering metrics calculation
+- *(release)* V0.10.0
+
+### Review
+
 - Remove unused deps
-- Bump minimum Rust version to 1.85.0
-- Update Rust toolchain to 1.85.0 in GitHub Actions
-- Add libpipewire-0.3-dev to CI system dependencies
-- Use ubuntu-24.04 for clippy to match pipewire 0.9 requirements
 
 ## [0.9.0] - 2025-12-08
 
@@ -168,6 +192,8 @@ All notable changes to this project will be documented in this file.
 - Keyboard focus when switching workspaces
 - Crash on wlr delete
 - Expose overlay opacity on first open
+- Fmt
+- Clippy
 
 ### 🚜 Refactor
 
@@ -180,6 +206,7 @@ All notable changes to this project will be documented in this file.
 - Docs
 - AGENTS docs for expose feature
 - Wlr layer shell 1.0
+- README + docs file update
 
 ### ⚡ Performance
 
@@ -194,6 +221,7 @@ All notable changes to this project will be documented in this file.
 - Refactor workspaces data flow, dock, app_switcher
 - Run rustfmt on workspace modules
 - Cleanup inative gpu logs
+- Ci fix cargo cache
 
 ### Update
 

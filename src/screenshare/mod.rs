@@ -42,7 +42,9 @@ pub use dbus_service::run_dbus_service;
 
 pub use pipewire_stream::{AvailableBuffer, BackendCapabilities, PipeWireStream, StreamConfig};
 
-use smithay::reexports::calloop::channel::{channel, Event as ChannelEvent, Sender as ChannelSender};
+use smithay::reexports::calloop::channel::{
+    channel, Event as ChannelEvent, Sender as ChannelSender,
+};
 use zbus::zvariant::OwnedFd;
 
 /// Active screencast session state (compositor side).
