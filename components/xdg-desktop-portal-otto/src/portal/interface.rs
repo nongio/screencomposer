@@ -12,12 +12,12 @@ use zbus::interface;
 use zbus::object_server::ObjectServer;
 use zbus::zvariant::{OwnedFd, OwnedObjectPath, OwnedValue};
 
+use crate::otto_client::OttoClient;
 use crate::portal::{
     build_streams_value_from_descriptors, make_output_mapping_id, PortalState, Request, Session,
-    SessionState, StreamDescriptor, CURSOR_MODE_HIDDEN, SOURCE_TYPE_MONITOR,
+    SessionState, StreamDescriptor, CURSOR_MODE_EMBEDDED, CURSOR_MODE_HIDDEN, SOURCE_TYPE_MONITOR,
     SUPPORTED_CURSOR_MODES,
 };
-use crate::screencomposer_client::ScreenComposerClient;
 use zbus::zvariant::Str;
 
 /// Maximum attempts when polling for PipeWire node ID.
@@ -58,11 +58,11 @@ pub fn validate_persist_mode(mode: u32) -> Result<u32, fdo::Error> {
 #[derive(Clone)]
 pub struct ScreenCastPortal {
     state: Arc<Mutex<PortalState>>,
-    sc_client: Arc<ScreenComposerClient>,
+    sc_client: Arc<OttoClient>,
 }
 
 impl ScreenCastPortal {
-    pub fn new(sc_client: ScreenComposerClient) -> Self {
+    pub fn new(sc_client: OttoClient) -> Self {
         Self {
             state: Arc::new(Mutex::new(PortalState::default())),
             sc_client: Arc::new(sc_client),
@@ -119,7 +119,7 @@ impl ScreenCastPortal {
                 .await
                 .map_err(|err| fdo::Error::Failed(format!("Failed to export Session: {err}")))?;
 
-            let default_cursor_mode = CURSOR_MODE_HIDDEN;
+            let default_cursor_mode = CURSOR_MODE_EMBEDDED;
             let sc_session_path = self
                 .sc_client
                 .create_session(default_cursor_mode)
@@ -196,12 +196,12 @@ impl ScreenCastPortal {
                 return Ok((2, HashMap::new()));
             }
 
+            // Get cursor_mode from options. If unsupported, fall back to EMBEDDED.
             let cursor_mode = options
                 .get("cursor_mode")
                 .and_then(|value| u32::try_from(value).ok())
-                .map(validate_cursor_mode)
-                .transpose()?
-                .unwrap_or(CURSOR_MODE_HIDDEN);
+                .and_then(|mode| validate_cursor_mode(mode).ok())
+                .unwrap_or(CURSOR_MODE_EMBEDDED);
 
             let persist_mode = options
                 .get("persist_mode")

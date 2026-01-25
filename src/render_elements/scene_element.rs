@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 #[cfg(feature = "perf-counters")]
 use std::time::Duration;
 
-use lay_rs::{drawing::render_node_tree, engine::Engine, prelude::Layer};
+use layers::{drawing::render_node_tree, engine::Engine, prelude::Layer};
 
 use smithay::{
     backend::renderer::{
@@ -271,21 +271,21 @@ impl RenderElement<SkiaRenderer> for SceneElement {
 
                     if should_clip {
                         // Use Skia Region for efficient multi-rect clipping
-                        let mut clip_region = lay_rs::skia::Region::new();
+                        let mut clip_region = layers::skia::Region::new();
                         for d in damage.iter() {
                             if d.size.w <= 0 || d.size.h <= 0 {
                                 continue;
                             }
-                            let irect = lay_rs::skia::IRect::from_xywh(
+                            let irect = layers::skia::IRect::from_xywh(
                                 d.loc.x, d.loc.y, d.size.w, d.size.h,
                             );
-                            clip_region.op_rect(irect, lay_rs::skia::region::RegionOp::Union);
+                            clip_region.op_rect(irect, layers::skia::region::RegionOp::Union);
                         }
 
                         // Render scene once with complex clip region
                         if !clip_region.is_empty() {
                             canvas.save();
-                            canvas.clip_region(&clip_region, Some(lay_rs::skia::ClipOp::Intersect));
+                            canvas.clip_region(&clip_region, Some(layers::skia::ClipOp::Intersect));
                             render_node_tree(root_id, arena, renderable_arena, canvas, 1.0);
                             canvas.restore();
                         }
@@ -294,13 +294,13 @@ impl RenderElement<SkiaRenderer> for SceneElement {
                         render_node_tree(root_id, arena, renderable_arena, canvas, 1.0);
                     }
                     // Optional debug: outline damage rect
-                    // let mut paint = lay_rs::skia::Paint::default();
-                    // paint.set_color(lay_rs::skia::Color::from_argb(255, 255, 0, 0));
+                    // let mut paint = layers::skia::Paint::default();
+                    // paint.set_color(layers::skia::Color::from_argb(255, 255, 0, 0));
                     // paint.set_stroke(true);
                     // paint.set_stroke_width(1.0);
                     // for damage_rect in damage.iter() {
                     //     if !damage_rect.is_empty() {
-                    //         let r = lay_rs::skia::Rect::from_xywh(
+                    //         let r = layers::skia::Rect::from_xywh(
                     //             damage_rect.loc.x as f32,
                     //             damage_rect.loc.y as f32,
                     //             damage_rect.size.w as f32,
@@ -313,10 +313,10 @@ impl RenderElement<SkiaRenderer> for SceneElement {
                     // .with(|font_cache| {
                     //     font_cache
                     //         .font_mgr
-                    //         .match_family_style("Inter", lay_rs::skia::FontStyle::default())
+                    //         .match_family_style("Inter", layers::skia::FontStyle::default())
                     // })
                     // .unwrap();
-                    // let font = lay_rs::skia::Font::from_typeface_with_params(typeface, 22.0, 1.0, 0.0);
+                    // let font = layers::skia::Font::from_typeface_with_params(typeface, 22.0, 1.0, 0.0);
                     // let pos = self.engine.get_pointer_position();
                     // canvas.draw_str(format!("{},{}", pos.x, pos.y), (50.0, 50.0), &font, &paint);
                 }

@@ -1,6 +1,6 @@
 use std::hash::{Hash, Hasher};
 
-use lay_rs::{prelude::*, skia};
+use layers::{prelude::*, skia};
 
 #[derive(Clone, Debug)]
 pub struct BackgroundViewState {
@@ -17,8 +17,8 @@ impl Hash for BackgroundViewState {
 }
 
 pub struct BackgroundView {
-    // engine: lay_rs::prelude::LayersEngine,
-    pub view: lay_rs::prelude::View<BackgroundViewState>,
+    // engine: layers::prelude::LayersEngine,
+    pub view: layers::prelude::View<BackgroundViewState>,
     // pub state: RwLock<BackgroundViewState>,
     pub base_layer: Layer,
 }
@@ -29,7 +29,7 @@ impl BackgroundView {
             image: None,
             debug_string: "Screen composer 0.1".to_string(),
         };
-        let view = lay_rs::prelude::View::new(
+        let view = layers::prelude::View::new(
             format!("background_view_{}", index),
             state,
             Box::new(view_background),
@@ -128,7 +128,7 @@ pub fn view_background(
         .border_corner_radius(BorderRadius::new_single(24.0))
         .content(Some(draw_container))
         // .image_cache(true)
-        .background_color(lay_rs::prelude::Color::new_rgba(0.0, 0.0, 0.0, 1.0))
+        .background_color(layers::prelude::Color::new_rgba(0.0, 0.0, 0.0, 1.0))
         .pointer_events(false)
         .build()
         .unwrap()

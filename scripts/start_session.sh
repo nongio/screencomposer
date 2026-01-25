@@ -74,16 +74,15 @@ pipewire_setup
 
 wifi_autoconnect
 
-# Ensure compositor is built in otto mode
+# Ensure compositor is built in release mode
 if [ ! -f "target/release/otto" ]; then
     log_error "Compositor not built in release mode!"
     log_info "Please run: cargo build --release"
     exit 1
 fi
 
-# Start the compositor (udev backend only)
-log_info "Starting ScreenComposer compositor (udev backend, RUST_LOG=$LOG_LEVEL)"
-COMPOSITOR_LOG="$PWD/screencomposer.log"
+log_info "Starting Otto Compositor udev backend, RUST_LOG=$LOG_LEVEL"
+COMPOSITOR_LOG="$PWD/otto.log"
 
 if [ "$EUID" -ne 0 ] && [ -z "$LIBSEAT_BACKEND" ]; then
     log_warn "Running DRM backend without root - you may need libseat or run with sudo"
@@ -92,7 +91,7 @@ fi
 # Start compositor in background first
 RUST_LOG=$LOG_LEVEL target/release/otto --tty-udev > "$COMPOSITOR_LOG" 2>&1 &
 COMPOSITOR_PID=$!
-log_info "Compositor started in background (PID: $COMPOSITOR_PID)"
+log_info "Compositor started in background PID: $COMPOSITOR_PID"
 
 # Wait for compositor to create Wayland socket and D-Bus service
 log_info "Waiting for compositor to initialize..."

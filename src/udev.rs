@@ -233,7 +233,7 @@ impl Backend for UdevData {
     fn set_cursor(&mut self, _image: &CursorImageStatus) {
         // No-op: cursor rendering handled directly in render_surface
     }
-    fn renderer_context(&mut self) -> Option<lay_rs::skia::gpu::DirectContext> {
+    fn renderer_context(&mut self) -> Option<layers::skia::gpu::DirectContext> {
         let r = self.gpus.single_renderer(&self.primary_gpu).unwrap();
         let r = r.as_ref();
         r.context.clone()
@@ -1346,7 +1346,7 @@ impl Otto<UdevData> {
             let h = wl_mode.size.h as f32;
             self.workspaces
                 .set_screen_dimension(wl_mode.size.w, wl_mode.size.h);
-            let scene_size = lay_rs::types::Size::points(w, h);
+            let scene_size = layers::types::Size::points(w, h);
             root.set_size(scene_size, None);
             self.scene_element.set_size(w, h);
             self.layers_engine.scene_set_size(w, h);
@@ -1917,8 +1917,104 @@ impl Otto<UdevData> {
         // Render to screenshare buffers if rendering succeeded
         if let Ok(outcome) = &result {
             if outcome.rendered && !self.screenshare_sessions.is_empty() {
+                let scale = Scale::from(output.current_scale().fractional_scale());
+
                 // Blit to PipeWire buffers on main thread
                 for session in self.screenshare_sessions.values() {
+                    // Check if we should render cursor for this session
+                    // CURSOR_MODE_HIDDEN (1) = don't render cursor
+                    // CURSOR_MODE_EMBEDDED (2) = render cursor into video
+                    // CURSOR_MODE_METADATA (4) = send cursor as metadata (not in video) - NOT IMPLEMENTED, treat as hidden
+                    const CURSOR_MODE_EMBEDDED: u32 = 2;
+                    let should_render_cursor = session.cursor_mode == CURSOR_MODE_EMBEDDED;
+
+                    tracing::debug!(
+                        "Screenshare session {}: cursor_mode={}, should_render={}",
+                        session.session_id,
+                        session.cursor_mode,
+                        should_render_cursor
+                    );
+
+                    // Build cursor elements for screenshare if needed
+                    let cursor_elements: Vec<WorkspaceRenderElements<_>> = if should_render_cursor {
+                        let output_geometry = Rectangle::from_loc_and_size(
+                            (0, 0),
+                            output.current_mode().unwrap().size,
+                        );
+                        let output_scale = output.current_scale().fractional_scale();
+                        let pointer_location = self.pointer.current_location();
+
+                        let pointer_in_output = output_geometry
+                            .to_f64()
+                            .contains(pointer_location.to_physical(scale));
+
+                        if pointer_in_output {
+                            use crate::cursor::RenderCursor;
+                            use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
+                            use smithay::backend::renderer::element::surface::render_elements_from_surface_tree;
+
+                            let mut elements = Vec::new();
+
+                            match self
+                                .cursor_manager
+                                .get_render_cursor(output_scale.round() as i32)
+                            {
+                                RenderCursor::Hidden => {}
+                                RenderCursor::Surface { hotspot, surface } => {
+                                    let cursor_pos_scaled = (pointer_location.to_physical(scale)
+                                        - hotspot.to_f64().to_physical(scale))
+                                    .to_i32_round();
+                                    let cursor_elems: Vec<WorkspaceRenderElements<_>> =
+                                        render_elements_from_surface_tree(
+                                            &mut renderer,
+                                            &surface,
+                                            cursor_pos_scaled,
+                                            scale,
+                                            1.0,
+                                            Kind::Cursor,
+                                        );
+                                    elements.extend(cursor_elems);
+                                }
+                                RenderCursor::Named {
+                                    icon,
+                                    scale: _,
+                                    cursor,
+                                } => {
+                                    let elapsed_millis = self.clock.now().as_millis();
+                                    let (idx, image) = cursor.frame(elapsed_millis);
+                                    let texture = self.cursor_texture_cache.get(
+                                        icon,
+                                        output_scale.round() as i32,
+                                        &cursor,
+                                        idx,
+                                    );
+                                    let hotspot_physical =
+                                        Point::from((image.xhot as f64, image.yhot as f64));
+                                    let cursor_pos_scaled: Point<i32, Physical> =
+                                        (pointer_location.to_physical(scale) - hotspot_physical)
+                                            .to_i32_round();
+                                    let elem = MemoryRenderBufferRenderElement::from_buffer(
+                                        &mut renderer,
+                                        cursor_pos_scaled.to_f64(),
+                                        &texture,
+                                        None,
+                                        None,
+                                        None,
+                                        Kind::Cursor,
+                                    )
+                                    .expect("Failed to create cursor render element");
+                                    elements.push(WorkspaceRenderElements::from(elem));
+                                }
+                            }
+
+                            elements
+                        } else {
+                            Vec::new()
+                        }
+                    } else {
+                        Vec::new()
+                    };
+
                     for (connector, stream) in &session.streams {
                         if connector == &output.name() {
                             let buffer_pool = stream.pipewire_stream.buffer_pool();
@@ -1950,13 +2046,21 @@ impl Otto<UdevData> {
                                     );
                                 }
 
-                                if let Err(e) = crate::screenshare::fullscreen_to_dmabuf(
+                                // Blit framebuffer and render cursor on top
+                                let blit_result = crate::screenshare::fullscreen_to_dmabuf(
                                     &mut renderer,
-                                    available.dmabuf,
+                                    available.dmabuf.clone(),
                                     size,
                                     damage_to_use,
-                                ) {
+                                    &cursor_elements,
+                                    scale,
+                                );
+
+                                if let Err(e) = blit_result {
                                     tracing::debug!("Screenshare blit failed: {}", e);
+                                } else {
+                                    // Only increment sequence on successful blit
+                                    stream.pipewire_stream.increment_frame_sequence();
                                 }
 
                                 pool.to_queue.insert(available.fd, available.pw_buffer);

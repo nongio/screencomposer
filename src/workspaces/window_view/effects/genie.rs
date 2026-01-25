@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock};
 
-use lay_rs::{prelude::Layer, skia};
+use layers::{prelude::Layer, skia};
 
 #[derive(Clone)]
 pub struct GenieEffect {
@@ -112,7 +112,7 @@ impl GenieEffect {
         }
     }
 }
-impl lay_rs::prelude::Effect for GenieEffect {
+impl layers::prelude::Effect for GenieEffect {
     fn init(&self, layer: &Layer) {
         self.layer.write().unwrap().replace(layer.clone());
     }

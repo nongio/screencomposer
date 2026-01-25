@@ -43,10 +43,10 @@ pipewire = "0.9"
 memfd = "0.6"
 memmap2 = "0.9"
 
-[dependencies.lay-rs]
+[dependencies.laye-rs]
 # path = "../layers"
 git = "https://github.com/nongio/layers"
-tag = "v1.2.0"
+tag = "v1.3.0"
 features = ["export-taffy"]
 
 [dependencies.smithay-drm-extras]
@@ -88,8 +88,8 @@ version = "0.12.0"
 perf-counters = []
 default = ["egl", "winit", "x11", "udev", "debug", "profile", "debugger", "renderer_sync"]
 debug = ["image/png", "renderdoc", "debugger"] # "fps_ticker", 
-debugger = ["lay-rs/debugger"]
-profile = ["profile-with-puffin", "lay-rs/profile-with-puffin"]
+debugger = ["laye-rs/debugger"]
+profile = ["profile-with-puffin", "laye-rs/profile-with-puffin"]
 ticker = ["fps_ticker"]
 egl = ["smithay/use_system_lib", "smithay/backend_egl"]
 test_all_features = ["default", "debug"]

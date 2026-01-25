@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use lay_rs::skia;
+use layers::skia;
 
 use smithay::{
     backend::{
@@ -866,7 +866,7 @@ impl Frame for SkiaFrame<'_> {
         // Transmute flushinfo2 into flushinfo
         let info = unsafe {
             let native = &*(&info as *const FlushInfo2 as *const sb::GrFlushInfo);
-            &*(native as *const sb::GrFlushInfo as *const lay_rs::skia::gpu::FlushInfo)
+            &*(native as *const sb::GrFlushInfo as *const layers::skia::gpu::FlushInfo)
         };
 
         FINISHED_PROC_STATE.store(false, Ordering::SeqCst);
@@ -906,7 +906,7 @@ impl Frame for SkiaFrame<'_> {
 
 // this is a "hack" to expose finished_proc and submitted_proc
 // until a PR is made to skia-bindings
-use lay_rs::sb;
+use layers::sb;
 
 #[repr(C)]
 #[allow(dead_code, non_snake_case)]
@@ -1715,14 +1715,32 @@ impl Bind<Dmabuf> for SkiaRenderer {
                         rbo,
                     );
 
+                    // Add a depth buffer to make the framebuffer complete
+                    // (required for rendering, even if depth testing is disabled)
+                    let mut depth_rbo = 0;
+                    self.gl.GenRenderbuffers(1, &mut depth_rbo as *mut _);
+                    self.gl.BindRenderbuffer(ffi::RENDERBUFFER, depth_rbo);
+                    self.gl.RenderbufferStorage(
+                        ffi::RENDERBUFFER,
+                        ffi::DEPTH_COMPONENT16,
+                        _width,
+                        _height,
+                    );
+                    self.gl.FramebufferRenderbuffer(
+                        ffi::FRAMEBUFFER,
+                        ffi::DEPTH_ATTACHMENT,
+                        ffi::RENDERBUFFER,
+                        depth_rbo,
+                    );
+                    self.gl.BindRenderbuffer(ffi::RENDERBUFFER, 0);
+
                     let status = self.gl.CheckFramebufferStatus(ffi::FRAMEBUFFER);
-                    self.gl.BindFramebuffer(ffi::FRAMEBUFFER, 0);
 
                     if status != ffi::FRAMEBUFFER_COMPLETE {
-                        //TODO wrap image and drop here
-                        println!("framebuffer incomplete");
-                        // return Err(GlesError::FramebufferBindingError);
+                        panic!("Framebuffer incomplete for dmabuf: status 0x{:X}", status);
                     }
+
+                    self.gl.BindFramebuffer(ffi::FRAMEBUFFER, 0);
                     SkiaGLesFbo {
                         fbo,
                         tex_id: texture,

@@ -1,7 +1,7 @@
 //! D-Bus service implementation for `org.otto.ScreenCast`.
 //!
 //! Implements the backend D-Bus API that the portal expects, as defined in
-//! the portal's screencomposer_client module.
+//! the portal's otto_client module.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -110,6 +110,7 @@ impl ScreenCastInterface {
         // Notify compositor
         if let Err(e) = self.compositor_tx.send(CompositorCommand::CreateSession {
             session_id: session_path.clone(),
+            cursor_mode,
         }) {
             error!(?e, "Failed to notify compositor of session creation");
         }
@@ -296,14 +297,20 @@ impl SessionInterface {
         };
 
         for stream_path in stream_paths {
-            let connector = {
+            let (connector, cursor_mode) = {
                 let streams = self.streams.read().await;
-                streams.get(&stream_path).map(|s| s.connector.clone())
+                streams
+                    .get(&stream_path)
+                    .map(|s| (s.connector.clone(), s.cursor_mode))
+                    .unwrap_or_else(|| {
+                        // Skip if stream not found
+                        (String::new(), 0)
+                    })
             };
 
-            let Some(connector) = connector else {
+            if connector.is_empty() {
                 continue;
-            };
+            }
 
             // Create response channel for node_id
             let (tx, rx) = tokio::sync::oneshot::channel();
@@ -312,6 +319,7 @@ impl SessionInterface {
             if let Err(e) = self.compositor_tx.send(CompositorCommand::StartRecording {
                 session_id: self.session_path.clone(),
                 output_connector: connector.clone(),
+                cursor_mode,
                 response_tx: tx,
             }) {
                 error!(?e, "Failed to start recording");
@@ -544,6 +552,9 @@ pub async fn run_dbus_service(compositor_tx: Sender<CompositorCommand>) -> zbus:
         .await?;
 
     connection.request_name("org.otto.Compositor").await?;
+
+    // Register the Settings interface
+    crate::settings_service::register_settings_interface(&connection).await?;
 
     info!("D-Bus service started at org.otto.ScreenCast");
 

@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use lay_rs::prelude::Layer;
+use layers::prelude::Layer;
 use smithay::{
     backend::renderer::{
         element::{

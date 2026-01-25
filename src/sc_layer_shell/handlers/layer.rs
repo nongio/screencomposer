@@ -1,4 +1,4 @@
-use lay_rs::types::BorderRadius;
+use layers::types::BorderRadius;
 use wayland_backend::server::ClientId;
 use wayland_server::{Client, DataInit, Dispatch, DisplayHandle, Resource};
 
@@ -52,7 +52,7 @@ impl<BackendData: Backend> Dispatch<ScLayerV1, ScLayerUserData> for Otto<Backend
                     // Accumulate change in transaction
                     let change = sc_layer
                         .layer
-                        .change_position(lay_rs::types::Point { x, y });
+                        .change_position(layers::types::Point { x, y });
                     accumulate_change(state, txn_id, change);
                 } else {
                     // Apply immediately
@@ -68,12 +68,12 @@ impl<BackendData: Backend> Dispatch<ScLayerV1, ScLayerUserData> for Otto<Backend
                 if let Some(txn_id) = active_transaction {
                     let change = sc_layer
                         .layer
-                        .change_size(lay_rs::types::Size::points(width, height));
+                        .change_size(layers::types::Size::points(width, height));
                     accumulate_change(state, txn_id, change);
                 } else {
                     sc_layer
                         .layer
-                        .set_size(lay_rs::types::Size::points(width, height), None);
+                        .set_size(layers::types::Size::points(width, height), None);
                     trigger_window_update(state, &sc_layer.surface.id());
                 }
             }
@@ -104,11 +104,11 @@ impl<BackendData: Backend> Dispatch<ScLayerV1, ScLayerUserData> for Otto<Backend
                 let alpha = wl_fixed_to_f32(alpha);
 
                 if let Some(txn_id) = active_transaction {
-                    let color = lay_rs::types::Color::new_rgba(red, green, blue, alpha);
+                    let color = layers::types::Color::new_rgba(red, green, blue, alpha);
                     let change = sc_layer.layer.change_background_color(color);
                     accumulate_change(state, txn_id, change);
                 } else {
-                    let color = lay_rs::types::Color::new_rgba(red, green, blue, alpha);
+                    let color = layers::types::Color::new_rgba(red, green, blue, alpha);
                     sc_layer.layer.set_background_color(color, None);
                     trigger_window_update(state, &sc_layer.surface.id());
                 }
@@ -141,7 +141,7 @@ impl<BackendData: Backend> Dispatch<ScLayerV1, ScLayerUserData> for Otto<Backend
                 let blue = wl_fixed_to_f32(blue);
                 let alpha = wl_fixed_to_f32(alpha);
 
-                let color = lay_rs::types::Color::new_rgba(red, green, blue, alpha);
+                let color = layers::types::Color::new_rgba(red, green, blue, alpha);
 
                 if let Some(txn_id) = active_transaction {
                     // Create both changes before accumulating
@@ -179,7 +179,7 @@ impl<BackendData: Backend> Dispatch<ScLayerV1, ScLayerUserData> for Otto<Backend
 
                 // Shadow properties in lay-rs
                 sc_layer.layer.set_shadow_color(
-                    lay_rs::prelude::Color::new_rgba255(
+                    layers::prelude::Color::new_rgba255(
                         (red * 255.0) as u8,
                         (green * 255.0) as u8,
                         (blue * 255.0) as u8,
@@ -209,7 +209,7 @@ impl<BackendData: Backend> Dispatch<ScLayerV1, ScLayerUserData> for Otto<Backend
 
             sc_layer_v1::Request::SetBlendMode { mode } => {
                 use super::super::protocol::gen::sc_layer_v1::BlendMode;
-                use lay_rs::types::BlendMode as LayrsBlendMode;
+                use layers::types::BlendMode as LayrsBlendMode;
 
                 let blend_mode = match mode.into_result().ok() {
                     Some(BlendMode::Normal) => LayrsBlendMode::default(),

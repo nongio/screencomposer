@@ -699,6 +699,11 @@ impl<Backend: crate::state::Backend> Otto<Backend> {
                     if self.workspaces.get_show_all() {
                         self.workspaces.expose_set_visible(false);
                     } else {
+                        // Exit show desktop mode if active, don't enter expose yet
+                        if self.workspaces.get_show_desktop() {
+                            self.workspaces.expose_show_desktop(-1.0, true);
+                            return;
+                        }
                         // Dismiss all popups before entering expose mode
                         // to release pointer grabs that would intercept events
                         self.dismiss_all_popups();
@@ -972,6 +977,11 @@ impl Otto<UdevData> {
                     if self.workspaces.get_show_all() {
                         self.workspaces.expose_set_visible(false);
                     } else {
+                        // Exit show desktop mode if active, don't enter expose yet
+                        if self.workspaces.get_show_desktop() {
+                            self.workspaces.expose_show_desktop(-1.0, true);
+                            return;
+                        }
                         // Dismiss all popups before entering expose mode
                         // to release pointer grabs that would intercept events
                         self.dismiss_all_popups();
@@ -1383,8 +1393,9 @@ impl Otto<UdevData> {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
 
-        // 3-finger swipe: start detecting direction
-        if evt.fingers() == 3 && !self.is_pinching {
+        // 3-finger swipe: start detecting direction (but not if show desktop is active)
+        let is_show_desktop_active = self.workspaces.get_show_desktop();
+        if evt.fingers() == 3 && !self.is_pinching && !is_show_desktop_active {
             self.gesture_swipe_begin_3finger();
         }
 
@@ -1538,9 +1549,14 @@ impl Otto<UdevData> {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
 
-        // if evt.fingers() == 5 && !self.is_expose_swiping {
-        // self.is_pinching = true;
-        // }
+        // 4-finger pinch for show desktop (don't activate if we're in a swipe gesture or expose is active)
+        let is_swiping = !matches!(self.swipe_gesture, crate::state::SwipeGestureState::Idle);
+        let is_expose_active = self.workspaces.get_show_all();
+        if evt.fingers() == 4 && !is_swiping && !is_expose_active {
+            self.is_pinching = true;
+            self.pinch_last_scale = 1.0; // Reset to baseline
+            self.workspaces.reset_show_desktop_gesture();
+        }
 
         pointer.gesture_pinch_begin(
             self,
@@ -1554,21 +1570,24 @@ impl Otto<UdevData> {
 
     fn on_gesture_pinch_update<B: InputBackend>(&mut self, evt: B::GesturePinchUpdateEvent) {
         let pointer = self.pointer.clone();
-        let _multiplier = 1.1;
-        let _delta = evt.scale() as f32 * _multiplier;
 
-        // if !self.show_desktop {
-        //     delta -= 1.0;
-        // }
+        if self.is_pinching {
+            // Scale > 1.0 = pinch out (spread fingers) = show desktop (positive delta)
+            // Scale < 1.0 = pinch in (close fingers) = hide desktop (negative delta)
+            let current_scale = evt.scale() as f32;
+            let last_scale = self.pinch_last_scale as f32;
 
-        // self.pinch_gesture = lay_rs::types::Point {
-        //     x: delta,//(self.pinch_gesture.x - delta),
-        //     y: delta,//(self.pinch_gesture.y - delta),
-        // };
-        // if self.is_pinching {
-        // self.background_view.set_debug_text(format!("on_gesture_pinch_update: {:?}", delta));
-        // self.workspaces.expose_show_desktop(delta, false);
-        // }
+            // Calculate the change in scale since last event
+            let scale_delta = current_scale - last_scale;
+
+            // Pinching out (positive delta) should show desktop (positive)
+            // Amplify the gesture for better sensitivity (reduced from 5.0 to 2.5)
+            let delta = scale_delta * 1.5;
+
+            self.pinch_last_scale = current_scale as f64;
+            self.workspaces.expose_show_desktop(delta, false);
+        }
+
         pointer.gesture_pinch_update(
             self,
             &GesturePinchUpdateEvent {
@@ -1584,9 +1603,9 @@ impl Otto<UdevData> {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
 
-        // self.background_view.set_debug_text(format!("on_gesture_pinch_end"));
         if self.is_pinching {
             self.workspaces.expose_show_desktop(0.0, true);
+            self.is_pinching = false;
         }
         pointer.gesture_pinch_end(
             self,

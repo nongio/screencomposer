@@ -1,4 +1,4 @@
-//! XDG Desktop Portal backend for ScreenComposer.
+//! XDG Desktop Portal backend for Otto.
 //!
 //! This binary implements the `org.freedesktop.impl.portal.ScreenCast` D-Bus
 //! interface, enabling screen sharing through the standard portal API.
@@ -9,12 +9,12 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 use zbus::ConnectionBuilder;
 
-use xdg_desktop_portal_otto::portal::{desktop_path, ScreenCastPortal};
-use xdg_desktop_portal_otto::screencomposer_client::ScreenComposerClient;
+use xdg_desktop_portal_otto::otto_client::OttoClient;
+use xdg_desktop_portal_otto::portal::{desktop_path, ScreenCastPortal, SettingsPortal};
 use xdg_desktop_portal_otto::watchdog::{Watchdog, WatchdogConfig};
 
-/// Well-known D-Bus name for the ScreenComposer portal backend.
-const DBUS_NAME: &str = "org.freedesktop.impl.portal.desktop.screencomposer";
+/// Well-known D-Bus name for the Otto portal backend.
+const DBUS_NAME: &str = "org.freedesktop.impl.portal.desktop.otto";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -25,16 +25,25 @@ async fn main() -> Result<()> {
         .build()
         .await?;
 
-    let sc_client = ScreenComposerClient::new(connection.clone()).await?;
+    let sc_client = OttoClient::new(connection.clone()).await?;
     info!("Connected to D-Bus session bus");
 
-    let portal = ScreenCastPortal::new(sc_client);
+    let screencast_portal = ScreenCastPortal::new(sc_client.clone());
     connection
         .object_server()
-        .at(desktop_path(), portal)
+        .at(desktop_path(), screencast_portal)
         .await?;
 
-    info!(name = DBUS_NAME, "ScreenCast portal backend running");
+    let settings_portal = SettingsPortal::new(sc_client);
+    connection
+        .object_server()
+        .at(desktop_path(), settings_portal)
+        .await?;
+
+    info!(
+        name = DBUS_NAME,
+        "ScreenCast and Settings portal backends running"
+    );
 
     // Start the watchdog in a separate task
     let watchdog = Watchdog::new(connection.clone(), WatchdogConfig::default());

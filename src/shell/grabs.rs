@@ -68,7 +68,7 @@ impl<B: Backend> PointerGrab<Otto<B>> for PointerMoveSurfaceGrab<B> {
         if let Some(view) = state.workspaces.get_window_view(&self.window.id()) {
             let location = new_location.to_physical(scale);
             view.window_layer.set_position(
-                lay_rs::types::Point {
+                layers::types::Point {
                     x: location.x as f32,
                     y: location.y as f32,
                 },

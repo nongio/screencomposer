@@ -205,7 +205,7 @@ impl Backend for WinitData {
         tex.map(|t| t.clone().into())
     }
     fn set_cursor(&mut self, _image: &CursorImageStatus) {}
-    fn renderer_context(&mut self) -> Option<lay_rs::skia::gpu::DirectContext> {
+    fn renderer_context(&mut self) -> Option<layers::skia::gpu::DirectContext> {
         let r = self.backend.renderer();
         r.context.clone()
     }
@@ -353,7 +353,7 @@ pub fn run_winit() {
         .layers_engine
         .scene_set_size(scene_size.w as f32, scene_size.h as f32);
     root.set_size(
-        lay_rs::types::Size::points(scene_size.w as f32, scene_size.h as f32),
+        layers::types::Size::points(scene_size.w as f32, scene_size.h as f32),
         None,
     );
 
@@ -411,7 +411,7 @@ pub fn run_winit() {
                 state.scene_element.set_size(size.w as f32, size.h as f32);
                 state.workspaces.set_screen_dimension(size.w, size.h);
                 root.set_size(
-                    lay_rs::types::Size::points(size.w as f32, size.h as f32),
+                    layers::types::Size::points(size.w as f32, size.h as f32),
                     None,
                 );
             }

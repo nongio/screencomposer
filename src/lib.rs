@@ -16,6 +16,7 @@ pub mod render_elements;
 pub mod render_metrics;
 pub mod sc_layer_shell;
 pub mod screenshare;
+pub mod settings_service;
 pub mod shell;
 pub mod skia_renderer;
 pub mod state;

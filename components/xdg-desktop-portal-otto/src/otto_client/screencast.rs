@@ -10,13 +10,13 @@ use tracing::{debug, warn};
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 use zbus::Result;
 
-use crate::screencomposer_client::ScreenComposerClient;
+use crate::otto_client::OttoClient;
 
 /// D-Bus proxy for `org.otto.ScreenCast` service.
 #[zbus::proxy(
     interface = "org.otto.ScreenCast",
     default_service = "org.otto.ScreenCast",
-    default_path = "/org/screencomposer/ScreenCast"
+    default_path = "/org/otto/ScreenCast"
 )]
 trait ScreenCast {
     /// Creates a new screencast session with the given properties.
@@ -69,7 +69,7 @@ trait ScreenCastStream {
     async fn metadata(&self) -> Result<HashMap<String, OwnedValue>>;
 }
 
-impl ScreenComposerClient {
+impl OttoClient {
     /// Creates a new screencast session with the specified cursor mode.
     pub async fn create_session(&self, cursor_mode: u32) -> Result<String> {
         let proxy = ScreenCastProxy::builder(&self.connection).build().await?;
@@ -212,7 +212,7 @@ impl ScreenComposerClient {
 
         match result {
             Ok(fd) => {
-                debug!("Received PipeWire FD from ScreenComposer");
+                debug!("Received PipeWire FD from Otto");
                 Ok(fd)
             }
             Err(e) => {

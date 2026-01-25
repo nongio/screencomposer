@@ -6,7 +6,7 @@ use std::{
 
 use freedesktop_desktop_entry::DesktopEntry;
 
-use lay_rs::skia;
+use layers::skia;
 
 use crate::{
     config::Config,

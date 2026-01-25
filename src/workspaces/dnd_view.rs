@@ -1,4 +1,4 @@
-use lay_rs::{
+use layers::{
     engine::Engine,
     prelude::taffy,
     types::Point,
@@ -11,10 +11,10 @@ use crate::workspaces::WindowViewSurface;
 
 #[derive(Clone)]
 pub struct DndView {
-    pub view_content: lay_rs::prelude::View<Vec<WindowViewSurface>>,
+    pub view_content: layers::prelude::View<Vec<WindowViewSurface>>,
 
-    pub layer: lay_rs::prelude::Layer,
-    pub content_layer: lay_rs::prelude::Layer,
+    pub layer: layers::prelude::Layer,
+    pub content_layer: layers::prelude::Layer,
     // _parent_layer_noderef: NodeRef,
     pub initial_position: Point,
 }

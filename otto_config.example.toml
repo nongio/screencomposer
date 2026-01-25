@@ -17,7 +17,8 @@ cursor_size = 24
 font_family = "Inter"
 cursor_theme = "Notwaita-Black"
 icon_theme = "GNUstep"  # Uncomment to override auto-detection (e.g., "WhiteSur", "Papirus", "Adwaita")
-theme_scheme = "Light"
+theme_scheme = "Light"  # "Light" or "Dark" - exposed via XDG Desktop Portal Settings
+# gtk_theme = "Adwaita"  # Optional: for documentation/reference only
 background_image = "./resources/background.jpg"
 
 # Inputs

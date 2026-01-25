@@ -1,4 +1,4 @@
-use lay_rs::{prelude::*, types::Size};
+use layers::{prelude::*, types::Size};
 use taffy::FromLength;
 
 use crate::{config::Config, theme::theme_colors, workspaces::utils::FONT_CACHE};
@@ -49,9 +49,9 @@ pub fn render_appswitcher_view(
             .clone()
             .unwrap_or("".to_string());
     }
-    let draw_container = move |canvas: &lay_rs::skia::Canvas, w, h| {
+    let draw_container = move |canvas: &layers::skia::Canvas, w, h| {
         let selection_background_color = theme_colors().fills_primary.c4f();
-        let paint = lay_rs::skia::Paint::new(selection_background_color, None);
+        let paint = layers::skia::Paint::new(selection_background_color, None);
         // let available_icon_size = h - COMPONENT_PADDING_V * 2.0 - ICON_PADDING * 2.0;
         // let icon_size = ICON_SIZE.min(available_icon_size);
         let selection_width = available_icon_size + ICON_PADDING * 2.0;
@@ -60,8 +60,8 @@ pub fn render_appswitcher_view(
         let selection_x = COMPONENT_PADDING_H + total_gaps - GAP * current_app
             + current_app * (available_icon_size + ICON_PADDING * 2.0);
         let selection_y = h / 2.0 - selection_height / 2.0;
-        let rrect: lay_rs::skia::RRect = lay_rs::skia::RRect::new_rect_xy(
-            lay_rs::skia::Rect::from_xywh(
+        let rrect: layers::skia::RRect = layers::skia::RRect::new_rect_xy(
+            layers::skia::Rect::from_xywh(
                 selection_x,
                 selection_y,
                 selection_width,
@@ -75,10 +75,10 @@ pub fn render_appswitcher_view(
 
             // Create font with subpixel rendering
             let font_family = Config::with(|c| c.font_family.clone());
-            let font_style = lay_rs::skia::FontStyle::new(
-                lay_rs::skia::font_style::Weight::MEDIUM,
-                lay_rs::skia::font_style::Width::CONDENSED,
-                lay_rs::skia::font_style::Slant::Upright,
+            let font_style = layers::skia::FontStyle::new(
+                layers::skia::font_style::Weight::MEDIUM,
+                layers::skia::font_style::Width::CONDENSED,
+                layers::skia::font_style::Slant::Upright,
             );
             let font = FONT_CACHE.with(|font_cache| {
                 font_cache.make_font_with_fallback(font_family, font_style, FONT_SIZE)
@@ -86,7 +86,7 @@ pub fn render_appswitcher_view(
 
             // Draw text with improved rendering
             let mut text_paint =
-                lay_rs::skia::Paint::new(theme_colors().text_secondary.c4f(), None);
+                layers::skia::Paint::new(theme_colors().text_secondary.c4f(), None);
             text_paint.set_anti_alias(true);
 
             let text_bounds = font.measure_str(&app_name, Some(&text_paint)).1;
@@ -95,7 +95,7 @@ pub fn render_appswitcher_view(
 
             canvas.draw_str(&app_name, (text_x, text_y), &font, &text_paint);
         }
-        lay_rs::skia::Rect::from_xywh(0.0, 0.0, w, h)
+        layers::skia::Rect::from_xywh(0.0, 0.0, w, h)
     };
     LayerTreeBuilder::default()
         .key("apps_switcher")

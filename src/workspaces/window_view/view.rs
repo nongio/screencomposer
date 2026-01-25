@@ -1,4 +1,4 @@
-use lay_rs::{
+use layers::{
     engine::{Engine, TransactionRef},
     prelude::{taffy, Layer, Transition},
     skia,
@@ -20,14 +20,14 @@ use super::{
 pub struct WindowView {
     pub window_id: ObjectId,
     // views
-    pub view_base: lay_rs::prelude::View<WindowViewBaseModel>,
-    pub view_content: lay_rs::prelude::View<Vec<WindowViewSurface>>,
+    pub view_base: layers::prelude::View<WindowViewBaseModel>,
+    pub view_content: layers::prelude::View<Vec<WindowViewSurface>>,
 
     // layers
-    pub window_layer: lay_rs::prelude::Layer,
-    pub shadow_layer: lay_rs::prelude::Layer,
-    pub content_layer: lay_rs::prelude::Layer,
-    pub mirror_layer: lay_rs::prelude::Layer,
+    pub window_layer: layers::prelude::Layer,
+    pub shadow_layer: layers::prelude::Layer,
+    pub content_layer: layers::prelude::Layer,
+    pub mirror_layer: layers::prelude::Layer,
 
     pub genie_effect: GenieEffect,
 
@@ -70,7 +70,7 @@ impl WindowView {
             active: false,
         };
         let view_base =
-            lay_rs::prelude::View::new("window_shadow", base_rect, Box::new(view_window_shadow));
+            layers::prelude::View::new("window_shadow", base_rect, Box::new(view_window_shadow));
 
         view_base.mount_layer(shadow_layer.clone());
         let mirror_layer = window.mirror_layer().clone();
@@ -156,7 +156,7 @@ impl WindowView {
         self.window_layer.set_image_filter_progress(1.0, None);
         *self
             .window_layer
-            .set_image_filter_progress(0.0, Transition::linear(0.5))
+            .set_image_filter_progress(0.0, Transition::linear(0.8))
             .on_start(
                 |l: &Layer, _| {
                     l.set_opacity(1.0, None);
