@@ -8,35 +8,35 @@ Otto is a Wayland compositor and stacking window manager, built in Rust on top o
 ## :information_source: Disclaimer
 The project is not yet ready for daily use, but it has reached a stage where broader testing is valuable. Contributors and testers are encouraged to try it and report issues.
 
-Certain components are still hardcoded while the architecture is being finalized. Instability is expected in some areas, especially with the tty udev backend, which may occasionally cause a system freeze.
+Certain components are still hardcoded while the architecture is being finalized. Instability is expected in some areas, especially with the tty udev backend, which may occasionally crash.
 
  ## :framed_picture: What does it look like?
 
-<video src="https://raw.githubusercontent.com/nongio/otto/main/assets/1-dock-taskmanager.mp4" autoplay muted loop playsinline></video>
+<video src="https://github.com/user-attachments/assets/9abad978-319d-4699-a5a4-f34f8b3e3560" autoplay muted loop playsinline></video>
 
 *Dock task manager showing running applications.*
 
-<video src="https://raw.githubusercontent.com/nongio/otto/main/assets/2-dock-minimize-windows.mp4" autoplay muted loop playsinline></video>
+<video src="https://github.com/user-attachments/assets/014df942-4a79-43f5-9562-73f1858152ba" autoplay muted loop playsinline></video>
 
 *Minimizing windows with animated genie effect to the Dock.*
 
-<video src="https://raw.githubusercontent.com/nongio/otto/main/assets/3-move-windows-workspaces.mp4" autoplay muted loop playsinline></video>
+<video src="https://github.com/user-attachments/assets/dedfed16-6713-4a70-b5aa-e0057c6d4aad" autoplay muted loop playsinline></video>
 
 *Moving windows between workspaces with drag and drop.*
 
-<video src="https://raw.githubusercontent.com/nongio/otto/main/assets/4-dock-navigate-apps.mp4" autoplay muted loop playsinline></video>
+<video src="https://github.com/user-attachments/assets/eef1a894-b80e-4db0-b638-341bca321fb0" autoplay muted loop playsinline></video>
 
 *Navigating between applications from the Dock.*
 
-<video src="https://raw.githubusercontent.com/nongio/otto/main/assets/5-workspace-selector.mp4" autoplay muted loop playsinline></video>
+<video src="https://github.com/user-attachments/assets/5a2a9cab-8e25-4c69-aeec-d21bed02542f" autoplay muted loop playsinline></video>
 
 *Workspace selector with visual previews.*
 
-<video src="https://raw.githubusercontent.com/nongio/otto/main/assets/6-expose-windows.mp4" autoplay muted loop playsinline></video>
+<video src="https://github.com/user-attachments/assets/eb631d10-8417-4124-9472-52a9eef9a856" autoplay muted loop playsinline></video>
 
 *Exposé view showing all open windows with smooth animations.*
 
-<video src="https://raw.githubusercontent.com/nongio/otto/main/assets/7-app-switcher.mp4" autoplay muted loop playsinline></video>
+<video src="https://github.com/user-attachments/assets/62b745c4-f873-4961-91e4-5a1679155fdf" autoplay muted loop playsinline></video>
 
 *Application switcher with icons, names, and background blur.*
 
@@ -54,7 +54,7 @@ Testing and issue reports are welcome, and development follows a draft roadmap o
 - **Exposé / overview** (default: `PageDown`, gesture: three-finger swipe up): shows all windows, shows window previews with names, includes “show desktop”.
 - **Input:** natural scrolling, two-finger scrolling, keyboard remapping.
 - **Theming:** dark/light.
-- **Screen sharing:** works through an XDG Desktop Portal backend + PipeWire (full-screen capture via GPU blit + dmabuf). See [docs/xdg-desktop-portal.md](./docs/xdg-desktop-portal.md).
+- **Screen sharing:** works through an XDG Desktop Portal backend + PipeWire (full-screen capture via GPU blit + dmabuf).
 
 ### Still to come in the Roadmap
  - **Multi-monitor:** multiple screens.
@@ -125,12 +125,12 @@ cargo run -- --{backend}
 
 The currently available backends are:
 
-- `--x11`: start Otto as an X11 client. This allows you to run the compositor inside an X11 session or any compositor supporting XWayland. Should be preferred over the winit backend where possible.
-- `--winit`: start otto as a [Winit](https://github.com/tomaka/winit) application. This allows you to run it
-  inside of an other X11 or Wayland session.
 - `--tty-udev`: start otto in a tty with udev support. This is the "traditional" launch of a Wayland
-  compositor. Note that this requires you to start otto as root if your system does not have logind
+  compositor. Note that this might require you to start otto as root if your system does not have logind
   available.
+- `--winit`: start otto as a [Winit](https://github.com/tomaka/winit) application. This allows you to run it
+  inside of an other X11 or Wayland session, useful for developemnt.
+- `--x11`: start Otto as an X11 client. This allows you to run the compositor inside an X11 session or any compositor supporting XWayland. This implementation is quite basic and not really maintaned.
 
 
 ## Configure Otto
