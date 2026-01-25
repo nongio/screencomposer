@@ -555,31 +555,38 @@ fn run_pipewire_thread(
                                 pipewire::spa::sys::SPA_META_Header,
                                 std::mem::size_of::<pipewire::spa::sys::spa_meta_header>(),
                             );
-                            
+
                             if !meta_header.is_null() {
-                                let header = meta_header as *mut pipewire::spa::sys::spa_meta_header;
-                                
+                                let header =
+                                    meta_header as *mut pipewire::spa::sys::spa_meta_header;
+
                                 // Get current frame sequence and calculate PTS
-                                let frame_seq = shared_for_process.frame_sequence.load(Ordering::Relaxed);
-                                let start_time = shared_for_process.start_time_ns.load(Ordering::Relaxed);
-                                
+                                let frame_seq =
+                                    shared_for_process.frame_sequence.load(Ordering::Relaxed);
+                                let start_time =
+                                    shared_for_process.start_time_ns.load(Ordering::Relaxed);
+
                                 // Calculate PTS based on framerate and frame sequence
                                 // PTS = start_time + (frame_seq * 1_000_000_000 * framerate_denom) / framerate_num
                                 let pts = if start_time == 0 {
                                     // First frame - initialize start time
                                     let now = get_monotonic_time_ns();
-                                    shared_for_process.start_time_ns.store(now, Ordering::Relaxed);
+                                    shared_for_process
+                                        .start_time_ns
+                                        .store(now, Ordering::Relaxed);
                                     0
                                 } else {
-                                    let elapsed_ns = (frame_seq * 1_000_000_000 * framerate.1 as u64) / framerate.0 as u64;
+                                    let elapsed_ns =
+                                        (frame_seq * 1_000_000_000 * framerate.1 as u64)
+                                            / framerate.0 as u64;
                                     elapsed_ns as i64
                                 };
-                                
+
                                 (*header).pts = pts;
                                 (*header).flags = 0;
                                 (*header).seq = frame_seq;
                                 (*header).dts_offset = 0;
-                                
+
                                 tracing::trace!(
                                     "Set metadata for buffer fd={}: pts={}, seq={}",
                                     fd,

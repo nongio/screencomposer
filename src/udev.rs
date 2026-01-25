@@ -1922,12 +1922,12 @@ impl Otto<UdevData> {
                 // Blit to PipeWire buffers on main thread
                 for session in self.screenshare_sessions.values() {
                     // Check if we should render cursor for this session
-                    // CURSOR_MODE_HIDDEN (1) = don't render cursor  
+                    // CURSOR_MODE_HIDDEN (1) = don't render cursor
                     // CURSOR_MODE_EMBEDDED (2) = render cursor into video
                     // CURSOR_MODE_METADATA (4) = send cursor as metadata (not in video) - NOT IMPLEMENTED, treat as hidden
                     const CURSOR_MODE_EMBEDDED: u32 = 2;
                     let should_render_cursor = session.cursor_mode == CURSOR_MODE_EMBEDDED;
-                    
+
                     tracing::debug!(
                         "Screenshare session {}: cursor_mode={}, should_render={}",
                         session.session_id,
@@ -1937,8 +1937,10 @@ impl Otto<UdevData> {
 
                     // Build cursor elements for screenshare if needed
                     let cursor_elements: Vec<WorkspaceRenderElements<_>> = if should_render_cursor {
-                        let output_geometry =
-                            Rectangle::from_loc_and_size((0, 0), output.current_mode().unwrap().size);
+                        let output_geometry = Rectangle::from_loc_and_size(
+                            (0, 0),
+                            output.current_mode().unwrap().size,
+                        );
                         let output_scale = output.current_scale().fractional_scale();
                         let pointer_location = self.pointer.current_location();
 
@@ -1948,12 +1950,15 @@ impl Otto<UdevData> {
 
                         if pointer_in_output {
                             use crate::cursor::RenderCursor;
-                            use smithay::backend::renderer::element::surface::render_elements_from_surface_tree;
                             use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
+                            use smithay::backend::renderer::element::surface::render_elements_from_surface_tree;
 
                             let mut elements = Vec::new();
 
-                            match self.cursor_manager.get_render_cursor(output_scale.round() as i32) {
+                            match self
+                                .cursor_manager
+                                .get_render_cursor(output_scale.round() as i32)
+                            {
                                 RenderCursor::Hidden => {}
                                 RenderCursor::Surface { hotspot, surface } => {
                                     let cursor_pos_scaled = (pointer_location.to_physical(scale)
@@ -1977,9 +1982,12 @@ impl Otto<UdevData> {
                                 } => {
                                     let elapsed_millis = self.clock.now().as_millis();
                                     let (idx, image) = cursor.frame(elapsed_millis);
-                                    let texture = self
-                                        .cursor_texture_cache
-                                        .get(icon, output_scale.round() as i32, &cursor, idx);
+                                    let texture = self.cursor_texture_cache.get(
+                                        icon,
+                                        output_scale.round() as i32,
+                                        &cursor,
+                                        idx,
+                                    );
                                     let hotspot_physical =
                                         Point::from((image.xhot as f64, image.yhot as f64));
                                     let cursor_pos_scaled: Point<i32, Physical> =

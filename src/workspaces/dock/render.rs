@@ -114,7 +114,7 @@ pub fn setup_miniwindow_icon(layer: &Layer, inner_layer: &Layer, _icon_width: f3
 }
 
 pub fn setup_label(new_layer: &Layer, label_text: String) {
-    let draw_scale = Config::with(|config| config.screen_scale as f32);
+    let _draw_scale = Config::with(|config| config.screen_scale as f32);
     let text_size = 26.0;
     let font_family = Config::with(|config| config.font_family.clone());
     let font = FONT_CACHE.with(|font_cache| {
@@ -138,7 +138,6 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
     // Fixed height based on font size, not measured text bounds
     let label_size_height = text_size + arrow_height + text_padding_v * 2.0 + safe_margin * 2.0;
 
-
     let rect_corner_radius = 10.0;
     let arrow_width = 25.0;
     let arrow_corner_radius = 3.0;
@@ -158,7 +157,6 @@ pub fn setup_label(new_layer: &Layer, label_text: String) {
         arrow_corner_radius,
     );
 
-    
     let draw_label = move |canvas: &layers::skia::Canvas, w: f32, h: f32| -> layers::skia::Rect {
         // Tooltip parameters
 

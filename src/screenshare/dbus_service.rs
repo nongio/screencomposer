@@ -304,7 +304,7 @@ impl SessionInterface {
                     .map(|s| (s.connector.clone(), s.cursor_mode))
                     .unwrap_or_else(|| {
                         // Skip if stream not found
-                        return (String::new(), 0);
+                        (String::new(), 0)
                     })
             };
 

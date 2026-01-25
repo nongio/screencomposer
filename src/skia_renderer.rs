@@ -1735,11 +1735,11 @@ impl Bind<Dmabuf> for SkiaRenderer {
                     self.gl.BindRenderbuffer(ffi::RENDERBUFFER, 0);
 
                     let status = self.gl.CheckFramebufferStatus(ffi::FRAMEBUFFER);
-                    
+
                     if status != ffi::FRAMEBUFFER_COMPLETE {
                         panic!("Framebuffer incomplete for dmabuf: status 0x{:X}", status);
                     }
-                    
+
                     self.gl.BindFramebuffer(ffi::FRAMEBUFFER, 0);
                     SkiaGLesFbo {
                         fbo,

@@ -42,9 +42,7 @@ pub use dbus_service::run_dbus_service;
 
 pub use pipewire_stream::{AvailableBuffer, BackendCapabilities, PipeWireStream, StreamConfig};
 
-use smithay::{backend::renderer::Frame, reexports::calloop::channel::{
-    Event as ChannelEvent, Sender as ChannelSender, channel
-}};
+use smithay::reexports::calloop::channel::{channel, Event as ChannelEvent, Sender as ChannelSender};
 use zbus::zvariant::OwnedFd;
 
 /// Active screencast session state (compositor side).
@@ -253,7 +251,7 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
                     return;
                 }
             };
-            
+
             // Update cursor mode for this session
             session.cursor_mode = cursor_mode;
 
@@ -427,7 +425,6 @@ where
     E: smithay::backend::renderer::element::RenderElement<R>,
 {
     use smithay::utils::Physical;
-    use smithay::backend::renderer::Blit;
 
     // Step 1: Blit framebuffer (without cursor since it's on hardware plane)
     match damage {
@@ -458,19 +455,18 @@ where
 
     // Step 2: Render cursor elements on top of blitted content
     if !cursor_elements.is_empty() {
-        use smithay::backend::renderer::Renderer;
-        
         let mut frame = renderer
             .render(size, smithay::utils::Transform::Normal)
             .map_err(|e| format!("Failed to create frame for cursor: {:?}", e))?;
-        
+
         // Render each cursor element
         for element in cursor_elements.iter() {
             let src = element.src();
             let dst = element.geometry(scale);
-            
+
             // Calculate damage rect (entire element area)
-            let output_rect = smithay::utils::Rectangle::<i32, Physical>::from_loc_and_size((0, 0), size);
+            let output_rect =
+                smithay::utils::Rectangle::<i32, Physical>::from_loc_and_size((0, 0), size);
             if let Some(mut damage) = output_rect.intersection(dst) {
                 damage.loc -= dst.loc;
                 element
@@ -478,7 +474,7 @@ where
                     .map_err(|e| format!("Failed to draw cursor element: {:?}", e))?;
             }
         }
-        
+
         std::mem::drop(frame);
     }
 
