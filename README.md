@@ -8,20 +8,38 @@ The project is not currently ready for a daily usage but any contributor curious
 
 ## :framed_picture: How does it look like?
 <figure>
-  <img src="https://github.com/nongio/otto/blob/main/assets/simple_desktop_with_dock.jpg?raw=true" alt="Basic desktop with Dock">
-  <figcaption>Standard desktop with windows overlapping and Dock task manager. Windows shadow is added by the compositor.</figcaption>
+  <img src="https://github.com/nongio/otto/blob/main/assets/1-dock.gif?raw=true" alt="Dock">
+  <figcaption>Dock task manager showing running applications.</figcaption>
 </figure>
 
+<figure>
+  <img src="https://github.com/nongio/otto/blob/main/assets/2-dock-minimize-window.gif?raw=true" alt="Minimize window to Dock">
+  <figcaption>Minimizing windows with animated genie effect to the Dock.</figcaption>
+</figure>
 
 <figure>
-  <img src="https://github.com/nongio/otto/blob/main/assets/application_switcher.jpg?raw=true" alt="Application switcher">
+  <img src="https://github.com/nongio/otto/blob/main/assets/3-dock-switch-app-and-workspace.gif?raw=true" alt="Switch apps and workspaces">
+  <figcaption>Switching between applications and workspaces from the Dock.</figcaption>
+</figure>
+
+<figure>
+  <img src="https://github.com/nongio/otto/blob/main/assets/4-app-switcher.gif?raw=true" alt="Application switcher">
   <figcaption>Application switcher showcasing icons and application names, with background blur blending.</figcaption>
 </figure>
 
+<figure>
+  <img src="https://github.com/nongio/otto/blob/main/assets/5-move-window-to-workspace.gif?raw=true" alt="Move window to workspace">
+  <figcaption>Moving windows between workspaces.</figcaption>
+</figure>
 
 <figure>
-  <img src="https://github.com/nongio/otto/blob/main/assets/expose_windows.jpg?raw=true" alt="Expose windows">
+  <img src="https://github.com/nongio/otto/blob/main/assets/6-windows-expose-1.gif?raw=true" alt="Expose windows">
   <figcaption>Expose windows, showing all open windows.</figcaption>
+</figure>
+
+<figure>
+  <img src="https://github.com/nongio/otto/blob/main/assets/7-scroll-workspaces.gif?raw=true" alt="Scroll workspaces">
+  <figcaption>Scrolling through workspaces with smooth animations.</figcaption>
 </figure>
 
 ## Is it usable?
