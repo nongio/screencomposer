@@ -1715,14 +1715,32 @@ impl Bind<Dmabuf> for SkiaRenderer {
                         rbo,
                     );
 
-                    let status = self.gl.CheckFramebufferStatus(ffi::FRAMEBUFFER);
-                    self.gl.BindFramebuffer(ffi::FRAMEBUFFER, 0);
+                    // Add a depth buffer to make the framebuffer complete
+                    // (required for rendering, even if depth testing is disabled)
+                    let mut depth_rbo = 0;
+                    self.gl.GenRenderbuffers(1, &mut depth_rbo as *mut _);
+                    self.gl.BindRenderbuffer(ffi::RENDERBUFFER, depth_rbo);
+                    self.gl.RenderbufferStorage(
+                        ffi::RENDERBUFFER,
+                        ffi::DEPTH_COMPONENT16,
+                        _width,
+                        _height,
+                    );
+                    self.gl.FramebufferRenderbuffer(
+                        ffi::FRAMEBUFFER,
+                        ffi::DEPTH_ATTACHMENT,
+                        ffi::RENDERBUFFER,
+                        depth_rbo,
+                    );
+                    self.gl.BindRenderbuffer(ffi::RENDERBUFFER, 0);
 
+                    let status = self.gl.CheckFramebufferStatus(ffi::FRAMEBUFFER);
+                    
                     if status != ffi::FRAMEBUFFER_COMPLETE {
-                        //TODO wrap image and drop here
-                        println!("framebuffer incomplete");
-                        // return Err(GlesError::FramebufferBindingError);
+                        panic!("Framebuffer incomplete for dmabuf: status 0x{:X}", status);
                     }
+                    
+                    self.gl.BindFramebuffer(ffi::FRAMEBUFFER, 0);
                     SkiaGLesFbo {
                         fbo,
                         tex_id: texture,

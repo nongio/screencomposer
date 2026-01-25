@@ -1917,6 +1917,75 @@ impl Otto<UdevData> {
         // Render to screenshare buffers if rendering succeeded
         if let Ok(outcome) = &result {
             if outcome.rendered && !self.screenshare_sessions.is_empty() {
+                let output_geometry =
+                    Rectangle::from_loc_and_size((0, 0), output.current_mode().unwrap().size);
+                let scale = Scale::from(output.current_scale().fractional_scale());
+                let output_scale = output.current_scale().fractional_scale();
+                let pointer_location = self.pointer.current_location();
+
+                // Build cursor elements for screenshare
+                let pointer_in_output = output_geometry
+                    .to_f64()
+                    .contains(pointer_location.to_physical(scale));
+
+                let cursor_elements: Vec<WorkspaceRenderElements<_>> = if pointer_in_output {
+                    use crate::cursor::RenderCursor;
+                    use smithay::backend::renderer::element::surface::render_elements_from_surface_tree;
+                    use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
+
+                    let mut elements = Vec::new();
+
+                    match self.cursor_manager.get_render_cursor(output_scale.round() as i32) {
+                        RenderCursor::Hidden => {}
+                        RenderCursor::Surface { hotspot, surface } => {
+                            let cursor_pos_scaled = (pointer_location.to_physical(scale)
+                                - hotspot.to_f64().to_physical(scale))
+                            .to_i32_round();
+                            let cursor_elems: Vec<WorkspaceRenderElements<_>> =
+                                render_elements_from_surface_tree(
+                                    &mut renderer,
+                                    &surface,
+                                    cursor_pos_scaled,
+                                    scale,
+                                    1.0,
+                                    Kind::Cursor,
+                                );
+                            elements.extend(cursor_elems);
+                        }
+                        RenderCursor::Named {
+                            icon,
+                            scale: _,
+                            cursor,
+                        } => {
+                            let elapsed_millis = self.clock.now().as_millis();
+                            let (idx, image) = cursor.frame(elapsed_millis);
+                            let texture = self
+                                .cursor_texture_cache
+                                .get(icon, output_scale.round() as i32, &cursor, idx);
+                            let hotspot_physical =
+                                Point::from((image.xhot as f64, image.yhot as f64));
+                            let cursor_pos_scaled: Point<i32, Physical> =
+                                (pointer_location.to_physical(scale) - hotspot_physical)
+                                    .to_i32_round();
+                            let elem = MemoryRenderBufferRenderElement::from_buffer(
+                                &mut renderer,
+                                cursor_pos_scaled.to_f64(),
+                                &texture,
+                                None,
+                                None,
+                                None,
+                                Kind::Cursor,
+                            )
+                            .expect("Failed to create cursor render element");
+                            elements.push(WorkspaceRenderElements::from(elem));
+                        }
+                    }
+
+                    elements
+                } else {
+                    Vec::new()
+                };
+
                 // Blit to PipeWire buffers on main thread
                 for session in self.screenshare_sessions.values() {
                     for (connector, stream) in &session.streams {
@@ -1950,12 +2019,17 @@ impl Otto<UdevData> {
                                     );
                                 }
 
-                                if let Err(e) = crate::screenshare::fullscreen_to_dmabuf(
+                                // Blit framebuffer and render cursor on top
+                                let blit_result = crate::screenshare::fullscreen_to_dmabuf(
                                     &mut renderer,
-                                    available.dmabuf,
+                                    available.dmabuf.clone(),
                                     size,
                                     damage_to_use,
-                                ) {
+                                    &cursor_elements,
+                                    scale,
+                                );
+
+                                if let Err(e) = blit_result {
                                     tracing::debug!("Screenshare blit failed: {}", e);
                                 } else {
                                     // Only increment sequence on successful blit

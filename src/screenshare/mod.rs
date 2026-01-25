@@ -42,9 +42,9 @@ pub use dbus_service::run_dbus_service;
 
 pub use pipewire_stream::{AvailableBuffer, BackendCapabilities, PipeWireStream, StreamConfig};
 
-use smithay::reexports::calloop::channel::{
-    channel, Event as ChannelEvent, Sender as ChannelSender,
-};
+use smithay::{backend::renderer::Frame, reexports::calloop::channel::{
+    Event as ChannelEvent, Sender as ChannelSender, channel
+}};
 use zbus::zvariant::OwnedFd;
 
 /// Active screencast session state (compositor side).
@@ -393,26 +393,30 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
     }
 }
 
-/// Copy compositor framebuffer to PipeWire buffer using direct GPU blit
+/// Copy compositor framebuffer to PipeWire buffer with cursor rendering
 ///
-/// Uses the Blit trait for GPU-only framebuffer copying with no CPU roundtrip.
-/// If damage regions are provided, only those regions are blitted for efficiency.
-pub fn fullscreen_to_dmabuf<R>(
+/// Blits the framebuffer first, then renders cursor elements on top
+pub fn fullscreen_to_dmabuf<R, E>(
     renderer: &mut R,
     dest_dmabuf: smithay::backend::allocator::dmabuf::Dmabuf,
     size: smithay::utils::Size<i32, smithay::utils::Physical>,
     damage: Option<&[smithay::utils::Rectangle<i32, smithay::utils::Physical>]>,
+    cursor_elements: &[E],
+    scale: smithay::utils::Scale<f64>,
 ) -> Result<(), String>
 where
-    R: smithay::backend::renderer::Blit<smithay::backend::allocator::dmabuf::Dmabuf>,
+    R: smithay::backend::renderer::Blit<smithay::backend::allocator::dmabuf::Dmabuf>
+        + smithay::backend::renderer::Bind<smithay::backend::allocator::dmabuf::Dmabuf>
+        + smithay::backend::renderer::Renderer,
+    <R as smithay::backend::renderer::Renderer>::TextureId: Clone + 'static,
+    E: smithay::backend::renderer::element::RenderElement<R>,
 {
     use smithay::utils::Physical;
+    use smithay::backend::renderer::Blit;
 
-    // If damage is provided, blit only damaged regions; otherwise blit entire framebuffer
+    // Step 1: Blit framebuffer (without cursor since it's on hardware plane)
     match damage {
         Some(rects) if !rects.is_empty() => {
-            // Blit each damaged region individually
-            tracing::debug!("Blitting {} damaged regions", rects.len());
             for rect in rects {
                 renderer
                     .blit_to(
@@ -423,20 +427,45 @@ where
                     )
                     .map_err(|e| format!("Blit failed: {:?}", e))?;
             }
-            Ok(())
         }
         _ => {
-            // No damage info or empty damage - blit entire framebuffer
-            tracing::debug!("Blitting entire framebuffer (no damage info)");
             let rect = smithay::utils::Rectangle::<i32, Physical>::from_loc_and_size((0, 0), size);
             renderer
                 .blit_to(
-                    dest_dmabuf,
+                    dest_dmabuf.clone(),
                     rect,
                     rect,
                     smithay::backend::renderer::TextureFilter::Linear,
                 )
-                .map_err(|e| format!("Blit failed: {:?}", e))
+                .map_err(|e| format!("Blit failed: {:?}", e))?;
         }
     }
+
+    // Step 2: Render cursor elements on top of blitted content
+    if !cursor_elements.is_empty() {
+        use smithay::backend::renderer::Renderer;
+        
+        let mut frame = renderer
+            .render(size, smithay::utils::Transform::Normal)
+            .map_err(|e| format!("Failed to create frame for cursor: {:?}", e))?;
+        
+        // Render each cursor element
+        for element in cursor_elements.iter() {
+            let src = element.src();
+            let dst = element.geometry(scale);
+            
+            // Calculate damage rect (entire element area)
+            let output_rect = smithay::utils::Rectangle::<i32, Physical>::from_loc_and_size((0, 0), size);
+            if let Some(mut damage) = output_rect.intersection(dst) {
+                damage.loc -= dst.loc;
+                element
+                    .draw(&mut frame, src, dst, &[damage], &[])
+                    .map_err(|e| format!("Failed to draw cursor element: {:?}", e))?;
+            }
+        }
+        
+        std::mem::drop(frame);
+    }
+
+    Ok(())
 }
