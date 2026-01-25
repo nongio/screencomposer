@@ -1957,6 +1957,9 @@ impl Otto<UdevData> {
                                     damage_to_use,
                                 ) {
                                     tracing::debug!("Screenshare blit failed: {}", e);
+                                } else {
+                                    // Only increment sequence on successful blit
+                                    stream.pipewire_stream.increment_frame_sequence();
                                 }
 
                                 pool.to_queue.insert(available.fd, available.pw_buffer);

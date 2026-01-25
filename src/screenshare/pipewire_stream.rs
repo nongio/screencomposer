@@ -5,9 +5,10 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{
-    atomic::{AtomicBool, AtomicU32, Ordering},
+    atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
     Arc, Mutex,
 };
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use smithay::backend::allocator::{
     dmabuf::{AsDmabuf, Dmabuf},
@@ -15,6 +16,14 @@ use smithay::backend::allocator::{
     Fourcc,
 };
 use smithay::backend::drm::DrmDeviceFd;
+
+/// Get current monotonic time in nanoseconds
+fn get_monotonic_time_ns() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64
+}
 
 /// Buffer pool shared between PipeWire thread and main thread
 #[derive(Default)]
@@ -113,6 +122,10 @@ struct SharedState {
     buffer_pool: Arc<Mutex<BufferPool>>,
     /// Raw stream pointer for triggering from main thread
     stream_ptr: Arc<Mutex<Option<*mut pipewire::sys::pw_stream>>>,
+    /// Frame sequence counter for actual rendered frames (shared between threads)
+    frame_sequence: AtomicU64,
+    /// Start time for calculating PTS (nanoseconds since CLOCK_MONOTONIC)
+    start_time_ns: AtomicU64,
 }
 
 // SAFETY: pw_stream pointer is only used to call pw_stream_trigger_process
@@ -123,8 +136,6 @@ unsafe impl Sync for SharedState {}
 struct PwStreamState {
     /// Current negotiation status
     negotiated: Option<NegotiatedFormat>,
-    /// Frame sequence counter
-    sequence: u64,
     /// DMA-BUF buffers indexed by fd
     dmabufs: HashMap<i64, Dmabuf>,
 }
@@ -145,6 +156,8 @@ impl PipeWireStream {
             buffer_pool: Arc::new(Mutex::new(BufferPool::default())),
             #[allow(clippy::arc_with_non_send_sync)]
             stream_ptr: Arc::new(Mutex::new(None)),
+            frame_sequence: AtomicU64::new(0),
+            start_time_ns: AtomicU64::new(0),
         });
 
         Self { shared, config }
@@ -218,6 +231,11 @@ impl PipeWireStream {
             tracing::warn!("trigger_frame called but stream_ptr not set");
         }
     }
+
+    /// Increment the frame sequence counter (call when a frame is actually rendered)
+    pub fn increment_frame_sequence(&self) {
+        self.shared.frame_sequence.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 /// PipeWire error types.
@@ -285,7 +303,6 @@ fn run_pipewire_thread(
     // Stream state
     let stream_state = Rc::new(RefCell::new(PwStreamState {
         negotiated: None,
-        sequence: 0,
         dmabufs: HashMap::new(),
     }));
 
@@ -513,9 +530,11 @@ fn run_pipewire_thread(
             }
         })
         .process({
-            let state = stream_state.clone();
+            let _state = stream_state.clone();
             let buffer_pool = shared.buffer_pool.clone();
+            let shared_for_process = shared.clone();
             let _gbm_device = config.gbm_device.clone();
+            let framerate = (config.framerate_num, config.framerate_denom);
             move |stream, _user_data| {
                 use pipewire::sys::pw_stream_dequeue_buffer;
                 use pipewire::sys::pw_stream_queue_buffer;
@@ -529,6 +548,47 @@ fn run_pipewire_thread(
                             let spa_buffer = (*pw_buffer).buffer;
                             let chunk = (*(*spa_buffer).datas).chunk;
                             (*chunk).size = 1;
+
+                            // Set timestamp metadata
+                            let meta_header = pipewire::spa::sys::spa_buffer_find_meta_data(
+                                spa_buffer,
+                                pipewire::spa::sys::SPA_META_Header,
+                                std::mem::size_of::<pipewire::spa::sys::spa_meta_header>(),
+                            );
+                            
+                            if !meta_header.is_null() {
+                                let header = meta_header as *mut pipewire::spa::sys::spa_meta_header;
+                                
+                                // Get current frame sequence and calculate PTS
+                                let frame_seq = shared_for_process.frame_sequence.load(Ordering::Relaxed);
+                                let start_time = shared_for_process.start_time_ns.load(Ordering::Relaxed);
+                                
+                                // Calculate PTS based on framerate and frame sequence
+                                // PTS = start_time + (frame_seq * 1_000_000_000 * framerate_denom) / framerate_num
+                                let pts = if start_time == 0 {
+                                    // First frame - initialize start time
+                                    let now = get_monotonic_time_ns();
+                                    shared_for_process.start_time_ns.store(now, Ordering::Relaxed);
+                                    0
+                                } else {
+                                    let elapsed_ns = (frame_seq * 1_000_000_000 * framerate.1 as u64) / framerate.0 as u64;
+                                    elapsed_ns as i64
+                                };
+                                
+                                (*header).pts = pts;
+                                (*header).flags = 0;
+                                (*header).seq = frame_seq;
+                                (*header).dts_offset = 0;
+                                
+                                tracing::trace!(
+                                    "Set metadata for buffer fd={}: pts={}, seq={}",
+                                    fd,
+                                    pts,
+                                    frame_seq
+                                );
+                            } else {
+                                tracing::warn!("No metadata header found for buffer fd={}", fd);
+                            }
 
                             pw_stream_queue_buffer(stream.as_raw_ptr(), pw_buffer);
                         }
@@ -560,9 +620,6 @@ fn run_pipewire_thread(
                             pw_stream_queue_buffer(stream.as_raw_ptr(), buffer);
                         }
                     }
-
-                    let mut state = state.borrow_mut();
-                    state.sequence += 1;
                 }
             }
         })
