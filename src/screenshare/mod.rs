@@ -53,6 +53,8 @@ use zbus::zvariant::OwnedFd;
 pub struct ScreencastSession {
     /// The D-Bus session path (e.g., "/org/otto/ScreenCast/session/1").
     pub session_id: String,
+    /// Cursor mode for this session (HIDDEN, EMBEDDED, or METADATA).
+    pub cursor_mode: u32,
     /// Active streams indexed by output connector name.
     pub streams: HashMap<String, ActiveStream>,
 }
@@ -71,7 +73,10 @@ pub struct ActiveStream {
 #[derive(Debug)]
 pub enum CompositorCommand {
     /// Create a new screencast session.
-    CreateSession { session_id: String },
+    CreateSession {
+        session_id: String,
+        cursor_mode: u32,
+    },
     /// List available outputs for screen casting.
     ListOutputs {
         response_tx: tokio::sync::oneshot::Sender<Vec<OutputInfo>>,
@@ -80,6 +85,7 @@ pub enum CompositorCommand {
     StartRecording {
         session_id: String,
         output_connector: String,
+        cursor_mode: u32,
         /// Response channel for the PipeWire node ID.
         response_tx: tokio::sync::oneshot::Sender<Result<u32, String>>,
     },
@@ -171,14 +177,18 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
     cmd: CompositorCommand,
 ) {
     match cmd {
-        CompositorCommand::CreateSession { session_id } => {
-            tracing::info!("CreateSession: {}", session_id);
+        CompositorCommand::CreateSession {
+            session_id,
+            cursor_mode,
+        } => {
+            tracing::info!("CreateSession: {}, cursor_mode={}", session_id, cursor_mode);
 
             // Create compositor-side session state
             state.screenshare_sessions.insert(
                 session_id.clone(),
                 ScreencastSession {
                     session_id,
+                    cursor_mode,
                     streams: HashMap::new(),
                 },
             );
@@ -210,12 +220,14 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
         CompositorCommand::StartRecording {
             session_id,
             output_connector,
+            cursor_mode,
             response_tx,
         } => {
             tracing::debug!(
-                "StartRecording: session={}, output={}",
+                "StartRecording: session={}, output={}, cursor_mode={}",
                 session_id,
-                output_connector
+                output_connector,
+                cursor_mode
             );
 
             // Find the output by connector name
@@ -233,7 +245,7 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
                 }
             };
 
-            // Get the session
+            // Get the session and update cursor_mode
             let session = match state.screenshare_sessions.get_mut(&session_id) {
                 Some(s) => s,
                 None => {
@@ -241,6 +253,9 @@ fn handle_screenshare_command<B: crate::state::Backend + 'static>(
                     return;
                 }
             };
+            
+            // Update cursor mode for this session
+            session.cursor_mode = cursor_mode;
 
             // Check if already recording this output
             if session.streams.contains_key(&output_connector) {

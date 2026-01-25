@@ -110,6 +110,7 @@ impl ScreenCastInterface {
         // Notify compositor
         if let Err(e) = self.compositor_tx.send(CompositorCommand::CreateSession {
             session_id: session_path.clone(),
+            cursor_mode,
         }) {
             error!(?e, "Failed to notify compositor of session creation");
         }
@@ -296,14 +297,20 @@ impl SessionInterface {
         };
 
         for stream_path in stream_paths {
-            let connector = {
+            let (connector, cursor_mode) = {
                 let streams = self.streams.read().await;
-                streams.get(&stream_path).map(|s| s.connector.clone())
+                streams
+                    .get(&stream_path)
+                    .map(|s| (s.connector.clone(), s.cursor_mode))
+                    .unwrap_or_else(|| {
+                        // Skip if stream not found
+                        return (String::new(), 0);
+                    })
             };
 
-            let Some(connector) = connector else {
+            if connector.is_empty() {
                 continue;
-            };
+            }
 
             // Create response channel for node_id
             let (tx, rx) = tokio::sync::oneshot::channel();
@@ -312,6 +319,7 @@ impl SessionInterface {
             if let Err(e) = self.compositor_tx.send(CompositorCommand::StartRecording {
                 session_id: self.session_path.clone(),
                 output_connector: connector.clone(),
+                cursor_mode,
                 response_tx: tx,
             }) {
                 error!(?e, "Failed to start recording");

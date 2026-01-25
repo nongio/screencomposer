@@ -35,8 +35,8 @@ pub const SOURCE_TYPE_VIRTUAL: u32 = 4;
 pub const CURSOR_MODE_HIDDEN: u32 = 1;
 pub const CURSOR_MODE_EMBEDDED: u32 = 2;
 pub const CURSOR_MODE_METADATA: u32 = 4;
-pub const SUPPORTED_CURSOR_MODES: u32 =
-    CURSOR_MODE_HIDDEN | CURSOR_MODE_EMBEDDED | CURSOR_MODE_METADATA;
+// We only support HIDDEN and EMBEDDED modes
+pub const SUPPORTED_CURSOR_MODES: u32 = CURSOR_MODE_HIDDEN | CURSOR_MODE_EMBEDDED;
 
 /// Returns the D-Bus object path for the portal desktop interface.
 #[inline]
