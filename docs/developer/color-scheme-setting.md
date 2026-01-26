@@ -13,17 +13,13 @@ theme_scheme = "Light"  # or "Dark"
 
 **What this controls:**
 
-Currently, `theme_scheme` only affects **Otto's own UI** (dock, app switcher, compositor chrome). The setting is read from config in `src/config/mod.rs` and used internally by compositor UI components like `src/workspaces/dock/render.rs` and `src/theme/mod.rs`.
+The `theme_scheme` setting controls:
+1. **Otto's own UI** — dock, app switcher, compositor chrome
+2. **Client applications** — via the Settings portal implementation
 
-**What it does NOT control:**
-
-Client applications (Chrome, Firefox, GNOME apps, Qt apps) do **not** receive this preference from Otto. They determine their theme from other sources:
-
-- `GTK_THEME` environment variable
-- `QT_STYLE_OVERRIDE` environment variable  
-- gsettings/dconf system-wide settings
-- Application-specific preferences
-- Other desktop portal backends if running
+The setting is read from config in `src/config/mod.rs` and:
+- Used internally by compositor UI components like `src/workspaces/dock/render.rs` and `src/theme/mod.rs`
+- Exposed to applications via the `org.freedesktop.portal.Settings` interface through the portal backend
 
 ### The XDG Settings Portal
 
@@ -38,49 +34,60 @@ The standard way for compositors to communicate theme preferences to application
    - `1` = prefer dark
    - `2` = prefer light
 
-**Current implementation status:**
+### Otto's Implementation
+Otto now implements the Settings portal with the following components:
 
-Otto does **not yet implement** the Settings portal. Only the ScreenCast portal is implemented in `components/xdg-desktop-portal-otto/`.
+**Compositor D-Bus Service** (`src/settings_service.rs`):
+- Implements `org.otto.Settings` interface at `/org/otto/Settings`
+- Exposes `GetColorScheme()` method that returns the current theme preference
+- Registered during compositor startup in the screenshare D-Bus service initialization
 
-### Implementation Path
+**Portal Backend** (`components/xdg-desktop-portal-otto/`):
+- Implements `org.freedesktop.impl.portal.Settings` interface
+- Bridges between the portal API and the compositor's `org.otto.Settings` service
+- Handles `ReadAll()` and `Read()` methods per spec
+- Supports namespace filtering and glob patterns
+- Exposes `org.freedesktop.appearance` namespace with `color-scheme` setting
 
-To make Otto's `theme_scheme` config control application themes, you would need to:
+**Configuration Integration**:
+- Portal backend connects to compositor via D-Bus proxy (`src/otto_client/settings.rs`)
+- Compositor reads `theme_scheme` from `otto_config.toml` via static config singleton
+- Color scheme values per spec:
+  - `1` = prefer dark
+  - `2` = prefer light
 
-1. **Add Settings portal backend** in `components/xdg-desktop-portal-otto/`:
-   - Implement `org.freedesktop.impl.portal.Settings` interface
-   - Handle `ReadAll()` and `Read()` methods
-   - Emit `SettingChanged` signal when theme changes
-
-2. **Expose compositor state via D-Bus** (two options):
-   - Option A: Create a compositor-side D-Bus service (like `org.otto.ScreenCast` for screensharing)
-   - Option B: Read Otto's config file directly from the portal backend
-
-3. **Config reload handling**:
-   - If config is reloaded at runtime, emit `SettingChanged` signal to notify applications
-
-4. **Additional settings to expose**:
-   - `color-scheme` (primary)
-   - `accent-color` (future)
-   - `contrast` (accessibility, future)
-
-### Reference Implementation
-
-Other compositors that implement this:
-
-- **GNOME Shell** — gsettings → mutter → portal backend
-- **KDE Plasma** — KConfig → KWin → portal backend  
-- **Sway/wlroots** — various portal backends read desktop-specific configs
+**Portal Registration** (`otto.portal`):
+- Registered in `org.freedesktop.impl.portal.desktop.otto` portal backend
+- Listed alongside ScreenCast interface in portal capabilities
 
 ### Spec Reference
 
 - [XDG Desktop Portal Settings interface](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Settings.html)
 - [freedesktop.org appearance settings](https://github.com/flatpak/xdg-desktop-portal/blob/main/data/org.freedesktop.appearance.xml)
 
-### Where to Start
+### Future Enhancements
 
-If implementing this feature:
+**Dynamic Configuration Reload**:
+- Currently requires compositor restart to change theme
+- Future: Implement `SettingChanged` signal emission when config is reloaded
+- Would allow applications to respond to theme changes without restart
 
-1. Read `docs/developer/screenshare.md` — the Settings portal would follow a similar architecture (portal backend ↔ compositor communication)
-2. Check `components/xdg-desktop-portal-otto/src/portal/interface.rs` — add a new Settings interface alongside ScreenCast
-3. Decide whether to expose via D-Bus service or direct config file reading
-4. Test with applications: `gsettings get org.gnome.desktop.interface color-scheme` should reflect Otto's config after implementation
+**Additional Settings**:
+- `accent-color` — user-selected accent color for UI elements
+- `contrast` — high contrast mode for accessibility
+- Other `org.freedesktop.appearance` namespace settings
+
+**Testing**:
+Applications should now correctly pick up Otto's theme preference. You can verify with:
+
+```bash
+# Query the portal backend directly
+gdbus call --session \
+  --dest org.freedesktop.portal.Desktop \
+  --object-path /org/freedesktop/portal/desktop \
+  --method org.freedesktop.portal.Settings.Read \
+  org.freedesktop.appearance color-scheme
+
+# Check GNOME settings (if GNOME apps installed)
+gsettings get org.gnome.desktop.interface color-scheme
+```
