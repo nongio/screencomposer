@@ -1,6 +1,8 @@
 # Display
 screen_scale = 2.0
 compositor_mode = "drm"
+locales = ["en"]  # Language preferences for app names/desktop entries (e.g., ["fr", "en"])
+
 [displays.named."winit"]
 resolution = { width = 1280, height = 1000 }
 refresh_hz = 60.0
@@ -16,7 +18,7 @@ position = { x = 1920, y = 0 }
 cursor_size = 24
 font_family = "Inter"
 cursor_theme = "Notwaita-Black"
-icon_theme = "GNUstep"  # Uncomment to override auto-detection (e.g., "WhiteSur", "Papirus", "Adwaita")
+icon_theme = "WhiteSur"  # Uncomment to override auto-detection (e.g., "WhiteSur", "Papirus", "Adwaita")
 theme_scheme = "Light"  # "Light" or "Dark" - exposed via XDG Desktop Portal Settings
 # gtk_theme = "Adwaita"  # Optional: for documentation/reference only
 background_image = "./resources/background.jpg"
@@ -71,11 +73,6 @@ max_bottom = 100    # Bottom panels/docks
 max_left = 50       # Left side panels
 max_right = 50      # Right side panels
 
-# Apps
-terminal_bin = "weston-terminal"
-file_manager_bin = "dolphin"
-browser_bin = "google-chrome-stable"
-browser_args = [""]
 
 [keyboard_shortcuts]
 "Ctrl+Esc" = "Quit"
@@ -92,10 +89,9 @@ browser_args = [""]
 "Ctrl+Shift+ISO_Left_Tab" = "ApplicationSwitchPrev"
 "Ctrl+ArrowUp" = "ToggleMaximizeWindow"
 "Ctrl+grave" = "ApplicationSwitchNextWindow"
-"Ctrl+Q" = "ApplicationSwitchQuit"
+"Ctrl+q" = "ApplicationSwitchQuit"
 "Prior" = "ExposeShowAll"
 "Next" = "ExposeShowDesktop"
-"Alt+J" = "SceneSnapshot"
 
 [dock]
 size = 1.0  # Dock size multiplier (0.5 - 2.0, default: 1.0)
