@@ -1,4 +1,4 @@
-# DRM Plane Selection in Otto
+## DRM Plane Selection in Otto
 
 This document explains how Smithay's `DrmCompositor` selects render elements that can be assigned to hardware DRM planes for direct scanout, and how Otto configures this functionality.
 

@@ -78,7 +78,7 @@ Otto implements a comprehensive set of Wayland protocols, including:
 - Selection: primary selection, data control (wlr-data-control)
 - XDG foreign: cross-client surface identification
 
-For a complete and up-to-date list, see [docs/wayland.md](./docs/wayland.md).
+For a complete and up-to-date list, see [docs/developer/wayland.md](./docs/developer/wayland.md).
 
 ## Development
 
@@ -89,7 +89,7 @@ Otto consists of the main compositor and additional components:
 | `otto` | Main compositor binary |
 | `xdg-desktop-portal-otto` | XDG Desktop Portal backend for screen sharing |
 
-See [docs/xdg-desktop-portal.md](./docs/xdg-desktop-portal.md) for details on the portal integration.
+The portal backend is located in `components/xdg-desktop-portal-otto/`.
 
 ## How can you contribute?
 Both this project and the LayersEngine are open to contributions. Contribute by testing the compositor, reporting bugs, by implementing new features or by bringing new ideas. If you have any questions, open an issue on the repository.
@@ -151,7 +151,7 @@ When running with a specific backend, Otto will automatically load the correspon
 
 This allows you to maintain different display settings, keyboard shortcuts or other preferences for each backend. For instance, you might want different `screen_scale` values or display resolutions when running in a window (winit/X11) versus on bare metal (tty-udev).
 
-For detailed configuration options, see the [configuration documentation](./docs/configuration.md).
+For detailed configuration options, see the [configuration documentation](./docs/user/configuration.md).
 
 ### Keyboard Shortcuts
 Hotkeys are now fully configurable via the `otto_config.toml` file. See the `[keyboard_shortcuts]` section to customize keybindings for your setup. Example:

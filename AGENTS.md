@@ -98,7 +98,7 @@ Located in `src/screenshare/`:
 
 Portal backend: `components/xdg-desktop-portal-otto/` — separate binary that bridges xdg-desktop-portal to compositor
 
-See [docs/screenshare.md](./docs/screenshare.md) for detailed architecture documentation.
+See [docs/developer/screenshare.md](./docs/developer/screenshare.md) for detailed architecture documentation.
 
 ## Configuration
 
@@ -118,9 +118,13 @@ See `otto_config.example.toml` for all options.
 
 ## Documentation
 
-Detailed design docs in `docs/`:
+Detailed design docs in `docs/developer/`:
 - `rendering.md`, `render_loop.md` — Rendering pipeline
 - `wayland.md` — Protocol implementation details
 - `screenshare.md` — Screen sharing architecture and D-Bus API
-- `xdg-desktop-portal.md` — Portal backend integration
 - `expose.md`, `dock-design.md` — UI component design
+- `sc-layer-protocol-design.md` — Scene graph protocol design
+
+User documentation in `docs/user/`:
+- `configuration.md` — Configuration options
+- `clipboard.md` — Clipboard usage

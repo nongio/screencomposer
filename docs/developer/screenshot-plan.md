@@ -1,44 +1,44 @@
-# Screenshot Portal Implementation Plan
+## Screenshot Portal Implementation Plan
 
-## Overview
+### Overview
 
 Implement `org.freedesktop.impl.portal.Screenshot` D-Bus interface to allow third-party screenshot tools (GNOME Screenshot, Spectacle, Flameshot, etc.) to capture screen content.
 
 **Key Difference from ScreenCast**: Screenshots use file-based capture (one-shot PNG) rather than PipeWire streaming.
 
-## Architecture
+### Architecture
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│  Screenshot App (gnome-screenshot, spectacle, flameshot)      │
+│  Screenshot App (gnome-screenshot, spectacle, flameshot)       │
 │       │                                                        │
-│       ▼ Portal D-Bus API (org.freedesktop.portal.Screenshot)  │
+│       ▼ Portal D-Bus API (org.freedesktop.portal.Screenshot)   │
 │                                                                │
-│  xdg-desktop-portal (system service)                          │
+│  xdg-desktop-portal (system service)                           │
 │       │                                                        │
-│       ▼ Backend D-Bus (org.freedesktop.impl.portal.Screenshot)│
+│       ▼ Backend D-Bus (org.freedesktop.impl.portal.Screenshot) │
 │                                                                │
-│  xdg-desktop-portal-otto                                        │
+│  xdg-desktop-portal-otto                                       │
 │       │                                                        │
-│       ▼ Compositor D-Bus (org.otto.Screenshot)      │
+│       ▼ Compositor D-Bus (org.otto.Screenshot)                 │
 │                                                                │
-│  Otto Compositor                                    │
+│  Otto Compositor                                               │
 │       │                                                        │
-│       ├─► Capture single frame (reuse FrameTapManager)        │
-│       ├─► Encode to PNG (image crate)                         │
-│       ├─► Save to temp file (/tmp/screenshot-XXX.png)         │
-│       └─► Return file:// URI                                  │
+│       ├─► Capture single frame (reuse FrameTapManager)         │
+│       ├─► Encode to PNG (image crate)                          │
+│       ├─► Save to temp file (/tmp/screenshot-XXX.png)          │
+│       └─► Return file:// URI                                   │
 │                                                                │
-│  Screenshot App reads file and processes                      │
+│  Screenshot App reads file and processes                       │
 └────────────────────────────────────────────────────────────────┘
 ```
 
-## Data Flow
+### Data Flow
 
 **Screenshot Request**:
 1. App calls `org.freedesktop.portal.Screenshot.Screenshot()`
-2. xdg-desktop-portal forwards to portal-sc backend
-3. Portal-sc sends D-Bus request to compositor
+2. xdg-desktop-portal forwards to portal-otto backend
+3. Portal-otto sends D-Bus request to compositor
 4. Compositor captures current frame (dmabuf or RGBA)
 5. Convert to CPU memory if needed (dmabuf → RGBA via existing lazy-loading)
 6. Encode to PNG using `image` crate
@@ -46,15 +46,9 @@ Implement `org.freedesktop.impl.portal.Screenshot` D-Bus interface to allow thir
 8. Return `file:///tmp/screenshot-XXXXXX.png` URI
 9. App handles file (display, save elsewhere, clipboard, etc.)
 
-**PickColor Request** (optional):
-1. App calls `PickColor()` with coordinates (or interactive mode)
-2. Compositor reads pixel from last rendered frame
-3. Convert pixel format to RGB doubles (0.0-1.0 range)
-4. Return `(r, g, b)` tuple
+### Implementation
 
-## Implementation
-
-### Phase 1: Basic Screenshot (Minimum Viable)
+#### Phase 1: Basic Screenshot (Minimum Viable)
 
 **Portal Backend** (`components/xdg-desktop-portal-otto/src/screenshot.rs`):
 ```rust
@@ -145,22 +139,7 @@ async fn pick_color(
 }
 ```
 
-**Compositor Handler**:
-```rust
-pub fn pick_color_at(
-    state: &Otto,
-    output_name: &str,
-    x: i32,
-    y: i32,
-) -> Result<(f64, f64, f64)> {
-    // Read pixel from framebuffer at (x, y)
-    // Convert BGRA → RGB
-    // Normalize to 0.0-1.0 range
-    // Return (r, g, b)
-}
-```
-
-## Dependencies
+### Dependencies
 
 Add to `Cargo.toml`:
 ```toml
@@ -169,7 +148,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 tempfile = "3.0"
 ```
 
-## File Structure
+### File Structure
 
 ```
 components/xdg-desktop-portal-otto/src/
@@ -181,9 +160,9 @@ src/screenshare/
 └── mod.rs               # Export screenshot module
 ```
 
-## D-Bus Interface Specification
+### D-Bus Interface Specification
 
-### Screenshot Method
+#### Screenshot Method
 
 ```xml
 <method name="Screenshot">
@@ -203,25 +182,9 @@ src/screenshare/
 **Results**:
 - `uri` (s): `file://` URI to saved screenshot PNG
 
-### PickColor Method
+### Testing
 
-```xml
-<method name="PickColor">
-  <arg type="o" name="handle" direction="in"/>
-  <arg type="s" name="app_id" direction="in"/>
-  <arg type="s" name="parent_window" direction="in"/>
-  <arg type="a{sv}" name="options" direction="in"/>
-  <arg type="u" name="response" direction="out"/>
-  <arg type="a{sv}" name="results" direction="out"/>
-</method>
-```
-
-**Results**:
-- `color` ((ddd)): RGB tuple with values 0.0-1.0
-
-## Testing
-
-### Manual Testing
+#### Manual Testing
 
 ```bash
 # Install screenshot tools
@@ -237,7 +200,7 @@ flameshot gui
 # (Use app that supports color picking via portal)
 ```
 
-### D-Bus Direct Testing
+#### D-Bus Direct Testing
 
 ```bash
 # Call Screenshot method directly
@@ -251,9 +214,9 @@ gdbus call --session \
   "{}"
 ```
 
-## Implementation Checklist
+### Implementation Checklist
 
-### Phase 1: Basic Screenshot
+#### Phase 1: Basic Screenshot
 - [ ] Add `image` and `tempfile` dependencies
 - [ ] Create `src/screenshare/screenshot.rs`
 - [ ] Implement Screenshot D-Bus command in compositor
@@ -266,13 +229,13 @@ gdbus call --session \
 - [ ] Test with gnome-screenshot
 - [ ] Test with other screenshot tools
 
-### Phase 2: Color Picker (Optional)
+#### Phase 2: Color Picker (Optional)
 - [ ] Implement PickColor D-Bus command
 - [ ] Add pixel reading from framebuffer
 - [ ] Implement BGRA → RGB conversion
 - [ ] Test with color picker apps
 
-## Notes
+### Notes
 
 - **No PipeWire**: Screenshots use simple file-based capture, not streaming
 - **No UI**: Third-party apps provide their own selection/annotation UI
@@ -282,7 +245,7 @@ gdbus call --session \
 - **Single output**: Initial implementation captures full primary output
 - **Format**: PNG only (most compatible, lossless)
 
-## Future Enhancements
+### Future Enhancements
 
 - Support for specific output selection
 - Support for window-specific screenshots (via window ID)
