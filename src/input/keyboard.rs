@@ -1,18 +1,24 @@
+use smithay::wayland::{
+    compositor::with_states, keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitorSeat,
+};
 use smithay::{
     backend::input::{Event, InputBackend, KeyState, KeyboardKeyEvent},
     desktop::layer_map_for_output,
     input::keyboard::{FilterResult, Keysym, ModifiersState},
     utils::{IsAlive, SERIAL_COUNTER as SCOUNTER},
-    wayland::shell::wlr_layer::{KeyboardInteractivity, Layer as WlrLayer, LayerSurfaceCachedState},
+    wayland::shell::wlr_layer::{
+        KeyboardInteractivity, Layer as WlrLayer, LayerSurfaceCachedState,
+    },
 };
-use smithay::wayland::{compositor::with_states, keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitorSeat};
 use tracing::debug;
 
 use crate::{config::Config, state::Backend, Otto};
 
 use super::actions::KeyAction;
 
-pub fn capture_app_switcher_hold_modifiers(mut modifiers: ModifiersState) -> Option<ModifiersState> {
+pub fn capture_app_switcher_hold_modifiers(
+    mut modifiers: ModifiersState,
+) -> Option<ModifiersState> {
     modifiers.caps_lock = false;
     modifiers.num_lock = false;
     if modifiers.ctrl || modifiers.alt || modifiers.logo || modifiers.shift {
@@ -94,7 +100,10 @@ pub fn process_keyboard_shortcut(
 }
 
 impl<BackendData: Backend> Otto<BackendData> {
-    pub fn keyboard_key_to_action<B: InputBackend>(&mut self, evt: B::KeyboardKeyEvent) -> KeyAction {
+    pub fn keyboard_key_to_action<B: InputBackend>(
+        &mut self,
+        evt: B::KeyboardKeyEvent,
+    ) -> KeyAction {
         let keycode = evt.key_code();
         let state = evt.state();
         debug!(?keycode, ?state, "key");
@@ -205,9 +214,7 @@ impl<BackendData: Backend> Otto<BackendData> {
         }
 
         // Check for app switcher dismissal on key release
-        if KeyState::Released == state
-            && self.workspaces.app_switcher.alive()
-        {
+        if KeyState::Released == state && self.workspaces.app_switcher.alive() {
             if let Some(modifiers) = updated_modifiers {
                 if !app_switcher_hold_is_active(self.app_switcher_hold_modifiers, modifiers) {
                     self.dismiss_app_switcher();

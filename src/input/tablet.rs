@@ -1,8 +1,8 @@
 #[cfg(feature = "udev")]
 use smithay::{
     backend::input::{
-        Event, InputBackend, ProximityState, TabletToolButtonEvent, TabletToolEvent,
-        TabletToolProximityEvent, TabletToolTipEvent, TabletToolTipState, AbsolutePositionEvent,
+        AbsolutePositionEvent, Event, InputBackend, ProximityState, TabletToolButtonEvent,
+        TabletToolEvent, TabletToolProximityEvent, TabletToolTipEvent, TabletToolTipState,
     },
     input::pointer::MotionEvent,
     reexports::wayland_server::DisplayHandle,

@@ -17,7 +17,10 @@ use crate::udev::UdevData;
 
 #[cfg(feature = "udev")]
 use smithay::{
-    backend::{input::{Device, DeviceCapability}, session::Session},
+    backend::{
+        input::{Device, DeviceCapability},
+        session::Session,
+    },
     wayland::tablet_manager::{TabletDescriptor, TabletSeatTrait},
 };
 

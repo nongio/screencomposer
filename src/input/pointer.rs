@@ -1,3 +1,4 @@
+use crate::{focus::PointerFocusTarget, shell::FullscreenSurface, state::Backend, Otto};
 use smithay::{
     backend::input::{
         self, Axis, AxisSource, ButtonState, Event, InputBackend, PointerAxisEvent,
@@ -7,12 +8,8 @@ use smithay::{
     input::pointer::{AxisFrame, ButtonEvent, MotionEvent},
     reexports::wayland_server::{protocol::wl_pointer, Resource},
     utils::{IsAlive, Logical, Point, Serial, SERIAL_COUNTER as SCOUNTER},
-    wayland::{
-        input_method::InputMethodSeat,
-        shell::wlr_layer::Layer as WlrLayer,
-    },
+    wayland::{input_method::InputMethodSeat, shell::wlr_layer::Layer as WlrLayer},
 };
-use crate::{focus::PointerFocusTarget, shell::FullscreenSurface, state::Backend, Otto};
 
 #[cfg(any(feature = "winit", feature = "x11", feature = "udev"))]
 use smithay::backend::input::AbsolutePositionEvent;
@@ -97,7 +94,9 @@ impl<BackendData: Backend> Otto<BackendData> {
                         WindowSurfaceType::ALL,
                     ) {
                         #[cfg(feature = "xwayland")]
-                        if let crate::shell::window::WindowSurface::X11(surf) = window.underlying_surface() {
+                        if let crate::shell::window::WindowSurface::X11(surf) =
+                            window.underlying_surface()
+                        {
                             self.xwm.as_mut().unwrap().raise_window(surf).unwrap();
                         }
                         keyboard.set_focus(self, Some(window.into()), serial);
@@ -155,7 +154,9 @@ impl<BackendData: Backend> Otto<BackendData> {
                     }
 
                     #[cfg(feature = "xwayland")]
-                    if let crate::shell::window::WindowSurface::X11(surf) = &window.underlying_surface() {
+                    if let crate::shell::window::WindowSurface::X11(surf) =
+                        &window.underlying_surface()
+                    {
                         self.xwm.as_mut().unwrap().raise_window(surf).unwrap();
                     }
                 }

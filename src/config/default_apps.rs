@@ -85,8 +85,6 @@ fn resolve_spec(spec: &str, config: &Config) -> Option<(String, Vec<String>)> {
     Some((cmd, parts))
 }
 
-
-
 fn desktop_id_to_command(desktop_id: &str, locales: &[String]) -> Option<(String, Vec<String>)> {
     let normalized = if desktop_id.ends_with(".desktop") {
         desktop_id.to_string()

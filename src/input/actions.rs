@@ -141,7 +141,7 @@ impl<BackendData: Backend> Otto<BackendData> {
     }
 
     // Common action handlers shared across all backends
-    
+
     pub(crate) fn handle_app_switcher_next(&mut self) {
         if self.workspaces.get_show_all() {
             self.workspaces.expose_set_visible(false);

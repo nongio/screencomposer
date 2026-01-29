@@ -236,10 +236,7 @@ impl crate::Otto<crate::udev::UdevData> {
         );
     }
 
-    pub(crate) fn on_gesture_pinch_end<B: InputBackend>(
-        &mut self,
-        evt: B::GesturePinchEndEvent,
-    ) {
+    pub(crate) fn on_gesture_pinch_end<B: InputBackend>(&mut self, evt: B::GesturePinchEndEvent) {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
 
@@ -257,10 +254,7 @@ impl crate::Otto<crate::udev::UdevData> {
         );
     }
 
-    pub(crate) fn on_gesture_hold_begin<B: InputBackend>(
-        &mut self,
-        evt: B::GestureHoldBeginEvent,
-    ) {
+    pub(crate) fn on_gesture_hold_begin<B: InputBackend>(&mut self, evt: B::GestureHoldBeginEvent) {
         let serial = SCOUNTER.next_serial();
         let pointer = self.pointer.clone();
         pointer.gesture_hold_begin(
