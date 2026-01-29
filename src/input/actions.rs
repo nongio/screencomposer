@@ -224,20 +224,6 @@ pub fn resolve_shortcut_action(config: &Config, action: &ShortcutAction) -> Opti
             BuiltinAction::ExposeShowAll => Some(KeyAction::ExposeShowAll),
             BuiltinAction::WorkspaceNum { index } => Some(KeyAction::WorkspaceNum(*index)),
             BuiltinAction::SceneSnapshot => Some(KeyAction::SceneSnapshot),
-            BuiltinAction::RunTerminal => {
-                Some(KeyAction::Run((config.terminal_bin.clone(), Vec::new())))
-            }
-            BuiltinAction::RunFileManager => Some(KeyAction::Run((
-                config.file_manager_bin.clone(),
-                Vec::new(),
-            ))),
-            BuiltinAction::RunBrowser => Some(KeyAction::Run((
-                config.browser_bin.clone(),
-                config.browser_args.clone(),
-            ))),
-            BuiltinAction::RunLayersDebug => {
-                Some(KeyAction::Run(("layers_debug".to_string(), vec![])))
-            }
         },
         ShortcutAction::RunCommand(run) => {
             Some(KeyAction::Run((run.cmd.clone(), run.args.clone())))

@@ -215,6 +215,11 @@ impl<BackendData: Backend> Otto<BackendData> {
             }
         }
 
+        // Update current modifiers state
+        if let Some(modifiers) = updated_modifiers {
+            self.current_modifiers = modifiers;
+        }
+
         self.suppressed_keys = suppressed_keys;
         action
     }

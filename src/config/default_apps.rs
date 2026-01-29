@@ -27,7 +27,7 @@ pub fn resolve(
         }
     }
 
-    fallback_to_config(role, config)
+    None
 }
 
 fn resolve_role(role: &str, config: &Config) -> Option<(String, Vec<String>)> {
@@ -85,14 +85,7 @@ fn resolve_spec(spec: &str, config: &Config) -> Option<(String, Vec<String>)> {
     Some((cmd, parts))
 }
 
-fn fallback_to_config(role: &str, config: &Config) -> Option<(String, Vec<String>)> {
-    match role {
-        "browser" => Some((config.browser_bin.clone(), config.browser_args.clone())),
-        "file_manager" | "files" => Some((config.file_manager_bin.clone(), vec![])),
-        "terminal" | "shell" => Some((config.terminal_bin.clone(), vec![])),
-        _ => None,
-    }
-}
+
 
 fn desktop_id_to_command(desktop_id: &str, locales: &[String]) -> Option<(String, Vec<String>)> {
     let normalized = if desktop_id.ends_with(".desktop") {
@@ -260,14 +253,6 @@ fn xdg_data_dirs() -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn fallback_config_terminal() {
-        let config = Config::default();
-        let (cmd, args) = fallback_to_config("terminal", &config).expect("terminal fallback");
-        assert_eq!(cmd, config.terminal_bin);
-        assert!(args.is_empty());
-    }
 
     #[test]
     fn resolve_spec_command() {
