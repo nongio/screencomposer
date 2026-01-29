@@ -464,17 +464,3 @@ pub fn run_udev() {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    
-
-    #[test]
-    fn test_init_module_exists() {
-        // Basic compile-time test
-        assert!(true);
-    }
-
-    // Note: Full initialization tests require hardware access and a seat session
-    // These would be integration tests run on actual hardware
-}

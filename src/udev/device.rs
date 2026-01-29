@@ -542,7 +542,7 @@ impl Otto<UdevData> {
                 planes.overlay = vec![];
             }
 
-            println!("Max cursor size: {:?}", device.drm.cursor_size());
+            tracing::debug!("Max cursor size: {:?}", device.drm.cursor_size());
             let mut compositor = match smithay::backend::drm::compositor::DrmCompositor::new(
                 output,
                 surface,

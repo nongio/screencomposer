@@ -77,18 +77,3 @@ pub fn get_surface_dmabuf_feedback(
         scanout_feedback,
     })
 }
-
-#[cfg(test)]
-mod tests {
-    
-
-    // Note: Full testing requires hardware access. These tests verify
-    // the logic structure is sound.
-
-    #[test]
-    fn test_dmabuf_feedback_structure() {
-        // This test documents the expected structure of dmabuf feedback
-        // Actual testing would require mock DRM/GBM devices
-        // For now, we just ensure the module compiles correctly
-    }
-}

@@ -46,13 +46,10 @@ use smithay::{
 };
 use tracing::{debug, trace, warn};
 
-use super::{
-    types::{
-        RenderOutcome, SurfaceCompositorRenderResult, SurfaceData, UdevData, UdevOutputId,
-        UdevRenderer,
-    },
-    Otto,
+use super::types::{
+    RenderOutcome, SurfaceCompositorRenderResult, SurfaceData, UdevData, UdevOutputId, UdevRenderer,
 };
+use crate::state::Otto;
 
 impl Otto<UdevData> {
     pub(super) fn frame_finish(
@@ -866,15 +863,4 @@ pub(super) fn initial_render(
     surface.compositor.reset_buffers();
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    
-
-    #[test]
-    fn test_render_module_exists() {
-        // Placeholder test - full rendering tests require hardware access
-        assert!(true);
-    }
 }

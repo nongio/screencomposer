@@ -253,7 +253,13 @@ impl SurfaceComposition {
                     })
                     .map_err(|err| match err {
                         smithay::backend::renderer::damage::Error::Rendering(err) => err.into(),
-                        _ => unreachable!(),
+                        other => {
+                            tracing::error!("Unexpected damage tracker error: {:?}", other);
+                            SwapBuffersError::ContextLost(Box::new(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!("Damage tracker error: {:?}", other),
+                            )))
+                        }
                     });
                 renderer.set_debug_flags(current_debug_flags);
                 res
@@ -284,7 +290,13 @@ impl SurfaceComposition {
                     smithay::backend::drm::compositor::RenderFrameError::RenderFrame(
                         smithay::backend::renderer::damage::Error::Rendering(err),
                     ) => err.into(),
-                    _ => unreachable!(),
+                    other => {
+                        tracing::error!("Unexpected render frame error: {:?}", other);
+                        SwapBuffersError::ContextLost(Box::new(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Render frame error: {:?}", other),
+                        )))
+                    }
                 }),
         }
     }
