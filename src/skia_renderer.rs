@@ -16,9 +16,7 @@ use smithay::{
             format::{has_alpha, FormatSet},
             Buffer as DmaBuffer, Fourcc,
         },
-        egl::{
-            self, display::EGLBufferReader, fence::EGLFence, EGLContext, EGLSurface,
-        },
+        egl::{self, display::EGLBufferReader, fence::EGLFence, EGLContext, EGLSurface},
         renderer::{
             gles::{
                 ffi::{
