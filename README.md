@@ -9,7 +9,8 @@ Otto is a Wayland compositor and stacking window manager, built in Rust on top o
 While many features are ready for daily use, there is still some work required for full stability. 
 Testing is valuable therefore you are invited to play around with Otto.
 
-Feedback and questions are welcome in the Matrix chat: #otto-compositor:matrix.org
+Feedback and questions are welcome in the Matrix chat: 
+[`#otto-compositor:matrix.org`](https://matrix.to/#/#otto-compositor:matrix.org).
 
 
  ## :framed_picture: What does Otto look like?
