@@ -11,11 +11,10 @@ use smithay::{
         egl::context::ContextPriority,
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{
-            multigpu::{gbm::GbmGlesBackend, GpuManager},
-            DebugFlags, ImportDma, ImportMemWl,
+            DebugFlags, ImportDma, ImportMemWl, Renderer, multigpu::{GpuManager, gbm::GbmGlesBackend}
         },
-        session::{libseat::LibSeatSession, Event as SessionEvent, Session},
-        udev::{all_gpus, primary_gpu, UdevBackend, UdevEvent},
+        session::{Event as SessionEvent, Session, libseat::LibSeatSession},
+        udev::{UdevBackend, UdevEvent, all_gpus, primary_gpu},
     },
     reexports::{calloop::EventLoop, input::Libinput, wayland_server::Display},
     wayland::dmabuf::{DmabufFeedbackBuilder, DmabufState},
@@ -213,6 +212,7 @@ pub fn run_udev() {
     let gpus =
         GpuManager::new(GbmGlesBackend::with_context_priority(ContextPriority::High)).unwrap();
 
+    // // Context ID will be obtained after devices are initialized
     let data = UdevData {
         dh: display_handle.clone(),
         dmabuf_state: None,
@@ -222,7 +222,8 @@ pub fn run_udev() {
         backends: HashMap::new(),
         #[cfg(feature = "fps_ticker")]
         fps_texture: None,
-        debug_flags: DebugFlags::empty(),
+
+        context_id: None, // Will be set after device initialization
     };
     let mut state = Otto::init(display, event_loop.handle(), data, true);
 
@@ -319,6 +320,12 @@ pub fn run_udev() {
             error!("Skipping device {device_id}: {err}");
         }
     }
+    
+    // Now that devices are added, set the context_id
+    if let Some(renderer) = state.backend_data.gpus.single_renderer(&primary_gpu).ok() {
+        state.backend_data.context_id = Some(renderer.context_id());
+    }
+    
     state.shm_state.update_formats(
         state
             .backend_data

@@ -2,7 +2,7 @@ use smithay::{
     backend::renderer::{
         element::{Element, Id, RenderElement},
         utils::{CommitCounter, DamageSet},
-        Renderer,
+        Renderer, RendererSuper,
     },
     utils::{Buffer, Physical, Point, Rectangle, Scale},
 };
@@ -70,14 +70,14 @@ impl Element for SkiaElement {
 }
 
 impl RenderElement<SkiaRenderer> for SkiaElement {
-    fn draw(
+    fn draw<'frame>(
         &self,
-        frame: &mut <SkiaRenderer as Renderer>::Frame<'_>,
+        frame: &mut <SkiaRenderer as RendererSuper>::Frame<'frame, 'frame>,
         _src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
         _opaque_regions: &[Rectangle<i32, Physical>],
-    ) -> Result<(), <SkiaRenderer as Renderer>::Error> {
+    ) -> Result<(), <SkiaRenderer as RendererSuper>::Error> {
         let mut canvas = frame.skia_surface.clone();
         let canvas = canvas.canvas();
 
@@ -158,12 +158,12 @@ impl RenderElement<SkiaRenderer> for SkiaElement {
 impl<'renderer> RenderElement<UdevRenderer<'renderer>> for SkiaElement {
     fn draw(
         &self,
-        frame: &mut <UdevRenderer<'renderer> as Renderer>::Frame<'_>,
+        frame: &mut <UdevRenderer<'renderer> as RendererSuper>::Frame<'_, '_>,
         src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
         opaque_regions: &[Rectangle<i32, Physical>],
-    ) -> Result<(), <UdevRenderer<'renderer> as Renderer>::Error> {
+    ) -> Result<(), <UdevRenderer<'renderer> as RendererSuper>::Error> {
         RenderElement::<SkiaRenderer>::draw(self, frame.as_mut(), src, dst, damage, opaque_regions)
             .map_err(|e| e.into())
     }

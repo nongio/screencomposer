@@ -87,12 +87,12 @@ where
 {
     fn draw(
         &self,
-        _frame: &mut <R as smithay::backend::renderer::Renderer>::Frame<'_>,
+        _frame: &mut <R as smithay::backend::renderer::RendererSuper>::Frame<'_, '_>,
         _src: smithay::utils::Rectangle<f64, smithay::utils::Buffer>,
         _dst: smithay::utils::Rectangle<i32, smithay::utils::Physical>,
         _damage: &[smithay::utils::Rectangle<i32, smithay::utils::Physical>],
         _opaque_regions: &[Rectangle<i32, Physical>],
-    ) -> Result<(), <R as smithay::backend::renderer::Renderer>::Error> {
+    ) -> Result<(), <R as smithay::backend::renderer::RendererSuper>::Error> {
         Ok(())
     }
 }

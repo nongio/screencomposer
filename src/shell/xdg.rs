@@ -424,17 +424,17 @@ impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
                 // before sending the configure we need to use
                 // the current state as the received acknowledge
                 // will no longer have the resize state set
-                let is_resizing = with_states(&surface, |states| {
-                    states
-                        .data_map
-                        .get::<XdgToplevelSurfaceData>()
-                        .unwrap()
-                        .lock()
-                        .unwrap()
-                        .current
-                        .states
-                        .contains(xdg_toplevel::State::Resizing)
-                });
+                let id = surface.id();
+                let is_resizing = self
+                    .workspaces
+                    .get_window_for_surface(&id)
+                    .and_then(|w| w.toplevel())
+                    .map(|toplevel| {
+                        toplevel.with_committed_state(|current| {
+                            current.is_some_and(|s| s.states.contains(xdg_toplevel::State::Resizing))
+                        })
+                    })
+                    .unwrap_or(false);
 
                 if configure.serial >= serial && is_resizing {
                     with_states(&surface, |states| {
@@ -482,9 +482,11 @@ impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
         mut wl_output: Option<wl_output::WlOutput>,
     ) {
         if surface
-            .current_state()
-            .capabilities
-            .contains(xdg_toplevel::WmCapabilities::Fullscreen)
+            .with_pending_state(|state| {
+                state
+                    .capabilities
+                    .contains(xdg_toplevel::WmCapabilities::Fullscreen)
+            })
         {
             // the surface size is either output size
             // or the current workspace size
@@ -650,9 +652,7 @@ impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
         if !surface
-            .current_state()
-            .states
-            .contains(xdg_toplevel::State::Fullscreen)
+            .with_pending_state(|state| state.states.contains(xdg_toplevel::State::Fullscreen))
         {
             return;
         }
@@ -777,9 +777,11 @@ impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
         // NOTE: This should use layer-shell when it is implemented to
         // get the correct maximum size
         if surface
-            .current_state()
-            .capabilities
-            .contains(xdg_toplevel::WmCapabilities::Maximize)
+            .with_pending_state(|state| {
+                state
+                    .capabilities
+                    .contains(xdg_toplevel::WmCapabilities::Maximize)
+            })
         {
             let id = surface.wl_surface().id();
             let window = self.workspaces.get_window_for_surface(&id).unwrap().clone();
@@ -869,9 +871,7 @@ impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
         if !surface
-            .current_state()
-            .states
-            .contains(xdg_toplevel::State::Maximized)
+            .with_pending_state(|state| state.states.contains(xdg_toplevel::State::Maximized))
         {
             return;
         }
@@ -921,9 +921,11 @@ impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
 
     fn minimize_request(&mut self, surface: ToplevelSurface) {
         if surface
-            .current_state()
-            .capabilities
-            .contains(xdg_toplevel::WmCapabilities::Minimize)
+            .with_pending_state(|state| {
+                state
+                    .capabilities
+                    .contains(xdg_toplevel::WmCapabilities::Minimize)
+            })
         {
             let id = surface.wl_surface().id();
             let window = self.workspaces.get_window_for_surface(&id).unwrap().clone();
@@ -1030,11 +1032,11 @@ impl<BackendData: Backend> Otto<BackendData> {
                 let mut initial_window_location = self.workspaces.element_location(window).unwrap();
 
                 // If surface is maximized then unmaximize it
-                let current_state = surface.current_state();
-                if current_state
-                    .states
-                    .contains(xdg_toplevel::State::Maximized)
-                {
+                let is_maximized =
+                    surface.with_pending_state(|state| {
+                        state.states.contains(xdg_toplevel::State::Maximized)
+                    });
+                if is_maximized {
                     // Get current maximized geometry before unmaximizing
                     let maximized_geometry = self.workspaces.element_geometry(window).unwrap();
                     let touch_location = start_data.location;
@@ -1124,11 +1126,10 @@ impl<BackendData: Backend> Otto<BackendData> {
         let mut initial_window_location = self.workspaces.element_location(window).unwrap();
 
         // If surface is maximized then unmaximize it
-        let current_state = surface.current_state();
-        if current_state
-            .states
-            .contains(xdg_toplevel::State::Maximized)
-        {
+        let is_maximized = surface.with_pending_state(|state| {
+            state.states.contains(xdg_toplevel::State::Maximized)
+        });
+        if is_maximized {
             // Get current maximized geometry before unmaximizing
             let maximized_geometry = self.workspaces.element_geometry(window).unwrap();
             let pointer_location = pointer.current_location();

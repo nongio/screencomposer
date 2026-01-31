@@ -52,17 +52,17 @@ features = ["export-taffy"]
 [dependencies.smithay-drm-extras]
 # path = "../smithay/smithay-drm-extras"
 git = "https://github.com/Smithay/smithay"
-# Updated to include fix for viewporter data race (PR #1623)
-# Fixes Chrome crashes when scrolling/fullscreen: https://github.com/smithay/smithay/issues/1622
-rev = "5186cf7dec2472a91e3c248772954b1141dab7f2"
+# Updated to Jan 2026 master - includes viewporter fix (PR #1623) and many improvements
+# Includes: Tracy GPU profiling, virtual keyboard improvements, layer shell fixes, etc.
+rev = "f9d4d7ffd82d743fb89737b3ffaed57505b477d1"
 optional = true
 
 [dependencies.smithay]
 # path = "../smithay"
 git = "https://github.com/Smithay/smithay"
-# Updated to include fix for viewporter data race (PR #1623)
-# Fixes Chrome crashes when scrolling/fullscreen: https://github.com/smithay/smithay/issues/1622
-rev= "5186cf7dec2472a91e3c248772954b1141dab7f2"
+# Updated to Jan 2026 master - includes viewporter fix (PR #1623) and many improvements
+# Includes: Tracy GPU profiling, virtual keyboard improvements, layer shell fixes, etc.
+rev = "f9d4d7ffd82d743fb89737b3ffaed57505b477d1"
 default-features = false
 features = [
     "backend_winit",
@@ -86,7 +86,7 @@ version = "0.12.0"
 
 [features]
 perf-counters = []
-default = ["egl", "winit", "x11", "udev", "debug", "profile", "debugger", "renderer_sync"]
+default = ["egl", "winit", "udev", "debug", "profile", "debugger", "renderer_sync"]
 debug = ["image/png", "renderdoc", "debugger"] # "fps_ticker", 
 debugger = ["laye-rs/debugger"]
 profile = ["profile-with-puffin", "laye-rs/profile-with-puffin"]

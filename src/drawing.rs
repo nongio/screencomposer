@@ -110,14 +110,14 @@ where
 }
 
 #[cfg(feature = "fps_ticker")]
-impl<R> RenderElement<R> for FpsElement<<R as Renderer>::TextureId>
+impl<R> RenderElement<R> for FpsElement<<R as RendererSuper>::TextureId>
 where
     R: Renderer + ImportAll,
-    <R as Renderer>::TextureId: 'static,
+    <R as RendererSuper>::TextureId: 'static,
 {
     fn draw(
         &self,
-        frame: &mut <R as Renderer>::Frame<'_>,
+        frame: &mut <R as RendererSuper>::Frame<'_>,
         _src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],

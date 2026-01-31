@@ -8,7 +8,7 @@ use std::{collections::HashMap, path::Path};
 use smithay::{
     backend::{
         allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
-        drm::{DrmDevice, DrmDeviceFd, DrmEvent, DrmNode, GbmBufferedSurface},
+        drm::{DrmDevice, DrmDeviceFd, DrmEvent, DrmNode, GbmBufferedSurface, exporter::gbm::{GbmFramebufferExporter, NodeFilter}},
         egl::{EGLDevice, EGLDisplay},
         renderer::damage::OutputDamageTracker,
         session::Session,
@@ -397,6 +397,7 @@ impl Otto<UdevData> {
                 subpixel,
                 make: make.to_string(),
                 model: model.to_string(),
+                serial_number: String::new(),
             },
         );
 
@@ -514,7 +515,6 @@ impl Otto<UdevData> {
             Some(SurfaceComposition::Surface {
                 surface: gbm_surface,
                 damage_tracker: OutputDamageTracker::from_output(output),
-                debug_flags: self.backend_data.debug_flags,
             })
         } else {
             let driver = match device.drm.get_driver() {
@@ -548,8 +548,8 @@ impl Otto<UdevData> {
                 surface,
                 Some(planes),
                 allocator,
-                device.gbm.clone(),
-                color_formats,
+                GbmFramebufferExporter::new(device.gbm.clone(), device.render_node.into()),
+                color_formats.iter().copied(),
                 render_formats,
                 device.drm.cursor_size(),
                 Some(device.gbm.clone()),
@@ -560,7 +560,6 @@ impl Otto<UdevData> {
                     return None;
                 }
             };
-            compositor.set_debug_flags(self.backend_data.debug_flags);
             Some(SurfaceComposition::Compositor(compositor))
         }
     }

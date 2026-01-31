@@ -82,14 +82,18 @@ if [ ! -f "target/release/otto" ]; then
 fi
 
 log_info "Starting Otto Compositor udev backend, RUST_LOG=$LOG_LEVEL"
-COMPOSITOR_LOG="$PWD/otto.log"
+if [ "$DEBUG_MODE" = true ]; then
+    COMPOSITOR_LOG="$PWD/udev.log"
+else
+    COMPOSITOR_LOG="$PWD/otto.log"
+fi
 
 if [ "$EUID" -ne 0 ] && [ -z "$LIBSEAT_BACKEND" ]; then
     log_warn "Running DRM backend without root - you may need libseat or run with sudo"
 fi
 
 # Start compositor in background first
-RUST_LOG=$LOG_LEVEL target/release/otto --tty-udev > "$COMPOSITOR_LOG" 2>&1 &
+RUST_LOG=$LOG_LEVEL target/release/otto --tty-udev 2> "$COMPOSITOR_LOG" &
 COMPOSITOR_PID=$!
 log_info "Compositor started in background PID: $COMPOSITOR_PID"
 

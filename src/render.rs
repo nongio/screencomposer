@@ -1,19 +1,17 @@
 use smithay::{
     backend::renderer::{
-        damage::{Error as OutputDamageTrackerError, OutputDamageTracker, RenderOutputResult},
-        element::{
+        ImportAll, ImportMem, Renderer, RendererSuper, damage::{Error as OutputDamageTrackerError, OutputDamageTracker, RenderOutputResult}, element::{
             self,
             surface::render_elements_from_surface_tree,
             utils::{
                 ConstrainAlign, ConstrainScaleBehavior, CropRenderElement, RelocateRenderElement,
                 RescaleRenderElement,
             },
-        },
-        ImportAll, ImportMem, Renderer,
+        }
     },
-    desktop::space::{constrain_space_element, ConstrainBehavior, ConstrainReference, Space},
+    desktop::space::{ConstrainBehavior, ConstrainReference, Space, constrain_space_element},
     output::Output,
-    reexports::wayland_server::protocol::wl_surface,
+    reexports::{wayland_server::protocol::wl_surface},
     utils::{self, Point, Rectangle, Size},
 };
 
@@ -30,7 +28,7 @@ pub fn space_preview_elements<'a, R, C>(
 ) -> impl Iterator<Item = C> + 'a
 where
     R: Renderer + ImportAll + ImportMem,
-    R::TextureId: Clone + 'static,
+    <R as RendererSuper>::TextureId: Clone + 'static,
     C: From<CropRenderElement<RelocateRenderElement<RescaleRenderElement<WindowRenderElement<R>>>>>
         + 'a,
 {
@@ -102,7 +100,7 @@ pub fn output_elements<'a, 'frame, R>(
 )
 where
     R: Renderer + ImportAll + ImportMem,
-    R::TextureId: Clone + 'static,
+    <R as RendererSuper>::TextureId: Clone + 'static,
 {
     let mut output_render_elements = Vec::new();
     let _dnd_element = dnd.map(|dnd| {
@@ -135,12 +133,14 @@ pub fn render_output<'frame, R>(
     >,
     dnd: Option<&wl_surface::WlSurface>,
     renderer: &mut R,
+    framebuffer: &mut <R as RendererSuper>::Framebuffer<'frame>,
     damage_tracker: &'frame mut OutputDamageTracker,
     age: usize,
-) -> Result<RenderOutputResult<'frame>, OutputDamageTrackerError<R>>
+) -> Result<RenderOutputResult<'frame>, OutputDamageTrackerError<<R as RendererSuper>::Error>>
 where
     R: Renderer + ImportAll + ImportMem + 'frame,
-    R::TextureId: Clone + 'static,
+    <R as RendererSuper>::TextureId: Clone + 'static,
+    <R as RendererSuper>::Error: std::error::Error,
     SceneElement: smithay::backend::renderer::element::RenderElement<R>,
 {
     let (elements, clear_color) = output_elements(
@@ -151,7 +151,7 @@ where
         renderer,
     );
 
-    let result = damage_tracker.render_output(renderer, age, &elements, clear_color);
+    let result = damage_tracker.render_output(renderer, framebuffer, age, &elements, clear_color);
 
     result
 }

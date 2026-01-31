@@ -15,6 +15,7 @@ pub use smithay::{
 use smithay::{
     desktop::WindowSurface,
     input::{
+        dnd::{DndFocus, OfferData, Source},
         pointer::{
             GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent,
             GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent,
@@ -23,7 +24,10 @@ use smithay::{
         touch::TouchTarget,
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
+    utils::Point,
+    wayland::selection::data_device::DataDeviceHandler,
 };
+use smithay::utils::Logical;
 
 use crate::{
     interactive_view::InteractiveView,
@@ -712,5 +716,81 @@ impl<B: Backend> From<WorkspaceSelectorView> for PointerFocusTarget<B> {
             view: Box::new(view),
         };
         PointerFocusTarget::View(d)
+    }
+}
+
+impl<B: Backend + 'static> DndFocus<Otto<B>> for PointerFocusTarget<B>
+where
+    Otto<B>: DataDeviceHandler,
+{
+    type OfferData<S: Source> = <WlSurface as DndFocus<Otto<B>>>::OfferData<S>;
+
+    fn enter<S: Source>(
+        &self,
+        data: &mut Otto<B>,
+        dh: &smithay::reexports::wayland_server::DisplayHandle,
+        source: std::sync::Arc<S>,
+        seat: &Seat<Otto<B>>,
+        location: Point<f64, Logical>,
+        serial: &Serial,
+    ) -> Option<Self::OfferData<S>> {
+        match self {
+            PointerFocusTarget::WlSurface(w) => {
+                DndFocus::enter(w, data, dh, source, seat, location, serial)
+            }
+            #[cfg(feature = "xwayland")]
+            PointerFocusTarget::X11Surface(w) => {
+                DndFocus::enter(w, data, dh, source, seat, location, serial)
+            }
+            PointerFocusTarget::View(_) => None,
+        }
+    }
+
+    fn motion<S: Source>(
+        &self,
+        data: &mut Otto<B>,
+        offer: Option<&mut Self::OfferData<S>>,
+        seat: &Seat<Otto<B>>,
+        location: Point<f64, Logical>,
+        time: u32,
+    ) {
+        match self {
+            PointerFocusTarget::WlSurface(w) => {
+                DndFocus::motion(w, data, offer, seat, location, time)
+            }
+            #[cfg(feature = "xwayland")]
+            PointerFocusTarget::X11Surface(w) => {
+                DndFocus::motion(w, data, offer, seat, location, time)
+            }
+            PointerFocusTarget::View(_) => {}
+        }
+    }
+
+    fn leave<S: Source>(
+        &self,
+        data: &mut Otto<B>,
+        offer: Option<&mut Self::OfferData<S>>,
+        seat: &Seat<Otto<B>>,
+    ) {
+        match self {
+            PointerFocusTarget::WlSurface(w) => DndFocus::leave(w, data, offer, seat),
+            #[cfg(feature = "xwayland")]
+            PointerFocusTarget::X11Surface(w) => DndFocus::leave(w, data, offer, seat),
+            PointerFocusTarget::View(_) => {}
+        }
+    }
+
+    fn drop<S: Source>(
+        &self,
+        data: &mut Otto<B>,
+        offer: Option<&mut Self::OfferData<S>>,
+        seat: &Seat<Otto<B>>,
+    ) {
+        match self {
+            PointerFocusTarget::WlSurface(w) => DndFocus::drop(w, data, offer, seat),
+            #[cfg(feature = "xwayland")]
+            PointerFocusTarget::X11Surface(w) => DndFocus::drop(w, data, offer, seat),
+            PointerFocusTarget::View(_) => {}
+        }
     }
 }

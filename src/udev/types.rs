@@ -2,30 +2,19 @@ use std::{collections::hash_map::HashMap, sync::Arc};
 
 use smithay::{
     backend::{
-        allocator::{
-            dmabuf::Dmabuf,
-            gbm::{GbmAllocator, GbmDevice},
-            Fourcc,
-        },
-        drm::{
-            compositor::DrmCompositor, DrmDevice, DrmDeviceFd, DrmNode, DrmSurface,
-            GbmBufferedSurface,
-        },
-        renderer::{
-            damage::OutputDamageTracker,
-            element::{RenderElement, RenderElementStates},
-            multigpu::{gbm::GbmGlesBackend, GpuManager, MultiRenderer},
-            sync::SyncPoint,
-            Bind, DebugFlags, ExportMem, Offscreen, Renderer,
-        },
-        session::libseat::LibSeatSession,
-        SwapBuffersError,
+        SwapBuffersError, allocator::{
+            Fourcc, dmabuf::Dmabuf, gbm::{GbmAllocator, GbmDevice}
+        }, drm::{
+            DrmDevice, DrmDeviceFd, DrmNode, DrmSurface, GbmBufferedSurface, compositor::{DrmCompositor, FrameFlags}, exporter::gbm::GbmFramebufferExporter
+        }, renderer::{
+            Bind, ContextId, DebugFlags, ExportMem, Offscreen, Renderer, RendererSuper, damage::OutputDamageTracker, element::{RenderElement, RenderElementStates}, multigpu::{GpuManager, MultiRenderer, MultiTexture, gbm::GbmGlesBackend}, sync::SyncPoint
+        }, session::libseat::LibSeatSession
     },
     desktop::utils::OutputPresentationFeedback,
     reexports::{
         calloop::RegistrationToken,
         drm::control::{connector, crtc},
-        wayland_server::{backend::GlobalId, DisplayHandle},
+        wayland_server::{DisplayHandle, backend::GlobalId},
     },
     utils::{Physical, Rectangle},
     wayland::{
@@ -35,7 +24,7 @@ use smithay::{
 };
 use smithay_drm_extras::drm_scanner::DrmScanner;
 
-use crate::skia_renderer::SkiaRenderer;
+use crate::{renderer::SkiaTexture, skia_renderer::{SkiaRenderer}};
 
 // Supported pixel formats for rendering
 // We pick ARGB2101010 (10-bit) or ARGB8888 (8-bit) as they are widely supported.
@@ -63,7 +52,7 @@ pub type RenderSurface =
 /// DRM compositor using GBM allocation
 pub type GbmDrmCompositor = DrmCompositor<
     GbmAllocator<DrmDeviceFd>,
-    GbmDevice<DrmDeviceFd>,
+    GbmFramebufferExporter<DrmDeviceFd>,
     Option<OutputPresentationFeedback>,
     DrmDeviceFd,
 >;
@@ -85,25 +74,7 @@ pub struct UdevData {
     pub(super) backends: HashMap<DrmNode, BackendData>,
     #[cfg(feature = "fps_ticker")]
     pub(super) fps_texture: Option<smithay::backend::renderer::multigpu::MultiTexture>,
-    pub(super) debug_flags: DebugFlags,
-}
-
-impl UdevData {
-    pub fn set_debug_flags(&mut self, flags: DebugFlags) {
-        if self.debug_flags != flags {
-            self.debug_flags = flags;
-
-            for (_, backend) in self.backends.iter_mut() {
-                for (_, surface) in backend.surfaces.iter_mut() {
-                    surface.compositor.set_debug_flags(flags);
-                }
-            }
-        }
-    }
-
-    pub fn debug_flags(&self) -> DebugFlags {
-        self.debug_flags
-    }
+    pub context_id: Option<ContextId<MultiTexture>>,
 }
 
 /// Per-device backend data
@@ -153,7 +124,6 @@ pub enum SurfaceComposition {
     Surface {
         surface: RenderSurface,
         damage_tracker: OutputDamageTracker,
-        debug_flags: DebugFlags,
     },
     Compositor(GbmDrmCompositor),
 }
@@ -220,26 +190,23 @@ impl SurfaceComposition {
     ) -> Result<SurfaceCompositorRenderResult, SwapBuffersError>
     where
         R: Renderer + Bind<Dmabuf> + Bind<Target> + Offscreen<Target> + ExportMem,
-        <R as Renderer>::TextureId: 'static,
-        <R as Renderer>::Error: Into<SwapBuffersError>,
+        <R as RendererSuper>::TextureId: 'static,
+        <R as RendererSuper>::Error: Into<SwapBuffersError>,
         E: RenderElement<R>,
     {
         match self {
             SurfaceComposition::Surface {
                 surface,
                 damage_tracker,
-                debug_flags,
             } => {
-                let (dmabuf, age) = surface
+                let (mut dmabuf, age) = surface
                     .next_buffer()
                     .map_err(Into::<SwapBuffersError>::into)?;
-                renderer
-                    .bind(dmabuf)
+                let mut target = renderer
+                    .bind(&mut dmabuf)
                     .map_err(Into::<SwapBuffersError>::into)?;
-                let current_debug_flags = renderer.debug_flags();
-                renderer.set_debug_flags(*debug_flags);
                 let res = damage_tracker
-                    .render_output(renderer, age.into(), elements, clear_color)
+                    .render_output(renderer, &mut target, age.into(), elements, clear_color)
                     .map(|res| {
                         #[cfg(feature = "renderer_sync")]
                         let _ = res.sync.wait();
@@ -261,11 +228,10 @@ impl SurfaceComposition {
                             )))
                         }
                     });
-                renderer.set_debug_flags(current_debug_flags);
                 res
             }
             SurfaceComposition::Compositor(compositor) => compositor
-                .render_frame(renderer, elements, clear_color)
+                .render_frame(renderer, elements, clear_color, FrameFlags::empty())
                 .map(|render_frame_result| {
                     #[cfg(feature = "renderer_sync")]
                     {
@@ -301,19 +267,6 @@ impl SurfaceComposition {
         }
     }
 
-    pub fn set_debug_flags(&mut self, flags: DebugFlags) {
-        match self {
-            SurfaceComposition::Surface {
-                surface,
-                debug_flags,
-                ..
-            } => {
-                *debug_flags = flags;
-                surface.reset_buffers();
-            }
-            SurfaceComposition::Compositor(c) => c.set_debug_flags(flags),
-        }
-    }
 }
 
 /// Result of surface compositor rendering
