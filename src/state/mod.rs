@@ -149,7 +149,7 @@ impl ExclusiveZones {
         let width = output_geometry.size.w - self.left - self.right;
         let height = output_geometry.size.h - self.top - self.bottom;
 
-        utils::Rectangle::from_loc_and_size((loc_x, loc_y), (width, height))
+        utils::Rectangle::new((loc_x, loc_y).into(), (width, height).into())
     }
 }
 
@@ -193,6 +193,7 @@ pub struct Otto<BackendData: Backend + 'static> {
     pub foreign_toplevel_list_state: ForeignToplevelListState,
     pub wlr_foreign_toplevel_state: wlr_foreign_toplevel::WlrForeignToplevelManagerState,
     pub cursor_shape_manager_state: CursorShapeManagerState,
+    pub virtual_keyboard_manager_state: VirtualKeyboardManagerState,
 
     #[cfg(feature = "xwayland")]
     pub xwayland_shell_state: xwayland_shell::XWaylandShellState,
@@ -262,6 +263,7 @@ pub mod input_method_handler;
 pub mod seat_handler;
 pub mod security_context_handler;
 pub mod selection_handler;
+pub mod virtual_keyboard_handler;
 pub mod wlr_foreign_toplevel;
 pub mod xdg_activation_handler;
 pub mod xdg_decoration_handler;
@@ -449,7 +451,8 @@ impl<BackendData: Backend + 'static> Otto<BackendData> {
         let fractional_scale_manager_state = FractionalScaleManagerState::new::<Self>(&dh);
         TextInputManagerState::new::<Self>(&dh);
         InputMethodManagerState::new::<Self, _>(&dh, |_client| true);
-        VirtualKeyboardManagerState::new::<Self, _>(&dh, |_client| true);
+        let virtual_keyboard_manager_state =
+            VirtualKeyboardManagerState::new::<Self, _>(&dh, |_client| true);
         // Expose global only if backend supports relative motion events
         if BackendData::HAS_RELATIVE_MOTION {
             RelativePointerManagerState::new::<Self>(&dh);
@@ -564,6 +567,7 @@ impl<BackendData: Backend + 'static> Otto<BackendData> {
             foreign_toplevel_list_state,
             wlr_foreign_toplevel_state,
             cursor_shape_manager_state,
+            virtual_keyboard_manager_state,
             dnd_icon: None,
             suppressed_keys: Vec::new(),
             current_modifiers: ModifiersState::default(),
@@ -1189,10 +1193,9 @@ impl<BackendData: Backend + 'static> Otto<BackendData> {
             smithay::desktop::WindowSurface::Wayland(_) => {
                 if let Some(toplevel) = window.toplevel() {
                     let toplevel = toplevel.clone();
-                    let is_maximized = toplevel
-                        .current_state()
-                        .states
-                        .contains(xdg_toplevel::State::Maximized);
+                    let is_maximized = toplevel.with_pending_state(|state| {
+                        state.states.contains(xdg_toplevel::State::Maximized)
+                    });
                     if is_maximized {
                         <Self as smithay::wayland::shell::xdg::XdgShellHandler>::unmaximize_request(
                             self, toplevel,
