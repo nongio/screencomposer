@@ -323,7 +323,7 @@ pub fn run_udev() {
     }
 
     // Now that devices are added, set the context_id
-    if let Some(renderer) = state.backend_data.gpus.single_renderer(&primary_gpu).ok() {
+    if let Ok(renderer) = state.backend_data.gpus.single_renderer(&primary_gpu) {
         state.backend_data.context_id = Some(renderer.context_id());
     }
 

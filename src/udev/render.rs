@@ -48,17 +48,17 @@ use super::types::{RenderOutcome, SurfaceData, UdevData, UdevOutputId, UdevRende
 use crate::state::Otto;
 
 // Type alias for the framebuffer returned when binding a Dmabuf with UdevRenderer
-type UdevFramebuffer<'a> = smithay::backend::renderer::multigpu::MultiFramebuffer<
-    'a,
-    smithay::backend::renderer::multigpu::gbm::GbmGlesBackend<
-        crate::skia_renderer::SkiaRenderer,
-        smithay::backend::drm::DrmDeviceFd,
-    >,
-    smithay::backend::renderer::multigpu::gbm::GbmGlesBackend<
-        crate::skia_renderer::SkiaRenderer,
-        smithay::backend::drm::DrmDeviceFd,
-    >,
->;
+// type UdevFramebuffer<'a> = smithay::backend::renderer::multigpu::MultiFramebuffer<
+//     'a,
+//     smithay::backend::renderer::multigpu::gbm::GbmGlesBackend<
+//         crate::skia_renderer::SkiaRenderer,
+//         smithay::backend::drm::DrmDeviceFd,
+//     >,
+//     smithay::backend::renderer::multigpu::gbm::GbmGlesBackend<
+//         crate::skia_renderer::SkiaRenderer,
+//         smithay::backend::drm::DrmDeviceFd,
+//     >,
+// >;
 
 impl Otto<UdevData> {
     pub(super) fn frame_finish(
@@ -302,7 +302,6 @@ impl Otto<UdevData> {
         let _config_scale = Config::with(|c| c.screen_scale);
 
         let scene_has_damage = self.scene_element.update();
-        let pointer_scale = 1.0;
         let all_window_elements: Vec<&WindowElement> = self.workspaces.spaces_elements().collect();
 
         // Determine if direct scanout should be allowed:
@@ -374,14 +373,8 @@ impl Otto<UdevData> {
                 let scale = Scale::from(output.current_scale().fractional_scale());
 
                 // Get the source framebuffer that was just rendered to
-                if outcome.rendered {
-                    let size = output
-                        .current_mode()
-                        .map(|m| m.size)
-                        .unwrap_or_else(|| (1920, 1080).into());
-
-                    // Blit to PipeWire buffers on main thread
-                    for session in self.screenshare_sessions.values() {
+                // Blit to PipeWire buffers on main thread
+                for session in self.screenshare_sessions.values() {
                         // Check if we should render cursor for this session
                         // CURSOR_MODE_HIDDEN (1) = don't render cursor
                         // CURSOR_MODE_EMBEDDED (2) = render cursor into video
@@ -399,8 +392,7 @@ impl Otto<UdevData> {
                         // Build cursor elements for screenshare if needed
                         let cursor_elements: Vec<WorkspaceRenderElements<_>> =
                             if should_render_cursor {
-                                let output_geometry = Rectangle::from_loc_and_size(
-                                    (0, 0),
+                                let output_geometry = Rectangle::new((0,0).into(),
                                     output.current_mode().unwrap().size,
                                 );
                                 let output_scale = output.current_scale().fractional_scale();
@@ -542,11 +534,6 @@ impl Otto<UdevData> {
                             }
                         }
                     } // Close for session loop
-                } else {
-                    tracing::debug!(
-                        "No source framebuffer available for screenshare (DrmCompositor mode?)"
-                    );
-                }
             }
         }
 
@@ -647,7 +634,7 @@ pub(super) fn render_surface<'a>(
         .as_ref()
         .map(|m: &Arc<_>| m.start_frame());
 
-    let output_geometry = Rectangle::from_loc_and_size((0, 0), output.current_mode().unwrap().size);
+    let output_geometry = Rectangle::new((0,0).into(), output.current_mode().unwrap().size);
     let scale = Scale::from(output.current_scale().fractional_scale());
 
     let mut workspace_render_elements: Vec<WorkspaceRenderElements<_>> = Vec::new();
@@ -827,9 +814,8 @@ pub(super) fn render_surface<'a>(
         } else if rendered {
             // No damage info available (DRM compositor mode), but frame was rendered
             // Record full frame as damage as approximation
-            let full_screen = vec![Rectangle::from_loc_and_size(
-                (0, 0),
-                (mode.size.w, mode.size.h),
+            let full_screen = vec![Rectangle::new((0,0).into(),
+                (mode.size.w, mode.size.h).into(),
             )];
             metrics.as_ref().record_damage(output_size, &full_screen);
         }

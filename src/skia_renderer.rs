@@ -26,9 +26,8 @@ use smithay::{
                 Capability, GlesError, GlesRenderbuffer, GlesRenderer, GlesTexture,
             },
             sync::SyncPoint,
-            Bind, Blit, ContextId, DebugFlags, ExportMem, Frame, ImportDma, ImportDmaWl, ImportEgl,
+            Bind, Blit, ContextId, DebugFlags, ExportMem, ImportDma, ImportDmaWl, ImportEgl,
             ImportMem, ImportMemWl, Offscreen, Renderer, RendererSuper, Texture, TextureFilter,
-            TextureMapping,
         },
     },
     reexports::wayland_server::{protocol::wl_buffer::WlBuffer, DisplayHandle},
@@ -487,7 +486,7 @@ impl RendererSuper for SkiaRenderer {
 
 impl Renderer for SkiaRenderer {
     fn context_id(&self) -> ContextId<Self::TextureId> {
-        return self.smithay_context_id.clone();
+        self.smithay_context_id.clone()
     }
     fn downscale_filter(&mut self, filter: TextureFilter) -> Result<(), Self::Error> {
         self.gl_renderer.downscale_filter(filter)
@@ -504,14 +503,13 @@ impl Renderer for SkiaRenderer {
     #[profiling::function]
     fn render<'frame, 'buffer>(
         &'frame mut self,
-        framebuffer: &'frame mut Self::Framebuffer<'buffer>,
+        _framebuffer: &'frame mut Self::Framebuffer<'buffer>,
         output_size: Size<i32, Physical>,
-        dst_transform: Transform,
+        _dst_transform: Transform,
     ) -> Result<Self::Frame<'frame, 'buffer>, Self::Error>
     where
         'buffer: 'frame,
     {
-        let context_id = self.context_id();
         let current_target = self.current_target.as_ref().unwrap();
         let buffer = self.buffers.get(current_target).unwrap();
 
@@ -976,7 +974,7 @@ impl ExportMem for SkiaRenderer {
     // Copies a region of the framebuffer into a texture and returns a TextureMapping
     fn copy_framebuffer(
         &mut self,
-        target: &Self::Framebuffer<'_>,
+        _target: &Self::Framebuffer<'_>,
         region: Rectangle<i32, Buffer>,
         fourcc_format: Fourcc,
     ) -> Result<Self::TextureMapping, Self::Error> {
@@ -1058,9 +1056,9 @@ impl ExportMem for SkiaRenderer {
 }
 
 impl Bind<EGLSurface> for SkiaRenderer {
-    fn bind<'a>(
+    fn bind(
         &mut self,
-        surface: &'a mut EGLSurface,
+        surface: &mut EGLSurface,
     ) -> Result<SkiaGLesFbo, <Self as RendererSuper>::Error> {
         // Make the surface current first
         unsafe {
@@ -1091,9 +1089,9 @@ impl Bind<EGLSurface> for SkiaRenderer {
 }
 
 impl Bind<Rc<EGLSurface>> for SkiaRenderer {
-    fn bind<'a>(
+    fn bind(
         &mut self,
-        surface: &'a mut Rc<EGLSurface>,
+        surface: &mut Rc<EGLSurface>,
     ) -> Result<SkiaGLesFbo, <Self as RendererSuper>::Error> {
         unsafe {
             self.egl_context().make_current_with_surface(surface)?;
@@ -1127,9 +1125,9 @@ impl Bind<Rc<EGLSurface>> for SkiaRenderer {
 }
 
 impl Bind<SkiaGLesFbo> for SkiaRenderer {
-    fn bind<'a>(
+    fn bind(
         &mut self,
-        texture: &'a mut SkiaGLesFbo,
+        texture: &mut SkiaGLesFbo,
     ) -> Result<SkiaGLesFbo, <Self as RendererSuper>::Error> {
         self.current_target = Some(SkiaTarget::Fbo(texture.clone()));
         self.buffers
@@ -1140,9 +1138,9 @@ impl Bind<SkiaGLesFbo> for SkiaRenderer {
 }
 
 impl Bind<GlesTexture> for SkiaRenderer {
-    fn bind<'a>(
+    fn bind(
         &mut self,
-        texture: &'a mut GlesTexture,
+        texture: &mut GlesTexture,
     ) -> Result<SkiaGLesFbo, <Self as RendererSuper>::Error> {
         self.current_target = Some(SkiaTarget::Texture(texture.tex_id()));
         // let res = self.gl_renderer.bind(texture);
@@ -1153,9 +1151,9 @@ impl Bind<GlesTexture> for SkiaRenderer {
 }
 
 impl Bind<GlesRenderbuffer> for SkiaRenderer {
-    fn bind<'a>(
+    fn bind(
         &mut self,
-        target: &'a mut GlesRenderbuffer,
+        target: &mut GlesRenderbuffer,
     ) -> Result<SkiaGLesFbo, <Self as RendererSuper>::Error> {
         self.current_target = Some(SkiaTarget::Renderbuffer(target));
         // let res = self.gl_renderer.bind(target);
@@ -1164,9 +1162,9 @@ impl Bind<GlesRenderbuffer> for SkiaRenderer {
 }
 
 impl Bind<Dmabuf> for SkiaRenderer {
-    fn bind<'a>(
+    fn bind(
         &mut self,
-        dmabuf: &'a mut Dmabuf,
+        dmabuf: &mut Dmabuf,
     ) -> Result<SkiaGLesFbo, <Self as RendererSuper>::Error> {
         let target = SkiaTarget::Dmabuf(dmabuf.clone());
         self.current_target = Some(target.clone());

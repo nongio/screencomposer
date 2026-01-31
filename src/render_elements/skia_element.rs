@@ -2,7 +2,7 @@ use smithay::{
     backend::renderer::{
         element::{Element, Id, RenderElement},
         utils::{CommitCounter, DamageSet},
-        Renderer, RendererSuper,
+        RendererSuper,
     },
     utils::{Buffer, Physical, Point, Rectangle, Scale},
 };
@@ -43,11 +43,11 @@ impl Element for SkiaElement {
     }
 
     fn src(&self) -> Rectangle<f64, Buffer> {
-        Rectangle::from_loc_and_size((0, 0), (300, 600)).to_f64()
+        Rectangle::new((0, 0).into(), (300, 600).into()).to_f64()
     }
 
     fn geometry(&self, scale: Scale<f64>) -> Rectangle<i32, Physical> {
-        Rectangle::from_loc_and_size(self.location(scale), (300, 600))
+        Rectangle::new(self.location(scale), (300, 600).into())
     }
 
     fn current_commit(&self) -> CommitCounter {
@@ -59,8 +59,7 @@ impl Element for SkiaElement {
         scale: Scale<f64>,
         _commit: Option<CommitCounter>,
     ) -> smithay::backend::renderer::utils::DamageSet<i32, Physical> {
-        DamageSet::from_slice(&[Rectangle::from_loc_and_size(
-            (0, 0),
+        DamageSet::from_slice(&[Rectangle::new((0, 0).into(),
             self.geometry(scale).size,
         )])
     }
@@ -88,13 +87,13 @@ impl RenderElement<SkiaRenderer> for SkiaElement {
 
                 let rect_constrained_loc = rect
                     .loc
-                    .constrain(Rectangle::from_extemities((0, 0), dest_size.to_point()));
+                    .constrain(Rectangle::from_extremities((0, 0), dest_size.to_point()));
                 let rect_clamped_size = rect.size.clamp(
                     (0, 0),
                     (dest_size.to_point() - rect_constrained_loc).to_size(),
                 );
 
-                let rect = Rectangle::from_loc_and_size(rect_constrained_loc, rect_clamped_size);
+                let rect = Rectangle::new(rect_constrained_loc, rect_clamped_size);
                 layers::skia::Rect::from_xywh(
                     (dst.loc.x + rect.loc.x) as f32,
                     (dst.loc.y + rect.loc.y) as f32,

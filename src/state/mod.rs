@@ -149,7 +149,7 @@ impl ExclusiveZones {
         let width = output_geometry.size.w - self.left - self.right;
         let height = output_geometry.size.h - self.top - self.bottom;
 
-        utils::Rectangle::from_loc_and_size((loc_x, loc_y), (width, height))
+        utils::Rectangle::new((loc_x, loc_y).into(), (width, height).into())
     }
 }
 

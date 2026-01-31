@@ -53,7 +53,7 @@ use tracing::{error, info, warn};
 
 use crate::{
     config::{Config, DisplayDescriptor, DisplayKind, DisplayResolution, WINIT_DISPLAY_ID},
-    render::{self, *},
+    render::*,
     render_elements::workspace_render_elements::WorkspaceRenderElements,
     renderer::SkiaTexture,
     shell::WindowElement,

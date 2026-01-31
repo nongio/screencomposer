@@ -80,15 +80,14 @@ impl SceneElement {
         if has_damage {
             self.commit_counter.increment();
             let safe = 0;
-            let damage = Rectangle::from_loc_and_size(
-                (
-                    scene_damage.x() as i32 - safe,
-                    scene_damage.y() as i32 - safe,
-                ),
+            let damage = Rectangle::new((
+                    scene_damage.x() as i32 - safe, 
+                    scene_damage.y() as i32 - safe
+                ).into(),
                 (
                     scene_damage.width() as i32 + safe * 2,
                     scene_damage.height() as i32 + safe * 2,
-                ),
+                ).into(),
             );
             self.damage.borrow_mut().add(vec![damage]);
         }
@@ -173,18 +172,16 @@ impl Element for SceneElement {
     }
 
     fn src(&self) -> Rectangle<f64, Buffer> {
-        Rectangle::from_loc_and_size((0, 0), (100, 100)).to_f64()
+        Rectangle::new((0, 0).into(), (100, 100).into()).to_f64()
     }
 
     fn geometry(&self, scale: Scale<f64>) -> Rectangle<i32, Physical> {
         if let Some(root) = self.root_layer() {
             let bounds = root.render_bounds_transformed();
-            Rectangle::from_loc_and_size(
-                self.location(scale),
-                (bounds.width() as i32, bounds.height() as i32),
+            Rectangle::new(self.location(scale), (bounds.width() as i32, bounds.height() as i32).into(),
             )
         } else {
-            Rectangle::from_loc_and_size(self.location(scale), (0, 0))
+            Rectangle::new(self.location(scale), (0, 0).into())
         }
     }
 
@@ -203,7 +200,7 @@ impl Element for SceneElement {
         match damage {
             Some(rects) if !rects.is_empty() => DamageSet::from_slice(&rects),
             None if geometry_size.w > 0 && geometry_size.h > 0 => {
-                let full_damage = Rectangle::from_loc_and_size((0, 0), geometry_size);
+                let full_damage = Rectangle::new((0,0).into(), geometry_size);
                 DamageSet::from_slice(&[full_damage])
             }
             _ => DamageSet::default(),

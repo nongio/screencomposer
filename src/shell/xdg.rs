@@ -22,7 +22,7 @@ use smithay::{
         seat::WaylandFocus,
         shell::xdg::{
             Configure, PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler,
-            XdgShellState, XdgToplevelSurfaceData,
+            XdgShellState,
         },
     },
 };
@@ -610,7 +610,7 @@ impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
                     move |p: f32| {
                         let width = current_width.interpolate(&target_width, p) as i32;
                         let height = current_height.interpolate(&target_height, p) as i32;
-                        let size = Rectangle::from_loc_and_size((0, 0), (width, height));
+                        let size = Rectangle::new((0, 0).into(), (width, height).into());
                         s.with_pending_state(|state| {
                             state.size = Some(size.size);
                         });
@@ -730,7 +730,7 @@ impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
                         move |p: f32| {
                             let width = current_width.interpolate(&target_width, p) as i32;
                             let height = current_height.interpolate(&target_height, p) as i32;
-                            let size = Rectangle::from_loc_and_size((0, 0), (width, height));
+                            let size = Rectangle::new((0, 0).into(), (width, height).into());
                             s.with_pending_state(|state| {
                                 state.size = Some(size.size);
                             });
@@ -848,7 +848,7 @@ impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
                 move |p: f32| {
                     let width = current_width.interpolate(&new_width, p) as i32;
                     let height = current_height.interpolate(&new_height, p) as i32;
-                    let size = Rectangle::from_loc_and_size((0, 0), (width, height));
+                    let size = Rectangle::new((0, 0).into(), (width, height).into());
                     s.with_pending_state(|state| {
                         if (p - 1.0).abs() < f32::EPSILON {
                             state.states.set(xdg_toplevel::State::Maximized);
@@ -898,7 +898,7 @@ impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
                 move |p: f32| {
                     let width = current_width.interpolate(&new_width, p) as i32;
                     let height = current_height.interpolate(&new_height, p) as i32;
-                    let size = Rectangle::from_loc_and_size((0, 0), (width, height));
+                    let size = Rectangle::new((0, 0).into(), (width, height).into());
                     s.with_pending_state(|state| {
                         if (p - 1.0).abs() < f32::EPSILON {
                             state.states.unset(xdg_toplevel::State::Maximized);

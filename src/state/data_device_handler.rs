@@ -4,7 +4,6 @@ use smithay::{
     wayland::selection::{
         data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler},
         wlr_data_control::{DataControlHandler, DataControlState},
-        SelectionHandler,
     },
 };
 

@@ -16,7 +16,7 @@ pub use smithay::{
 use smithay::{
     desktop::WindowSurface,
     input::{
-        dnd::{DndFocus, OfferData, Source},
+        dnd::{DndFocus, Source},
         pointer::{
             GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent,
             GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent,

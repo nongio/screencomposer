@@ -45,8 +45,7 @@ fn streams_value_encodes_required_metadata() {
         .unwrap()
         .try_clone()
         .unwrap()
-        .try_into()
-        .unwrap();
+        .into();
     let id = match id_value {
         Value::Str(s) => s.to_string(),
         other => panic!("unexpected id value: {other:?}"),
@@ -58,8 +57,7 @@ fn streams_value_encodes_required_metadata() {
         .unwrap()
         .try_clone()
         .unwrap()
-        .try_into()
-        .unwrap();
+        .into();
     let mapping = match mapping_value {
         Value::Str(s) => s.to_string(),
         other => panic!("unexpected mapping value: {other:?}"),
@@ -71,8 +69,7 @@ fn streams_value_encodes_required_metadata() {
         .unwrap()
         .try_clone()
         .unwrap()
-        .try_into()
-        .unwrap();
+        .into();
     let size: (i32, i32) = size_value.try_into().unwrap();
     assert_eq!(
         size,
@@ -86,8 +83,7 @@ fn streams_value_encodes_required_metadata() {
         .unwrap()
         .try_clone()
         .unwrap()
-        .try_into()
-        .unwrap();
+        .into();
     let position: (i32, i32) = position_value.try_into().unwrap();
     assert_eq!(position, descriptor.position.unwrap());
 }

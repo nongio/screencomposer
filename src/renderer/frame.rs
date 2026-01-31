@@ -6,11 +6,9 @@
 use layers::{sb, skia};
 use smithay::{
     backend::{
-        allocator::{dmabuf::Dmabuf, Buffer as DmaBuffer},
         renderer::{
-            gles::{ffi, GlesError},
-            sync::SyncPoint,
-            Bind, BlitFrame, Color32F, ContextId, Frame, Renderer, Texture, TextureFilter,
+            gles::GlesError,
+            sync::SyncPoint, Color32F, ContextId, Frame, Renderer,
         },
     },
     utils::{Buffer, Physical, Rectangle, Transform},
@@ -18,21 +16,20 @@ use smithay::{
 use std::sync::atomic::Ordering;
 
 use super::{finished_proc, FlushInfo2, SkiaFrame, SkiaSync, SkiaTexture, FINISHED_PROC_STATE};
-use crate::skia_renderer::SkiaTarget;
 
 impl Frame for SkiaFrame<'_> {
     type Error = GlesError;
     type TextureId = SkiaTexture;
 
     fn context_id(&self) -> ContextId<Self::TextureId> {
-        return self.renderer.context_id();
+        self.renderer.context_id()
     }
     fn clear(
         &mut self,
         color: Color32F,
         at: &[Rectangle<i32, Physical>],
     ) -> Result<(), Self::Error> {
-        self.draw_solid(Rectangle::from_loc_and_size((0, 0), self.size), at, color)?;
+        self.draw_solid(Rectangle::new((0,0).into(), self.size), at, color)?;
         Ok(())
     }
     fn draw_solid(
@@ -63,7 +60,7 @@ impl Frame for SkiaFrame<'_> {
         for rect in damage.iter() {
             let rect_constrained_loc = rect
                 .loc
-                .constrain(Rectangle::from_extemities((0, 0), dst.size.to_point()));
+                .constrain(Rectangle::from_extremities((0, 0), dst.size.to_point()));
             let rect_clamped_size = rect.size.clamp(
                 (0, 0),
                 (dst.size.to_point() - rect_constrained_loc).to_size(),
@@ -160,7 +157,7 @@ impl Frame for SkiaFrame<'_> {
         for rect in damage.iter() {
             let rect_constrained_loc = rect
                 .loc
-                .constrain(Rectangle::from_extemities((0, 0), dst.size.to_point()));
+                .constrain(Rectangle::from_extremities((0, 0), dst.size.to_point()));
             let rect_clamped_size = rect.size.clamp(
                 (0, 0),
                 (dst.size.to_point() - rect_constrained_loc).to_size(),
@@ -254,98 +251,5 @@ impl<'a> AsRef<SkiaFrame<'a>> for SkiaFrame<'a> {
 impl<'a> AsMut<SkiaFrame<'a>> for SkiaFrame<'a> {
     fn as_mut(&mut self) -> &mut SkiaFrame<'a> {
         self
-    }
-}
-
-impl BlitFrame<Dmabuf> for SkiaFrame<'_> {
-    #[profiling::function]
-    fn blit_to(
-        &mut self,
-        to: &mut Dmabuf,
-        src: Rectangle<i32, Physical>,
-        dst: Rectangle<i32, Physical>,
-        _filter: TextureFilter,
-    ) -> Result<(), Self::Error> {
-        // Get source FBO from current render target
-        let src_fbo = self.renderer.get_current_fbo()?.fbo;
-
-        // Bind destination dmabuf to get its FBO
-        let dst_fbo = self.renderer.bind(to)?;
-
-        // Direct FBO-to-FBO blit (GPU only)
-        unsafe {
-            self.renderer
-                .gl
-                .BindFramebuffer(ffi::READ_FRAMEBUFFER, src_fbo);
-            self.renderer
-                .gl
-                .BindFramebuffer(ffi::DRAW_FRAMEBUFFER, dst_fbo.fbo);
-
-            self.renderer.gl.BlitFramebuffer(
-                src.loc.x,
-                src.loc.y,
-                src.loc.x + src.size.w,
-                src.loc.y + src.size.h,
-                dst.loc.x,
-                dst.loc.y,
-                dst.loc.x + dst.size.w,
-                dst.loc.y + dst.size.h,
-                ffi::COLOR_BUFFER_BIT,
-                ffi::LINEAR,
-            );
-
-            self.renderer.gl.BindFramebuffer(ffi::READ_FRAMEBUFFER, 0);
-            self.renderer.gl.BindFramebuffer(ffi::DRAW_FRAMEBUFFER, 0);
-        }
-
-        Ok(())
-    }
-
-    #[profiling::function]
-    fn blit_from(
-        &mut self,
-        from: &Dmabuf,
-        src: Rectangle<i32, Physical>,
-        dst: Rectangle<i32, Physical>,
-        _filter: TextureFilter,
-    ) -> Result<(), Self::Error> {
-        // Get destination FBO from current render target
-        let dst_fbo = self.renderer.get_current_fbo()?.fbo;
-
-        // Bind source dmabuf to get its FBO (using immutable reference)
-        let src_fbo = self
-            .renderer
-            .buffers
-            .get(&SkiaTarget::Dmabuf(from.clone()))
-            .ok_or(GlesError::FramebufferBindingError)?
-            .fbo;
-
-        // Direct FBO-to-FBO blit (GPU only)
-        unsafe {
-            self.renderer
-                .gl
-                .BindFramebuffer(ffi::READ_FRAMEBUFFER, src_fbo);
-            self.renderer
-                .gl
-                .BindFramebuffer(ffi::DRAW_FRAMEBUFFER, dst_fbo);
-
-            self.renderer.gl.BlitFramebuffer(
-                src.loc.x,
-                src.loc.y,
-                src.loc.x + src.size.w,
-                src.loc.y + src.size.h,
-                dst.loc.x,
-                dst.loc.y,
-                dst.loc.x + dst.size.w,
-                dst.loc.y + dst.size.h,
-                ffi::COLOR_BUFFER_BIT,
-                ffi::LINEAR,
-            );
-
-            self.renderer.gl.BindFramebuffer(ffi::READ_FRAMEBUFFER, 0);
-            self.renderer.gl.BindFramebuffer(ffi::DRAW_FRAMEBUFFER, 0);
-        }
-
-        Ok(())
     }
 }
