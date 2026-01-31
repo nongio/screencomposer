@@ -82,11 +82,7 @@ if [ ! -f "target/release/otto" ]; then
 fi
 
 log_info "Starting Otto Compositor udev backend, RUST_LOG=$LOG_LEVEL"
-if [ "$DEBUG_MODE" = true ]; then
-    COMPOSITOR_LOG="$PWD/udev.log"
-else
-    COMPOSITOR_LOG="$PWD/otto.log"
-fi
+COMPOSITOR_LOG="$PWD/otto.log"
 
 if [ "$EUID" -ne 0 ] && [ -z "$LIBSEAT_BACKEND" ]; then
     log_warn "Running DRM backend without root - you may need libseat or run with sudo"

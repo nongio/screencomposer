@@ -52,16 +52,12 @@ features = ["export-taffy"]
 [dependencies.smithay-drm-extras]
 # path = "../smithay/smithay-drm-extras"
 git = "https://github.com/Smithay/smithay"
-# Updated to Jan 2026 master - includes viewporter fix (PR #1623) and many improvements
-# Includes: Tracy GPU profiling, virtual keyboard improvements, layer shell fixes, etc.
 rev = "f9d4d7ffd82d743fb89737b3ffaed57505b477d1"
 optional = true
 
 [dependencies.smithay]
 # path = "../smithay"
 git = "https://github.com/Smithay/smithay"
-# Updated to Jan 2026 master - includes viewporter fix (PR #1623) and many improvements
-# Includes: Tracy GPU profiling, virtual keyboard improvements, layer shell fixes, etc.
 rev = "f9d4d7ffd82d743fb89737b3ffaed57505b477d1"
 default-features = false
 features = [
