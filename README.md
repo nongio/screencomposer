@@ -44,6 +44,8 @@ Otto is in an early but functional state and can be tested by building it from s
 
 Testing and issue reports are welcome. Development follows a draft roadmap of planned features and improvements.
 
+Join the conversation at #otto-compositor:matrix.org
+
 ## Features and roadmap
 
 - **Window management:** move/resize, fullscreen/maximize (animated), minimise to the Dock (animated).
