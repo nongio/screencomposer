@@ -11,20 +11,25 @@ use std::{
 use layers::prelude::Layer;
 use smithay::{
     backend::renderer::{
-        ImportAll, ImportMem, Renderer, RendererSuper, Texture, element::{
-            AsRenderElements, solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement
-        }
+        element::{
+            solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement, AsRenderElements,
+        },
+        ImportAll, ImportMem, Renderer, RendererSuper, Texture,
     },
     desktop::{
-        Window, WindowSurface, WindowSurfaceType, space::SpaceElement, utils::OutputPresentationFeedback
+        space::SpaceElement, utils::OutputPresentationFeedback, Window, WindowSurface,
+        WindowSurfaceType,
     },
     output::Output,
     reexports::{
-        wayland_protocols::{wp::presentation_time::server::wp_presentation_feedback, xdg::shell::{server::xdg_toplevel}},
-        wayland_server::{Resource, backend::ObjectId, protocol::wl_surface::WlSurface},
+        wayland_protocols::{
+            wp::presentation_time::server::wp_presentation_feedback,
+            xdg::shell::server::xdg_toplevel,
+        },
+        wayland_server::{backend::ObjectId, protocol::wl_surface::WlSurface, Resource},
     },
     render_elements,
-    utils::{IsAlive, Logical, Physical, Point, Rectangle, Scale, user_data::UserDataMap},
+    utils::{user_data::UserDataMap, IsAlive, Logical, Physical, Point, Rectangle, Scale},
     wayland::{
         compositor::SurfaceData as WlSurfaceData,
         dmabuf::DmabufFeedback,

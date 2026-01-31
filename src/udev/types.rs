@@ -2,19 +2,25 @@ use std::{collections::hash_map::HashMap, sync::Arc};
 
 use smithay::{
     backend::{
-        SwapBuffersError, allocator::{
-            Fourcc, dmabuf::Dmabuf, gbm::{GbmAllocator, GbmDevice}
-        }, drm::{
-            DrmDevice, DrmDeviceFd, DrmNode, DrmSurface, GbmBufferedSurface, compositor::{DrmCompositor, FrameFlags}, exporter::gbm::GbmFramebufferExporter
-        }, renderer::{
-            Bind, ContextId, DebugFlags, ExportMem, Offscreen, Renderer, RendererSuper, damage::OutputDamageTracker, element::{RenderElement, RenderElementStates}, multigpu::{GpuManager, MultiRenderer, MultiTexture, gbm::GbmGlesBackend}, sync::SyncPoint
-        }, session::libseat::LibSeatSession
+        allocator::{
+            gbm::{GbmAllocator, GbmDevice},
+            Fourcc,
+        },
+        drm::{
+            compositor::DrmCompositor, exporter::gbm::GbmFramebufferExporter, DrmDevice,
+            DrmDeviceFd, DrmNode,
+        },
+        renderer::{
+            multigpu::{gbm::GbmGlesBackend, GpuManager, MultiRenderer, MultiTexture},
+            ContextId,
+        },
+        session::libseat::LibSeatSession,
     },
     desktop::utils::OutputPresentationFeedback,
     reexports::{
         calloop::RegistrationToken,
         drm::control::{connector, crtc},
-        wayland_server::{DisplayHandle, backend::GlobalId},
+        wayland_server::{backend::GlobalId, DisplayHandle},
     },
     utils::{Physical, Rectangle},
     wayland::{
@@ -24,7 +30,7 @@ use smithay::{
 };
 use smithay_drm_extras::drm_scanner::DrmScanner;
 
-use crate::{renderer::SkiaTexture, skia_renderer::{SkiaRenderer}};
+use crate::skia_renderer::SkiaRenderer;
 
 // Supported pixel formats for rendering
 // We pick ARGB2101010 (10-bit) or ARGB8888 (8-bit) as they are widely supported.
@@ -44,10 +50,6 @@ pub type UdevRenderer<'a> = MultiRenderer<
     GbmGlesBackend<SkiaRenderer, DrmDeviceFd>,
     GbmGlesBackend<SkiaRenderer, DrmDeviceFd>,
 >;
-
-/// GBM-backed DRM surface for rendering
-pub type RenderSurface =
-    GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, Option<OutputPresentationFeedback>>;
 
 /// DRM compositor using GBM allocation
 pub type GbmDrmCompositor = DrmCompositor<
@@ -96,7 +98,7 @@ pub struct SurfaceData {
     pub(super) device_id: DrmNode,
     pub(super) render_node: DrmNode,
     pub(super) global: Option<GlobalId>,
-    pub(super) compositor: SurfaceComposition,
+    pub(super) compositor: GbmDrmCompositor,
     #[cfg(feature = "fps_ticker")]
     pub(super) fps: fps_ticker::Fps,
     #[cfg(feature = "fps_ticker")]
@@ -117,164 +119,6 @@ impl Drop for SurfaceData {
                 .remove_global::<crate::state::Otto<UdevData>>(global);
         }
     }
-}
-
-/// Surface composition strategy (direct scanout vs compositor)
-pub enum SurfaceComposition {
-    Surface {
-        surface: RenderSurface,
-        damage_tracker: OutputDamageTracker,
-    },
-    Compositor(GbmDrmCompositor),
-}
-
-impl SurfaceComposition {
-    #[profiling::function]
-    pub fn frame_submitted(
-        &mut self,
-    ) -> Result<Option<Option<OutputPresentationFeedback>>, SwapBuffersError> {
-        match self {
-            SurfaceComposition::Compositor(c) => {
-                c.frame_submitted().map_err(Into::<SwapBuffersError>::into)
-            }
-            SurfaceComposition::Surface { surface, .. } => surface
-                .frame_submitted()
-                .map_err(Into::<SwapBuffersError>::into),
-        }
-    }
-
-    pub fn format(&self) -> smithay::reexports::gbm::Format {
-        match self {
-            SurfaceComposition::Compositor(c) => c.format(),
-            SurfaceComposition::Surface { surface, .. } => surface.format(),
-        }
-    }
-
-    pub fn surface(&self) -> &DrmSurface {
-        match self {
-            SurfaceComposition::Compositor(c) => c.surface(),
-            SurfaceComposition::Surface { surface, .. } => surface.surface(),
-        }
-    }
-
-    pub fn reset_buffers(&mut self) {
-        match self {
-            SurfaceComposition::Compositor(c) => c.reset_buffers(),
-            SurfaceComposition::Surface { surface, .. } => surface.reset_buffers(),
-        }
-    }
-
-    #[profiling::function]
-    pub fn queue_frame(
-        &mut self,
-        sync: Option<SyncPoint>,
-        damage: Option<Vec<Rectangle<i32, Physical>>>,
-        user_data: Option<OutputPresentationFeedback>,
-    ) -> Result<(), SwapBuffersError> {
-        match self {
-            SurfaceComposition::Surface { surface, .. } => surface
-                .queue_buffer(sync, damage, user_data)
-                .map_err(Into::<SwapBuffersError>::into),
-            SurfaceComposition::Compositor(c) => c
-                .queue_frame(user_data)
-                .map_err(Into::<SwapBuffersError>::into),
-        }
-    }
-
-    #[profiling::function]
-    pub fn render_frame<R, E, Target>(
-        &mut self,
-        renderer: &mut R,
-        elements: &[E],
-        clear_color: [f32; 4],
-    ) -> Result<SurfaceCompositorRenderResult, SwapBuffersError>
-    where
-        R: Renderer + Bind<Dmabuf> + Bind<Target> + Offscreen<Target> + ExportMem,
-        <R as RendererSuper>::TextureId: 'static,
-        <R as RendererSuper>::Error: Into<SwapBuffersError>,
-        E: RenderElement<R>,
-    {
-        match self {
-            SurfaceComposition::Surface {
-                surface,
-                damage_tracker,
-            } => {
-                let (mut dmabuf, age) = surface
-                    .next_buffer()
-                    .map_err(Into::<SwapBuffersError>::into)?;
-                let mut target = renderer
-                    .bind(&mut dmabuf)
-                    .map_err(Into::<SwapBuffersError>::into)?;
-                let res = damage_tracker
-                    .render_output(renderer, &mut target, age.into(), elements, clear_color)
-                    .map(|res| {
-                        #[cfg(feature = "renderer_sync")]
-                        let _ = res.sync.wait();
-                        let rendered = res.damage.is_some();
-                        SurfaceCompositorRenderResult {
-                            rendered,
-                            damage: res.damage,
-                            states: res.states,
-                            sync: rendered.then_some(res.sync),
-                        }
-                    })
-                    .map_err(|err| match err {
-                        smithay::backend::renderer::damage::Error::Rendering(err) => err.into(),
-                        other => {
-                            tracing::error!("Unexpected damage tracker error: {:?}", other);
-                            SwapBuffersError::ContextLost(Box::new(std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                format!("Damage tracker error: {:?}", other),
-                            )))
-                        }
-                    });
-                res
-            }
-            SurfaceComposition::Compositor(compositor) => compositor
-                .render_frame(renderer, elements, clear_color, FrameFlags::empty())
-                .map(|render_frame_result| {
-                    #[cfg(feature = "renderer_sync")]
-                    {
-                        use smithay::backend::drm::compositor::PrimaryPlaneElement;
-                        if let PrimaryPlaneElement::Swapchain(element) =
-                            render_frame_result.primary_element
-                        {
-                            let _ = element.sync.wait();
-                        }
-                    }
-                    SurfaceCompositorRenderResult {
-                        rendered: !render_frame_result.is_empty,
-                        damage: None,
-                        states: render_frame_result.states,
-                        sync: None,
-                    }
-                })
-                .map_err(|err| match err {
-                    smithay::backend::drm::compositor::RenderFrameError::PrepareFrame(err) => {
-                        err.into()
-                    }
-                    smithay::backend::drm::compositor::RenderFrameError::RenderFrame(
-                        smithay::backend::renderer::damage::Error::Rendering(err),
-                    ) => err.into(),
-                    other => {
-                        tracing::error!("Unexpected render frame error: {:?}", other);
-                        SwapBuffersError::ContextLost(Box::new(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Render frame error: {:?}", other),
-                        )))
-                    }
-                }),
-        }
-    }
-
-}
-
-/// Result of surface compositor rendering
-pub struct SurfaceCompositorRenderResult<'a> {
-    pub rendered: bool,
-    pub states: RenderElementStates,
-    pub sync: Option<SyncPoint>,
-    pub damage: Option<&'a Vec<Rectangle<i32, Physical>>>,
 }
 
 /// Dmabuf feedback for a DRM surface (render vs scanout)
@@ -311,9 +155,5 @@ impl RenderOutcome {
             rendered: false,
             damage: None,
         }
-    }
-
-    pub fn with_frame(rendered: bool, damage: Option<Vec<Rectangle<i32, Physical>>>) -> Self {
-        Self { rendered, damage }
     }
 }

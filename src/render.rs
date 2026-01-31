@@ -1,17 +1,19 @@
 use smithay::{
     backend::renderer::{
-        ImportAll, ImportMem, Renderer, RendererSuper, damage::{Error as OutputDamageTrackerError, OutputDamageTracker, RenderOutputResult}, element::{
+        damage::{Error as OutputDamageTrackerError, OutputDamageTracker, RenderOutputResult},
+        element::{
             self,
             surface::render_elements_from_surface_tree,
             utils::{
                 ConstrainAlign, ConstrainScaleBehavior, CropRenderElement, RelocateRenderElement,
                 RescaleRenderElement,
             },
-        }
+        },
+        ImportAll, ImportMem, Renderer, RendererSuper,
     },
-    desktop::space::{ConstrainBehavior, ConstrainReference, Space, constrain_space_element},
+    desktop::space::{constrain_space_element, ConstrainBehavior, ConstrainReference, Space},
     output::Output,
-    reexports::{wayland_server::protocol::wl_surface},
+    reexports::wayland_server::protocol::wl_surface,
     utils::{self, Point, Rectangle, Size},
 };
 

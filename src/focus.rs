@@ -1,5 +1,6 @@
 use std::{borrow::Cow, fmt::Debug, hash::Hash, sync::RwLock};
 
+use smithay::utils::Logical;
 pub use smithay::{
     backend::input::KeyState,
     desktop::{LayerSurface, PopupKind},
@@ -27,7 +28,6 @@ use smithay::{
     utils::Point,
     wayland::selection::data_device::DataDeviceHandler,
 };
-use smithay::utils::Logical;
 
 use crate::{
     interactive_view::InteractiveView,

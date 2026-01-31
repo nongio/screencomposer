@@ -11,10 +11,11 @@ use smithay::{
         egl::context::ContextPriority,
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{
-            DebugFlags, ImportDma, ImportMemWl, Renderer, multigpu::{GpuManager, gbm::GbmGlesBackend}
+            multigpu::{gbm::GbmGlesBackend, GpuManager},
+            ImportDma, ImportMemWl, Renderer,
         },
-        session::{Event as SessionEvent, Session, libseat::LibSeatSession},
-        udev::{UdevBackend, UdevEvent, all_gpus, primary_gpu},
+        session::{libseat::LibSeatSession, Event as SessionEvent, Session},
+        udev::{all_gpus, primary_gpu, UdevBackend, UdevEvent},
     },
     reexports::{calloop::EventLoop, input::Libinput, wayland_server::Display},
     wayland::dmabuf::{DmabufFeedbackBuilder, DmabufState},
@@ -320,12 +321,12 @@ pub fn run_udev() {
             error!("Skipping device {device_id}: {err}");
         }
     }
-    
+
     // Now that devices are added, set the context_id
     if let Some(renderer) = state.backend_data.gpus.single_renderer(&primary_gpu).ok() {
         state.backend_data.context_id = Some(renderer.context_id());
     }
-    
+
     state.shm_state.update_formats(
         state
             .backend_data

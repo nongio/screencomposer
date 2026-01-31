@@ -431,7 +431,8 @@ impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
                     .and_then(|w| w.toplevel())
                     .map(|toplevel| {
                         toplevel.with_committed_state(|current| {
-                            current.is_some_and(|s| s.states.contains(xdg_toplevel::State::Resizing))
+                            current
+                                .is_some_and(|s| s.states.contains(xdg_toplevel::State::Resizing))
                         })
                     })
                     .unwrap_or(false);
@@ -481,13 +482,11 @@ impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
         surface: ToplevelSurface,
         mut wl_output: Option<wl_output::WlOutput>,
     ) {
-        if surface
-            .with_pending_state(|state| {
-                state
-                    .capabilities
-                    .contains(xdg_toplevel::WmCapabilities::Fullscreen)
-            })
-        {
+        if surface.with_pending_state(|state| {
+            state
+                .capabilities
+                .contains(xdg_toplevel::WmCapabilities::Fullscreen)
+        }) {
             // the surface size is either output size
             // or the current workspace size
             let wl_surface = surface.wl_surface();
@@ -776,13 +775,11 @@ impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
     fn maximize_request(&mut self, surface: ToplevelSurface) {
         // NOTE: This should use layer-shell when it is implemented to
         // get the correct maximum size
-        if surface
-            .with_pending_state(|state| {
-                state
-                    .capabilities
-                    .contains(xdg_toplevel::WmCapabilities::Maximize)
-            })
-        {
+        if surface.with_pending_state(|state| {
+            state
+                .capabilities
+                .contains(xdg_toplevel::WmCapabilities::Maximize)
+        }) {
             let id = surface.wl_surface().id();
             let window = self.workspaces.get_window_for_surface(&id).unwrap().clone();
 
@@ -920,13 +917,11 @@ impl<BackendData: Backend> XdgShellHandler for Otto<BackendData> {
     }
 
     fn minimize_request(&mut self, surface: ToplevelSurface) {
-        if surface
-            .with_pending_state(|state| {
-                state
-                    .capabilities
-                    .contains(xdg_toplevel::WmCapabilities::Minimize)
-            })
-        {
+        if surface.with_pending_state(|state| {
+            state
+                .capabilities
+                .contains(xdg_toplevel::WmCapabilities::Minimize)
+        }) {
             let id = surface.wl_surface().id();
             let window = self.workspaces.get_window_for_surface(&id).unwrap().clone();
 
@@ -1032,10 +1027,9 @@ impl<BackendData: Backend> Otto<BackendData> {
                 let mut initial_window_location = self.workspaces.element_location(window).unwrap();
 
                 // If surface is maximized then unmaximize it
-                let is_maximized =
-                    surface.with_pending_state(|state| {
-                        state.states.contains(xdg_toplevel::State::Maximized)
-                    });
+                let is_maximized = surface.with_pending_state(|state| {
+                    state.states.contains(xdg_toplevel::State::Maximized)
+                });
                 if is_maximized {
                     // Get current maximized geometry before unmaximizing
                     let maximized_geometry = self.workspaces.element_geometry(window).unwrap();
@@ -1126,9 +1120,8 @@ impl<BackendData: Backend> Otto<BackendData> {
         let mut initial_window_location = self.workspaces.element_location(window).unwrap();
 
         // If surface is maximized then unmaximize it
-        let is_maximized = surface.with_pending_state(|state| {
-            state.states.contains(xdg_toplevel::State::Maximized)
-        });
+        let is_maximized = surface
+            .with_pending_state(|state| state.states.contains(xdg_toplevel::State::Maximized));
         if is_maximized {
             // Get current maximized geometry before unmaximizing
             let maximized_geometry = self.workspaces.element_geometry(window).unwrap();

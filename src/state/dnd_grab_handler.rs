@@ -1,9 +1,6 @@
 use layers::prelude::Transition;
 use smithay::{
-    input::{
-        dnd::DndGrabHandler,
-        Seat,
-    },
+    input::{dnd::DndGrabHandler, Seat},
     utils::{Logical, Point},
 };
 

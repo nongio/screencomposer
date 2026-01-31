@@ -15,9 +15,16 @@ use smithay::backend::renderer::ImportEgl;
 
 use smithay::{
     backend::{
-        SwapBuffersError, allocator::dmabuf::Dmabuf, egl::{EGLDevice, context::GlAttributes}, renderer::{
-            ContextId, ImportDma, ImportMemWl, Renderer, damage::{Error as OutputDamageTrackerError, OutputDamageTracker}, element::Kind, utils::{RendererSurfaceState, import_surface}
-        }, winit::{self, WinitEvent, WinitGraphicsBackend}
+        allocator::dmabuf::Dmabuf,
+        egl::{context::GlAttributes, EGLDevice},
+        renderer::{
+            damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
+            element::Kind,
+            utils::{import_surface, RendererSurfaceState},
+            ContextId, ImportDma, ImportMemWl, Renderer,
+        },
+        winit::{self, WinitEvent, WinitGraphicsBackend},
+        SwapBuffersError,
     },
     delegate_dmabuf,
     input::pointer::{CursorImageAttributes, CursorImageStatus},
@@ -25,22 +32,33 @@ use smithay::{
     reexports::{
         calloop::EventLoop,
         wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
-        wayland_server::{Display, protocol::wl_surface},
+        wayland_server::{protocol::wl_surface, Display},
         winit::{
-            dpi::{LogicalSize, Size}, platform::pump_events::PumpStatus,
+            dpi::{LogicalSize, Size},
+            platform::pump_events::PumpStatus,
             window::WindowAttributes,
         },
     },
     utils::{IsAlive, Scale, Transform},
-    wayland::{compositor::{self, with_states}, dmabuf::{
+    wayland::{
+        compositor::{self, with_states},
+        dmabuf::{
             DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState,
             ImportNotifier,
-        }, presentation::Refresh},
+        },
+        presentation::Refresh,
+    },
 };
 use tracing::{error, info, warn};
 
 use crate::{
-    config::{Config, DisplayDescriptor, DisplayKind, DisplayResolution, WINIT_DISPLAY_ID}, render::{self, *}, render_elements::workspace_render_elements::WorkspaceRenderElements, renderer::SkiaTexture, shell::WindowElement, skia_renderer::{SkiaRenderer, SkiaTextureImage}, state::{Backend, Otto, post_repaint, take_presentation_feedback}
+    config::{Config, DisplayDescriptor, DisplayKind, DisplayResolution, WINIT_DISPLAY_ID},
+    render::{self, *},
+    render_elements::workspace_render_elements::WorkspaceRenderElements,
+    renderer::SkiaTexture,
+    shell::WindowElement,
+    skia_renderer::{SkiaRenderer, SkiaTextureImage},
+    state::{post_repaint, take_presentation_feedback, Backend, Otto},
 };
 
 #[cfg(feature = "debug")]
@@ -186,7 +204,6 @@ impl Backend for WinitData {
         &self,
         render_surface: &RendererSurfaceState,
     ) -> Option<SkiaTextureImage> {
-
         let id = self.context_id.clone();
         let tex = render_surface.texture::<SkiaTexture>(id);
         tex.map(|t| t.clone().into())
@@ -469,7 +486,7 @@ pub fn run_winit() {
             if should_draw {
                 // Start frame timing
                 let _frame_timer = state.render_metrics.start_frame();
-                
+
                 #[cfg(feature = "debug")]
                 {
                     let handle = backend.renderer().egl_context().get_context_handle();
